@@ -1,0 +1,242 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// API contract — Scheduling API (frontoffice). Single source of truth for the
+// request/response shapes shared with `smart-scheduler-front`.
+//
+// Design rules (from the product owner):
+//  1. Few endpoints — one aggregate read per screen/tab, consolidated mutations.
+//  2. Scalable request types — references by id + tagged unions, never bare
+//     denormalized strings (e.g. NOT `studentName: string`).
+//  3. Ready-to-use responses — names/quotas are pre-joined server-side so the
+//     frontend renders directly and never calls N endpoints to stitch data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ───────────── Scalars / enums (must match the DB enums & FE unions) ─────────────
+
+export type TeacherType = "FULL_TIME" | "PART_TIME" | "FREELANCE";
+export type BookingType =
+  | "FIRST_TRIAL"
+  | "SINGLE_SESSION"
+  | "COURSE_PACKAGE"
+  | "VOUCHER";
+export type BookingStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "ATTENDED"
+  | "SICK_LEAVE"
+  | "EXTENDED"
+  | "CANCELLED";
+export type PackageSize = 4 | 6 | 10;
+
+/** ISO date `YYYY-MM-DD` (local calendar, Asia/Bangkok). */
+export type IsoDate = string;
+/** `HH:mm`, already trimmed of seconds by the API. */
+export type HhMm = string;
+
+// ───────────────────────── Embedded building blocks ─────────────────────────
+// These nested objects are what make responses "ready-to-use": every booking
+// already carries the teacher/student/subject/course it needs.
+
+export interface StudentRef {
+  id: string;
+  name: string;
+  nickname: string | null;
+}
+
+export interface SubjectRef {
+  id: string;
+  name: string;
+}
+
+export interface TeacherDTO {
+  id: string;
+  name: string;
+  nickname: string;
+  type: TeacherType;
+  active: boolean;
+  subjects: SubjectRef[];
+  /** has a LINE userId — if false, the FE can warn that confirm won't notify. */
+  lineLinked: boolean;
+}
+
+/** Computed course view — the leave/quota math done server-side (authoritative). */
+export interface CourseSummary {
+  id: string;
+  size: PackageSize;
+  usedSessions: number;
+  leaveUsed: number;
+  leaveQuota: number; // 4→1, 6→2, 10→3
+  leaveRemaining: number;
+  maxWeek: number; // 4→5, 10→13 (6 TBC with client)
+  leaveLocked: boolean; // over quota & not admin-unlocked → no more rescheduling
+  adminUnlocked: boolean;
+  expiryDate: IsoDate;
+}
+
+/** The universal booking shape — used by calendar cells, the table, and the modal. */
+export interface BookingDTO {
+  id: string;
+  date: IsoDate;
+  startTime: HhMm;
+  endTime: HhMm;
+  bookingType: BookingType;
+  status: BookingStatus;
+  note: string | null;
+  student: StudentRef;
+  teacher: Pick<TeacherDTO, "id" | "name" | "nickname" | "type">;
+  subject: SubjectRef;
+  /** present iff bookingType === "COURSE_PACKAGE" — quota context for the modal. */
+  course: CourseSummary | null;
+}
+
+// ═════════════════════════════ READ responses ═════════════════════════════
+
+/**
+ * GET /api/calendar?date=YYYY-MM-DD&view=day|week
+ * Flagship aggregate: replaces getTeachers + getBookings(range) + course lookups.
+ * Fully composed for direct render — `days[].columns[].slots[]` maps 1:1 to the grid.
+ */
+export interface CalendarResponse {
+  view: "day" | "week";
+  range: { from: IsoDate; to: IsoDate };
+  timeSlots: HhMm[]; // ["10:00" … "17:00"]
+  days: Array<{
+    date: IsoDate;
+    columns: Array<{
+      teacher: TeacherDTO; // active teachers only, priority-sorted (full/part → freelance)
+      slots: Array<{ time: HhMm; booking: BookingDTO | null }>; // ordered, length = timeSlots
+    }>;
+  }>;
+}
+
+/**
+ * GET /api/teachers
+ * Pre-grouped & ordered for the Teachers screen, incl. the group-toggle flag.
+ */
+export interface TeachersResponse {
+  groups: Array<{
+    type: TeacherType;
+    allActive: boolean; // drives the "ปิด/เปิดทั้งกลุ่ม" button
+    teachers: TeacherDTO[];
+  }>;
+}
+
+/**
+ * GET /api/courses
+ * Courses + leave-quota tab. Each row carries the student + computed quota.
+ */
+export type CoursesResponse = Array<CourseSummary & { student: StudentRef }>;
+
+/**
+ * GET /api/bookings?from&to&type&status&teacherId&q&page&limit
+ * All-bookings tab — teacher/student/subject embedded, server-filtered + paginated.
+ */
+export interface BookingsResponse {
+  items: BookingDTO[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+/** GET /api/reports/daily?date=YYYY-MM-DD */
+export interface DailyReportResponse {
+  date: IsoDate;
+  totalBooked: number;
+  attended: number;
+  onLeave: number;
+  pending: number;
+  cancelled: number;
+  byBookingType: Array<{ type: BookingType; count: number }>;
+}
+
+// ═════════════════════════════ WRITE requests ═════════════════════════════
+
+/**
+ * Scalable student reference. Either an existing id, or an inline new student.
+ * This tagged union is the fix for the old `studentName: string` — it keeps the
+ * free-text "type a name" UX while enabling dedupe, history, wallet & parent-LINE.
+ */
+export type StudentInput =
+  | { id: string }
+  | {
+      name: string;
+      nickname?: string;
+      phone?: string;
+      parentLineUserId?: string;
+    };
+
+/**
+ * POST /api/bookings  → 201
+ * endTime is derived server-side (+1h); never trust a client-sent end time.
+ */
+export interface CreateBookingRequest {
+  student: StudentInput;
+  teacherId: string;
+  subjectId: string;
+  date: IsoDate;
+  startTime: HhMm;
+  bookingType: BookingType;
+  courseId?: string; // when COURSE_PACKAGE
+  voucherId?: string; // when VOUCHER
+  note?: string;
+}
+export interface CreateBookingResponse {
+  booking: BookingDTO;
+  course: CourseSummary | null;
+}
+
+/**
+ * PATCH /api/bookings/:id/status
+ * One endpoint for every transition (confirm/attend/sick-leave/cancel) WITH its
+ * side effects (LINE push on confirm, auto-extend or lock on sick-leave). The
+ * response returns everything that changed so the FE updates without refetching.
+ */
+export type BookingStatusAction = "confirm" | "attend" | "sick-leave" | "cancel";
+export interface UpdateBookingStatusRequest {
+  action: BookingStatusAction;
+  reason?: string;
+}
+export interface UpdateBookingStatusResponse {
+  booking: BookingDTO; // the updated booking
+  extended: BookingDTO | null; // auto-created make-up slot (sick-leave within quota)
+  course: CourseSummary | null; // updated quota, if course-linked
+  locked: boolean; // sick-leave over quota → needs admin unlock
+  notification:
+    | { channel: "line"; status: "queued" | "skipped"; reason?: string }
+    | null; // what happened with LINE, so the toast is accurate
+}
+
+/**
+ * PATCH /api/teachers/availability
+ * Single (teacherId) OR whole group (type). Exactly one of the two is provided.
+ */
+export interface SetAvailabilityRequest {
+  teacherId?: string;
+  type?: TeacherType;
+  active: boolean;
+}
+export interface SetAvailabilityResponse {
+  teachers: TeacherDTO[]; // every affected teacher, ready-to-use
+}
+
+/**
+ * PATCH /api/courses/:id  (admin actions; extensible)
+ */
+export interface UpdateCourseRequest {
+  adminUnlocked?: boolean;
+}
+export type UpdateCourseResponse = CourseSummary & { student: StudentRef };
+
+// ═══════════════════════════════ Errors ═══════════════════════════════
+
+export type ApiErrorCode =
+  | "VALIDATION"
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "SLOT_TAKEN" // 409 — teacher slot already booked
+  | "COURSE_EXPIRED"
+  | "LEAVE_LOCKED" // attempted to extend past quota without unlock
+  | "CONFLICT";
+
+export interface ApiError {
+  error: { code: ApiErrorCode; message: string; details?: unknown };
+}
