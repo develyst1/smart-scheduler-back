@@ -64,6 +64,19 @@ export const updateStatus = z.object({
   reason: z.string().optional(),
 });
 
+// Manual move/edit a booking (reschedule). At least one field required.
+export const moveBooking = z
+  .object({
+    teacherId: ID.optional(),
+    subjectId: ID.optional(),
+    date: DATE.optional(),
+    startTime: TIME.optional(),
+    note: z.string().optional(),
+  })
+  .refine((d) => Object.values(d).some((value) => value !== undefined), {
+    message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
+  });
+
 export const setAvailability = z
   .object({
     teacherId: ID.optional(),

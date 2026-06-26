@@ -1,16 +1,17 @@
 # CLAUDE.md — smart-scheduler-back (Scheduling API)
 
 Guides Claude Code (and other agents) in this repo. For the cross-repo map see the
-workspace root `../CLAUDE.md`. This repo is **greenfield**.
+workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated + seeded, 10 endpoints,
+`bun test` + `scripts/smoke.ts` pass. (Remaining: auth/roles, LINE outbox worker.)
 
 ## What this is
 
 The **frontoffice backend** — the **Scheduling API** that powers `smart-scheduler-front`. It is the
 **source of truth** for teachers, bookings, attendance, and the leave/extension rules. **Phase 1.**
 
-> Spec (Thai): [req2.md](../smart-scheduler-front/req2.md) (current; wins) and
-> [Requirement.md](../smart-scheduler-front/Requirement.md). The frontend already encodes the domain
-> rules as a reference — **port them here and make them authoritative** (the client is never trusted).
+> Spec (Thai): [requirement.md](../requirement.md) (**latest, root — wins**), then
+> [req2.md](../smart-scheduler-front/req2.md). The domain rules are **authoritative here** — the
+> client is never trusted.
 
 ## Stack
 
@@ -29,16 +30,23 @@ bun test
 
 ```
 src/
-  index.ts                 # Hono app, middleware, mount routes, export `AppType` for FE RPC
-  routes/<domain>.ts       # Hono routers (teachers, bookings, attendance, reports)
-  services/<domain>.ts     # business logic — the source of truth (quota/extension/auto-recurring)
+  index.ts                       # Hono app + CORS + onError; mounts /api; exports AppType
+  routes/api.ts                  # all 10 endpoints, chained for hc<AppType> RPC
+  services/scheduler.service.ts  # business logic — source of truth (quota/extend/move/idempotency)
+  validation.ts                  # zod request/query schemas
+  types/contract.ts              # request/response DTOs (shared shape with the FE)
   db/
-    schema.ts              # Drizzle schema for THIS app's tables (see ownership rule)
-    index.ts               # drizzle client (postgres connection)
+    schema.ts                    # Drizzle schema (this app's tables) + relations
+    index.ts                     # drizzle client (postgres-js)
+    mappers.ts                   # rows → ready-to-use DTOs
+    seed.ts                      # `bun run db:seed`
   lib/
-    line.ts                # LINE Messaging API push client (+ outbox/retry)
-    validation.ts          # zod schemas for request bodies
-  middleware/              # auth (staff/admin role), error handler, request logging
+    leave.ts (+ .test.ts)        # leave quota/extension rules (pure, tested)
+    voucher.ts                   # voucher validity (3/6/9 months by size)
+    time.ts                      # TIME_SLOTS 09:00–18:00 + date helpers
+    line.ts                      # LINE outbox enqueue (push worker = TODO)
+    http.ts                      # ApiException + pgErrorCode
+scripts/smoke.ts                 # manual e2e check against a running server
 drizzle.config.ts
 ```
 
@@ -51,21 +59,26 @@ Conventions:
 ## Shared DB — this app's ownership
 
 Both backends share **one PostgreSQL**. **This repo OWNS and migrates** the scheduling tables:
-`teachers`, `bookings`, `course_packages`, `attendance`, `leave`. The backoffice (Finance API)
-**reads** `attendance` to deduct hours / compute payroll — it must **not** migrate these tables.
+`students`, `teachers`, `subjects`, `teacher_subjects`, `course_packages`, `vouchers`, `bookings`,
+`notification_outbox`. The backoffice (Finance API) **reads** `bookings` (attendance = status
+`ATTENDED`) to deduct hours / compute payroll — it must **not** migrate these tables.
 Never let two apps migrate the same table.
 
 ## Domain rules to enforce server-side (authoritative)
 
+- **Hours:** calendar runs **09:00–18:00** (nine one-hour slots; `TIME_SLOTS` in [lib/time.ts](src/lib/time.ts)).
 - **Teacher priority** in any auto-assignment: **Full-time / Part-time first**, then **Freelance**.
-- **Auto-recurring booking:** registering a Course Package (e.g. 10×, Sun 10:00) locks the slot
+- **Auto-recurring booking:** registering a Course Package (e.g. 10×, Sun 09:00) locks the slot
   forward for the quota window (~13 weeks for a 10-session course).
 - **Leave + extension under the Policy Lock:** quota by package size — 4→**1** (extend ≤ week 5),
   6→**2**, 10→**3** (extend ≤ week 13). On leave: cancel that session, **auto-append** one in a later
   week. **Over quota → lock** further rescheduling until an **admin** unlocks (special cases only).
+- **Manual Move/Add:** staff may move (teacher/date/time) or add a session by hand for special
+  cases — `PATCH /api/bookings/:id` (move) and `POST /api/bookings` (add).
+- **Voucher** (5 / 10 / 15h): **no fixed slot**, **cannot pick a teacher**; validity **3 / 6 / 9
+  months** from the first booking ([lib/voucher.ts](src/lib/voucher.ts)).
 - **Statuses:** `PENDING → CONFIRMED → ATTENDED / SICK_LEAVE → EXTENDED / CANCELLED`.
-- **Voucher** bookings have **no fixed slot** and **cannot pick a teacher** (assign by availability).
-- ⚠️ The 6-session extension ceiling ("week 8" in the FE) is an assumption — confirm the real rule.
+- ⚠️ The 6-session extension ceiling ("week 8") is an assumption — requirement.md doesn't fix it.
 
 ## Notifications — LINE (this app: notify the teacher)
 

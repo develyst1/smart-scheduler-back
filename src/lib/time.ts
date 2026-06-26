@@ -1,7 +1,9 @@
 // Time/date helpers. Backend has no dayjs; dates are plain `YYYY-MM-DD` strings
 // (local calendar, Asia/Bangkok) and times are `HH:mm`.
 
+// Operating hours 09:00–18:00 (nine one-hour slots), per requirement.md.
 export const TIME_SLOTS = [
+  "09:00",
   "10:00",
   "11:00",
   "12:00",

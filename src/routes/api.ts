@@ -23,6 +23,9 @@ export const api = new Hono()
     const { action, reason } = c.req.valid("json");
     return c.json(await svc.updateBookingStatus(c.req.param("id"), action, reason));
   })
+  .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
+    c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
+  )
   .patch("/teachers/availability", zValidator("json", v.setAvailability), async (c) =>
     c.json(await svc.setAvailability(c.req.valid("json"))),
   )

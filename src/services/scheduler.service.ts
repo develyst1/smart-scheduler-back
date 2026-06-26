@@ -351,6 +351,34 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
   });
 }
 
+export async function moveBooking(
+  id: string,
+  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string },
+) {
+  const current = await db.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
+  if (!current) throw notFound("ไม่พบคาบเรียน");
+
+  const patch: any = {};
+  if (input.teacherId) patch.teacherId = input.teacherId;
+  if (input.subjectId) patch.subjectId = input.subjectId;
+  if (input.date) patch.date = input.date;
+  if (input.startTime) {
+    patch.startTime = input.startTime;
+    patch.endTime = addHour(input.startTime); // re-derive end on a time change
+  }
+  if (input.note !== undefined) patch.note = input.note;
+
+  try {
+    await db.update(bookings).set(patch).where(eq(bookings.id, id));
+  } catch (e: any) {
+    const code = pgErrorCode(e);
+    if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
+    if (code === "23503") throw badRequest("teacher / subject อ้างอิงไม่ถูกต้อง");
+    throw e;
+  }
+  return { booking: await loadBookingDTO(db, id) };
+}
+
 export async function setAvailability(input: {
   teacherId?: string;
   type?: any;

@@ -98,7 +98,7 @@ export interface BookingDTO {
 export interface CalendarResponse {
   view: "day" | "week";
   range: { from: IsoDate; to: IsoDate };
-  timeSlots: HhMm[]; // ["10:00" … "17:00"]
+  timeSlots: HhMm[]; // ["09:00" … "17:00"] (09:00–18:00)
   days: Array<{
     date: IsoDate;
     columns: Array<{
@@ -203,6 +203,22 @@ export interface UpdateBookingStatusResponse {
   notification:
     | { channel: "line"; status: "queued" | "skipped"; reason?: string }
     | null; // what happened with LINE, so the toast is accurate
+}
+
+/**
+ * PATCH /api/bookings/:id — move/edit a booking (manual reschedule).
+ * Per requirement.md: staff may MOVE (teacher/date/time) or edit a session by hand
+ * for special cases. endTime is re-derived if startTime changes; clashes → 409.
+ */
+export interface MoveBookingRequest {
+  teacherId?: string;
+  subjectId?: string;
+  date?: IsoDate;
+  startTime?: HhMm;
+  note?: string;
+}
+export interface MoveBookingResponse {
+  booking: BookingDTO;
 }
 
 /**
