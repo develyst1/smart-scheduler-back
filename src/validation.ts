@@ -102,3 +102,11 @@ export const setAvailability = z
 export const updateCourse = z.object({
   adminUnlocked: z.boolean().optional(),
 });
+
+// Teacher type ordering (B.2) — exactly the 3 types, no duplicates.
+export const setTeacherTypeOrder = z.object({
+  order: z
+    .array(TEACHER_TYPE)
+    .length(3)
+    .refine((a) => new Set(a).size === 3, "ต้องระบุครบ 3 ประเภท ไม่ซ้ำ"),
+});

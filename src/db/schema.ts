@@ -241,6 +241,19 @@ export const notificationOutbox = pgTable("notification_outbox", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });
 
+// ─────────────────────────── App settings (KV) ───────────────────────────
+// Small global settings persisted server-side (single source of truth across
+// browsers/devices). First user: `teacher_type_order` (B.2) — replaces the FE
+// localStorage. value is jsonb so future settings (CRM levels, etc.) can reuse it.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
 // ───────────────────────────── Relations ─────────────────────────────
 // Enable `db.query.bookings.findMany({ with: { teacher, student, subject, course } })`
 // so aggregate endpoints compose ready-to-use payloads in one round-trip.

@@ -9,6 +9,10 @@ export const api = new Hono()
     c.json(await svc.getCalendar(c.req.valid("query"))),
   )
   .get("/teachers", async (c) => c.json(await svc.getTeachers()))
+  .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
+  .patch("/teachers/type-order", zValidator("json", v.setTeacherTypeOrder), async (c) =>
+    c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
+  )
   .get("/courses", async (c) => c.json(await svc.getCourses()))
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
     c.json(await svc.getBookings(c.req.valid("query"))),

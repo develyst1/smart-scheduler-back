@@ -3,7 +3,8 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookings, coursePackages, students, subjects, teachers } from "../db/schema";
+import { appSettings, bookings, coursePackages, students, subjects, teachers } from "../db/schema";
+import type { TeacherType } from "../types/contract";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
 import { buildRescheduleTarget } from "../lib/reschedule";
@@ -11,7 +12,23 @@ import { enqueueLine, type NotifyResult } from "../lib/line";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, weekRange } from "../lib/time";
 
-const PRIORITY: Record<string, number> = { FULL_TIME: 0, PART_TIME: 1, FREELANCE: 2 };
+const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
+const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
+
+// Persisted teacher-type ordering (B.2) — single source of truth, replaces FE localStorage.
+async function readTeacherTypeOrder(exec: any = db): Promise<TeacherType[]> {
+  const row = await exec.query.appSettings.findFirst({
+    where: (s: any, { eq }: any) => eq(s.key, TEACHER_TYPE_ORDER_KEY),
+  });
+  const v = row?.value;
+  return Array.isArray(v) && v.length === 3 ? (v as TeacherType[]) : DEFAULT_TEACHER_TYPE_ORDER;
+}
+
+// Rank a type by its position in `order` (unknown types sort last).
+const typeRank = (order: TeacherType[], type: TeacherType) => {
+  const i = order.indexOf(type);
+  return i === -1 ? order.length : i;
+};
 
 const withBookingRelations = {
   student: true,
@@ -34,13 +51,20 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
   const days = datesBetween(range.start, range.end);
 
-  const teacherRows = await db.query.teachers.findMany({
-    where: (t, { eq }) => eq(t.active, true),
-    with: { teacherSubjects: { with: { subject: true } } },
-  });
+  const [teacherRows, order] = await Promise.all([
+    db.query.teachers.findMany({
+      where: (t, { eq }) => eq(t.active, true),
+      with: { teacherSubjects: { with: { subject: true } } },
+    }),
+    readTeacherTypeOrder(),
+  ]);
   const teacherDtos = teacherRows
     .map(toTeacherDTO)
-    .sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type]);
+    .sort(
+      (a, b) =>
+        typeRank(order, a.type) - typeRank(order, b.type) ||
+        a.nickname.localeCompare(b.nickname, "th"),
+    );
 
   const bookingRows = await db.query.bookings.findMany({
     where: (b, { and, eq, gte, lte, ne }) =>
@@ -79,21 +103,33 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
 }
 
 export async function getTeachers() {
-  const rows = await db.query.teachers.findMany({
-    with: { teacherSubjects: { with: { subject: true } } },
-  });
+  const [rows, order] = await Promise.all([
+    db.query.teachers.findMany({ with: { teacherSubjects: { with: { subject: true } } } }),
+    readTeacherTypeOrder(),
+  ]);
   const dtos = rows.map(toTeacherDTO);
-  const order: Array<"FULL_TIME" | "PART_TIME" | "FREELANCE"> = [
-    "FULL_TIME",
-    "PART_TIME",
-    "FREELANCE",
-  ];
   return {
     groups: order.map((type) => {
-      const list = dtos.filter((t) => t.type === type);
+      const list = dtos
+        .filter((t) => t.type === type)
+        .sort((a, b) => a.nickname.localeCompare(b.nickname, "th"));
       return { type, allActive: list.length > 0 && list.every((t) => t.active), teachers: list };
     }),
   };
+}
+
+// ───────────────────── Teacher type order (B.2) ─────────────────────
+
+export async function getTeacherTypeOrder() {
+  return { order: await readTeacherTypeOrder() };
+}
+
+export async function setTeacherTypeOrder(order: TeacherType[]) {
+  await db
+    .insert(appSettings)
+    .values({ key: TEACHER_TYPE_ORDER_KEY, value: order })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value: order } });
+  return { order };
 }
 
 export async function getCourses() {

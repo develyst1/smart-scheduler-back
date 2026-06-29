@@ -293,6 +293,17 @@ export interface UpdateCourseRequest {
 }
 export type UpdateCourseResponse = CourseSummary & { student: StudentRef };
 
+/**
+ * GET/PATCH /api/teachers/type-order — persisted global ordering of the 3 teacher
+ * types (B.2). Drives calendar column + teacher-group order, server-side authoritative.
+ */
+export interface TeacherTypeOrderResponse {
+  order: TeacherType[];
+}
+export interface SetTeacherTypeOrderRequest {
+  order: TeacherType[];
+}
+
 // ═══════════════════════════════ Errors ═══════════════════════════════
 
 export type ApiErrorCode =
