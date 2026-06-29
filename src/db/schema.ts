@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Drizzle schema — Scheduling API (frontoffice). Owned & migrated by THIS repo.
-// Shared PostgreSQL database `smart_scheduler`. Phase-2 finance tables
-// (wallet/ledger, inventory, payroll) live in `smart-scheduler-backoffice-back`.
+// Shared PostgreSQL database `smart_scheduler`. Finance/inventory tables (Option C backoffice)
+// live in `smart-scheduler-backoffice-back`.
 // Design notes:
 //  - IDs are uuid (opaque, mergeable, no sequence contention in a shared DB).
 //  - Students & subjects are NORMALIZED (1 row each) — bookings reference them by
@@ -49,6 +49,7 @@ export const bookingStatus = pgEnum("booking_status", [
   "ATTENDED",
   "SICK_LEAVE",
   "EXTENDED",
+  "PENDING_RESCHEDULE", // conflict resolution (B.1): awaiting parent acceptance of a move
   "CANCELLED",
 ]);
 
@@ -68,7 +69,7 @@ export const students = pgTable(
     name: text("name").notNull(),
     nickname: text("nickname"),
     phone: text("phone"),
-    // Phase-2 targets, nullable now so finance never migrates a hot table later.
+    // Option C backoffice targets, nullable now so finance never migrates a hot table later.
     lineUserId: text("line_user_id"),
     parentLineUserId: text("parent_line_user_id"),
     note: text("note"),
@@ -189,6 +190,19 @@ export const bookings = pgTable(
     }),
     // For EXTENDED slots: which original sick-leave booking spawned this.
     extendedFromId: uuid("extended_from_id"),
+    // Conflict resolution (B.1). When this booking is overbooked, it goes
+    // PENDING_RESCHEDULE: `incomingBookingId` = the new booking now holding this
+    // slot (created with `pendingSlot=true`), `rescheduleTo` = where this booking
+    // is proposed to move (parent confirms/cancels via LINE).
+    incomingBookingId: uuid("incoming_booking_id"),
+    pendingSlot: boolean("pending_slot").notNull().default(false),
+    rescheduleTo: jsonb("reschedule_to").$type<{
+      reason: "MOVE_DAY" | "MOVE_WEEK" | "MOVE_TEACHER";
+      date: string;
+      teacherId: string;
+      startTime: string;
+      endTime: string;
+    }>(),
     note: text("note"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }), // idempotent confirm/notify
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -199,9 +213,11 @@ export const bookings = pgTable(
   },
   (t) => [
     // No two live bookings in the same teacher slot — DB-level human-error guard.
+    // PENDING_RESCHEDULE is excluded: a booking being moved out releases its slot so
+    // the incoming (pendingSlot) booking can hold it during conflict resolution (B.1).
     uniqueIndex("bookings_teacher_slot_uq")
       .on(t.teacherId, t.date, t.startTime)
-      .where(sql`${t.status} <> 'CANCELLED'`),
+      .where(sql`${t.status} not in ('CANCELLED', 'PENDING_RESCHEDULE')`),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
     index("bookings_student_idx").on(t.studentId),

@@ -24,8 +24,21 @@ export type BookingStatus =
   | "ATTENDED"
   | "SICK_LEAVE"
   | "EXTENDED"
+  | "PENDING_RESCHEDULE" // overbooked → awaiting parent acceptance of the move (B.1)
   | "CANCELLED";
 export type PackageSize = 4 | 6 | 10;
+
+/** How the existing booking is moved when a slot is overbooked. */
+export type RescheduleReason = "MOVE_DAY" | "MOVE_WEEK" | "MOVE_TEACHER";
+
+/** Where an overbooked booking is proposed to move (pending parent acceptance). */
+export interface RescheduleTarget {
+  reason: RescheduleReason;
+  date: IsoDate;
+  teacherId: string;
+  startTime: HhMm;
+  endTime: HhMm;
+}
 
 /** ISO date `YYYY-MM-DD` (local calendar, Asia/Bangkok). */
 export type IsoDate = string;
@@ -86,6 +99,13 @@ export interface BookingDTO {
   subject: SubjectRef;
   /** present iff bookingType === "COURSE_PACKAGE" — quota context for the modal. */
   course: CourseSummary | null;
+  // ── Conflict resolution (B.1) ──
+  /** true = a new booking still waiting for this slot (hidden from the grid until the move is confirmed). */
+  pendingSlot: boolean;
+  /** when status === PENDING_RESCHEDULE: id of the new booking holding this slot. */
+  incomingBookingId: string | null;
+  /** when status === PENDING_RESCHEDULE: where this booking is proposed to move. */
+  rescheduleTo: RescheduleTarget | null;
 }
 
 // ═════════════════════════════ READ responses ═════════════════════════════
@@ -219,6 +239,37 @@ export interface MoveBookingRequest {
 }
 export interface MoveBookingResponse {
   booking: BookingDTO;
+}
+
+/**
+ * POST /api/bookings/with-reschedule  → 201
+ * Overbook a slot: create the new booking AND move the existing occupant out
+ * (pending parent acceptance via LINE). If the slot is actually free, this just
+ * creates the booking (existing = null), so the FE can call it optimistically.
+ */
+export interface CreateBookingWithRescheduleRequest extends CreateBookingRequest {
+  resolution: {
+    reason: RescheduleReason;
+    date: IsoDate;
+    teacherId: string;
+    startTime: HhMm;
+  };
+}
+export interface CreateBookingWithRescheduleResponse {
+  /** the existing booking now PENDING_RESCHEDULE — null when the slot was free. */
+  existing: BookingDTO | null;
+  /** the newly created booking (pendingSlot when there was a conflict). */
+  incoming: BookingDTO;
+}
+
+/**
+ * PATCH /api/bookings/:id/reschedule/confirm — parent accepted: move the booking
+ * to its proposed slot and free this slot for the incoming booking.
+ * PATCH /api/bookings/:id/reschedule/cancel  — parent declined: drop the incoming
+ * booking and restore this one.
+ */
+export interface RescheduleDecisionResponse {
+  booking: BookingDTO | null;
 }
 
 /**

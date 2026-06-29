@@ -1,0 +1,2 @@
+DROP INDEX "bookings_teacher_slot_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "bookings_teacher_slot_uq" ON "bookings" USING btree ("teacher_id","date","start_time") WHERE "bookings"."status" not in ('CANCELLED', 'PENDING_RESCHEDULE');

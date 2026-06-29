@@ -42,6 +42,18 @@ export const toBookingDTO = (b: any) => ({
   teacher: toTeacherBase(b.teacher),
   subject: { id: b.subject.id, name: b.subject.name },
   course: b.course ? toCourseSummary(b.course) : null,
+  // Conflict resolution (B.1) — null/false for ordinary bookings.
+  pendingSlot: b.pendingSlot ?? false,
+  incomingBookingId: b.incomingBookingId ?? null,
+  rescheduleTo: b.rescheduleTo
+    ? {
+        reason: b.rescheduleTo.reason,
+        date: b.rescheduleTo.date,
+        teacherId: b.rescheduleTo.teacherId,
+        startTime: hhmm(b.rescheduleTo.startTime),
+        endTime: hhmm(b.rescheduleTo.endTime),
+      }
+    : null,
 });
 
 export const toCourseWithStudent = (c: any) => ({

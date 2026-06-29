@@ -7,7 +7,8 @@ workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated + 
 ## What this is
 
 The **frontoffice backend** — the **Scheduling API** that powers `smart-scheduler-front`. It is the
-**source of truth** for teachers, bookings, attendance, and the leave/extension rules. **Phase 1.**
+**source of truth** for teachers, bookings, attendance, and the leave/extension rules. **Option C**
+build wave 1 (scheduling API).
 
 > Spec (Thai): **[docs/requirement-timeline.md](docs/requirement-timeline.md)** (living spec,
 > newest entry wins; synced from workspace root `docs/`). The domain rules are **authoritative

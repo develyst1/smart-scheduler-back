@@ -42,8 +42,15 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
     .sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type]);
 
   const bookingRows = await db.query.bookings.findMany({
-    where: (b, { and, gte, lte, ne }) =>
-      and(gte(b.date, range.start), lte(b.date, range.end), ne(b.status, "CANCELLED")),
+    where: (b, { and, eq, gte, lte, ne }) =>
+      and(
+        gte(b.date, range.start),
+        lte(b.date, range.end),
+        ne(b.status, "CANCELLED"),
+        // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
+        // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
+        eq(b.pendingSlot, false),
+      ),
     with: withBookingRelations,
   });
 
@@ -160,7 +167,7 @@ export async function getDailyReport(date: string) {
   const rows = await db
     .select({ status: bookings.status, bookingType: bookings.bookingType })
     .from(bookings)
-    .where(eq(bookings.date, date));
+    .where(and(eq(bookings.date, date), eq(bookings.pendingSlot, false)));
 
   const count = (pred: (r: (typeof rows)[number]) => boolean) => rows.filter(pred).length;
   const types = ["FIRST_TRIAL", "SINGLE_SESSION", "COURSE_PACKAGE", "VOUCHER"] as const;
@@ -178,52 +185,204 @@ export async function getDailyReport(date: string) {
 
 // ───────────────────────────── Writes ─────────────────────────────
 
+// Existing id → use it; inline new student → insert (dedupe is a later concern).
+async function resolveStudentId(exec: any, student: any): Promise<string> {
+  if ("id" in student) return student.id;
+  const [s] = await exec
+    .insert(students)
+    .values({
+      name: student.name,
+      nickname: student.nickname ?? student.name,
+      phone: student.phone ?? null,
+      parentLineUserId: student.parentLineUserId ?? null,
+    })
+    .returning({ id: students.id });
+  return s.id;
+}
+
+// Insert one booking; endTime is derived (+1h), slot clashes → 409. `pendingSlot`
+// marks the new booking that is waiting for an overbooked slot to be released.
+async function insertBooking(
+  exec: any,
+  studentId: string,
+  input: any,
+  opts: { pendingSlot?: boolean } = {},
+): Promise<string> {
+  try {
+    const [row] = await exec
+      .insert(bookings)
+      .values({
+        studentId,
+        teacherId: input.teacherId,
+        subjectId: input.subjectId,
+        date: input.date,
+        startTime: input.startTime,
+        endTime: addHour(input.startTime),
+        bookingType: input.bookingType,
+        status: "PENDING",
+        courseId: input.courseId ?? null,
+        voucherId: input.voucherId ?? null,
+        note: input.note ?? null,
+        pendingSlot: opts.pendingSlot ?? false,
+      })
+      .returning({ id: bookings.id });
+    return row.id;
+  } catch (e: any) {
+    const code = pgErrorCode(e);
+    if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
+    if (code === "23503") throw badRequest("teacher / subject / course อ้างอิงไม่ถูกต้อง");
+    throw e;
+  }
+}
+
 export async function createBooking(input: any) {
   return await db.transaction(async (tx) => {
-    let studentId: string;
-    if ("id" in input.student) {
-      studentId = input.student.id;
-    } else {
-      const [s] = await tx
-        .insert(students)
-        .values({
-          name: input.student.name,
-          nickname: input.student.nickname ?? input.student.name,
-          phone: input.student.phone ?? null,
-          parentLineUserId: input.student.parentLineUserId ?? null,
-        })
-        .returning({ id: students.id });
-      studentId = s.id;
+    const studentId = await resolveStudentId(tx, input.student);
+    const id = await insertBooking(tx, studentId, input);
+    const booking = await loadBookingDTO(tx, id);
+    return { booking, course: booking.course };
+  });
+}
+
+// ───────────────────────── Conflict resolution (B.1) ─────────────────────────
+// Overbook a slot: move the existing occupant out (PENDING_RESCHEDULE, releasing
+// its slot) so the new booking (pendingSlot) can take it, and notify the parent
+// over LINE. If the slot is actually free, behave like a plain create.
+
+// The booking currently holding the slot — ignore CANCELLED and waiting (pendingSlot) rows.
+async function slotOccupant(exec: any, teacherId: string, date: string, startTime: string) {
+  return exec.query.bookings.findFirst({
+    where: (b: any, { and, eq, ne }: any) =>
+      and(
+        eq(b.teacherId, teacherId),
+        eq(b.date, date),
+        eq(b.startTime, startTime),
+        ne(b.status, "CANCELLED"),
+        eq(b.pendingSlot, false),
+      ),
+  });
+}
+
+export async function createBookingWithReschedule(input: any) {
+  const { resolution, ...bookingInput } = input;
+  return await db.transaction(async (tx) => {
+    const studentId = await resolveStudentId(tx, bookingInput.student);
+    const existing = await slotOccupant(
+      tx,
+      bookingInput.teacherId,
+      bookingInput.date,
+      bookingInput.startTime,
+    );
+
+    // No conflict → ordinary create (FE can call this optimistically).
+    if (!existing) {
+      const id = await insertBooking(tx, studentId, bookingInput);
+      return { existing: null, incoming: await loadBookingDTO(tx, id) };
     }
 
-    let id: string;
+    // Release the existing booking's slot FIRST (PENDING_RESCHEDULE is excluded from
+    // the unique slot index), then the incoming booking can take the slot.
+    await tx
+      .update(bookings)
+      .set({
+        status: "PENDING_RESCHEDULE",
+        rescheduleTo: {
+          reason: resolution.reason,
+          date: resolution.date,
+          teacherId: resolution.teacherId,
+          startTime: resolution.startTime,
+          endTime: addHour(resolution.startTime),
+        },
+      })
+      .where(eq(bookings.id, existing.id));
+
+    const incomingId = await insertBooking(tx, studentId, bookingInput, { pendingSlot: true });
+    await tx
+      .update(bookings)
+      .set({ incomingBookingId: incomingId })
+      .where(eq(bookings.id, existing.id));
+
+    // Notify the parent of the existing booking (atomic via the outbox).
+    const student = await tx.query.students.findFirst({
+      where: (s, { eq }) => eq(s.id, existing.studentId),
+    });
+    await enqueueLine(
+      {
+        recipientType: "parent",
+        recipientLineUserId: student?.parentLineUserId ?? null,
+        bookingId: existing.id,
+        payload: {
+          kind: "reschedule_requested",
+          bookingId: existing.id,
+          to: { date: resolution.date, startTime: resolution.startTime },
+        },
+      },
+      tx,
+    );
+
+    return {
+      existing: await loadBookingDTO(tx, existing.id),
+      incoming: await loadBookingDTO(tx, incomingId),
+    };
+  });
+}
+
+export async function confirmReschedule(id: string) {
+  return await db.transaction(async (tx) => {
+    const old = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
+    if (!old || !old.rescheduleTo) return { booking: null };
+
+    const t = old.rescheduleTo;
+    // Move the booking to its agreed slot and confirm it; this frees the contested
+    // slot, which the incoming booking already holds.
     try {
-      const [row] = await tx
-        .insert(bookings)
-        .values({
-          studentId,
-          teacherId: input.teacherId,
-          subjectId: input.subjectId,
-          date: input.date,
-          startTime: input.startTime,
-          endTime: addHour(input.startTime),
-          bookingType: input.bookingType,
-          status: "PENDING",
-          courseId: input.courseId ?? null,
-          voucherId: input.voucherId ?? null,
-          note: input.note ?? null,
+      await tx
+        .update(bookings)
+        .set({
+          date: t.date,
+          teacherId: t.teacherId,
+          startTime: t.startTime,
+          endTime: t.endTime,
+          status: "CONFIRMED",
+          note: "ย้ายคาบจากการจองทับ (ผู้ปกครองตกลง)",
+          rescheduleTo: null,
+          incomingBookingId: null,
         })
-        .returning({ id: bookings.id });
-      id = row.id;
+        .where(eq(bookings.id, id));
     } catch (e: any) {
-      const code = pgErrorCode(e);
-      if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
-      if (code === "23503") throw badRequest("teacher / subject / course อ้างอิงไม่ถูกต้อง");
+      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", "ช่องปลายทางถูกจองแล้ว");
       throw e;
     }
 
-    const booking = await loadBookingDTO(tx, id);
-    return { booking, course: booking.course };
+    if (old.incomingBookingId) {
+      await tx
+        .update(bookings)
+        .set({ pendingSlot: false })
+        .where(eq(bookings.id, old.incomingBookingId));
+    }
+    return { booking: await loadBookingDTO(tx, id) };
+  });
+}
+
+export async function cancelReschedule(id: string) {
+  return await db.transaction(async (tx) => {
+    const old = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
+    if (!old) return { booking: null };
+
+    // Drop the incoming booking first → frees the contested slot for the restore.
+    if (old.incomingBookingId) {
+      await tx.delete(bookings).where(eq(bookings.id, old.incomingBookingId));
+    }
+    try {
+      await tx
+        .update(bookings)
+        .set({ status: "CONFIRMED", rescheduleTo: null, incomingBookingId: null })
+        .where(eq(bookings.id, id));
+    } catch (e: any) {
+      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", "ช่องเดิมถูกจองแล้ว");
+      throw e;
+    }
+    return { booking: await loadBookingDTO(tx, id) };
   });
 }
 

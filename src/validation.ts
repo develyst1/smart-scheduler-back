@@ -16,9 +16,11 @@ const BOOKING_STATUS = z.enum([
   "ATTENDED",
   "SICK_LEAVE",
   "EXTENDED",
+  "PENDING_RESCHEDULE",
   "CANCELLED",
 ]);
 const TEACHER_TYPE = z.enum(["FULL_TIME", "PART_TIME", "FREELANCE"]);
+const RESCHEDULE_REASON = z.enum(["MOVE_DAY", "MOVE_WEEK", "MOVE_TEACHER"]);
 
 export const calendarQuery = z.object({
   date: DATE,
@@ -57,6 +59,16 @@ export const createBooking = z.object({
   courseId: ID.optional(),
   voucherId: ID.optional(),
   note: z.string().optional(),
+});
+
+// Overbook a slot: same body as createBooking + how to move the existing occupant.
+export const createBookingWithReschedule = createBooking.extend({
+  resolution: z.object({
+    reason: RESCHEDULE_REASON,
+    date: DATE,
+    teacherId: ID,
+    startTime: TIME,
+  }),
 });
 
 export const updateStatus = z.object({

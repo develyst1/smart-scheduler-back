@@ -8,6 +8,20 @@
       "when": 1782154751279,
       "tag": "0000_supreme_zarek",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782743601027,
+      "tag": "0001_add_reschedule_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782743623109,
+      "tag": "0002_reschedule_slot_index",
+      "breakpoints": true
     }
   ]
 }
