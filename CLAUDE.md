@@ -1,8 +1,10 @@
 # CLAUDE.md — smart-scheduler-back (Scheduling API)
 
 Guides Claude Code (and other agents) in this repo. For the cross-repo map see the
-workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated + seeded, 10 endpoints,
-`bun test` + `scripts/smoke.ts` pass. (Remaining: auth/roles, LINE outbox worker.)
+workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated + seeded, 15 endpoints,
+conflict-resolution (B.1) + persisted teacher order (B.2) + LINE outbox worker (B.3, sends via the
+Messaging API). `bun test` + `scripts/smoke.ts` pass. (Remaining: auth/roles, recipient LINE userId
+capture so pushes actually deliver.)
 
 ## What this is
 

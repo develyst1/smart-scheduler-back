@@ -4,10 +4,14 @@ import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { api } from "./routes/api";
 import { ApiException, pgErrorCode } from "./lib/http";
+import { startOutboxWorker } from "./services/outbox.service";
 
 const app = new Hono();
 
 app.use("*", cors()); // dev: allow all. Lock to the Next.js origin in prod.
+
+// Start the LINE outbox delivery worker (idle if LINE isn't configured).
+startOutboxWorker();
 
 app.get("/health", async (c) => {
   const r = await db.execute(sql`select 1 as ok`);
