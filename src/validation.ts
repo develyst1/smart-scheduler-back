@@ -122,6 +122,12 @@ export const updateCourse = z.object({
   adminUnlocked: z.boolean().optional(),
 });
 
+// Staff/admin login (B.7).
+export const login = z.object({
+  username: z.string().trim().min(1),
+  password: z.string().min(1),
+});
+
 // Teacher type ordering (B.2) — exactly the 3 types, no duplicates.
 export const setTeacherTypeOrder = z.object({
   order: z

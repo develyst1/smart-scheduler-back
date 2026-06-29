@@ -5,6 +5,8 @@ import { db } from "./db";
 import { api } from "./routes/api";
 import { ApiException, pgErrorCode } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
+import { authMiddleware } from "./middleware/auth";
+import { authRoutes } from "./routes/auth";
 
 const app = new Hono();
 
@@ -17,6 +19,12 @@ app.get("/health", async (c) => {
   const r = await db.execute(sql`select 1 as ok`);
   return c.json({ ok: true, db: r[0]?.ok === 1 });
 });
+
+// Public auth endpoints (login) — must sit before the /api auth guard.
+app.route("/auth", authRoutes);
+
+// Everything under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
+app.use("/api/*", authMiddleware);
 
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
 const routes = app.route("/api", api);

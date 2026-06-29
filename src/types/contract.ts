@@ -340,12 +340,27 @@ export interface SetTeacherTypeOrderRequest {
   order: TeacherType[];
 }
 
+// ═══════════════════════════════ Auth (B.7) ═══════════════════════════════
+
+export type Role = "admin" | "staff";
+
+/** POST /auth/login — staff/admin login (public). */
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+export interface LoginResponse {
+  token: string;
+  user: { username: string; role: Role };
+}
+
 // ═══════════════════════════════ Errors ═══════════════════════════════
 
 export type ApiErrorCode =
   | "VALIDATION"
   | "NOT_FOUND"
   | "FORBIDDEN"
+  | "UNAUTHORIZED" // 401 — missing/invalid token
   | "SLOT_TAKEN" // 409 — teacher slot already booked
   | "COURSE_EXPIRED"
   | "LEAVE_LOCKED" // attempted to extend past quota without unlock
