@@ -6,6 +6,7 @@ import { db } from "../db";
 import { bookings, coursePackages, students, subjects, teachers } from "../db/schema";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
+import { buildRescheduleTarget } from "../lib/reschedule";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, weekRange } from "../lib/time";
@@ -286,13 +287,7 @@ export async function createBookingWithReschedule(input: any) {
       .update(bookings)
       .set({
         status: "PENDING_RESCHEDULE",
-        rescheduleTo: {
-          reason: resolution.reason,
-          date: resolution.date,
-          teacherId: resolution.teacherId,
-          startTime: resolution.startTime,
-          endTime: addHour(resolution.startTime),
-        },
+        rescheduleTo: buildRescheduleTarget(resolution),
       })
       .where(eq(bookings.id, existing.id));
 
