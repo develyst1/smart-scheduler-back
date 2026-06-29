@@ -8,9 +8,10 @@ process.env.JWT_SECRET ??= "test-secret";
 process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "admin";
 
+// Mirrors index.ts wiring: public /api/auth/* registered BEFORE the /api guard.
 function makeApp() {
   const app = new Hono();
-  app.route("/auth", authRoutes);
+  app.route("/api/auth", authRoutes);
   app.use("/api/*", authMiddleware);
   app.get("/api/ping", (c) => c.json({ user: c.get("user") }));
   app.onError((err, c) =>
@@ -56,11 +57,14 @@ describe("auth middleware (B.7)", () => {
     expect(res.status).toBe(401);
   });
 
-  test("login → token → access granted", async () => {
+  test("login is public (no token) even when guard is enforced → token → access", async () => {
     process.env.SKIP_AUTH = "false";
     const app = makeApp();
-    const login = await app.request("/auth/login", json({ username: "admin", password: "admin" }));
-    expect(login.status).toBe(200);
+    const login = await app.request(
+      "/api/auth/login",
+      json({ username: "admin", password: "admin" }),
+    );
+    expect(login.status).toBe(200); // public despite /api/* guard
     const { token, user } = (await login.json()) as any;
     expect(user).toEqual({ username: "admin", role: "admin" });
 
@@ -70,7 +74,11 @@ describe("auth middleware (B.7)", () => {
   });
 
   test("login with wrong password → 401", async () => {
-    const res = await makeApp().request("/auth/login", json({ username: "admin", password: "nope" }));
+    process.env.SKIP_AUTH = "false";
+    const res = await makeApp().request(
+      "/api/auth/login",
+      json({ username: "admin", password: "nope" }),
+    );
     expect(res.status).toBe(401);
   });
 });

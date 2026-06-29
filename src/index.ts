@@ -20,10 +20,11 @@ app.get("/health", async (c) => {
   return c.json({ ok: true, db: r[0]?.ok === 1 });
 });
 
-// Public auth endpoints (login) — must sit before the /api auth guard.
-app.route("/auth", authRoutes);
+// Public auth endpoints under /api (so one reverse-proxy rule `/api → BE` covers
+// them). Registered BEFORE the guard so the JWT middleware does not wrap them.
+app.route("/api/auth", authRoutes);
 
-// Everything under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
+// Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);
 
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
