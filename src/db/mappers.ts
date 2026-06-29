@@ -2,6 +2,7 @@
 // its teacher/student/subject/course already embedded so the FE never joins.
 
 import { toCourseSummary } from "../lib/leave";
+import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
 
 export const toTeacherBase = (t: any) => ({
@@ -59,4 +60,13 @@ export const toBookingDTO = (b: any) => ({
 export const toCourseWithStudent = (c: any) => ({
   ...toCourseSummary(c),
   student: studentRef(c.student),
+});
+
+export const toVoucherDTO = (v: any) => ({
+  id: v.id,
+  totalHours: v.totalHours,
+  usedHours: v.usedHours,
+  remaining: voucherRemaining(v),
+  expiryDate: v.expiryDate,
+  student: studentRef(v.student),
 });

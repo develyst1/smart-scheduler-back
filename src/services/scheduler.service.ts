@@ -3,14 +3,16 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, coursePackages, students, subjects, teachers } from "../db/schema";
+import { appSettings, bookings, coursePackages, students, subjects, teachers, vouchers } from "../db/schema";
 import type { TeacherType } from "../types/contract";
-import { toBookingDTO, toCourseWithStudent, toTeacherDTO } from "../db/mappers";
+import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
 import { buildRescheduleTarget } from "../lib/reschedule";
+import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../lib/recurring";
+import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
-import { TIME_SLOTS, addDays, addHour, datesBetween, weekRange } from "../lib/time";
+import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -272,12 +274,111 @@ async function insertBooking(
   }
 }
 
+// Voucher enforcement (B.5): the first booking sets the validity window; every
+// booking must have hours left and fall before expiry. No teacher restriction here
+// — "can't pick a teacher" is a purchase-time rule, not a per-session one.
+async function prepareVoucherBooking(exec: any, voucherId: string, date: string) {
+  const v = await exec.query.vouchers.findFirst({
+    where: (x: any, { eq }: any) => eq(x.id, voucherId),
+  });
+  if (!v) throw badRequest("ไม่พบวอยเชอร์");
+
+  const prior = await exec.query.bookings.findFirst({
+    where: (b: any, { and, eq, ne }: any) =>
+      and(eq(b.voucherId, voucherId), ne(b.status, "CANCELLED")),
+  });
+  let expiryDate = v.expiryDate;
+  if (!prior) {
+    expiryDate = voucherExpiry(v.totalHours, date); // count validity from the first booking
+    await exec.update(vouchers).set({ expiryDate }).where(eq(vouchers.id, voucherId));
+  }
+  const check = voucherUsable({ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date);
+  if (!check.ok) throw badRequest(check.reason!);
+}
+
 export async function createBooking(input: any) {
   return await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
+    if (input.bookingType === "VOUCHER" && input.voucherId) {
+      await prepareVoucherBooking(tx, input.voucherId, input.date);
+    }
     const id = await insertBooking(tx, studentId, input);
     const booking = await loadBookingDTO(tx, id);
     return { booking, course: booking.course };
+  });
+}
+
+// ───────────────────── Course package + voucher (B.4 / B.5) ─────────────────────
+
+// Register a 4/6/10-session course: create the package and lock its weekly slots
+// forward (auto-recurring). A clash on any week aborts the whole registration.
+export async function createCoursePackage(input: any) {
+  if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
+  return await db.transaction(async (tx) => {
+    const studentId = await resolveStudentId(tx, input.student);
+    const [course] = await tx
+      .insert(coursePackages)
+      .values({
+        studentId,
+        size: input.size,
+        startDate: input.startDate,
+        weekday: weekdayOf(input.startDate),
+        startTime: input.startTime,
+        expiryDate: courseExpiry(input.startDate, input.size),
+      })
+      .returning({ id: coursePackages.id });
+
+    for (const date of courseSessionDates(input.startDate, input.size)) {
+      try {
+        await insertBooking(tx, studentId, {
+          teacherId: input.teacherId,
+          subjectId: input.subjectId,
+          date,
+          startTime: input.startTime,
+          bookingType: "COURSE_PACKAGE",
+          courseId: course.id,
+          note: input.note,
+        });
+      } catch (e: any) {
+        if (e?.code === "SLOT_TAKEN")
+          throw conflict("SLOT_TAKEN", `มีคาบชนในวันที่ ${date} — เลือกวัน/เวลาอื่นสำหรับคอร์สนี้`);
+        throw e;
+      }
+    }
+
+    const courseRow = await tx.query.coursePackages.findFirst({
+      where: (c, { eq }) => eq(c.id, course.id),
+      with: { student: true },
+    });
+    const created = await tx.query.bookings.findMany({
+      where: (b, { eq }) => eq(b.courseId, course.id),
+      with: withBookingRelations,
+      orderBy: (b, { asc }) => asc(b.date),
+    });
+    return { course: toCourseWithStudent(courseRow), bookings: created.map(toBookingDTO) };
+  });
+}
+
+// Issue a voucher (5/10/15h). Validity starts at the first booking (B.5); a
+// provisional expiry from today keeps the NOT NULL column valid until then.
+export async function createVoucher(input: any) {
+  if (!isVoucherHours(input.totalHours))
+    throw badRequest("จำนวนชั่วโมงวอยเชอร์ต้องเป็น 5, 10 หรือ 15");
+  return await db.transaction(async (tx) => {
+    const studentId = await resolveStudentId(tx, input.student);
+    const [v] = await tx
+      .insert(vouchers)
+      .values({
+        studentId,
+        totalHours: input.totalHours,
+        expiryDate: voucherExpiry(input.totalHours, fmtDate(new Date())),
+      })
+      .returning({ id: vouchers.id });
+    const row = await tx.query.vouchers.findFirst({
+      where: (x, { eq }) => eq(x.id, v.id),
+      with: { student: true },
+    });
+    return { voucher: toVoucherDTO(row) };
   });
 }
 
@@ -439,7 +540,7 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
   return await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
-      with: { course: true },
+      with: { course: true, voucher: true },
     });
     if (!current) throw notFound("ไม่พบคาบเรียน");
 
@@ -476,6 +577,13 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
             .update(coursePackages)
             .set({ usedSessions: current.course.usedSessions + 1 })
             .where(eq(coursePackages.id, current.courseId));
+        }
+        // Voucher hour deduction on real attendance (B.5).
+        if (current.voucherId && current.voucher) {
+          await tx
+            .update(vouchers)
+            .set({ usedHours: current.voucher.usedHours + 1 })
+            .where(eq(vouchers.id, current.voucherId));
         }
       }
     } else if (action === "cancel") {

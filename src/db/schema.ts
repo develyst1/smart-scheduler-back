@@ -292,6 +292,10 @@ export const coursePackagesRelations = relations(coursePackages, ({ one, many })
   bookings: many(bookings),
 }));
 
+export const vouchersRelations = relations(vouchers, ({ one }) => ({
+  student: one(students, { fields: [vouchers.studentId], references: [students.id] }),
+}));
+
 export const bookingsRelations = relations(bookings, ({ one }) => ({
   student: one(students, { fields: [bookings.studentId], references: [students.id] }),
   teacher: one(teachers, { fields: [bookings.teacherId], references: [teachers.id] }),

@@ -294,6 +294,42 @@ export interface UpdateCourseRequest {
 export type UpdateCourseResponse = CourseSummary & { student: StudentRef };
 
 /**
+ * POST /api/courses  → 201 — register a 4/6/10-session course and auto-generate
+ * its weekly sessions (B.4). A slot clash on any week rejects the whole request (409).
+ */
+export interface CreateCoursePackageRequest {
+  student: StudentInput;
+  teacherId: string;
+  subjectId: string;
+  size: PackageSize;
+  startDate: IsoDate;
+  startTime: HhMm;
+  note?: string;
+}
+export interface CreateCoursePackageResponse {
+  course: CourseSummary & { student: StudentRef };
+  bookings: BookingDTO[]; // the generated weekly sessions, ordered by date
+}
+
+/** Voucher = hours bucket; validity starts at first booking (B.5). */
+export interface VoucherSummary {
+  id: string;
+  totalHours: number;
+  usedHours: number;
+  remaining: number;
+  expiryDate: IsoDate;
+  student: StudentRef;
+}
+/** POST /api/vouchers  → 201 */
+export interface CreateVoucherRequest {
+  student: StudentInput;
+  totalHours: 5 | 10 | 15;
+}
+export interface CreateVoucherResponse {
+  voucher: VoucherSummary;
+}
+
+/**
  * GET/PATCH /api/teachers/type-order — persisted global ordering of the 3 teacher
  * types (B.2). Drives calendar column + teacher-group order, server-side authoritative.
  */

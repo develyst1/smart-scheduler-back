@@ -40,17 +40,19 @@ export const bookingsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+// scalable student reference: existing id OR an inline new student
+const studentInput = z.union([
+  z.object({ id: ID }),
+  z.object({
+    name: z.string().trim().min(1),
+    nickname: z.string().trim().optional(),
+    phone: z.string().trim().optional(),
+    parentLineUserId: z.string().trim().optional(),
+  }),
+]);
+
 export const createBooking = z.object({
-  // scalable student reference: existing id OR an inline new student
-  student: z.union([
-    z.object({ id: ID }),
-    z.object({
-      name: z.string().trim().min(1),
-      nickname: z.string().trim().optional(),
-      phone: z.string().trim().optional(),
-      parentLineUserId: z.string().trim().optional(),
-    }),
-  ]),
+  student: studentInput,
   teacherId: ID,
   subjectId: ID,
   date: DATE,
@@ -59,6 +61,23 @@ export const createBooking = z.object({
   courseId: ID.optional(),
   voucherId: ID.optional(),
   note: z.string().optional(),
+});
+
+// Register a recurring course package (B.4): size + first slot → weekly sessions.
+export const createCoursePackage = z.object({
+  student: studentInput,
+  teacherId: ID,
+  subjectId: ID,
+  size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
+  startDate: DATE,
+  startTime: TIME,
+  note: z.string().optional(),
+});
+
+// Issue a voucher (B.5): hours bucket only, no teacher/slot.
+export const createVoucher = z.object({
+  student: studentInput,
+  totalHours: z.union([z.literal(5), z.literal(10), z.literal(15)]),
 });
 
 // Overbook a slot: same body as createBooking + how to move the existing occupant.

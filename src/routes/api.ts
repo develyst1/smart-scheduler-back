@@ -14,6 +14,12 @@ export const api = new Hono()
     c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
   )
   .get("/courses", async (c) => c.json(await svc.getCourses()))
+  .post("/courses", zValidator("json", v.createCoursePackage), async (c) =>
+    c.json(await svc.createCoursePackage(c.req.valid("json")), 201),
+  )
+  .post("/vouchers", zValidator("json", v.createVoucher), async (c) =>
+    c.json(await svc.createVoucher(c.req.valid("json")), 201),
+  )
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
     c.json(await svc.getBookings(c.req.valid("query"))),
   )
