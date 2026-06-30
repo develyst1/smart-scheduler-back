@@ -65,8 +65,8 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 - [ ] ❌ ดึง **เรทครู + income limit** จาก `smart-scheduler-backoffice-back` API → แทน mock ฝั่ง scheduling FE
 
 ### Master data ธุรกิจจริง (2026-06-30)
-- [ ] ❌ แทน seed: `subjects` = โปรแกรมจาก rate card (Bike, Skate, Balance Play ฯลฯ) — ดู [docs/product-catalog-pricing.md](docs/product-catalog-pricing.md)
-- [ ] ❌ แทน seed: `teachers` = ครู 23 คนจริง (7 FT + 8 PT + 8 FL) — ดู [docs/teacher-roster-payroll.md](docs/teacher-roster-payroll.md)
+- [x] ✅ แทน seed: `subjects` = โปรแกรมจาก rate card (9 โปรแกรม) — [src/db/seed-data.ts](src/db/seed-data.ts)
+- [x] ✅ แทน seed: `teachers` = ครู 21 คนจากลูกค้า (6 FT + 7 PT + 8 FL) — เอกสารระบุ 23 แต่ชื่อในแชทมี 21
 
 ### Optional / hardening
 - [ ] ⬜ B.6 ขยาย `GET /reports/daily` ให้ตรง FE (ตอนนี้ FE enrich ชั่วคราว — ข้ามได้)

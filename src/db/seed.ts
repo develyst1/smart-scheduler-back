@@ -1,9 +1,9 @@
-// Seed the shared DB with the data that used to live in the frontend mock
-// (smart-scheduler-front/src/lib/mock/data.ts), now normalized.
+// Seed the shared DB with real master data (programs + 23 teachers) and demo bookings.
 // Run: `bun run db:seed`  (idempotent — truncates first).
 
 import { sql } from "drizzle-orm";
 import { db, queryClient } from "./index";
+import { SUBJECT_NAMES, TEACHER_SEED } from "./seed-data";
 import {
   bookings,
   coursePackages,
@@ -41,35 +41,33 @@ async function main() {
     sql`TRUNCATE bookings, course_packages, vouchers, teacher_subjects, students, teachers, subjects, notification_outbox RESTART IDENTITY CASCADE`,
   );
 
-  // Subjects
-  const subjectNames = ["คณิต", "ฟิสิกส์", "อังกฤษ", "เคมี", "ชีวะ", "IELTS", "ภาษาไทย"];
   const subjRows = await db
     .insert(subjects)
-    .values(subjectNames.map((name) => ({ name })))
+    .values(SUBJECT_NAMES.map((name) => ({ name })))
     .returning({ id: subjects.id, name: subjects.name });
   const subjId = new Map(subjRows.map((r) => [r.name, r.id]));
 
-  // Teachers (+ subjects M2M)
-  const teacherSeed = [
-    { name: "ครูแอน สมใจ", nickname: "แอน", type: "FULL_TIME", active: true, subjects: ["คณิต", "ฟิสิกส์"] },
-    { name: "ครูบีม รุ่งโรจน์", nickname: "บีม", type: "FULL_TIME", active: true, subjects: ["อังกฤษ"] },
-    { name: "ครูแคท ปิยะดา", nickname: "แคท", type: "PART_TIME", active: true, subjects: ["เคมี", "ชีวะ"] },
-    { name: "ครูดิว ธนพล", nickname: "ดิว", type: "PART_TIME", active: true, subjects: ["คณิต"] },
-    { name: "ครูเอิร์ธ กิตติ", nickname: "เอิร์ธ", type: "FREELANCE", active: true, subjects: ["อังกฤษ", "IELTS"] },
-    { name: "ครูฟ้า ชนิดา", nickname: "ฟ้า", type: "FREELANCE", active: false, subjects: ["ภาษาไทย"] },
-  ];
   const teacherRows = await db
     .insert(teachers)
-    .values(teacherSeed.map((t) => ({ name: t.name, nickname: t.nickname, type: t.type as any, active: t.active })))
+    .values(
+      TEACHER_SEED.map((t) => ({
+        name: t.name,
+        nickname: t.nickname,
+        type: t.type,
+        active: t.active,
+      })),
+    )
     .returning({ id: teachers.id, nickname: teachers.nickname });
   const teacherId = new Map(teacherRows.map((r) => [r.nickname, r.id]));
   await db.insert(teacherSubjects).values(
-    teacherSeed.flatMap((t) =>
-      t.subjects.map((s) => ({ teacherId: teacherId.get(t.nickname)!, subjectId: subjId.get(s)! })),
+    TEACHER_SEED.flatMap((t) =>
+      t.subjects.map((s) => ({
+        teacherId: teacherId.get(t.nickname)!,
+        subjectId: subjId.get(s)!,
+      })),
     ),
   );
 
-  // Students
   const studentNames = ["น้องพีพี", "น้องเจมส์", "น้องมายด์", "น้องโอ๊ค", "น้องเบล", "น้องมิ้น", "น้องแพร", "น้องกัน"];
   const studentRows = await db
     .insert(students)
@@ -78,11 +76,37 @@ async function main() {
   const studentId = new Map(studentRows.map((r) => [r.name, r.id]));
   const sId = (n: string) => studentId.get(n)!;
 
-  // Course packages (one per student)
   const courseSeed = [
-    { student: "น้องพีพี", size: 10, usedSessions: 3, leaveUsed: 1, startDate: weeks(-3), weekday: 0, startTime: "10:00", expiryDate: weeks(10) },
-    { student: "น้องเจมส์", size: 4, usedSessions: 1, leaveUsed: 1, startDate: weeks(-1), weekday: 2, startTime: "14:00", expiryDate: weeks(4) },
-    { student: "น้องมายด์", size: 6, usedSessions: 4, leaveUsed: 2, startDate: weeks(-4), weekday: 5, startTime: "16:00", expiryDate: weeks(2) },
+    {
+      student: "น้องพีพี",
+      size: 10,
+      usedSessions: 3,
+      leaveUsed: 1,
+      startDate: weeks(-3),
+      weekday: 0,
+      startTime: "10:00",
+      expiryDate: weeks(10),
+    },
+    {
+      student: "น้องเจมส์",
+      size: 4,
+      usedSessions: 1,
+      leaveUsed: 1,
+      startDate: weeks(-1),
+      weekday: 2,
+      startTime: "14:00",
+      expiryDate: weeks(4),
+    },
+    {
+      student: "น้องมายด์",
+      size: 6,
+      usedSessions: 4,
+      leaveUsed: 2,
+      startDate: weeks(-4),
+      weekday: 5,
+      startTime: "16:00",
+      expiryDate: weeks(2),
+    },
   ];
   const courseRows = await db
     .insert(coursePackages)
@@ -101,28 +125,113 @@ async function main() {
     .returning({ id: coursePackages.id, studentId: coursePackages.studentId });
   const courseByStudent = new Map(courseRows.map((r) => [r.studentId, r.id]));
 
-  // Vouchers (for the VOUCHER bookings)
   const voucherSeed = [
     { student: "น้องมิ้น", totalHours: 10, usedHours: 2, expiryDate: weeks(20) },
     { student: "น้องกัน", totalHours: 5, usedHours: 1, expiryDate: weeks(16) },
   ];
   const voucherRows = await db
     .insert(vouchers)
-    .values(voucherSeed.map((v) => ({ studentId: sId(v.student), totalHours: v.totalHours, usedHours: v.usedHours, expiryDate: v.expiryDate })))
+    .values(
+      voucherSeed.map((v) => ({
+        studentId: sId(v.student),
+        totalHours: v.totalHours,
+        usedHours: v.usedHours,
+        expiryDate: v.expiryDate,
+      })),
+    )
     .returning({ id: vouchers.id, studentId: vouchers.studentId });
   const voucherByStudent = new Map(voucherRows.map((r) => [r.studentId, r.id]));
 
-  // Bookings
   const bk = [
-    { student: "น้องพีพี", teacher: "แอน", subject: "คณิต", date: today, start: "10:00", type: "COURSE_PACKAGE", status: "CONFIRMED", course: true },
-    { student: "น้องโอ๊ค", teacher: "แอน", subject: "ฟิสิกส์", date: today, start: "13:00", type: "SINGLE_SESSION", status: "ATTENDED" },
-    { student: "น้องเบล", teacher: "บีม", subject: "อังกฤษ", date: today, start: "11:00", type: "FIRST_TRIAL", status: "PENDING", note: "ทักมาทาง Line ขอทดลองเรียน" },
-    { student: "น้องมิ้น", teacher: "บีม", subject: "อังกฤษ", date: today, start: "15:00", type: "VOUCHER", status: "CONFIRMED", voucher: true },
-    { student: "น้องเจมส์", teacher: "แคท", subject: "เคมี", date: today, start: "14:00", type: "COURSE_PACKAGE", status: "SICK_LEAVE", course: true },
-    { student: "น้องแพร", teacher: "ดิว", subject: "คณิต", date: today, start: "10:00", type: "SINGLE_SESSION", status: "CONFIRMED" },
-    { student: "น้องกัน", teacher: "เอิร์ธ", subject: "IELTS", date: today, start: "16:00", type: "VOUCHER", status: "CONFIRMED", voucher: true },
-    { student: "น้องมายด์", teacher: "แคท", subject: "ชีวะ", date: today, start: "16:00", type: "COURSE_PACKAGE", status: "EXTENDED", course: true, note: "คาบขยายจากการลาสัปดาห์ก่อน" },
-    { student: "น้องพีพี", teacher: "แอน", subject: "คณิต", date: tomorrow, start: "10:00", type: "COURSE_PACKAGE", status: "CONFIRMED", course: true },
+    {
+      student: "น้องพีพี",
+      teacher: "เอก",
+      subject: "Bike / Scooter / Balance Cruiser",
+      date: today,
+      start: "10:00",
+      type: "COURSE_PACKAGE",
+      status: "CONFIRMED",
+      course: true,
+    },
+    {
+      student: "น้องโอ๊ค",
+      teacher: "แบงค์",
+      subject: "Surfskate",
+      date: today,
+      start: "13:00",
+      type: "SINGLE_SESSION",
+      status: "ATTENDED",
+    },
+    {
+      student: "น้องเบล",
+      teacher: "ฮาริส",
+      subject: "1st Trial",
+      date: today,
+      start: "11:00",
+      type: "FIRST_TRIAL",
+      status: "PENDING",
+      note: "ทักมาทาง Line ขอทดลองเรียน",
+    },
+    {
+      student: "น้องมิ้น",
+      teacher: "ข้าวจ้าว",
+      subject: "Skateboard",
+      date: today,
+      start: "15:00",
+      type: "VOUCHER",
+      status: "CONFIRMED",
+      voucher: true,
+    },
+    {
+      student: "น้องเจมส์",
+      teacher: "แคมป์",
+      subject: "Onewheel E-Skate",
+      date: today,
+      start: "14:00",
+      type: "COURSE_PACKAGE",
+      status: "SICK_LEAVE",
+      course: true,
+    },
+    {
+      student: "น้องแพร",
+      teacher: "ปริ้นท์",
+      subject: "Freeskate",
+      date: today,
+      start: "10:00",
+      type: "SINGLE_SESSION",
+      status: "CONFIRMED",
+    },
+    {
+      student: "น้องกัน",
+      teacher: "มาร์ค",
+      subject: "Inline Skate",
+      date: today,
+      start: "16:00",
+      type: "VOUCHER",
+      status: "CONFIRMED",
+      voucher: true,
+    },
+    {
+      student: "น้องมายด์",
+      teacher: "เลวิส",
+      subject: "Balance Play (Private)",
+      date: today,
+      start: "16:00",
+      type: "COURSE_PACKAGE",
+      status: "EXTENDED",
+      course: true,
+      note: "คาบขยายจากการลาสัปดาห์ก่อน",
+    },
+    {
+      student: "น้องพีพี",
+      teacher: "เอก",
+      subject: "Bike / Scooter / Balance Cruiser",
+      date: tomorrow,
+      start: "10:00",
+      type: "COURSE_PACKAGE",
+      status: "CONFIRMED",
+      course: true,
+    },
   ];
   await db.insert(bookings).values(
     bk.map((b) => ({
