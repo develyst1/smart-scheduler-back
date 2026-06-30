@@ -9,6 +9,7 @@ import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from ".
 import { canTakeLeave } from "../lib/leave";
 import { buildRescheduleTarget } from "../lib/reschedule";
 import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../lib/recurring";
+import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
@@ -91,16 +92,19 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
     view: input.view,
     range: { from: range.start, to: range.end },
     timeSlots: [...TIME_SLOTS],
-    days: days.map((date) => ({
-      date,
-      columns: teacherDtos.map((teacher) => ({
-        teacher,
-        slots: TIME_SLOTS.map((time) => ({
-          time,
-          booking: idx.get(`${date}|${teacher.id}|${time}`) ?? null,
-        })),
-      })),
-    })),
+    days: days.map((date) => {
+      const weekday = weekdayOf(date);
+      const columns = teacherDtos
+        .filter((teacher) => teacherWorksOnDay(teacher.workDays, weekday))
+        .map((teacher) => ({
+          teacher,
+          slots: TIME_SLOTS.map((time) => ({
+            time,
+            booking: idx.get(`${date}|${teacher.id}|${time}`) ?? null,
+          })),
+        }));
+      return { date, columns };
+    }),
   };
 }
 
@@ -247,6 +251,14 @@ async function insertBooking(
   input: any,
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
+  const teacher = await exec.query.teachers.findFirst({
+    where: (t: any, { eq }: any) => eq(t.id, input.teacherId),
+  });
+  if (!teacher) throw badRequest("ไม่พบครู");
+  if (!teacherWorksOnDay(teacher.workDays, weekdayOf(input.date))) {
+    throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
+  }
+
   try {
     const [row] = await exec
       .insert(bookings)

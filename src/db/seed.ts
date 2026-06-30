@@ -55,6 +55,7 @@ async function main() {
         nickname: t.nickname,
         type: t.type,
         active: t.active,
+        workDays: [...t.workDays],
       })),
     )
     .returning({ id: teachers.id, nickname: teachers.nickname });

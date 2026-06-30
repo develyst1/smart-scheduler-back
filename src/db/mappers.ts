@@ -23,6 +23,7 @@ export const toTeacherDTO = (t: any) => ({
     name: ts.subject.name,
   })),
   lineLinked: !!t.lineUserId,
+  workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
 });
 
 const studentRef = (s: any) => ({

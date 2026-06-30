@@ -66,7 +66,8 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 
 ### Master data ธุรกิจจริง (2026-06-30)
 - [x] ✅ แทน seed: `subjects` = โปรแกรมจาก rate card (9 โปรแกรม) — [src/db/seed-data.ts](src/db/seed-data.ts)
-- [x] ✅ แทน seed: `teachers` = ครู 21 คนจากลูกค้า (6 FT + 7 PT + 8 FL) — เอกสารระบุ 23 แต่ชื่อในแชทมี 21
+- [x] ✅ แทน seed: `teachers` = ครู 21 คนจากลูกค้า (6 FT + 7 PT + 8 FL)
+- [x] ✅ **`teachers.work_days`** — ซ่อนครู PT เสาร์–อาทิตย์ในวันธรรมดา (ลูกค้า 2026-06-30) · migration `0004` · [lib/work-days.ts](src/lib/work-days.ts)
 
 ### Optional / hardening
 - [ ] ⬜ B.6 ขยาย `GET /reports/daily` ให้ตรง FE (ตอนนี้ FE enrich ชั่วคราว — ข้ามได้)

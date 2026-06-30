@@ -69,6 +69,8 @@ export interface TeacherDTO {
   subjects: SubjectRef[];
   /** has a LINE userId — if false, the FE can warn that confirm won't notify. */
   lineLinked: boolean;
+  /** 0=Sun … 6=Sat — days this teacher appears on the calendar */
+  workDays: number[];
 }
 
 /** Computed course view — the leave/quota math done server-side (authoritative). */
