@@ -44,6 +44,13 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         "กรุณาติดต่อกลับเพื่อยืนยันการย้าย"
       ).trimEnd();
     }
+    case "sick_leave":
+      return (
+        "🤒 แจ้งลา\n" +
+        line("นักเรียน", (payload.studentName as string) ?? ctx.studentName) +
+        line("คาบ", ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
+        line("ช่องทาง", payload.via === "line" ? "LINE" : "ระบบ")
+      ).trimEnd();
     default:
       return "🔔 แจ้งเตือนจากระบบตารางเรียน";
   }

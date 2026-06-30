@@ -22,6 +22,28 @@ export class LinePushError extends Error {
   }
 }
 
+/** Reply to a webhook event (one replyToken, one chance). */
+export async function replyMessage(replyToken: string, messages: LineTextMessage[]): Promise<void> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) throw new LinePushError(0, "LINE_CHANNEL_ACCESS_TOKEN not set", true);
+
+  let res: Response;
+  try {
+    res = await fetch(`${LINE_API}/message/reply`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ replyToken, messages }),
+    });
+  } catch (e) {
+    throw new LinePushError(0, `LINE network error: ${String(e)}`, true);
+  }
+
+  if (res.ok) return;
+  const body = await res.text().catch(() => "");
+  const retryable = res.status === 429 || res.status >= 500;
+  throw new LinePushError(res.status, `LINE reply failed ${res.status}: ${body.slice(0, 300)}`, retryable);
+}
+
 /** Push up to 5 messages to one recipient. Throws LinePushError on non-2xx. */
 export async function pushMessage(to: string, messages: LineTextMessage[]): Promise<void> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;

@@ -42,24 +42,25 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 ## ❌ เหลือทำ (ส่วนใหญ่คือ server-side ของ C.* ใน timeline 2026-06-28)
 
 ### C.1 — QR / LINE check-in & แจ้งลา
-- [ ] ❌ ออก QR ต่อคาบ (token) + `POST /checkin` (verify QR/เวลา) → set ATTENDED
-- [ ] ❌ แจ้งลาผ่าน LINE → เปลี่ยนสถานะ + เข้ากฎลา
+- [x] ✅ ออก check-in token ต่อคาบเมื่อ confirm + `GET /bookings/:id/checkin`
+- [x] ✅ `POST /api/checkin` (public, token) → ATTENDED + CRM แต้ม
+- [x] ✅ LINE bot: เช็คอิน / ลา / qr สำหรับผู้ปกครองที่ผูกแล้ว
 
 ### C.2 — CRM แต้ม + Level
-- [ ] ❌ Schema แต้ม/level ผูกกับ student + กติกาให้แต้ม (เช็คอินตรงเวลา/แจ้งลาตามระบบ)
-- [ ] ❌ ใช้ level จัดลำดับความสำคัญตอนจอง
+- [x] ✅ Schema `crm_points` / `crm_level` บน students + กติกาแต้ม ([lib/crm.ts](src/lib/crm.ts))
+- [x] ✅ ให้แต้มเมื่อเช็คอินตรงเวลา / แจ้งลาตามระบบ · แสดงใน StudentRef DTO
+- [ ] 🟡 ใช้ level จัดลำดับความสำคัญตอนจอง (อนาคต)
 
 ### C.3 — Cron ตัดโควตาสิ้นวัน
-- [ ] ❌ Job 18:00 (Asia/Bangkok): คาบที่ไม่เช็คอิน & ไม่แจ้งลา → ตัดโควตา/เปลี่ยนสถานะอัตโนมัติ
-  - ใช้ pattern in-process worker เดียวกับ B.3 (`startOutboxWorker`)
+- [ ] ❌ **ข้ามไว้ก่อน** (ตามแผน) — Job 18:00 ตัดโควตาอัตโนมัติ
 
-### C.4 — LINE OA webhook (🔑 ปลดล็อก B.1/B.3/C.5 ให้ส่งจริง)
-- [ ] ❌ `POST /webhooks/line` (verify signature ด้วย `LINE_CHANNEL_SECRET`)
-- [ ] ❌ Bot flow ถามบทบาท (ลูกค้า/ครู/แอดมิน) + ตรวจรหัส → ผูก `userId` ↔ teacher/student/parent
-- [ ] ❌ ต้องมี **public URL** ให้ LINE ยิง webhook (deploy/tunnel)
+### C.4 — LINE OA webhook
+- [x] ✅ `POST /webhooks/line` (verify `X-Line-Signature`)
+- [x] ✅ Bot flow บทบาท 1/2/3 + รหัส → ผูก `userId` ↔ teacher / parent / admin
+- [ ] 🟡 ต้องตั้ง **Webhook URL สาธารณะ** ใน LINE Developers Console
 
 ### C.5 — แจ้งลา → push LINE แอดมิน
-- [ ] ❌ เมื่อมีคำขอลาจากลูกค้า → enqueue LINE หาแอดมิน (worker ส่งได้แล้ว รอ admin userId จาก C.4)
+- [x] ✅ sick-leave (staff + LINE) → enqueue หา admin userIds ใน `app_settings.line_admin_user_ids`
 
 ### Integration กับ backoffice (D.1)
 - [ ] ❌ ดึง **เรทครู + income limit** จาก `smart-scheduler-backoffice-back` API → แทน mock ฝั่ง scheduling FE
@@ -77,7 +78,6 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 ---
 
 ## ลำดับแนะนำ
-1. **C.4** (webhook + userId capture) — ปลดล็อก LINE delivery ที่ B.1/B.3 รออยู่ (ต้องมี public URL)
-2. **C.3** (cron สิ้นวัน) — domain logic, ไม่ต้องพึ่ง infra
-3. **C.1 / C.2** (QR check-in / CRM)
-4. **D.1** เชื่อม backoffice rate/limit
+1. ~~**C.4**~~ ✅ webhook + userId capture — **ตั้ง URL ใน LINE Console**
+2. ~~**C.1 / C.2 / C.5**~~ ✅ (C.3 cron ข้ามไว้)
+3. **D.1** เชื่อม backoffice rate/limit

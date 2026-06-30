@@ -53,6 +53,10 @@ export interface StudentRef {
   id: string;
   name: string;
   nickname: string | null;
+  /** CRM (C.2) — optional for backward compat */
+  crmPoints?: number;
+  crmLevel?: number;
+  crmLevelName?: string;
 }
 
 export interface SubjectRef {

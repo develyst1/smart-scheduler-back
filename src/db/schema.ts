@@ -72,6 +72,9 @@ export const students = pgTable(
     // Option C backoffice targets, nullable now so finance never migrates a hot table later.
     lineUserId: text("line_user_id"),
     parentLineUserId: text("parent_line_user_id"),
+    /** CRM (C.2): แต้มสะสม + ระดับลูกค้า — คำนวณ level จาก points ใน service */
+    crmPoints: integer("crm_points").notNull().default(0),
+    crmLevel: smallint("crm_level").notNull().default(1),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -207,6 +210,9 @@ export const bookings = pgTable(
     }>(),
     note: text("note"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }), // idempotent confirm/notify
+    /** C.1: one-time token for QR / link check-in; issued on confirm */
+    checkinToken: text("checkin_token"),
+    checkinTokenExpiresAt: timestamp("checkin_token_expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -224,8 +230,23 @@ export const bookings = pgTable(
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
     index("bookings_student_idx").on(t.studentId),
     index("bookings_course_idx").on(t.courseId),
+    uniqueIndex("bookings_checkin_token_uq")
+      .on(t.checkinToken)
+      .where(sql`${t.checkinToken} is not null`),
   ],
 );
+
+// ───────────────────── LINE OA link sessions (C.4) ─────────────────────
+// Short-lived conversation state while a LINE user picks a role + enters a code.
+export const lineLinkSessions = pgTable("line_link_sessions", {
+  lineUserId: text("line_user_id").primaryKey(),
+  step: text("step").notNull(), // CHOOSE_ROLE | AWAIT_CODE
+  pendingRole: text("pending_role"), // customer | teacher | admin
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
 
 // ─────────────────────── Notification outbox (LINE) ───────────────────────
 // Reliable push: write a row, a worker delivers + retries. Audit trail included.

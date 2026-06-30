@@ -26,10 +26,15 @@ export const toTeacherDTO = (t: any) => ({
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
 });
 
+import { levelName } from "../lib/crm";
+
 const studentRef = (s: any) => ({
   id: s.id,
   name: s.name,
   nickname: s.nickname ?? null,
+  crmPoints: s.crmPoints ?? 0,
+  crmLevel: s.crmLevel ?? 1,
+  crmLevelName: levelName(s.crmLevel ?? 1),
 });
 
 export const toBookingDTO = (b: any) => ({

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import * as v from "../validation";
 import * as svc from "../services/scheduler.service";
+import * as checkin from "../services/checkin.service";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -56,4 +57,7 @@ export const api = new Hono()
   )
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
+  )
+  .get("/bookings/:id/checkin", async (c) =>
+    c.json(await checkin.getCheckinQr(c.req.param("id"))),
   );

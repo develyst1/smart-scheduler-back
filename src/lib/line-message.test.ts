@@ -29,6 +29,15 @@ describe("LINE outbox message formatting (B.3)", () => {
     expect(msg).toContain("ยืนยันตารางสอน");
   });
 
+  test("sick_leave → admin alert", () => {
+    const msg = formatOutboxMessage(
+      { kind: "sick_leave", studentName: "น้องซี", via: "line" },
+      { date: "2026-07-01", startTime: "10:00" },
+    );
+    expect(msg).toContain("แจ้งลา");
+    expect(msg).toContain("น้องซี");
+  });
+
   test("unknown kind → generic fallback", () => {
     expect(formatOutboxMessage({ kind: "something_else" })).toContain("แจ้งเตือนจากระบบ");
     expect(formatOutboxMessage({})).toContain("แจ้งเตือนจากระบบ");

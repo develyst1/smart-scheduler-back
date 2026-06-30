@@ -7,6 +7,8 @@ import { ApiException, pgErrorCode } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
 import { authMiddleware } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
+import { lineWebhook } from "./routes/webhooks";
+import { publicCheckin } from "./routes/checkin";
 
 const app = new Hono();
 
@@ -23,6 +25,8 @@ app.get("/health", async (c) => {
 // Public auth endpoints under /api (so one reverse-proxy rule `/api → BE` covers
 // them). Registered BEFORE the guard so the JWT middleware does not wrap them.
 app.route("/api/auth", authRoutes);
+app.route("/webhooks", lineWebhook);
+app.route("/api", publicCheckin);
 
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);

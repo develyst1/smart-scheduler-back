@@ -12,6 +12,9 @@ import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../li
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
+import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
+import { issueCheckinToken } from "../lib/checkin-token";
+import { CRM_POINT_RULES } from "../lib/crm";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
 
@@ -580,6 +583,7 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
           },
           tx,
         );
+        await issueCheckinToken(id, tx);
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -651,6 +655,19 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
           locked = true; // over quota — needs admin unlock
         }
       }
+      await awardCrmPoints(current.studentId, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx);
+      const student = await tx.query.students.findFirst({
+        where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
+      });
+      await notifyAdmins(
+        {
+          kind: "sick_leave",
+          bookingId: id,
+          studentName: student?.name ?? "",
+          via: reason?.includes("LINE") ? "line" : "staff",
+        },
+        tx,
+      );
     } else {
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }
