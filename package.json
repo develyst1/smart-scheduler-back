@@ -14,6 +14,7 @@
     "db:seed": "bun run src/db/seed.ts"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.8.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.26",
     "postgres": "^3.4.9"
