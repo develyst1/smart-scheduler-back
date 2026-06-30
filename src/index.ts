@@ -13,7 +13,14 @@ import { apiDocs, rootDocs } from "./routes/docs";
 
 const app = new Hono();
 
-app.use("*", cors()); // dev: allow all. Lock to the Next.js origin in prod.
+app.use(
+  "*",
+  cors({
+    origin: "*", // dev: allow all. Lock to the Next.js frontoffice origin in prod.
+    allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+  }),
+); // explicit methods so PATCH passes preflight even on older Hono builds
 
 // Start the LINE outbox delivery worker (idle if LINE isn't configured).
 startOutboxWorker();
