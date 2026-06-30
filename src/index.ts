@@ -22,11 +22,12 @@ app.get("/health", async (c) => {
   return c.json({ ok: true, db: r[0]?.ok === 1 });
 });
 
-// Public auth endpoints under /api (so one reverse-proxy rule `/api → BE` covers
-// them). Registered BEFORE the guard so the JWT middleware does not wrap them.
+// Public routes under /api — registered BEFORE JWT guard (reverse proxy: /api → BE).
 app.route("/api/auth", authRoutes);
-app.route("/webhooks", lineWebhook);
+app.route("/api/webhooks", lineWebhook); // POST /api/webhooks/line (LINE Developers URL)
 app.route("/api", publicCheckin);
+// Legacy path without /api prefix (direct to BE port, local tunnel, etc.)
+app.route("/webhooks", lineWebhook);
 
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);

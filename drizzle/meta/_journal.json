@@ -29,6 +29,20 @@
       "when": 1782747790472,
       "tag": "0003_app_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783000000000,
+      "tag": "0004_teacher_work_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783000000001,
+      "tag": "0005_line_crm_checkin",
+      "breakpoints": true
     }
   ]
 }

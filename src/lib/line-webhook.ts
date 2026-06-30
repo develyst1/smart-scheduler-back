@@ -21,8 +21,9 @@ export interface LineWebhookBody {
 }
 
 export function verifyLineSignature(body: string, signature: string | undefined, secret: string): boolean {
-  if (!signature || !secret) return false;
-  const hash = createHmac("sha256", secret).update(body).digest("base64");
+  const trimmed = secret.trim();
+  if (!signature || !trimmed) return false;
+  const hash = createHmac("sha256", trimmed).update(body).digest("base64");
   try {
     const a = Buffer.from(hash);
     const b = Buffer.from(signature);
