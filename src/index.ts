@@ -9,6 +9,7 @@ import { authMiddleware } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
+import { apiDocs, rootDocs } from "./routes/docs";
 
 const app = new Hono();
 
@@ -21,6 +22,10 @@ app.get("/health", async (c) => {
   const r = await db.execute(sql`select 1 as ok`);
   return c.json({ ok: true, db: r[0]?.ok === 1 });
 });
+
+// API docs (Swagger UI) — public
+app.route("/", rootDocs);
+app.route("/api", apiDocs);
 
 // Public routes under /api — registered BEFORE JWT guard (reverse proxy: /api → BE).
 app.route("/api/auth", authRoutes);

@@ -21,6 +21,7 @@
 
 | Repo | ไฟล์เพิ่ม |
 |------|-----------|
+| `smart-scheduler-back` | **Swagger UI** → `/api/docs` (prod) หรือ `http://localhost:PORT/api/docs` |
 | `smart-scheduler-backoffice-back` | `requirement.md` — Operations API spec |
 | `smart-scheduler-backoffice-front` | `requirement.md` — Backoffice UI spec |
 | ทุก repo | `../todo.md` — task list เฉพาะ repo |

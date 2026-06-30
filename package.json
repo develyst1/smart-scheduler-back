@@ -16,6 +16,7 @@
     "db:check-migrate": "bun run scripts/db-check-migrate.ts"
   },
   "dependencies": {
+    "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-validator": "^0.8.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.26",
