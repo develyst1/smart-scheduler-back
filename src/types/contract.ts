@@ -186,9 +186,41 @@ export type StudentInput =
   | {
       name: string;
       nickname?: string;
+      /** parent phone — the service find-or-creates the guardian and attaches the student. */
       phone?: string;
-      parentLineUserId?: string;
     };
+
+/**
+ * GET /api/students?q=&limit= — booking dropdown source. Each item is searchable
+ * by name / nickname / parent phone; `label` is "name (phone)" ready for display.
+ */
+export interface StudentListItem {
+  id: string;
+  name: string;
+  nickname: string | null;
+  phone: string | null; // parent phone
+  parentId: string | null;
+  parentName: string | null;
+  label: string;
+}
+export type StudentsResponse = StudentListItem[];
+
+/**
+ * POST /api/students → 201 — staff creates a student under an existing parent
+ * (parentId) OR a phone (find-or-create the parent). Max 5 students per parent.
+ */
+export interface CreateStudentRequest {
+  name: string;
+  nickname?: string;
+  note?: string;
+  parentId?: string;
+  parentPhone?: string;
+  parentName?: string;
+}
+export interface CreateStudentResponse {
+  student: { id: string; name: string; nickname: string | null; parentId: string | null };
+  parent: { id: string; phone: string; name: string | null };
+}
 
 /**
  * POST /api/bookings  → 201

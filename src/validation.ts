@@ -29,6 +29,27 @@ export const calendarQuery = z.object({
 
 export const reportQuery = z.object({ date: DATE });
 
+// Booking dropdown: search students by name / nickname / parent phone.
+export const studentsQuery = z.object({
+  q: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+// Staff student creation — under an existing parent (parentId) or a phone
+// (find-or-create the parent). At most 5 students per parent (enforced in service).
+export const createStudent = z
+  .object({
+    name: z.string().trim().min(1),
+    nickname: z.string().trim().optional(),
+    note: z.string().trim().optional(),
+    parentId: ID.optional(),
+    parentPhone: z.string().trim().optional(),
+    parentName: z.string().trim().optional(),
+  })
+  .refine((d) => !!d.parentId || !!d.parentPhone, {
+    message: "ต้องระบุ parentId หรือ parentPhone",
+  });
+
 export const bookingsQuery = z.object({
   from: DATE.optional(),
   to: DATE.optional(),
@@ -40,14 +61,14 @@ export const bookingsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
-// scalable student reference: existing id OR an inline new student
+// scalable student reference: existing id OR an inline new student. An inline
+// student may carry the parent phone — the service find-or-creates the parent.
 const studentInput = z.union([
   z.object({ id: ID }),
   z.object({
     name: z.string().trim().min(1),
     nickname: z.string().trim().optional(),
     phone: z.string().trim().optional(),
-    parentLineUserId: z.string().trim().optional(),
   }),
 ]);
 

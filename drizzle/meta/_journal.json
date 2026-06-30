@@ -43,6 +43,13 @@
       "when": 1783000000001,
       "tag": "0005_line_crm_checkin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783000000002,
+      "tag": "0006_parents",
+      "breakpoints": true
     }
   ]
 }

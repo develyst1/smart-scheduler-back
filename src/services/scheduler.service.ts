@@ -13,6 +13,7 @@ import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
+import { findOrCreateParentByPhone } from "./parent.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
@@ -231,16 +232,19 @@ export async function getDailyReport(date: string) {
 
 // ───────────────────────────── Writes ─────────────────────────────
 
-// Existing id → use it; inline new student → insert (dedupe is a later concern).
+// Existing id → use it; inline new student → insert. A phone find-or-creates the
+// parent (guardian) and attaches the student to it.
 async function resolveStudentId(exec: any, student: any): Promise<string> {
   if ("id" in student) return student.id;
+  const parent = student.phone
+    ? await findOrCreateParentByPhone(student.phone, {}, exec)
+    : null;
   const [s] = await exec
     .insert(students)
     .values({
       name: student.name,
       nickname: student.nickname ?? student.name,
-      phone: student.phone ?? null,
-      parentLineUserId: student.parentLineUserId ?? null,
+      parentId: parent?.id ?? null,
     })
     .returning({ id: students.id });
   return s.id;
@@ -452,11 +456,12 @@ export async function createBookingWithReschedule(input: any) {
     // Notify the parent of the existing booking (atomic via the outbox).
     const student = await tx.query.students.findFirst({
       where: (s, { eq }) => eq(s.id, existing.studentId),
+      with: { parent: true },
     });
     await enqueueLine(
       {
         recipientType: "parent",
-        recipientLineUserId: student?.parentLineUserId ?? null,
+        recipientLineUserId: student?.parent?.lineUserId ?? null,
         bookingId: existing.id,
         payload: {
           kind: "reschedule_requested",

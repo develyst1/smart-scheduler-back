@@ -66,10 +66,14 @@ export async function checkinByToken(token: string) {
   return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN };
 }
 
-/** Parent LINE userId → today's CONFIRMED bookings for linked students. */
+/** Parent LINE userId → today's CONFIRMED bookings for that parent's children. */
 export async function findTodayBookingsForParent(lineUserId: string, date: string) {
+  const parent = await db.query.parents.findFirst({
+    where: (p, { eq: e }) => e(p.lineUserId, lineUserId),
+  });
+  if (!parent) return [];
   const linked = await db.query.students.findMany({
-    where: (s, { eq: e }) => e(s.parentLineUserId, lineUserId),
+    where: (s, { eq: e }) => e(s.parentId, parent.id),
   });
   if (!linked.length) return [];
   const ids = linked.map((s) => s.id);

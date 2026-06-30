@@ -63,8 +63,10 @@ Conventions:
 ## Shared DB — this app's ownership
 
 Both backends share **one PostgreSQL**. **This repo OWNS and migrates** the scheduling tables:
-`students`, `teachers`, `subjects`, `teacher_subjects`, `course_packages`, `vouchers`, `bookings`,
-`notification_outbox`. The backoffice (Finance API) **reads** `bookings` (attendance = status
+`parents`, `students`, `teachers`, `subjects`, `teacher_subjects`, `course_packages`, `vouchers`,
+`bookings`, `notification_outbox`. A **`parent`** (guardian, keyed by unique `phone`) owns up to
+**5 `students`** (their children) via `students.parent_id`; the parent's LINE userId lives on
+`parents.line_user_id`. The backoffice (Finance API) **reads** `bookings` (attendance = status
 `ATTENDED`) to deduct hours / compute payroll — it must **not** migrate these tables.
 Never let two apps migrate the same table.
 

@@ -3,11 +3,21 @@ import { zValidator } from "@hono/zod-validator";
 import * as v from "../validation";
 import * as svc from "../services/scheduler.service";
 import * as checkin from "../services/checkin.service";
+import * as parent from "../services/parent.service";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
   .get("/calendar", zValidator("query", v.calendarQuery), async (c) =>
     c.json(await svc.getCalendar(c.req.valid("query"))),
+  )
+  // Booking dropdown source — searchable by name / nickname / parent phone.
+  .get("/students", zValidator("query", v.studentsQuery), async (c) => {
+    const { q, limit } = c.req.valid("query");
+    return c.json(await parent.searchStudents(q, limit));
+  })
+  // Staff student creation — under an existing parent or a phone (find-or-create).
+  .post("/students", zValidator("json", v.createStudent), async (c) =>
+    c.json(await parent.createStudent(c.req.valid("json")), 201),
   )
   .get("/teachers", async (c) => c.json(await svc.getTeachers()))
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))

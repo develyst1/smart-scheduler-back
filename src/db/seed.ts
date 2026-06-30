@@ -7,6 +7,7 @@ import { SUBJECT_NAMES, TEACHER_SEED } from "./seed-data";
 import {
   bookings,
   coursePackages,
+  parents,
   students,
   subjects,
   teacherSubjects,
@@ -38,7 +39,7 @@ const plus1h = (t: string) => {
 async function main() {
   console.log("Truncating…");
   await db.execute(
-    sql`TRUNCATE bookings, course_packages, vouchers, teacher_subjects, students, teachers, subjects, notification_outbox RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE bookings, course_packages, vouchers, teacher_subjects, students, parents, teachers, subjects, notification_outbox RESTART IDENTITY CASCADE`,
   );
 
   const subjRows = await db
@@ -68,10 +69,26 @@ async function main() {
     ),
   );
 
-  const studentNames = ["น้องพีพี", "น้องเจมส์", "น้องมายด์", "น้องโอ๊ค", "น้องเบล", "น้องมิ้น", "น้องแพร", "น้องกัน"];
+  // Parents (guardians) keyed by phone — one phone can own several children.
+  const parentSeed = [
+    { phone: "0810000001", name: "ผู้ปกครองพีพี/เจมส์", students: ["น้องพีพี", "น้องเจมส์"] },
+    { phone: "0810000002", name: "ผู้ปกครองมายด์", students: ["น้องมายด์"] },
+    { phone: "0810000003", name: "ผู้ปกครองโอ๊ค/เบล", students: ["น้องโอ๊ค", "น้องเบล"] },
+    { phone: "0810000004", name: "ผู้ปกครองมิ้น", students: ["น้องมิ้น"] },
+    { phone: "0810000005", name: "ผู้ปกครองแพร/กัน", students: ["น้องแพร", "น้องกัน"] },
+  ];
+  const parentRows = await db
+    .insert(parents)
+    .values(parentSeed.map((p) => ({ phone: p.phone, name: p.name })))
+    .returning({ id: parents.id, phone: parents.phone });
+  const parentIdByPhone = new Map(parentRows.map((r) => [r.phone, r.id]));
+
+  const studentSeed = parentSeed.flatMap((p) =>
+    p.students.map((name) => ({ name, parentId: parentIdByPhone.get(p.phone)! })),
+  );
   const studentRows = await db
     .insert(students)
-    .values(studentNames.map((name) => ({ name, nickname: name })))
+    .values(studentSeed.map((s) => ({ name: s.name, nickname: s.name, parentId: s.parentId })))
     .returning({ id: students.id, name: students.name });
   const studentId = new Map(studentRows.map((r) => [r.name, r.id]));
   const sId = (n: string) => studentId.get(n)!;
@@ -254,6 +271,7 @@ async function main() {
     (select count(*) from teachers)        as teachers,
     (select count(*) from subjects)        as subjects,
     (select count(*) from teacher_subjects) as teacher_subjects,
+    (select count(*) from parents)         as parents,
     (select count(*) from students)        as students,
     (select count(*) from course_packages) as courses,
     (select count(*) from vouchers)        as vouchers,

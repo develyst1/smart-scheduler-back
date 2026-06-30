@@ -16,7 +16,7 @@ export type NotifyResult = {
 
 export async function enqueueLine(
   opts: {
-    recipientType: "teacher" | "parent" | "student";
+    recipientType: "teacher" | "parent" | "student" | "admin";
     recipientLineUserId?: string | null;
     bookingId?: string;
     payload: unknown;

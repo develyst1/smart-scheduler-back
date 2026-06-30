@@ -62,16 +62,44 @@ export const notifyStatus = pgEnum("notify_status", [
 
 // ───────────────────────────── Core people ─────────────────────────────
 
+// A parent/guardian, keyed by phone. One parent (one phone, one LINE account) owns
+// up to MAX_STUDENTS_PER_PARENT students (their children). The phone is the unique
+// identity used to link a LINE account and to look the parent up from the booking
+// dropdown. The 5-per-parent cap is enforced in the service, not the DB.
+export const parents = pgTable(
+  "parents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    phone: text("phone").notNull(),
+    name: text("name"), // ชื่อผู้ปกครอง (ถ้ามี) — optional
+    // LINE OA userId once the parent links via the chat flow (C.4). Null = not linked.
+    lineUserId: text("line_user_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("parents_phone_uq").on(t.phone),
+    uniqueIndex("parents_line_user_id_uq")
+      .on(t.lineUserId)
+      .where(sql`${t.lineUserId} is not null`),
+  ],
+);
+
 export const students = pgTable(
   "students",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     nickname: text("nickname"),
-    phone: text("phone"),
-    // Option C backoffice targets, nullable now so finance never migrates a hot table later.
+    // The guardian who owns this student. Nullable for walk-in/trial students
+    // created before a parent is known; the LINE flow always sets it.
+    parentId: uuid("parent_id").references(() => parents.id, { onDelete: "restrict" }),
+    // Option C backoffice target, nullable now so finance never migrates a hot table later.
     lineUserId: text("line_user_id"),
-    parentLineUserId: text("parent_line_user_id"),
     /** CRM (C.2): แต้มสะสม + ระดับลูกค้า — คำนวณ level จาก points ใน service */
     crmPoints: integer("crm_points").notNull().default(0),
     crmLevel: smallint("crm_level").notNull().default(1),
@@ -82,7 +110,10 @@ export const students = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("students_name_idx").on(t.name)],
+  (t) => [
+    index("students_name_idx").on(t.name),
+    index("students_parent_idx").on(t.parentId),
+  ],
 );
 
 export const teachers = pgTable("teachers", {
@@ -240,7 +271,7 @@ export const bookings = pgTable(
 // Short-lived conversation state while a LINE user picks a role + enters a code.
 export const lineLinkSessions = pgTable("line_link_sessions", {
   lineUserId: text("line_user_id").primaryKey(),
-  step: text("step").notNull(), // CHOOSE_ROLE | AWAIT_CODE
+  step: text("step").notNull(), // CHOOSE_ROLE | AWAIT_CODE | AWAIT_STUDENT_NAME
   pendingRole: text("pending_role"), // customer | teacher | admin
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
@@ -281,7 +312,12 @@ export const appSettings = pgTable("app_settings", {
 // Enable `db.query.bookings.findMany({ with: { teacher, student, subject, course } })`
 // so aggregate endpoints compose ready-to-use payloads in one round-trip.
 
-export const studentsRelations = relations(students, ({ many }) => ({
+export const parentsRelations = relations(parents, ({ many }) => ({
+  students: many(students),
+}));
+
+export const studentsRelations = relations(students, ({ one, many }) => ({
+  parent: one(parents, { fields: [students.parentId], references: [parents.id] }),
   bookings: many(bookings),
   coursePackages: many(coursePackages),
   vouchers: many(vouchers),
