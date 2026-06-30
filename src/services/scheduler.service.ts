@@ -708,6 +708,21 @@ export async function setAvailability(input: {
   return { teachers: rows.map(toTeacherDTO) };
 }
 
+export async function setTeacherWorkDays(id: string, workDays: number[]) {
+  const sorted = [...new Set(workDays)].sort((a, b) => a - b);
+  const [row] = await db
+    .update(teachers)
+    .set({ workDays: sorted })
+    .where(eq(teachers.id, id))
+    .returning();
+  if (!row) throw notFound("ไม่พบครู");
+  const full = await db.query.teachers.findFirst({
+    where: (t, { eq }) => eq(t.id, id),
+    with: { teacherSubjects: { with: { subject: true } } },
+  });
+  return toTeacherDTO(full);
+}
+
 export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {
   if (input.adminUnlocked !== undefined) {
     await db

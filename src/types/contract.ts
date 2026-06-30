@@ -287,6 +287,12 @@ export interface SetAvailabilityResponse {
   teachers: TeacherDTO[]; // every affected teacher, ready-to-use
 }
 
+/** PATCH /api/teachers/:id/work-days — วันที่ครูมาสอน (0=Sun … 6=Sat) */
+export interface SetTeacherWorkDaysRequest {
+  workDays: number[];
+}
+export type SetTeacherWorkDaysResponse = TeacherDTO;
+
 /**
  * PATCH /api/courses/:id  (admin actions; extensible)
  */

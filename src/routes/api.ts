@@ -51,6 +51,9 @@ export const api = new Hono()
   .patch("/teachers/availability", zValidator("json", v.setAvailability), async (c) =>
     c.json(await svc.setAvailability(c.req.valid("json"))),
   )
+  .patch("/teachers/:id/work-days", zValidator("json", v.setTeacherWorkDays), async (c) =>
+    c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays)),
+  )
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
   );

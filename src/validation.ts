@@ -135,3 +135,12 @@ export const setTeacherTypeOrder = z.object({
     .length(3)
     .refine((a) => new Set(a).size === 3, "ต้องระบุครบ 3 ประเภท ไม่ซ้ำ"),
 });
+
+/** 0=Sun … 6=Sat — วันที่ครูมาสอน (ตั้งในหน้าจัดการครู) */
+export const setTeacherWorkDays = z.object({
+  workDays: z
+    .array(z.number().int().min(0).max(6))
+    .min(1, "ต้องเลือกอย่างน้อย 1 วัน")
+    .max(7)
+    .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
+});
