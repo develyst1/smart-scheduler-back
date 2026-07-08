@@ -16,6 +16,11 @@ build wave 1 (scheduling API).
 > Spec (Thai): **[docs/requirement-timeline.md](docs/requirement-timeline.md)** (living spec,
 > newest entry wins; synced from workspace root `docs/`). The domain rules are **authoritative
 > here** — the client is never trusted.
+>
+> **Tasks/scope live in the `smart-scheduler-requirement` repo, not a `todo.md`** (todo files were
+> removed 2026-07-08 — do not recreate them). Open `smart-scheduler-requirement/requirement.html`
+> and treat `Partial` / `Planned` items as the work queue. See root `../CLAUDE.md` §"How work is
+> assigned" for the full policy.
 
 ## Stack
 
