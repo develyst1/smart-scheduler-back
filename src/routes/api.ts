@@ -4,6 +4,7 @@ import * as v from "../validation";
 import * as svc from "../services/scheduler.service";
 import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
+import { crmLevelLadder } from "../lib/crm";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -19,6 +20,8 @@ export const api = new Hono()
   .post("/students", zValidator("json", v.createStudent), async (c) =>
     c.json(await parent.createStudent(c.req.valid("json")), 201),
   )
+  // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
+  .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", async (c) => c.json(await svc.getTeachers()))
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
   .patch("/teachers/type-order", zValidator("json", v.setTeacherTypeOrder), async (c) =>

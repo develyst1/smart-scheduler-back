@@ -38,3 +38,35 @@ export function applyPoints(current: number, delta: number): { points: number; l
 export function levelName(level: number): string {
   return CRM_LEVELS.find((l) => l.level === level)?.name ?? `Level ${level}`;
 }
+
+// ── สิทธิประโยชน์ตามระดับ (UC-020) ──────────────────────────────────────────
+// "ลูกค้าระดับสูงจะได้รับสิทธิประโยชน์ โปรโมชั่น หรือการจัดลำดับความสำคัญก่อนใคร"
+// การจัดตารางเป็น manual (staff เป็นคนตัดสิน) → `priorityBooking` เป็น "คำแนะนำ"
+// ที่ยิงให้ FE/staff เห็นว่าควรให้คิวก่อนเมื่อคาบชนกัน ไม่ได้ override เอง
+// ⚠️ ข้อความ perks/มูลค่าโปรโมชั่นเป็น placeholder — รอลูกค้ายืนยันเงื่อนไขจริง
+export interface CrmPerks {
+  /** advisory: ควรให้คิวจองก่อนเมื่อแย่งคาบ (level สูงชนะ) */
+  priorityBooking: boolean;
+  /** ป้ายสิทธิประโยชน์ภาษาไทยสำหรับแสดงผล */
+  perks: string[];
+}
+
+export const CRM_LEVEL_PERKS: Record<number, CrmPerks> = {
+  1: { priorityBooking: false, perks: [] },
+  2: { priorityBooking: false, perks: ["ทักทาย/ดูแลพิเศษจากแอดมิน"] },
+  3: { priorityBooking: true, perks: ["จองก่อนใครเมื่อคาบชนกัน"] },
+  4: { priorityBooking: true, perks: ["จองก่อนใครเมื่อคาบชนกัน", "สิทธิ์รับโปรโมชั่นพิเศษ"] },
+  5: {
+    priorityBooking: true,
+    perks: ["จองก่อนใครเมื่อคาบชนกัน", "สิทธิ์รับโปรโมชั่นพิเศษ", "ของรางวัลประจำปี"],
+  },
+};
+
+export function perksForLevel(level: number): CrmPerks {
+  return CRM_LEVEL_PERKS[level] ?? CRM_LEVEL_PERKS[1]!;
+}
+
+/** ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ — สำหรับหน้าจอ "ระดับลูกค้า" / API */
+export function crmLevelLadder(): (CrmLevel & CrmPerks)[] {
+  return CRM_LEVELS.map((l) => ({ ...l, ...perksForLevel(l.level) }));
+}

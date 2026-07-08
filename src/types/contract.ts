@@ -57,6 +57,18 @@ export interface StudentRef {
   crmPoints?: number;
   crmLevel?: number;
   crmLevelName?: string;
+  /** UC-020 — สิทธิประโยชน์ตามระดับ (advisory ให้ staff) */
+  priorityBooking?: boolean;
+  perks?: string[];
+}
+
+/** UC-020 — one rung of the CRM ladder (GET /api/crm/levels). */
+export interface CrmLevelDTO {
+  level: number;
+  name: string;
+  minPoints: number;
+  priorityBooking: boolean;
+  perks: string[];
 }
 
 export interface SubjectRef {

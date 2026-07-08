@@ -26,16 +26,23 @@ export const toTeacherDTO = (t: any) => ({
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
 });
 
-import { levelName } from "../lib/crm";
+import { levelName, perksForLevel } from "../lib/crm";
 
-const studentRef = (s: any) => ({
-  id: s.id,
-  name: s.name,
-  nickname: s.nickname ?? null,
-  crmPoints: s.crmPoints ?? 0,
-  crmLevel: s.crmLevel ?? 1,
-  crmLevelName: levelName(s.crmLevel ?? 1),
-});
+const studentRef = (s: any) => {
+  const level = s.crmLevel ?? 1;
+  const { priorityBooking, perks } = perksForLevel(level);
+  return {
+    id: s.id,
+    name: s.name,
+    nickname: s.nickname ?? null,
+    crmPoints: s.crmPoints ?? 0,
+    crmLevel: level,
+    crmLevelName: levelName(level),
+    // UC-020 — สิทธิประโยชน์ตามระดับ (priorityBooking = advisory ให้ staff)
+    priorityBooking,
+    perks,
+  };
+};
 
 export const toBookingDTO = (b: any) => ({
   id: b.id,

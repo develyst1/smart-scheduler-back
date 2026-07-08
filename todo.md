@@ -49,7 +49,7 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 ### C.2 — CRM แต้ม + Level
 - [x] ✅ Schema `crm_points` / `crm_level` บน students + กติกาแต้ม ([lib/crm.ts](src/lib/crm.ts))
 - [x] ✅ ให้แต้มเมื่อเช็คอินตรงเวลา / แจ้งลาตามระบบ · แสดงใน StudentRef DTO
-- [ ] 🟡 ใช้ level จัดลำดับความสำคัญตอนจอง (อนาคต)
+- [x] ✅ **UC-020** สิทธิประโยชน์ตาม level — `perksForLevel` + `priorityBooking` flag ใน StudentRef DTO + `GET /api/crm/levels` (มูลค่าโปรโมชั่นจริงรอลูกค้ายืนยัน)
 
 ### C.3 — Cron ตัดโควตาสิ้นวัน
 - [ ] ❌ **ข้ามไว้ก่อน** (ตามแผน) — Job 18:00 ตัดโควตาอัตโนมัติ
@@ -57,7 +57,7 @@ repo นี้ = **source of truth** ของ scheduling + LINE push (frontoffi
 ### C.4 — LINE OA webhook
 - [x] ✅ `POST /webhooks/line` (verify `X-Line-Signature`)
 - [x] ✅ Bot flow บทบาท 1/2/3 + รหัส → ผูก `userId` ↔ teacher / parent / admin
-- [ ] 🟡 ต้องตั้ง **Webhook URL สาธารณะ** ใน LINE Developers Console
+- [x] ✅ ตั้ง **Webhook URL สาธารณะ** ใน LINE Developers Console แล้ว — บอทตอบกลับได้จริง
 
 ### C.5 — แจ้งลา → push LINE แอดมิน
 - [x] ✅ sick-leave (staff + LINE) → enqueue หา admin userIds ใน `app_settings.line_admin_user_ids`
