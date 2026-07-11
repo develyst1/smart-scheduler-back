@@ -42,7 +42,6 @@ export const TEACHER_SEED: TeacherSeed[] = [
   { name: "Lewis", nickname: "Lewis", type: "FULL_TIME", active: true, subjects: allSubjects },
   { name: "Print", nickname: "Print", type: "PART_TIME", active: true, subjects: wheelAndTrial },
   { name: "Karn", nickname: "Karn", type: "PART_TIME", active: true, subjects: wheelAndTrial },
-  { name: "Seed", nickname: "Seed", type: "PART_TIME", active: true, subjects: wheelAndTrial },
   { name: "Jay", nickname: "Jay", type: "PART_TIME", active: true, subjects: wheelAndTrial },
   { name: "Kid", nickname: "Kid", type: "PART_TIME", active: true, subjects: wheelAndTrial },
   { name: "New", nickname: "New", type: "PART_TIME", active: true, subjects: wheelAndTrial },
@@ -55,4 +54,5 @@ export const TEACHER_SEED: TeacherSeed[] = [
   { name: "Ji", nickname: "Ji", type: "FREELANCE", active: true, subjects: wheelAndTrial },
   { name: "Nay", nickname: "Nay", type: "FREELANCE", active: true, subjects: wheelAndTrial },
   { name: "Gof", nickname: "Gof", type: "FREELANCE", active: false, subjects: wheelAndTrial },
+  { name: "Seed", nickname: "Seed", type: "FREELANCE", active: true, subjects: wheelAndTrial },
 ];
