@@ -43,18 +43,6 @@ export const api = new Hono()
   .post("/bookings", zValidator("json", v.createBooking), async (c) =>
     c.json(await svc.createBooking(c.req.valid("json")), 201),
   )
-  // Conflict resolution (B.1): overbook + move existing, then parent confirm/cancel.
-  .post(
-    "/bookings/with-reschedule",
-    zValidator("json", v.createBookingWithReschedule),
-    async (c) => c.json(await svc.createBookingWithReschedule(c.req.valid("json")), 201),
-  )
-  .patch("/bookings/:id/reschedule/confirm", async (c) =>
-    c.json(await svc.confirmReschedule(c.req.param("id"))),
-  )
-  .patch("/bookings/:id/reschedule/cancel", async (c) =>
-    c.json(await svc.cancelReschedule(c.req.param("id"))),
-  )
   .patch("/bookings/:id/status", zValidator("json", v.updateStatus), async (c) => {
     const { action, reason } = c.req.valid("json");
     return c.json(await svc.updateBookingStatus(c.req.param("id"), action, reason));

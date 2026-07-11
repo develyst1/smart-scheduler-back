@@ -7,7 +7,6 @@ import { appSettings, bookings, coursePackages, students, subjects, teachers, vo
 import type { TeacherType } from "../types/contract";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
-import { buildRescheduleTarget } from "../lib/reschedule";
 import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../lib/recurring";
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
@@ -89,7 +88,13 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
     const dto = toBookingDTO(row);
-    idx.set(`${dto.date}|${dto.teacher.id}|${dto.startTime}`, dto);
+    const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
+    const cur = idx.get(key);
+    // Overbooking a leave slot (UC-004): an active booking can now share a slot with
+    // the SICK_LEAVE record it replaced — surface the active booking, not the leave one.
+    if (!cur || (cur.status === "SICK_LEAVE" && dto.status !== "SICK_LEAVE")) {
+      idx.set(key, dto);
+    }
   }
 
   return {
@@ -401,142 +406,12 @@ export async function createVoucher(input: any) {
   });
 }
 
-// ───────────────────────── Conflict resolution (B.1) ─────────────────────────
-// Overbook a slot: move the existing occupant out (PENDING_RESCHEDULE, releasing
-// its slot) so the new booking (pendingSlot) can take it, and notify the parent
-// over LINE. If the slot is actually free, behave like a plain create.
-
-// The booking currently holding the slot — ignore CANCELLED and waiting (pendingSlot) rows.
-async function slotOccupant(exec: any, teacherId: string, date: string, startTime: string) {
-  return exec.query.bookings.findFirst({
-    where: (b: any, { and, eq, ne }: any) =>
-      and(
-        eq(b.teacherId, teacherId),
-        eq(b.date, date),
-        eq(b.startTime, startTime),
-        ne(b.status, "CANCELLED"),
-        eq(b.pendingSlot, false),
-      ),
-  });
-}
-
-export async function createBookingWithReschedule(input: any) {
-  const { resolution, ...bookingInput } = input;
-  return await db.transaction(async (tx) => {
-    const studentId = await resolveStudentId(tx, bookingInput.student);
-    const existing = await slotOccupant(
-      tx,
-      bookingInput.teacherId,
-      bookingInput.date,
-      bookingInput.startTime,
-    );
-
-    // No conflict → ordinary create (FE can call this optimistically).
-    if (!existing) {
-      const id = await insertBooking(tx, studentId, bookingInput);
-      return { existing: null, incoming: await loadBookingDTO(tx, id) };
-    }
-
-    // Release the existing booking's slot FIRST (PENDING_RESCHEDULE is excluded from
-    // the unique slot index), then the incoming booking can take the slot.
-    await tx
-      .update(bookings)
-      .set({
-        status: "PENDING_RESCHEDULE",
-        rescheduleTo: buildRescheduleTarget(resolution),
-      })
-      .where(eq(bookings.id, existing.id));
-
-    const incomingId = await insertBooking(tx, studentId, bookingInput, { pendingSlot: true });
-    await tx
-      .update(bookings)
-      .set({ incomingBookingId: incomingId })
-      .where(eq(bookings.id, existing.id));
-
-    // Notify the parent of the existing booking (atomic via the outbox).
-    const student = await tx.query.students.findFirst({
-      where: (s, { eq }) => eq(s.id, existing.studentId),
-      with: { parent: true },
-    });
-    await enqueueLine(
-      {
-        recipientType: "parent",
-        recipientLineUserId: student?.parent?.lineUserId ?? null,
-        bookingId: existing.id,
-        payload: {
-          kind: "reschedule_requested",
-          bookingId: existing.id,
-          to: { date: resolution.date, startTime: resolution.startTime },
-        },
-      },
-      tx,
-    );
-
-    return {
-      existing: await loadBookingDTO(tx, existing.id),
-      incoming: await loadBookingDTO(tx, incomingId),
-    };
-  });
-}
-
-export async function confirmReschedule(id: string) {
-  return await db.transaction(async (tx) => {
-    const old = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
-    if (!old || !old.rescheduleTo) return { booking: null };
-
-    const t = old.rescheduleTo;
-    // Move the booking to its agreed slot and confirm it; this frees the contested
-    // slot, which the incoming booking already holds.
-    try {
-      await tx
-        .update(bookings)
-        .set({
-          date: t.date,
-          teacherId: t.teacherId,
-          startTime: t.startTime,
-          endTime: t.endTime,
-          status: "CONFIRMED",
-          note: "ย้ายคาบจากการจองทับ (ผู้ปกครองตกลง)",
-          rescheduleTo: null,
-          incomingBookingId: null,
-        })
-        .where(eq(bookings.id, id));
-    } catch (e: any) {
-      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", "ช่องปลายทางถูกจองแล้ว");
-      throw e;
-    }
-
-    if (old.incomingBookingId) {
-      await tx
-        .update(bookings)
-        .set({ pendingSlot: false })
-        .where(eq(bookings.id, old.incomingBookingId));
-    }
-    return { booking: await loadBookingDTO(tx, id) };
-  });
-}
-
-export async function cancelReschedule(id: string) {
-  return await db.transaction(async (tx) => {
-    const old = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
-    if (!old) return { booking: null };
-
-    // Drop the incoming booking first → frees the contested slot for the restore.
-    if (old.incomingBookingId) {
-      await tx.delete(bookings).where(eq(bookings.id, old.incomingBookingId));
-    }
-    try {
-      await tx
-        .update(bookings)
-        .set({ status: "CONFIRMED", rescheduleTo: null, incomingBookingId: null })
-        .where(eq(bookings.id, id));
-    } catch (e: any) {
-      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", "ช่องเดิมถูกจองแล้ว");
-      throw e;
-    }
-    return { booking: await loadBookingDTO(tx, id) };
-  });
-}
+// ───────────────────────── Overbooking a leave slot (UC-004) ─────────────────────────
+// Staff may only overbook a slot whose occupant is on leave (SICK_LEAVE) — that
+// student is not attending and is already auto-extended, so no move/parent-confirm
+// flow is needed (the old B.1 reschedule flow was removed per UC-006). The DB unique
+// slot index excludes SICK_LEAVE, so a plain `createBooking` inserts the replacement
+// into the freed slot; overbooking an *active* slot still 409s (SLOT_TAKEN).
 
 async function findFreeExtensionDate(
   exec: any,

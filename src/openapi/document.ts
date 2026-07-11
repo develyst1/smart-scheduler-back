@@ -330,14 +330,6 @@ export const openApiDocument = {
         responses: { "201": { description: "BookingDTO" }, "409": { description: "SLOT_TAKEN" } },
       },
     },
-    "/api/bookings/with-reschedule": {
-      post: {
-        tags: ["bookings"],
-        summary: "จองทับ + ย้ายของเดิม (conflict resolution)",
-        security: [{ bearerAuth: [] }],
-        responses: { "201": { description: "new + pending reschedule booking" } },
-      },
-    },
     "/api/bookings/{id}/status": {
       patch: {
         tags: ["bookings"],
@@ -357,24 +349,6 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: { "200": { description: "BookingDTO" } },
-      },
-    },
-    "/api/bookings/{id}/reschedule/confirm": {
-      patch: {
-        tags: ["bookings"],
-        summary: "ยืนยันย้ายคาบ (หลังจองทับ)",
-        security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { "200": { description: "ok" } },
-      },
-    },
-    "/api/bookings/{id}/reschedule/cancel": {
-      patch: {
-        tags: ["bookings"],
-        summary: "ยกเลิกการย้ายคาบ",
-        security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { "200": { description: "ok" } },
       },
     },
     "/api/bookings/{id}/checkin": {

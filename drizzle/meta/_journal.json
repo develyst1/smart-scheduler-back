@@ -50,6 +50,13 @@
       "when": 1783000000002,
       "tag": "0006_parents",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783000000003,
+      "tag": "0007_leave_overbook_slot_index",
+      "breakpoints": true
     }
   ]
 }

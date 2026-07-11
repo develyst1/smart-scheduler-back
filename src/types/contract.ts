@@ -292,37 +292,6 @@ export interface MoveBookingResponse {
 }
 
 /**
- * POST /api/bookings/with-reschedule  → 201
- * Overbook a slot: create the new booking AND move the existing occupant out
- * (pending parent acceptance via LINE). If the slot is actually free, this just
- * creates the booking (existing = null), so the FE can call it optimistically.
- */
-export interface CreateBookingWithRescheduleRequest extends CreateBookingRequest {
-  resolution: {
-    reason: RescheduleReason;
-    date: IsoDate;
-    teacherId: string;
-    startTime: HhMm;
-  };
-}
-export interface CreateBookingWithRescheduleResponse {
-  /** the existing booking now PENDING_RESCHEDULE — null when the slot was free. */
-  existing: BookingDTO | null;
-  /** the newly created booking (pendingSlot when there was a conflict). */
-  incoming: BookingDTO;
-}
-
-/**
- * PATCH /api/bookings/:id/reschedule/confirm — parent accepted: move the booking
- * to its proposed slot and free this slot for the incoming booking.
- * PATCH /api/bookings/:id/reschedule/cancel  — parent declined: drop the incoming
- * booking and restore this one.
- */
-export interface RescheduleDecisionResponse {
-  booking: BookingDTO | null;
-}
-
-/**
  * PATCH /api/teachers/availability
  * Single (teacherId) OR whole group (type). Exactly one of the two is provided.
  */

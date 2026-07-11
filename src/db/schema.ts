@@ -252,11 +252,12 @@ export const bookings = pgTable(
   },
   (t) => [
     // No two live bookings in the same teacher slot — DB-level human-error guard.
-    // PENDING_RESCHEDULE is excluded: a booking being moved out releases its slot so
-    // the incoming (pendingSlot) booking can hold it during conflict resolution (B.1).
+    // SICK_LEAVE is excluded (UC-004): a student on leave is not attending and is
+    // auto-extended, so staff may overbook a replacement into that freed slot.
+    // (PENDING_RESCHEDULE stays excluded for any legacy rows from the old B.1 flow.)
     uniqueIndex("bookings_teacher_slot_uq")
       .on(t.teacherId, t.date, t.startTime)
-      .where(sql`${t.status} not in ('CANCELLED', 'PENDING_RESCHEDULE')`),
+      .where(sql`${t.status} not in ('CANCELLED', 'PENDING_RESCHEDULE', 'SICK_LEAVE')`),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
     index("bookings_student_idx").on(t.studentId),
