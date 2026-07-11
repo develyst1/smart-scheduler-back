@@ -301,11 +301,12 @@ async function insertBooking(
 // Voucher enforcement (B.5): the first booking sets the validity window; every
 // booking must have hours left and fall before expiry. No teacher restriction here
 // — "can't pick a teacher" is a purchase-time rule, not a per-session one.
-async function prepareVoucherBooking(exec: any, voucherId: string, date: string) {
+async function prepareVoucherBooking(exec: any, voucherId: string, date: string, studentId: string) {
   const v = await exec.query.vouchers.findFirst({
     where: (x: any, { eq }: any) => eq(x.id, voucherId),
   });
   if (!v) throw badRequest("ไม่พบวอยเชอร์");
+  if (v.studentId !== studentId) throw badRequest("วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก");
 
   const prior = await exec.query.bookings.findFirst({
     where: (b: any, { and, eq, ne }: any) =>
@@ -324,7 +325,7 @@ export async function createBooking(input: any) {
   return await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     if (input.bookingType === "VOUCHER" && input.voucherId) {
-      await prepareVoucherBooking(tx, input.voucherId, input.date);
+      await prepareVoucherBooking(tx, input.voucherId, input.date, studentId);
     }
     const id = await insertBooking(tx, studentId, input);
     const booking = await loadBookingDTO(tx, id);
@@ -381,6 +382,26 @@ export async function createCoursePackage(input: any) {
     });
     return { course: toCourseWithStudent(courseRow), bookings: created.map(toBookingDTO) };
   });
+}
+
+// List vouchers for the voucher tab + the booking picker. Optional studentId
+// (booking modal loads a student's own vouchers) / q (name search).
+export async function getVouchers(f: { studentId?: string; q?: string } = {}) {
+  const rows = await db.query.vouchers.findMany({
+    where: f.studentId ? (v, { eq }) => eq(v.studentId, f.studentId!) : undefined,
+    with: { student: true },
+    orderBy: (v, { desc }) => desc(v.createdAt),
+  });
+  let list = rows.map(toVoucherDTO);
+  if (f.q) {
+    const q = f.q.toLowerCase();
+    list = list.filter(
+      (v) =>
+        v.student.name.toLowerCase().includes(q) ||
+        (v.student.nickname ?? "").toLowerCase().includes(q),
+    );
+  }
+  return list;
 }
 
 // Issue a voucher (5/10/15h). Validity starts at the first booking (B.5); a

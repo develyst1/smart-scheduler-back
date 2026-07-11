@@ -345,6 +345,9 @@ export interface VoucherSummary {
   expiryDate: IsoDate;
   student: StudentRef;
 }
+/** GET /api/vouchers?studentId&q — voucher tab + booking picker source. */
+export type VouchersResponse = VoucherSummary[];
+
 /** POST /api/vouchers  → 201 */
 export interface CreateVoucherRequest {
   student: StudentInput;

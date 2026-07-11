@@ -264,6 +264,16 @@ export const openApiDocument = {
       },
     },
     "/api/vouchers": {
+      get: {
+        tags: ["vouchers"],
+        summary: "รายการ voucher (กรอง studentId / q)",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "studentId", in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "q", in: "query", schema: { type: "string" } },
+        ],
+        responses: { "200": { description: "VoucherSummary[]" } },
+      },
       post: {
         tags: ["vouchers"],
         summary: "ออก voucher (5/10/15 ชม.)",

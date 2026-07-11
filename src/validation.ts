@@ -71,16 +71,28 @@ const studentInput = z.union([
   }),
 ]);
 
-export const createBooking = z.object({
-  student: studentInput,
-  teacherId: ID,
-  subjectId: ID,
-  date: DATE,
-  startTime: TIME,
-  bookingType: BOOKING_TYPE,
-  courseId: ID.optional(),
-  voucherId: ID.optional(),
-  note: z.string().optional(),
+export const createBooking = z
+  .object({
+    student: studentInput,
+    teacherId: ID,
+    subjectId: ID,
+    date: DATE,
+    startTime: TIME,
+    bookingType: BOOKING_TYPE,
+    courseId: ID.optional(),
+    voucherId: ID.optional(),
+    note: z.string().optional(),
+  })
+  // การจองแบบ Voucher ต้องผูกวอยเชอร์เสมอ (ไม่งั้นชั่วโมงจะไม่ถูกตัด)
+  .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
+    message: "การจองแบบ Voucher ต้องเลือกวอยเชอร์ (voucherId)",
+    path: ["voucherId"],
+  });
+
+// รายการวอยเชอร์ (GET /api/vouchers) — กรองตามนักเรียน/ค้นหาชื่อได้
+export const vouchersQuery = z.object({
+  studentId: ID.optional(),
+  q: z.string().trim().min(1).optional(),
 });
 
 // Register a recurring course package (B.4): size + first slot → weekly sessions.
