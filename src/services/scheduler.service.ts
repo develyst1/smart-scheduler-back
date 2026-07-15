@@ -7,6 +7,7 @@ import { appSettings, bookings, coursePackages, students, subjects, teachers, vo
 import type { TeacherType } from "../types/contract";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
+import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
 import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../lib/recurring";
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
@@ -452,7 +453,12 @@ async function findFreeExtensionDate(
   return d;
 }
 
-export async function updateBookingStatus(id: string, action: string, reason?: string) {
+export async function updateBookingStatus(
+  id: string,
+  action: string,
+  reason?: string,
+  override = false,
+) {
   return await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
@@ -509,6 +515,20 @@ export async function updateBookingStatus(id: string, action: string, reason?: s
         .set({ status: "CANCELLED", note: reason ?? current.note })
         .where(eq(bookings.id, id));
     } else if (action === "sick-leave") {
+      // Advance-notice rule (UC-029): leave must be requested early enough for the
+      // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
+      if (!override) {
+        const teacher = await tx.query.teachers.findFirst({
+          where: (t, { eq }) => eq(t.id, current.teacherId),
+        });
+        if (
+          teacher &&
+          !hasEnoughLeaveNotice(current.date, current.startTime, teacher.type)
+        ) {
+          throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(teacher.type));
+        }
+      }
+
       await tx
         .update(bookings)
         .set({ status: "SICK_LEAVE", note: reason ?? current.note })

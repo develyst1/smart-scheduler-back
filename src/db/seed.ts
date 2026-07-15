@@ -162,7 +162,7 @@ async function main() {
   const bk = [
     {
       student: "น้องพีพี",
-      teacher: "เอก",
+      teacher: "Ek",
       subject: "Bike / Scooter / Balance Cruiser",
       date: today,
       start: "10:00",
@@ -172,7 +172,7 @@ async function main() {
     },
     {
       student: "น้องโอ๊ค",
-      teacher: "แบงค์",
+      teacher: "Bank",
       subject: "Surfskate",
       date: today,
       start: "13:00",
@@ -181,7 +181,7 @@ async function main() {
     },
     {
       student: "น้องเบล",
-      teacher: "ฮาริส",
+      teacher: "Haris",
       subject: "1st Trial",
       date: today,
       start: "11:00",
@@ -191,7 +191,7 @@ async function main() {
     },
     {
       student: "น้องมิ้น",
-      teacher: "ข้าวจ้าว",
+      teacher: "Kowjoe",
       subject: "Skateboard",
       date: today,
       start: "15:00",
@@ -201,7 +201,7 @@ async function main() {
     },
     {
       student: "น้องเจมส์",
-      teacher: "แคมป์",
+      teacher: "Camp",
       subject: "Onewheel E-Skate",
       date: today,
       start: "14:00",
@@ -211,7 +211,7 @@ async function main() {
     },
     {
       student: "น้องแพร",
-      teacher: "ปริ้นท์",
+      teacher: "Print",
       subject: "Freeskate",
       date: today,
       start: "10:00",
@@ -220,7 +220,7 @@ async function main() {
     },
     {
       student: "น้องกัน",
-      teacher: "มาร์ค",
+      teacher: "Mark",
       subject: "Inline Skate",
       date: today,
       start: "16:00",
@@ -230,7 +230,7 @@ async function main() {
     },
     {
       student: "น้องมายด์",
-      teacher: "เลวิส",
+      teacher: "Lewis",
       subject: "Balance Play (Private)",
       date: today,
       start: "16:00",
@@ -241,7 +241,7 @@ async function main() {
     },
     {
       student: "น้องพีพี",
-      teacher: "เอก",
+      teacher: "Ek",
       subject: "Bike / Scooter / Balance Cruiser",
       date: tomorrow,
       start: "10:00",

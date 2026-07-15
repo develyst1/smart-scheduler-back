@@ -115,6 +115,8 @@ export const createVoucher = z.object({
 export const updateStatus = z.object({
   action: z.enum(["confirm", "attend", "sick-leave", "cancel"]),
   reason: z.string().optional(),
+  // Admin override for the advance-notice leave rule (UC-029).
+  override: z.boolean().optional(),
 });
 
 // Manual move/edit a booking (reschedule). At least one field required.
