@@ -309,6 +309,65 @@ export const appSettings = pgTable("app_settings", {
     .$onUpdate(() => new Date()),
 });
 
+// ───────────────────────────── Badges ─────────────────────────────
+// Admin-defined tags on bookings. A badge TYPE (group, e.g. "สาขา") holds many
+// VALUES (e.g. "สาขา A" in blue). A booking carries at most ONE value per type.
+// Replaces the idea of separate branches — a branch is just a badge type.
+
+export const badgeTypes = pgTable("badge_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export const badgeValues = pgTable(
+  "badge_values",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    badgeTypeId: uuid("badge_type_id")
+      .notNull()
+      .references(() => badgeTypes.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    color: text("color").notNull(), // one of the curated palette keys (lib/badge-colors)
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("badge_values_type_idx").on(t.badgeTypeId)],
+);
+
+// A booking ↔ badge value link. `badge_type_id` is denormalized so the DB can
+// enforce "one value per type per booking" (UNIQUE below).
+export const bookingBadges = pgTable(
+  "booking_badges",
+  {
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    badgeValueId: uuid("badge_value_id")
+      .notNull()
+      .references(() => badgeValues.id, { onDelete: "restrict" }),
+    badgeTypeId: uuid("badge_type_id")
+      .notNull()
+      .references(() => badgeTypes.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.bookingId, t.badgeValueId] }),
+    uniqueIndex("booking_badges_one_per_type_uq").on(t.bookingId, t.badgeTypeId),
+    index("booking_badges_value_idx").on(t.badgeValueId),
+  ],
+);
+
 // ───────────────────────────── Relations ─────────────────────────────
 // Enable `db.query.bookings.findMany({ with: { teacher, student, subject, course } })`
 // so aggregate endpoints compose ready-to-use payloads in one round-trip.
@@ -356,7 +415,7 @@ export const vouchersRelations = relations(vouchers, ({ one }) => ({
   student: one(students, { fields: [vouchers.studentId], references: [students.id] }),
 }));
 
-export const bookingsRelations = relations(bookings, ({ one }) => ({
+export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   student: one(students, { fields: [bookings.studentId], references: [students.id] }),
   teacher: one(teachers, { fields: [bookings.teacherId], references: [teachers.id] }),
   subject: one(subjects, { fields: [bookings.subjectId], references: [subjects.id] }),
@@ -365,4 +424,23 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
     references: [coursePackages.id],
   }),
   voucher: one(vouchers, { fields: [bookings.voucherId], references: [vouchers.id] }),
+  badges: many(bookingBadges),
+}));
+
+export const badgeTypesRelations = relations(badgeTypes, ({ many }) => ({
+  values: many(badgeValues),
+}));
+
+export const badgeValuesRelations = relations(badgeValues, ({ one, many }) => ({
+  type: one(badgeTypes, { fields: [badgeValues.badgeTypeId], references: [badgeTypes.id] }),
+  bookingBadges: many(bookingBadges),
+}));
+
+export const bookingBadgesRelations = relations(bookingBadges, ({ one }) => ({
+  booking: one(bookings, { fields: [bookingBadges.bookingId], references: [bookings.id] }),
+  value: one(badgeValues, {
+    fields: [bookingBadges.badgeValueId],
+    references: [badgeValues.id],
+  }),
+  type: one(badgeTypes, { fields: [bookingBadges.badgeTypeId], references: [badgeTypes.id] }),
 }));

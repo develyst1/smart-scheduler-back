@@ -57,6 +57,13 @@
       "when": 1783000000003,
       "tag": "0007_leave_overbook_slot_index",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783000000004,
+      "tag": "0008_badges",
+      "breakpoints": true
     }
   ]
 }

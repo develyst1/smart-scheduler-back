@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BADGE_COLORS } from "./lib/badge-colors";
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
@@ -82,6 +83,8 @@ export const createBooking = z
     courseId: ID.optional(),
     voucherId: ID.optional(),
     note: z.string().optional(),
+    // Optional badge value ids to tag the new booking (≤ 1 per badge type; enforced in service).
+    badgeValueIds: z.array(ID).optional(),
   })
   // การจองแบบ Voucher ต้องผูกวอยเชอร์เสมอ (ไม่งั้นชั่วโมงจะไม่ถูกตัด)
   .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
@@ -167,4 +170,60 @@ export const setTeacherWorkDays = z.object({
     .min(1, "ต้องเลือกอย่างน้อย 1 วัน")
     .max(7)
     .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
+});
+
+// ───────────────────────────── Badges ─────────────────────────────
+
+const BADGE_COLOR = z.enum(BADGE_COLORS as unknown as [string, ...string[]]);
+
+export const createBadgeType = z.object({
+  name: z.string().trim().min(1),
+  sortOrder: z.number().int().optional(),
+});
+
+export const updateBadgeType = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    active: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), {
+    message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
+  });
+
+export const createBadgeValue = z.object({
+  badgeTypeId: ID,
+  label: z.string().trim().min(1),
+  color: BADGE_COLOR,
+  sortOrder: z.number().int().optional(),
+});
+
+export const updateBadgeValue = z
+  .object({
+    label: z.string().trim().min(1).optional(),
+    color: BADGE_COLOR.optional(),
+    active: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), {
+    message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
+  });
+
+// List badges. includeInactive=true = admin management view (query string → boolean).
+export const badgesQuery = z.object({
+  includeInactive: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((val) => val === "true"),
+});
+
+// Set the badges on a booking (replaces all): ≤ 1 value per type — enforced in service.
+export const setBookingBadges = z.object({
+  badgeValueIds: z.array(ID),
+});
+
+// Badge dashboard aggregation over a date range.
+export const badgeReportQuery = z.object({
+  from: DATE,
+  to: DATE,
 });

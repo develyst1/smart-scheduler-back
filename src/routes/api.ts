@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import * as v from "../validation";
 import * as svc from "../services/scheduler.service";
+import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
 import { crmLevelLadder } from "../lib/crm";
@@ -64,4 +65,27 @@ export const api = new Hono()
   )
   .get("/bookings/:id/checkin", async (c) =>
     c.json(await checkin.getCheckinQr(c.req.param("id"))),
+  )
+  // ── Badges (admin-defined tags on bookings) ──
+  .get("/badges", zValidator("query", v.badgesQuery), async (c) =>
+    c.json(await badge.listBadges(c.req.valid("query").includeInactive)),
+  )
+  .get("/badges/report", zValidator("query", v.badgeReportQuery), async (c) => {
+    const { from, to } = c.req.valid("query");
+    return c.json(await badge.getBadgeReport(from, to));
+  })
+  .post("/badges/types", zValidator("json", v.createBadgeType), async (c) =>
+    c.json(await badge.createBadgeType(c.req.valid("json")), 201),
+  )
+  .patch("/badges/types/:id", zValidator("json", v.updateBadgeType), async (c) =>
+    c.json(await badge.updateBadgeType(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/badges/values", zValidator("json", v.createBadgeValue), async (c) =>
+    c.json(await badge.createBadgeValue(c.req.valid("json")), 201),
+  )
+  .patch("/badges/values/:id", zValidator("json", v.updateBadgeValue), async (c) =>
+    c.json(await badge.updateBadgeValue(c.req.param("id"), c.req.valid("json"))),
+  )
+  .patch("/bookings/:id/badges", zValidator("json", v.setBookingBadges), async (c) =>
+    c.json(await badge.setBookingBadges(c.req.param("id"), c.req.valid("json").badgeValueIds)),
   );

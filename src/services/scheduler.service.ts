@@ -14,6 +14,7 @@ import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
+import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
@@ -42,6 +43,7 @@ const withBookingRelations = {
   teacher: true,
   subject: true,
   course: true,
+  badges: { with: { value: true, type: true } },
 } as const;
 
 async function loadBookingDTO(exec: any, id: string) {
@@ -329,6 +331,9 @@ export async function createBooking(input: any) {
       await prepareVoucherBooking(tx, input.voucherId, input.date, studentId);
     }
     const id = await insertBooking(tx, studentId, input);
+    if (input.badgeValueIds?.length) {
+      await attachBookingBadges(tx, id, input.badgeValueIds);
+    }
     const booking = await loadBookingDTO(tx, id);
     return { booking, course: booking.course };
   });

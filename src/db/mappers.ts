@@ -44,6 +44,35 @@ const studentRef = (s: any) => {
   };
 };
 
+// Badge value as embedded on a booking (already joined with its type + value).
+export const toBookingBadge = (bb: any) => ({
+  typeId: bb.badgeTypeId,
+  typeName: bb.type?.name ?? null,
+  valueId: bb.badgeValueId,
+  label: bb.value?.label ?? null,
+  color: bb.value?.color ?? null,
+});
+
+export const toBadgeValueDTO = (v: any) => ({
+  id: v.id,
+  typeId: v.badgeTypeId,
+  label: v.label,
+  color: v.color,
+  active: v.active,
+  sortOrder: v.sortOrder,
+});
+
+export const toBadgeTypeDTO = (t: any) => ({
+  id: t.id,
+  name: t.name,
+  active: t.active,
+  sortOrder: t.sortOrder,
+  values: (t.values ?? [])
+    .slice()
+    .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+    .map(toBadgeValueDTO),
+});
+
 export const toBookingDTO = (b: any) => ({
   id: b.id,
   date: b.date,
@@ -56,6 +85,7 @@ export const toBookingDTO = (b: any) => ({
   teacher: toTeacherBase(b.teacher),
   subject: { id: b.subject.id, name: b.subject.name },
   course: b.course ? toCourseSummary(b.course) : null,
+  badges: (b.badges ?? []).map(toBookingBadge),
   // Conflict resolution (B.1) — null/false for ordinary bookings.
   pendingSlot: b.pendingSlot ?? false,
   incomingBookingId: b.incomingBookingId ?? null,
