@@ -1,11 +1,15 @@
 # CLAUDE.md — smart-scheduler-back (Scheduling API)
 
 Guides Claude Code (and other agents) in this repo. For the cross-repo map see the
-workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated + seeded, 17 `/api`
-endpoints + `/auth/login`. Done: conflict-resolution (B.1), persisted teacher order (B.2), LINE
-outbox worker (B.3), recurring course & voucher rules (B.4/B.5), JWT auth (B.7, `SKIP_AUTH=true`
-in dev). `bun test` (27) + `scripts/smoke.ts` pass. (Remaining: FE login wiring + close SKIP_AUTH
-for prod; recipient LINE userId capture so pushes actually deliver.)
+workspace root `../CLAUDE.md`. **Status: implemented** — DB live + migrated (through `0008_badges`)
++ seeded, ~30 `/api` endpoints + `/auth/login`. Done: overbook-on-leave + persisted teacher order,
+LINE outbox worker + webhook bot, recurring course & voucher rules, JWT auth (`SKIP_AUTH=true` in dev),
+**advance leave-notice by teacher type (`lib/leave-notice.ts`, UC-029), QR/token check-in
+(time-window, no GPS), CRM points, badge system (`/api/badges*`, replaces multi-branch)**. `bun test`
++ `scripts/smoke.ts` pass. (⚠️ old move-day/week/teacher **reschedule flow + `PENDING_RESCHEDULE`
+removed per UC-006** — enum value lingers for legacy rows only. Remaining: FE login wiring + close
+SKIP_AUTH for prod; auto-cut end-of-day cron (UC-012); LINE bot bilingual + parent-push on enrollment
+(UC-028/UC-032); wire ATTENDED→backoffice wallet debit (UC-025). See `../smart-scheduler-requirement/HANDOFF-2026-07-16.md`.)
 
 ## What this is
 
