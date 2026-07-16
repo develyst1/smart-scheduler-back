@@ -48,6 +48,7 @@ export const bookingStatus = pgEnum("booking_status", [
   "CONFIRMED",
   "ATTENDED",
   "SICK_LEAVE",
+  "NO_SHOW", // auto-cut end-of-day (UC-012): confirmed class, no check-in, no leave → quota cut
   "EXTENDED",
   "PENDING_RESCHEDULE", // conflict resolution (B.1): awaiting parent acceptance of a move
   "CANCELLED",
@@ -308,6 +309,24 @@ export const appSettings = pgTable("app_settings", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+// ───────────────────────── Job runs (UC-012 auto-cut) ─────────────────────────
+// Audit log for the end-of-day sweep, so ops can confirm the Windows Task Scheduler
+// trigger actually fired and see what it cut. One row per run (idempotent re-runs
+// just append another row with cut=0).
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    job: text("job").notNull(), // "end-of-day"
+    runDate: date("run_date").notNull(), // business date processed (Asia/Bangkok)
+    status: text("status").notNull().default("success"), // success | failed
+    summary: jsonb("summary").$type<Record<string, unknown>>(),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("job_runs_job_date_idx").on(t.job, t.runDate)],
+);
 
 // ───────────────────────────── Badges ─────────────────────────────
 // Admin-defined tags on bookings. A badge TYPE (group, e.g. "สาขา") holds many

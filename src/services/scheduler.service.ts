@@ -12,6 +12,7 @@ import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../li
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
+import { attachTeacherQuotas, consumeTeacherHours, recordSale } from "../lib/ops-client";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
 import { attachBookingBadges } from "./badge.service";
@@ -74,6 +75,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
         typeRank(order, a.type) - typeRank(order, b.type) ||
         a.nickname.localeCompare(b.nickname, "th"),
     );
+  await attachTeacherQuotas(teacherDtos); // UC-016: rate + remaining quota from backoffice item
 
   const bookingRows = await db.query.bookings.findMany({
     where: (b, { and, eq, gte, lte, ne }) =>
@@ -125,7 +127,7 @@ export async function getTeachers() {
     db.query.teachers.findMany({ with: { teacherSubjects: { with: { subject: true } } } }),
     readTeacherTypeOrder(),
   ]);
-  const dtos = rows.map(toTeacherDTO);
+  const dtos = await attachTeacherQuotas(rows.map(toTeacherDTO)); // UC-016
   return {
     groups: order.map((type) => {
       const list = dtos
@@ -232,6 +234,7 @@ export async function getDailyReport(date: string) {
     totalBooked: count((r) => r.status !== "CANCELLED"),
     attended: count((r) => r.status === "ATTENDED"),
     onLeave: count((r) => r.status === "SICK_LEAVE"),
+    noShow: count((r) => r.status === "NO_SHOW"),
     pending: count((r) => r.status === "PENDING"),
     cancelled: count((r) => r.status === "CANCELLED"),
     byBookingType: types.map((type) => ({ type, count: count((r) => r.bookingType === type) })),
@@ -345,7 +348,7 @@ export async function createBooking(input: any) {
 // forward (auto-recurring). A clash on any week aborts the whole registration.
 export async function createCoursePackage(input: any) {
   if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     const [course] = await tx
       .insert(coursePackages)
@@ -388,6 +391,15 @@ export async function createCoursePackage(input: any) {
     });
     return { course: toCourseWithStudent(courseRow), bookings: created.map(toBookingDTO) };
   });
+
+  // Phase 2 (item-centric): a course sale → record revenue on its INCOME item in backoffice.
+  // Best-effort; no-op if the "course-{size}" income item isn't set up yet.
+  void recordSale(`course-${input.size}`, 1, {
+    refId: result.course.id,
+    idempotencyKey: `course-sale:${result.course.id}`,
+  });
+
+  return result;
 }
 
 // List vouchers for the voucher tab + the booking picker. Optional studentId
@@ -415,7 +427,7 @@ export async function getVouchers(f: { studentId?: string; q?: string } = {}) {
 export async function createVoucher(input: any) {
   if (!isVoucherHours(input.totalHours))
     throw badRequest("จำนวนชั่วโมงวอยเชอร์ต้องเป็น 5, 10 หรือ 15");
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     const [v] = await tx
       .insert(vouchers)
@@ -431,6 +443,14 @@ export async function createVoucher(input: any) {
     });
     return { voucher: toVoucherDTO(row) };
   });
+
+  // Phase 2: a voucher sale → record revenue on its INCOME item ("voucher-{hours}").
+  void recordSale(`voucher-${input.totalHours}`, 1, {
+    refId: result.voucher.id,
+    idempotencyKey: `voucher-sale:${result.voucher.id}`,
+  });
+
+  return result;
 }
 
 // ───────────────────────── Overbooking a leave slot (UC-004) ─────────────────────────
@@ -464,7 +484,7 @@ export async function updateBookingStatus(
   reason?: string,
   override = false,
 ) {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
       with: { course: true, voucher: true },
@@ -602,6 +622,19 @@ export async function updateBookingStatus(
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
     return { booking, extended, course: booking.course, locked, notification };
   });
+
+  // Phase 2 (item-centric): a freelance teacher who actually taught an hour consumes one
+  // unit of their monthly quota (their EXPENSE item) in backoffice — records the labour
+  // cost in the company P&L and drives the income ceiling. Best-effort, post-commit,
+  // idempotent per booking; never blocks the attend.
+  if (action === "attend" && result.booking.teacher.type === "FREELANCE") {
+    void consumeTeacherHours(result.booking.teacher.id, 1, {
+      refId: id,
+      idempotencyKey: `attend:${id}`,
+    });
+  }
+
+  return result;
 }
 
 export async function moveBooking(

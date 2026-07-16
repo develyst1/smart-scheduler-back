@@ -24,6 +24,10 @@ export const toTeacherDTO = (t: any) => ({
   })),
   lineLinked: !!t.lineUserId,
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
+  // Populated from the teacher's backoffice EXPENSE item by attachTeacherQuotas (UC-016).
+  hourlyRate: null as number | null,
+  quotaRemaining: null as number | null,
+  overLimit: false,
 });
 
 import { levelName, perksForLevel } from "../lib/crm";

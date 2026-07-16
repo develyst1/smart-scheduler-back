@@ -87,6 +87,12 @@ export interface TeacherDTO {
   lineLinked: boolean;
   /** 0=Sun … 6=Sat — days this teacher appears on the calendar */
   workDays: number[];
+  /** THB/hour = the teacher's EXPENSE item unit price in backoffice (UC-016). null when off. */
+  hourlyRate?: number | null;
+  /** Hours of monthly work quota left (backoffice EXPENSE item stock). null when none. */
+  quotaRemaining?: number | null;
+  /** Quota exhausted → the calendar hides this teacher so admins spread the work. */
+  overLimit?: boolean;
 }
 
 /** Computed course view — the leave/quota math done server-side (authoritative). */

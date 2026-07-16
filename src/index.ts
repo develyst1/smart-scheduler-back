@@ -9,6 +9,7 @@ import { authMiddleware } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
+import { internalJobs } from "./routes/internal";
 import { apiDocs, rootDocs } from "./routes/docs";
 
 const app = new Hono();
@@ -40,6 +41,8 @@ app.route("/api/webhooks", lineWebhook); // POST /api/webhooks/line (LINE Develo
 app.route("/api", publicCheckin);
 // Legacy path without /api prefix (direct to BE port, local tunnel, etc.)
 app.route("/webhooks", lineWebhook);
+// Internal job trigger (UC-012) — secret-guarded, not JWT. Called by Task Scheduler exe.
+app.route("/internal", internalJobs);
 
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);
