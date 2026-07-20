@@ -7,10 +7,11 @@
 // course/voucher quota is deducted (the student loses the session). Idempotent:
 // only CONFIRMED rows are touched, so a second run cuts nothing.
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
+import { recordSale, revenueItemRef } from "../lib/ops-client";
 import { getDailyReport } from "./scheduler.service";
 
 export async function runEndOfDayJob(date?: string) {
@@ -61,9 +62,33 @@ export async function runEndOfDayJob(date?: string) {
     return { noShow: due.length, coursesCut, vouchersCut };
   });
 
+  // TASK-007: recognise revenue for attended one-off bookings (FIRST_TRIAL / SINGLE_SESSION) at
+  // day-end. Course/voucher already booked revenue at sale (recordSale on creation) → not re-posted
+  // here. Best-effort + idempotent (`rev:<bookingId>`): safe to re-run; skips if ops is off or the
+  // INCOME item isn't seeded; never fails the job.
+  const attended = await db
+    .select({ id: bookings.id, bookingType: bookings.bookingType })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.date, runDate),
+        eq(bookings.status, "ATTENDED"),
+        inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION"]),
+      ),
+    );
+
+  let revenuePosted = 0;
+  for (const b of attended) {
+    const ref = revenueItemRef(b.bookingType);
+    if (!ref) continue;
+    // Amount defaults to quantity × the INCOME item's sale_price_minor (don't hardcode prices).
+    const res = await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}` });
+    if (res.ok) revenuePosted++;
+  }
+
   // Report is read after the cut so its counts reflect the new NO_SHOW rows.
   const report = await getDailyReport(runDate);
-  const summary = { ...cut, report };
+  const summary = { ...cut, revenuePosted, report };
 
   await db.insert(jobRuns).values({
     job: "end-of-day",

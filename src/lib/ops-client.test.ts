@@ -1,5 +1,11 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { attachTeacherQuotas, drawFreelanceBudget, releaseFreelanceBudget } from "./ops-client";
+import {
+  attachTeacherQuotas,
+  drawFreelanceBudget,
+  recordSale,
+  releaseFreelanceBudget,
+  revenueItemRef,
+} from "./ops-client";
 
 // ops-client reads OPS_API_URL at call time (see ops-client.ts), so setting it here is enough.
 const origFetch = globalThis.fetch;
@@ -85,6 +91,32 @@ describe("ops-client freelance budget (TASK-002)", () => {
     expect(r.skipped).toBe("OPS_API_URL unset");
     expect(calls).toHaveLength(0); // never hit the network
     process.env.OPS_API_URL = saved;
+  });
+});
+
+describe("day-end revenue (TASK-007)", () => {
+  test("revenueItemRef maps only one-off trial/single (course/voucher recognise revenue at sale)", () => {
+    expect(revenueItemRef("FIRST_TRIAL")).toBe("first-trial");
+    expect(revenueItemRef("SINGLE_SESSION")).toBe("single-session");
+    expect(revenueItemRef("COURSE_PACKAGE")).toBeNull();
+    expect(revenueItemRef("VOUCHER")).toBeNull();
+  });
+
+  test("recordSale posts an INCOME OUT/SALE with rev:<id> key and no explicit amount (server prices it)", async () => {
+    const calls = mockFetch(201);
+    const r = await recordSale("first-trial", 1, { refId: "bk1", idempotencyKey: "rev:bk1" });
+    expect(r.ok).toBe(true);
+    expect(calls[0].body).toMatchObject({
+      externalSource: "smart-scheduler",
+      externalRef: "first-trial",
+      direction: "OUT",
+      quantity: 1,
+      refType: "SALE",
+      refId: "bk1",
+      idempotencyKey: "rev:bk1",
+    });
+    // no explicit amountMinor → ops defaults to quantity × sale_price_minor
+    expect("amountMinor" in calls[0].body).toBe(false);
   });
 });
 

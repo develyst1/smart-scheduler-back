@@ -93,6 +93,15 @@ export function releaseFreelanceBudget(
   });
 }
 
+/** Map a booking type to its INCOME item external ref for day-end revenue (TASK-007).
+ *  Only one-off trial/single recognise revenue at attendance; course/voucher already booked
+ *  revenue at sale, so they map to null (not re-posted at day-end). */
+export function revenueItemRef(bookingType: string): string | null {
+  if (bookingType === "FIRST_TRIAL") return "first-trial";
+  if (bookingType === "SINGLE_SESSION") return "single-session";
+  return null;
+}
+
 /** A course / voucher / trial was sold → record revenue on its INCOME item.
  *  `externalRef` is the product code (e.g. "course-6", "voucher-10"). */
 export function recordSale(
