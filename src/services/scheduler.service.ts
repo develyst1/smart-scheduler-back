@@ -12,7 +12,13 @@ import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../li
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
-import { attachTeacherQuotas, consumeTeacherHours, recordSale } from "../lib/ops-client";
+import {
+  attachTeacherQuotas,
+  drawFreelanceBudget,
+  releaseFreelanceBudget,
+  fetchFreelanceRateMinor,
+  recordSale,
+} from "../lib/ops-client";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
 import { attachBookingBadges } from "./badge.service";
@@ -38,6 +44,29 @@ const typeRank = (order: TeacherType[], type: TeacherType) => {
   const i = order.indexOf(type);
   return i === -1 ? order.length : i;
 };
+
+// Durable per-teacher over-budget override (SPEC-001 / TASK-008), stored in app_settings so the
+// booking-commit path (TASK-002) can pass allowNegative:true for a capped teacher the admin unlocked.
+const LIMIT_OVERRIDE_PREFIX = "limit-override:";
+
+async function readLimitOverride(exec: any, teacherId: string): Promise<boolean> {
+  const row = await exec.query.appSettings.findFirst({
+    where: (s: any, { eq }: any) => eq(s.key, `${LIMIT_OVERRIDE_PREFIX}${teacherId}`),
+  });
+  return row?.value === true;
+}
+
+// Batch-read every teacher's override flag → Set of teacherIds that are ON.
+async function readLimitOverrides(exec: any = db): Promise<Set<string>> {
+  const rows = await exec.query.appSettings.findMany({
+    where: (s: any, { like }: any) => like(s.key, `${LIMIT_OVERRIDE_PREFIX}%`),
+  });
+  const on = new Set<string>();
+  for (const r of rows) {
+    if (r.value === true) on.add(r.key.slice(LIMIT_OVERRIDE_PREFIX.length));
+  }
+  return on;
+}
 
 const withBookingRelations = {
   student: true,
@@ -75,7 +104,9 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
         typeRank(order, a.type) - typeRank(order, b.type) ||
         a.nickname.localeCompare(b.nickname, "th"),
     );
-  await attachTeacherQuotas(teacherDtos); // UC-016: rate + remaining quota from backoffice item
+  await attachTeacherQuotas(teacherDtos); // UC-016: rate + remaining budget from backoffice item
+  const overrides = await readLimitOverrides();
+  for (const d of teacherDtos) d.limitOverride = overrides.has(d.id);
 
   const bookingRows = await db.query.bookings.findMany({
     where: (b, { and, eq, gte, lte, ne }) =>
@@ -128,6 +159,8 @@ export async function getTeachers() {
     readTeacherTypeOrder(),
   ]);
   const dtos = await attachTeacherQuotas(rows.map(toTeacherDTO)); // UC-016
+  const overrides = await readLimitOverrides();
+  for (const d of dtos) d.limitOverride = overrides.has(d.id);
   return {
     groups: order.map((type) => {
       const list = dtos
@@ -484,6 +517,9 @@ export async function updateBookingStatus(
   reason?: string,
   override = false,
 ) {
+  // Set inside the tx when a *committed* freelance booking is cancelled/left, so the budget
+  // drawdown is reversed post-commit (SPEC-001 / TASK-002).
+  let releaseFreelanceTeacherId: string | null = null;
   const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
@@ -516,6 +552,29 @@ export async function updateBookingStatus(
           tx,
         );
         await issueCheckinToken(id, tx);
+
+        // SPEC-001 (TASK-002): committing a freelance booking draws its pay from the teacher's
+        // monthly budget-stock in backoffice — one ops OUT = P&L expense + real-time cap. A 409
+        // (budget exhausted, no override) rolls back the whole confirm (over-booking prevention).
+        // Best-effort/skip when backoffice is off or the teacher has no budget item (dev).
+        if (teacher?.type === "FREELANCE") {
+          const rateMinor = await fetchFreelanceRateMinor(current.teacherId);
+          if (rateMinor != null) {
+            // Honour a durable per-teacher override (TASK-008) or a one-off request override.
+            const allowNegative = override || (await readLimitOverride(tx, current.teacherId));
+            const draw = await drawFreelanceBudget(current.teacherId, rateMinor, {
+              refId: id,
+              idempotencyKey: `fl-book:${id}`,
+              allowNegative,
+            });
+            if (draw.blocked) {
+              throw conflict(
+                "INSUFFICIENT_BUDGET",
+                "งบครูฟรีแลนซ์เต็มแล้ว — เติมงบหรือปลดล็อกก่อนยืนยันคาบ",
+              );
+            }
+          }
+        }
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -539,6 +598,7 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "CANCELLED", note: reason ?? current.note })
         .where(eq(bookings.id, id));
+      if (current.confirmedAt) releaseFreelanceTeacherId = current.teacherId;
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
@@ -558,6 +618,7 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "SICK_LEAVE", note: reason ?? current.note })
         .where(eq(bookings.id, id));
+      if (current.confirmedAt) releaseFreelanceTeacherId = current.teacherId;
 
       if (current.courseId && current.course) {
         if (canTakeLeave(current.course)) {
@@ -623,15 +684,19 @@ export async function updateBookingStatus(
     return { booking, extended, course: booking.course, locked, notification };
   });
 
-  // Phase 2 (item-centric): a freelance teacher who actually taught an hour consumes one
-  // unit of their monthly quota (their EXPENSE item) in backoffice — records the labour
-  // cost in the company P&L and drives the income ceiling. Best-effort, post-commit,
-  // idempotent per booking; never blocks the attend.
-  if (action === "attend" && result.booking.teacher.type === "FREELANCE") {
-    void consumeTeacherHours(result.booking.teacher.id, 1, {
-      refId: id,
-      idempotencyKey: `attend:${id}`,
-    });
+  // SPEC-001 (TASK-002): cancel / customer-leave of a *committed* freelance booking reverses
+  // the budget drawdown — returns the budget, releases the cap, un-books the P&L expense.
+  // Best-effort, post-commit, idempotent per booking (`fl-unbook:<id>`). Only fires when the
+  // booking had been confirmed (i.e. actually drawn). Amount = current rate × 1h (same-month
+  // rate is stable). The attend action no longer draws down (moved to commit).
+  if (releaseFreelanceTeacherId && result.booking.teacher.type === "FREELANCE") {
+    const rateMinor = await fetchFreelanceRateMinor(releaseFreelanceTeacherId);
+    if (rateMinor != null) {
+      void releaseFreelanceBudget(releaseFreelanceTeacherId, rateMinor, {
+        refId: id,
+        idempotencyKey: `fl-unbook:${id}`,
+      });
+    }
   }
 
   return result;
@@ -697,6 +762,23 @@ export async function setTeacherWorkDays(id: string, workDays: number[]) {
     with: { teacherSubjects: { with: { subject: true } } },
   });
   return toTeacherDTO(full);
+}
+
+// TASK-008: persist the admin over-budget override for a freelance teacher (app_settings).
+// Read by the booking-commit path (drawFreelanceBudget allowNegative) and surfaced on the DTO.
+export async function setLimitOverride(id: string, override: boolean) {
+  const teacher = await db.query.teachers.findFirst({
+    where: (t, { eq }) => eq(t.id, id),
+    with: { teacherSubjects: { with: { subject: true } } },
+  });
+  if (!teacher) throw notFound("ไม่พบครู");
+  await db
+    .insert(appSettings)
+    .values({ key: `${LIMIT_OVERRIDE_PREFIX}${id}`, value: override })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value: override } });
+  const dto = toTeacherDTO(teacher);
+  dto.limitOverride = override;
+  return dto;
 }
 
 export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {

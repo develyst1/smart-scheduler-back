@@ -60,6 +60,9 @@ export const api = new Hono()
   .patch("/teachers/:id/work-days", zValidator("json", v.setTeacherWorkDays), async (c) =>
     c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays)),
   )
+  .patch("/teachers/:id/limit-override", zValidator("json", v.setLimitOverride), async (c) =>
+    c.json(await svc.setLimitOverride(c.req.param("id"), c.req.valid("json").override)),
+  )
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
   )

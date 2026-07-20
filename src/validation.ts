@@ -172,6 +172,11 @@ export const setTeacherWorkDays = z.object({
     .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
 });
 
+/** Admin over-budget override for a freelance teacher (SPEC-001 / TASK-008). */
+export const setLimitOverride = z.object({
+  override: z.boolean(),
+});
+
 // ───────────────────────────── Badges ─────────────────────────────
 
 const BADGE_COLOR = z.enum(BADGE_COLORS as unknown as [string, ...string[]]);

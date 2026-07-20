@@ -24,10 +24,16 @@ export const toTeacherDTO = (t: any) => ({
   })),
   lineLinked: !!t.lineUserId,
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
-  // Populated from the teacher's backoffice EXPENSE item by attachTeacherQuotas (UC-016).
+  // Populated from the teacher's backoffice EXPENSE item by attachTeacherQuotas (SPEC-001).
+  // All money fields are satang. remainingMinor = current stock; budgetMinor = configured
+  // monthly budget; reorderMinor = near-cap warning threshold; overLimit = remainingMinor ≤ 0.
   hourlyRate: null as number | null,
-  quotaRemaining: null as number | null,
+  budgetMinor: null as number | null,
+  remainingMinor: null as number | null,
+  reorderMinor: null as number | null,
   overLimit: false,
+  // Durable admin over-budget override (app_settings). Set by attachLimitOverrides / setLimitOverride.
+  limitOverride: false,
 });
 
 import { levelName, perksForLevel } from "../lib/crm";
