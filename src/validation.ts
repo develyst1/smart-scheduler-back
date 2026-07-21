@@ -163,6 +163,29 @@ export const setTeacherTypeOrder = z.object({
     .refine((a) => new Set(a).size === 3, "ต้องระบุครบ 3 ประเภท ไม่ซ้ำ"),
 });
 
+// Teacher lifecycle (SPEC-004 / TASK-016).
+export const createTeacher = z.object({
+  name: z.string().trim().min(1).max(128),
+  nickname: z.string().trim().min(1).max(64),
+  type: TEACHER_TYPE,
+  workDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  subjectIds: z.array(z.string().uuid()).optional(),
+});
+
+export const updateTeacher = z.object({
+  name: z.string().trim().min(1).max(128).optional(),
+  nickname: z.string().trim().min(1).max(64).optional(),
+  type: TEACHER_TYPE.optional(),
+  subjectIds: z.array(z.string().uuid()).optional(),
+});
+
+export const teachersQuery = z.object({
+  archived: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+});
+
 /** 0=Sun … 6=Sat — วันที่ครูมาสอน (ตั้งในหน้าจัดการครู) */
 export const setTeacherWorkDays = z.object({
   workDays: z

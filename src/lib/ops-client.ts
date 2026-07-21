@@ -164,6 +164,174 @@ export async function fetchFreelanceRateMinor(teacherId: string): Promise<number
   return quotas.get(teacherId)?.rateMinor ?? null;
 }
 
+// ── Teacher-sync bridge (SPEC-004 / TASK-016). BLOCKING (admin actions, not the hot booking path):
+//    these throw on failure so the caller can roll back — unlike the best-effort booking-time calls. ──
+async function opsTeacherSync(action: string, body: Record<string, unknown>): Promise<unknown> {
+  const OPS_API_URL = opsApiUrl();
+  if (!OPS_API_URL) throw new Error("OPS_API_URL ไม่ได้ตั้งค่า — ซิงก์ครูกับ backoffice ไม่ได้");
+  const res = await fetch(`${OPS_API_URL}/api/v1/internal/teacher-sync/${action}`, {
+    method: "POST",
+    headers: opsHeaders(true),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) throw new Error(`ops teacher-sync ${action} ล้มเหลว (${res.status})`);
+  return res.json();
+}
+
+export const onboardOpsTeacher = (id: string, displayName: string) =>
+  opsTeacherSync("onboard", { externalRef: id, displayName });
+export const updateOpsTeacher = (id: string, patch: { displayName?: string; active?: boolean }) =>
+  opsTeacherSync("update", { externalRef: id, ...patch });
+export const offboardOpsTeacher = (id: string, effectiveMonth: string) =>
+  opsTeacherSync("offboard", { externalRef: id, effectiveMonth });
+export const switchTypeOpsTeacher = (id: string, effectiveMonth: string) =>
+  opsTeacherSync("switch-type", { externalRef: id, effectiveMonth });
+
+/** teacherIds with an OPEN recurring salary row (FT/PT money is set). Best-effort → empty on failure. */
+export async function fetchOpenSalaryTeacherIds(): Promise<Set<string>> {
+  const OPS_API_URL = opsApiUrl();
+  if (!OPS_API_URL) return new Set();
+  try {
+    const res = await fetch(
+      `${OPS_API_URL}/api/v1/recurring-costs?externalSource=${SCHEDULING_SOURCE}`,
+      { headers: opsHeaders(), signal: AbortSignal.timeout(4000) },
+    );
+    if (!res.ok) return new Set();
+    const body = (await res.json()) as {
+      items?: Array<{ externalRef: string | null; effectiveTo: string | null }>;
+    };
+    const ids = new Set<string>();
+    for (const r of body.items ?? []) {
+      if (r.externalRef && r.effectiveTo === null) ids.add(r.externalRef);
+    }
+    return ids;
+  } catch {
+    return new Set();
+  }
+}
+
+interface SetupTeacher {
+  id: string;
+  type: string;
+  archived?: boolean;
+  setupIncomplete?: boolean;
+}
+
+/** Pure money-setup rule (SPEC-004): a teacher is setup-incomplete until their money exists —
+ *  FREELANCE ⇒ has a budget item; FT/PT ⇒ has an open salary row. Archived teachers are a separate
+ *  state (offboarded), never "incomplete". */
+export function isSetupIncomplete(
+  teacher: { id: string; type: string; archived?: boolean },
+  freelanceBudgetIds: Set<string>,
+  openSalaryIds: Set<string>,
+): boolean {
+  if (teacher.archived) return false;
+  const moneyReady =
+    teacher.type === "FREELANCE" ? freelanceBudgetIds.has(teacher.id) : openSalaryIds.has(teacher.id);
+  return !moneyReady;
+}
+
+/** Fetch both money-state sets from ops. `available` is false when backoffice returned nothing at all
+ *  (off/unreachable) — callers then DON'T gate (can't tell "no money" from "ops down"; gating-all would
+ *  hide every teacher on a transient blip). */
+async function fetchMoneyState(): Promise<{
+  budgetIds: Set<string>;
+  salaryIds: Set<string>;
+  available: boolean;
+}> {
+  const [quotas, salaryIds] = await Promise.all([fetchTeacherQuotas(), fetchOpenSalaryTeacherIds()]);
+  const budgetIds = new Set(quotas.keys());
+  return { budgetIds, salaryIds, available: budgetIds.size > 0 || salaryIds.size > 0 };
+}
+
+/** Set `setupIncomplete` on each teacher DTO from ops money-state (no-op when ops is unavailable). */
+export async function attachSetupIncomplete<T extends SetupTeacher>(teachers: T[]): Promise<T[]> {
+  const { budgetIds, salaryIds, available } = await fetchMoneyState();
+  if (!available) return teachers;
+  for (const t of teachers) t.setupIncomplete = isSetupIncomplete(t, budgetIds, salaryIds);
+  return teachers;
+}
+
+/** Single-teacher money-setup check for the booking guard. False (don't block) when ops is unavailable. */
+export async function isTeacherSetupIncomplete(teacherId: string, type: string): Promise<boolean> {
+  const { budgetIds, salaryIds, available } = await fetchMoneyState();
+  if (!available) return false;
+  return isSetupIncomplete({ id: teacherId, type }, budgetIds, salaryIds);
+}
+
+// ── Reconcile (SPEC-004 #5.2 / TASK-018): throwing GETs so drift can't be masked by best-effort empties. ──
+async function opsGetItems(pathAndQuery: string): Promise<Array<Record<string, unknown>>> {
+  const OPS_API_URL = opsApiUrl();
+  if (!OPS_API_URL) throw new Error("OPS_API_URL ไม่ได้ตั้งค่า");
+  const res = await fetch(`${OPS_API_URL}/api/v1/${pathAndQuery}`, {
+    headers: opsHeaders(),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) throw new Error(`ops GET ${pathAndQuery} → ${res.status}`);
+  const body = (await res.json()) as { items?: Array<Record<string, unknown>> };
+  return body.items ?? [];
+}
+
+const refsOf = (items: Array<Record<string, unknown>>) =>
+  new Set(items.map((i) => i.externalRef).filter((r): r is string => typeof r === "string"));
+
+/** ops parties (active) linked to scheduling → set of teacherIds. Throws if ops is unreachable. */
+export async function fetchOpsPartyRefs(): Promise<Set<string>> {
+  return refsOf(await opsGetItems(`parties?externalSource=${SCHEDULING_SOURCE}`));
+}
+/** teacherIds with an ACTIVE FREELANCE_BUDGET item (the list endpoint already filters active). */
+export async function fetchOpsBudgetRefs(): Promise<Set<string>> {
+  const items = await opsGetItems(`catalog/items?externalSource=${SCHEDULING_SOURCE}&itemType=EXPENSE`);
+  return refsOf(
+    items.filter(
+      (i) => (i.metadata as Record<string, unknown> | null)?.kind === "FREELANCE_BUDGET",
+    ),
+  );
+}
+/** teacherIds with an OPEN salary row. */
+export async function fetchOpsOpenSalaryRefs(): Promise<Set<string>> {
+  const items = await opsGetItems(`recurring-costs?externalSource=${SCHEDULING_SOURCE}`);
+  return refsOf(items.filter((r) => r.effectiveTo === null));
+}
+
+export interface ReconcileReport {
+  missingParty: string[]; // teacherId — not archived, no ops party (onboard didn't land)
+  orphanParty: string[]; // externalRef — ops party with no matching teacher
+  moneyForArchived: string[]; // teacherId — archived but still has active money (offboard didn't fully close)
+  incompleteActive: string[]; // teacherId — not archived, has party, no money (== setupIncomplete)
+}
+
+/** Pure teacher↔ops drift diff (TASK-018). */
+export function reconcileTeacherDrift(
+  teachers: Array<{ id: string; archived: boolean; type: string }>,
+  partyRefs: Set<string>,
+  budgetRefs: Set<string>,
+  salaryRefs: Set<string>,
+): ReconcileReport {
+  const teacherIds = new Set(teachers.map((t) => t.id));
+  const report: ReconcileReport = {
+    missingParty: [],
+    orphanParty: [],
+    moneyForArchived: [],
+    incompleteActive: [],
+  };
+  for (const t of teachers) {
+    if (t.archived) {
+      if (budgetRefs.has(t.id) || salaryRefs.has(t.id)) report.moneyForArchived.push(t.id);
+      continue;
+    }
+    if (!partyRefs.has(t.id)) {
+      report.missingParty.push(t.id);
+      continue;
+    }
+    const hasMoney = t.type === "FREELANCE" ? budgetRefs.has(t.id) : salaryRefs.has(t.id);
+    if (!hasMoney) report.incompleteActive.push(t.id);
+  }
+  for (const ref of partyRefs) if (!teacherIds.has(ref)) report.orphanParty.push(ref);
+  return report;
+}
+
 interface QuotaTeacher {
   id: string;
   hourlyRate: number | null;

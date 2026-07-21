@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, coursePackages, students, subjects, teachers, vouchers } from "../db/schema";
+import { appSettings, bookings, coursePackages, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { TeacherType } from "../types/contract";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
@@ -14,17 +14,28 @@ import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import {
   attachTeacherQuotas,
+  attachSetupIncomplete,
+  isTeacherSetupIncomplete,
   drawFreelanceBudget,
   releaseFreelanceBudget,
   fetchFreelanceRateMinor,
+  onboardOpsTeacher,
+  updateOpsTeacher,
+  offboardOpsTeacher,
+  switchTypeOpsTeacher,
+  fetchOpsPartyRefs,
+  fetchOpsBudgetRefs,
+  fetchOpsOpenSalaryRefs,
+  reconcileTeacherDrift,
   recordSale,
 } from "../lib/ops-client";
+import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
-import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
@@ -105,6 +116,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
         a.nickname.localeCompare(b.nickname, "th"),
     );
   await attachTeacherQuotas(teacherDtos); // UC-016: rate + remaining budget from backoffice item
+  await attachSetupIncomplete(teacherDtos); // SPEC-004: flag teachers with no money set (FE folds into bookable)
   const overrides = await readLimitOverrides();
   for (const d of teacherDtos) d.limitOverride = overrides.has(d.id);
 
@@ -153,12 +165,16 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
   };
 }
 
-export async function getTeachers() {
+export async function getTeachers(opts: { archived?: boolean } = {}) {
   const [rows, order] = await Promise.all([
-    db.query.teachers.findMany({ with: { teacherSubjects: { with: { subject: true } } } }),
+    db.query.teachers.findMany({
+      where: (t, { eq }) => eq(t.archived, opts.archived ?? false),
+      with: { teacherSubjects: { with: { subject: true } } },
+    }),
     readTeacherTypeOrder(),
   ]);
   const dtos = await attachTeacherQuotas(rows.map(toTeacherDTO)); // UC-016
+  await attachSetupIncomplete(dtos); // SPEC-004
   const overrides = await readLimitOverrides();
   for (const d of dtos) d.limitOverride = overrides.has(d.id);
   return {
@@ -306,8 +322,13 @@ async function insertBooking(
     where: (t: any, { eq }: any) => eq(t.id, input.teacherId),
   });
   if (!teacher) throw badRequest("ไม่พบครู");
+  if (teacher.archived) throw badRequest(`ครู${teacher.nickname} ถูกปิดการใช้งานแล้ว`);
   if (!teacherWorksOnDay(teacher.workDays, weekdayOf(input.date))) {
     throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
+  }
+  // SPEC-004 server backstop to the FE `bookable` gate: a teacher with no money set can't be booked.
+  if (await isTeacherSetupIncomplete(teacher.id, teacher.type)) {
+    throw badRequest(`ครู${teacher.nickname} ยังตั้งค่าเงินไม่ครบ — ตั้งงบ/เงินเดือนก่อนจึงจะจองได้`);
   }
 
   try {
@@ -779,6 +800,166 @@ export async function setLimitOverride(id: string, override: boolean) {
   const dto = toTeacherDTO(teacher);
   dto.limitOverride = override;
   return dto;
+}
+
+// ───────────────────── Teacher lifecycle (SPEC-004 / TASK-016) ─────────────────────
+
+/** Map a blocking ops teacher-sync failure to a clean 502 (so the FE shows "backoffice sync failed —
+ *  retry"), while DB errors keep their own codes. The throw still rolls back the enclosing tx. */
+async function opsSyncOr502<T>(p: Promise<T>): Promise<T> {
+  try {
+    return await p;
+  } catch {
+    throw new ApiException(502, "OPS_SYNC_FAILED", "ซิงก์กับ backoffice ไม่สำเร็จ — ลองใหม่อีกครั้ง");
+  }
+}
+
+/** Load one teacher fully-decorated (rate/budget, setupIncomplete, override) — the DTO shape the
+ *  lifecycle mutations return. */
+async function loadTeacherFull(id: string) {
+  const row = await db.query.teachers.findFirst({
+    where: (t, { eq }) => eq(t.id, id),
+    with: { teacherSubjects: { with: { subject: true } } },
+  });
+  if (!row) throw notFound("ไม่พบครู");
+  const [dto] = await attachTeacherQuotas([toTeacherDTO(row)]);
+  await attachSetupIncomplete([dto]);
+  dto.limitOverride = await readLimitOverride(db, id);
+  return dto;
+}
+
+/** Create a teacher + its ops party in one flow. The ops onboard is BLOCKING and runs inside the tx,
+ *  so a sync failure rolls back the insert — no teacher is ever left without a backoffice party (REQ #1.4). */
+export async function createTeacher(input: {
+  name: string;
+  nickname: string;
+  type: TeacherType;
+  workDays?: number[];
+  subjectIds?: string[];
+}) {
+  const id = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(teachers)
+      .values({
+        name: input.name,
+        nickname: input.nickname,
+        type: input.type,
+        workDays: input.workDays
+          ? [...new Set(input.workDays)].sort((a, b) => a - b)
+          : undefined,
+      })
+      .returning({ id: teachers.id });
+    if (input.subjectIds?.length) {
+      await tx
+        .insert(teacherSubjects)
+        .values(input.subjectIds.map((subjectId) => ({ teacherId: row.id, subjectId })));
+    }
+    await opsSyncOr502(onboardOpsTeacher(row.id, input.name)); // blocking; throw → rollback
+    return row.id;
+  });
+  return loadTeacherFull(id);
+}
+
+/** Edit a teacher. Name change → ops party rename; **type change → close the OLD money** (switch-type,
+ *  effective this month) — new money is set later via the admin UI. Both sync calls are blocking. */
+export async function updateTeacher(
+  id: string,
+  input: { name?: string; nickname?: string; type?: TeacherType; subjectIds?: string[] },
+) {
+  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
+  if (!current) throw notFound("ไม่พบครู");
+  const nameChanged = input.name !== undefined && input.name !== current.name;
+  const typeChanged = input.type !== undefined && input.type !== current.type;
+  const month = bangkokNow().date.slice(0, 7);
+
+  await db.transaction(async (tx) => {
+    const set: Partial<typeof teachers.$inferInsert> = {};
+    if (input.name !== undefined) set.name = input.name;
+    if (input.nickname !== undefined) set.nickname = input.nickname;
+    if (input.type !== undefined) set.type = input.type;
+    if (Object.keys(set).length) await tx.update(teachers).set(set).where(eq(teachers.id, id));
+
+    if (input.subjectIds) {
+      await tx.delete(teacherSubjects).where(eq(teacherSubjects.teacherId, id));
+      if (input.subjectIds.length)
+        await tx
+          .insert(teacherSubjects)
+          .values(input.subjectIds.map((subjectId) => ({ teacherId: id, subjectId })));
+    }
+
+    if (nameChanged) await opsSyncOr502(updateOpsTeacher(id, { displayName: input.name }));
+    if (typeChanged) await opsSyncOr502(switchTypeOpsTeacher(id, month));
+  });
+  return loadTeacherFull(id);
+}
+
+/** Offboard a teacher (soft). Rejects with 409 if they have any future live booking (must be
+ *  reassigned/cleared first); else archive + deactivate the ops party + stop money going forward. */
+export async function archiveTeacher(id: string) {
+  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
+  if (!current) throw notFound("ไม่พบครู");
+
+  const today = bangkokNow().date;
+  const future = await db.query.bookings.findFirst({
+    where: (b, { and, eq, gte, notInArray }) =>
+      and(
+        eq(b.teacherId, id),
+        gte(b.date, today),
+        notInArray(b.status, ["CANCELLED", "NO_SHOW"]),
+      ),
+  });
+  if (future)
+    throw conflict(
+      "HAS_FUTURE_BOOKINGS",
+      "ครูมีคาบล่วงหน้าที่ยังไม่ปิด — โปรดย้ายหรือยกเลิกคาบก่อนปิดการใช้งานครู",
+    );
+
+  await db.transaction(async (tx) => {
+    await tx.update(teachers).set({ archived: true, active: false }).where(eq(teachers.id, id));
+    await opsSyncOr502(offboardOpsTeacher(id, today.slice(0, 7))); // blocking
+  });
+  return loadTeacherFull(id);
+}
+
+/** Bring an archived teacher back: un-archive + reactivate the ops party. Money is re-set via the
+ *  admin UI (until then the teacher shows `setupIncomplete`). */
+export async function reactivateTeacher(id: string) {
+  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
+  if (!current) throw notFound("ไม่พบครู");
+  await db.transaction(async (tx) => {
+    await tx.update(teachers).set({ archived: false, active: true }).where(eq(teachers.id, id));
+    await opsSyncOr502(updateOpsTeacher(id, { active: true })); // blocking
+  });
+  return loadTeacherFull(id);
+}
+
+/** Read-only teacher↔ops drift report (SPEC-004 #5.2 / TASK-018). Compares the scheduling roster (incl.
+ *  archived) against live ops parties + money via the public ops GETs. No writes — repair is manual
+ *  (re-run onboard/offboard). Fails cleanly (502) if backoffice is unreachable, rather than reporting
+ *  false drift from empty responses. */
+export async function reconcileTeachers() {
+  let partyRefs: Set<string>, budgetRefs: Set<string>, salaryRefs: Set<string>;
+  try {
+    [partyRefs, budgetRefs, salaryRefs] = await Promise.all([
+      fetchOpsPartyRefs(),
+      fetchOpsBudgetRefs(),
+      fetchOpsOpenSalaryRefs(),
+    ]);
+  } catch {
+    throw new ApiException(502, "OPS_UNREACHABLE", "เชื่อมต่อ backoffice ไม่ได้ — ลองใหม่อีกครั้ง");
+  }
+  const rows = await db.query.teachers.findMany(); // includes archived
+  const report = reconcileTeacherDrift(
+    rows.map((t) => ({ id: t.id, archived: t.archived, type: t.type })),
+    partyRefs,
+    budgetRefs,
+    salaryRefs,
+  );
+  return {
+    ...report,
+    repairHint:
+      "Repair by re-running the teacher endpoints: missingParty → PATCH/re-onboard; moneyForArchived → re-archive (offboard).",
+  };
 }
 
 export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {

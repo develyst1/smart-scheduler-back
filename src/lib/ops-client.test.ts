@@ -2,7 +2,10 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import {
   attachTeacherQuotas,
   drawFreelanceBudget,
+  isSetupIncomplete,
+  onboardOpsTeacher,
   recordSale,
+  reconcileTeacherDrift,
   releaseFreelanceBudget,
   revenueItemRef,
 } from "./ops-client";
@@ -117,6 +120,74 @@ describe("day-end revenue (TASK-007)", () => {
     });
     // no explicit amountMinor → ops defaults to quantity × sale_price_minor
     expect("amountMinor" in calls[0].body).toBe(false);
+  });
+});
+
+describe("isSetupIncomplete — money-setup gate (TASK-016)", () => {
+  const budget = new Set(["fl-has"]);
+  const salary = new Set(["ft-has"]);
+  test("FREELANCE with a budget item → complete (bookable)", () => {
+    expect(isSetupIncomplete({ id: "fl-has", type: "FREELANCE" }, budget, salary)).toBe(false);
+  });
+  test("FREELANCE without a budget item → incomplete", () => {
+    expect(isSetupIncomplete({ id: "fl-no", type: "FREELANCE" }, budget, salary)).toBe(true);
+  });
+  test("FT with an open salary → complete", () => {
+    expect(isSetupIncomplete({ id: "ft-has", type: "FULL_TIME" }, budget, salary)).toBe(false);
+  });
+  test("PT without a salary → incomplete", () => {
+    expect(isSetupIncomplete({ id: "pt-no", type: "PART_TIME" }, budget, salary)).toBe(true);
+  });
+  test("archived is a separate state — never 'incomplete'", () => {
+    expect(
+      isSetupIncomplete({ id: "fl-no", type: "FREELANCE", archived: true }, budget, salary),
+    ).toBe(false);
+  });
+});
+
+describe("reconcileTeacherDrift — teacher↔ops diff (TASK-018)", () => {
+  const teachers = [
+    { id: "ok-fl", archived: false, type: "FREELANCE" }, // party + budget → clean
+    { id: "ok-ft", archived: false, type: "FULL_TIME" }, // party + salary → clean
+    { id: "no-party", archived: false, type: "FREELANCE" }, // missingParty
+    { id: "no-money", archived: false, type: "FULL_TIME" }, // incompleteActive (party, no salary)
+    { id: "gone", archived: true, type: "FREELANCE" }, // archived + still has budget → moneyForArchived
+    { id: "clean-archived", archived: true, type: "PART_TIME" }, // archived, no money → clean
+  ];
+  const partyRefs = new Set(["ok-fl", "ok-ft", "no-money", "gone", "orphan-x"]);
+  const budgetRefs = new Set(["ok-fl", "gone"]);
+  const salaryRefs = new Set(["ok-ft"]);
+
+  const r = reconcileTeacherDrift(teachers, partyRefs, budgetRefs, salaryRefs);
+
+  test("missingParty = active teacher with no ops party", () => {
+    expect(r.missingParty).toEqual(["no-party"]);
+  });
+  test("orphanParty = party ref with no teacher", () => {
+    expect(r.orphanParty).toEqual(["orphan-x"]);
+  });
+  test("moneyForArchived = archived teacher with active money", () => {
+    expect(r.moneyForArchived).toEqual(["gone"]);
+  });
+  test("incompleteActive = active teacher, party, no money", () => {
+    expect(r.incompleteActive).toEqual(["no-money"]);
+  });
+  test("clean teachers appear in no bucket", () => {
+    const all = [...r.missingParty, ...r.orphanParty, ...r.moneyForArchived, ...r.incompleteActive];
+    expect(all).not.toContain("ok-fl");
+    expect(all).not.toContain("ok-ft");
+    expect(all).not.toContain("clean-archived");
+  });
+});
+
+describe("teacher-sync ops calls are BLOCKING (TASK-016)", () => {
+  test("onboardOpsTeacher resolves on 2xx", async () => {
+    mockFetch(201);
+    await expect(onboardOpsTeacher("t1", "Mark")).resolves.toBeDefined();
+  });
+  test("onboardOpsTeacher throws on ops failure → the teacher create rolls back", async () => {
+    mockFetch(500);
+    await expect(onboardOpsTeacher("t1", "Mark")).rejects.toBeDefined();
   });
 });
 

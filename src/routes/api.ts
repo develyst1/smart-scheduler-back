@@ -23,8 +23,21 @@ export const api = new Hono()
   )
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
-  .get("/teachers", async (c) => c.json(await svc.getTeachers()))
+  .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
+    c.json(await svc.getTeachers({ archived: c.req.valid("query").archived })),
+  )
+  .post("/teachers", zValidator("json", v.createTeacher), async (c) =>
+    c.json(await svc.createTeacher(c.req.valid("json")), 201),
+  )
+  .patch("/teachers/:id", zValidator("json", v.updateTeacher), async (c) =>
+    c.json(await svc.updateTeacher(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"))))
+  .post("/teachers/:id/reactivate", async (c) =>
+    c.json(await svc.reactivateTeacher(c.req.param("id"))),
+  )
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
+  .get("/teachers/reconcile", async (c) => c.json(await svc.reconcileTeachers()))
   .patch("/teachers/type-order", zValidator("json", v.setTeacherTypeOrder), async (c) =>
     c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
   )

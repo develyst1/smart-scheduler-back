@@ -123,6 +123,10 @@ export const teachers = pgTable("teachers", {
   nickname: text("nickname").notNull(),
   type: teacherType("type").notNull(),
   active: boolean("active").notNull().default(true),
+  /** Offboarded (soft-delete). Distinct from `active` (pause): archived hides the teacher from the
+   *  roster + calendar and stops ops money going forward (SPEC-004). Hard-delete is blocked by the
+   *  bookings FK, so archive is the only removal. */
+  archived: boolean("archived").notNull().default(false),
   /** 0=Sun … 6=Sat — ครูมาสอนได้วันไหนบ้าง (ปฏิทินซ่อนคอลัมน์นอกวันนี้) */
   workDays: smallint("work_days").array().notNull().default(sql`ARRAY[0,1,2,3,4,5,6]::smallint[]`),
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.

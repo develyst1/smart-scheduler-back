@@ -23,6 +23,9 @@ export const toTeacherDTO = (t: any) => ({
     name: ts.subject.name,
   })),
   lineLinked: !!t.lineUserId,
+  archived: t.archived ?? false,
+  // SPEC-004 money-setup gate: set by attachSetupIncomplete (true = no budget/salary yet → not bookable).
+  setupIncomplete: false,
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
   // Populated from the teacher's backoffice EXPENSE item by attachTeacherQuotas (SPEC-001).
   // All money fields are satang. remainingMinor = current stock; budgetMinor = configured
