@@ -12,6 +12,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   pgTable,
+  pgSchema,
   pgEnum,
   uuid,
   text,
@@ -138,8 +139,54 @@ export const teachers = pgTable("teachers", {
     .$onUpdate(() => new Date()),
 });
 
-// SPEC-005 (REQ-004): freelance budget re-homed from ops into scheduling `public`. Limit-only
-// (no P&L/expense). One row per freelance teacher with a budget; no row = "budget not set".
+// REQ-006 (TASK-024): the freelance ceiling now lives as a `bo.item` (unit=hour) in the SHARED DB.
+// `bo` migrations are owned by backoffice-back; scheduling only reads/writes item + movement here
+// (direct same-DB access → the freelance decrement stays atomic inside the booking tx, no HTTP).
+export const bo = pgSchema("bo");
+export const boDirection = bo.enum("direction", ["INCOME", "EXPENSE"]);
+export const boCadence = bo.enum("cadence", [
+  "VARIABLE",
+  "FIXED_MONTHLY",
+  "FIXED_DAILY",
+  "FIXED_QUARTERLY",
+]);
+
+export const boItem = bo.table("item", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  unit: text("unit").notNull().default("each"),
+  direction: boDirection("direction").notNull(),
+  cadence: boCadence("cadence").notNull().default("VARIABLE"),
+  ceilingQty: integer("ceiling_qty"),
+  remainingQty: integer("remaining_qty"),
+  unitPriceMinor: integer("unit_price_minor").notNull().default(0),
+  ownerRef: text("owner_ref"),
+  externalSource: text("external_source"),
+  active: boolean("active").notNull().default(true),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export const boMovement = bo.table("movement", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  itemId: uuid("item_id")
+    .notNull()
+    .references(() => boItem.id, { onDelete: "cascade" }),
+  qty: integer("qty").notNull(),
+  remainingAfter: integer("remaining_after"),
+  valueMinor: integer("value_minor").notNull().default(0),
+  reason: text("reason"),
+  refType: text("ref_type"),
+  refId: text("ref_id"),
+  idempotencyKey: text("idempotency_key"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// DORMANT after TASK-024 — superseded by the `bo.item` ceiling. Data migrates in TASK-025; drop later.
 export const freelanceBudgets = pgTable("freelance_budgets", {
   teacherId: uuid("teacher_id")
     .primaryKey()

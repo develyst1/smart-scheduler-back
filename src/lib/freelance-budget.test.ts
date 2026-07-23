@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { freelanceDraw, overLimit } from "./freelance-budget";
+import { drawCeilingHour, overLimit } from "./freelance-budget";
 
-describe("freelanceDraw — local cap/draw (TASK-019)", () => {
-  test("draw exactly to zero", () => {
-    expect(freelanceDraw(50000, 50000, false)).toEqual({ blocked: false, remainingAfter: 0 });
+describe("drawCeilingHour — 1h ceiling draw (TASK-024)", () => {
+  test("draws one hour when within the ceiling", () => {
+    expect(drawCeilingHour(140, false)).toEqual({ blocked: false, remainingAfter: 139 });
   });
-  test("draw with room left", () => {
-    expect(freelanceDraw(120000, 50000, false)).toEqual({ blocked: false, remainingAfter: 70000 });
+  test("last hour draws to zero", () => {
+    expect(drawCeilingHour(1, false)).toEqual({ blocked: false, remainingAfter: 0 });
   });
-  test("insufficient budget, no override → blocked (remaining untouched)", () => {
-    expect(freelanceDraw(20000, 50000, false)).toEqual({ blocked: true, remainingAfter: 20000 });
+  test("no hours left, no override → blocked (remaining untouched)", () => {
+    expect(drawCeilingHour(0, false)).toEqual({ blocked: true, remainingAfter: 0 });
   });
-  test("override allows the draw to go negative", () => {
-    expect(freelanceDraw(20000, 50000, true)).toEqual({ blocked: false, remainingAfter: -30000 });
+  test("override allows going negative", () => {
+    expect(drawCeilingHour(0, true)).toEqual({ blocked: false, remainingAfter: -1 });
   });
 });
 
