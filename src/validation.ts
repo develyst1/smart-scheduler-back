@@ -179,6 +179,17 @@ export const updateTeacher = z.object({
   subjectIds: z.array(z.string().uuid()).optional(),
 });
 
+// Local freelance budget admin (SPEC-005 / TASK-019).
+export const setFreelanceBudget = z.object({
+  monthlyBudgetMinor: z.number().int().min(0),
+  rateMinor: z.number().int().min(0),
+  reorderMinor: z.number().int().min(0).nullable().optional(),
+});
+
+export const topUpBudget = z.object({
+  amountMinor: z.number().int().positive(),
+});
+
 export const teachersQuery = z.object({
   archived: z
     .enum(["true", "false"])

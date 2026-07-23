@@ -78,6 +78,13 @@
       "when": 1783000000006,
       "tag": "0010_teacher_archived",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783000000007,
+      "tag": "0011_freelance_budgets",
+      "breakpoints": true
     }
   ]
 }

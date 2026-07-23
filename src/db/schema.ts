@@ -138,6 +138,22 @@ export const teachers = pgTable("teachers", {
     .$onUpdate(() => new Date()),
 });
 
+// SPEC-005 (REQ-004): freelance budget re-homed from ops into scheduling `public`. Limit-only
+// (no P&L/expense). One row per freelance teacher with a budget; no row = "budget not set".
+export const freelanceBudgets = pgTable("freelance_budgets", {
+  teacherId: uuid("teacher_id")
+    .primaryKey()
+    .references(() => teachers.id, { onDelete: "cascade" }),
+  monthlyBudgetMinor: integer("monthly_budget_minor").notNull(), // configured monthly budget (satang)
+  rateMinor: integer("rate_minor").notNull(), // per-job drawdown = rate × 1h (bookings are 1h)
+  remainingMinor: integer("remaining_minor").notNull(), // current remaining; may go < 0 under override
+  reorderMinor: integer("reorder_minor"), // near-cap warning threshold (satang)
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
 export const subjects = pgTable("subjects", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),

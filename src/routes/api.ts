@@ -32,6 +32,12 @@ export const api = new Hono()
   .patch("/teachers/:id", zValidator("json", v.updateTeacher), async (c) =>
     c.json(await svc.updateTeacher(c.req.param("id"), c.req.valid("json"))),
   )
+  .put("/teachers/:id/budget", zValidator("json", v.setFreelanceBudget), async (c) =>
+    c.json(await svc.setFreelanceBudget(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/teachers/:id/budget/topup", zValidator("json", v.topUpBudget), async (c) =>
+    c.json(await svc.topUpFreelanceBudget(c.req.param("id"), c.req.valid("json").amountMinor)),
+  )
   .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"))))
   .post("/teachers/:id/reactivate", async (c) =>
     c.json(await svc.reactivateTeacher(c.req.param("id"))),

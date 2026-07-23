@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, coursePackages, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { appSettings, bookings, coursePackages, freelanceBudgets, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { TeacherType } from "../types/contract";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
@@ -13,12 +13,6 @@ import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import {
-  attachTeacherQuotas,
-  attachSetupIncomplete,
-  isTeacherSetupIncomplete,
-  drawFreelanceBudget,
-  releaseFreelanceBudget,
-  fetchFreelanceRateMinor,
   onboardOpsTeacher,
   updateOpsTeacher,
   offboardOpsTeacher,
@@ -29,6 +23,7 @@ import {
   reconcileTeacherDrift,
   recordSale,
 } from "../lib/ops-client";
+import { freelanceDraw, overLimit } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
@@ -79,6 +74,47 @@ async function readLimitOverrides(exec: any = db): Promise<Set<string>> {
   return on;
 }
 
+// SPEC-005: re-source the freelance budget DTO fields from the LOCAL `freelance_budgets` table
+// (no ops fetch). Same field names as the old ops-sourced attach → the FE is unchanged. Also sets
+// `setupIncomplete` (FREELANCE with no budget row → true; FT/PT are not gated now — salary deferred).
+async function attachFreelanceBudgets<
+  T extends {
+    id: string;
+    type: TeacherType;
+    archived?: boolean;
+    hourlyRate?: number | null;
+    budgetMinor?: number | null;
+    remainingMinor?: number | null;
+    reorderMinor?: number | null;
+    overLimit?: boolean;
+    setupIncomplete?: boolean;
+  },
+>(dtos: T[]): Promise<T[]> {
+  const rows = await db.query.freelanceBudgets.findMany();
+  const map = new Map(rows.map((r) => [r.teacherId, r]));
+  for (const d of dtos) {
+    const b = map.get(d.id);
+    if (b) {
+      d.hourlyRate = b.rateMinor / 100;
+      d.budgetMinor = b.monthlyBudgetMinor;
+      d.remainingMinor = b.remainingMinor;
+      d.reorderMinor = b.reorderMinor;
+      d.overLimit = overLimit(b.remainingMinor);
+    }
+    d.setupIncomplete = d.type === "FREELANCE" && !b && !d.archived;
+  }
+  return dtos;
+}
+
+/** Booking gate (SPEC-005, local): a FREELANCE teacher with no budget row can't be booked; FT/PT ok. */
+async function isFreelanceSetupIncomplete(exec: any, teacherId: string, type: TeacherType) {
+  if (type !== "FREELANCE") return false;
+  const b = await exec.query.freelanceBudgets.findFirst({
+    where: (x: any, { eq }: any) => eq(x.teacherId, teacherId),
+  });
+  return !b;
+}
+
 const withBookingRelations = {
   student: true,
   teacher: true,
@@ -115,8 +151,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
         typeRank(order, a.type) - typeRank(order, b.type) ||
         a.nickname.localeCompare(b.nickname, "th"),
     );
-  await attachTeacherQuotas(teacherDtos); // UC-016: rate + remaining budget from backoffice item
-  await attachSetupIncomplete(teacherDtos); // SPEC-004: flag teachers with no money set (FE folds into bookable)
+  await attachFreelanceBudgets(teacherDtos); // SPEC-005: local budget + setupIncomplete (no ops)
   const overrides = await readLimitOverrides();
   for (const d of teacherDtos) d.limitOverride = overrides.has(d.id);
 
@@ -173,8 +208,7 @@ export async function getTeachers(opts: { archived?: boolean } = {}) {
     }),
     readTeacherTypeOrder(),
   ]);
-  const dtos = await attachTeacherQuotas(rows.map(toTeacherDTO)); // UC-016
-  await attachSetupIncomplete(dtos); // SPEC-004
+  const dtos = await attachFreelanceBudgets(rows.map(toTeacherDTO)); // SPEC-005 (local)
   const overrides = await readLimitOverrides();
   for (const d of dtos) d.limitOverride = overrides.has(d.id);
   return {
@@ -326,9 +360,10 @@ async function insertBooking(
   if (!teacherWorksOnDay(teacher.workDays, weekdayOf(input.date))) {
     throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
   }
-  // SPEC-004 server backstop to the FE `bookable` gate: a teacher with no money set can't be booked.
-  if (await isTeacherSetupIncomplete(teacher.id, teacher.type)) {
-    throw badRequest(`ครู${teacher.nickname} ยังตั้งค่าเงินไม่ครบ — ตั้งงบ/เงินเดือนก่อนจึงจะจองได้`);
+  // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't
+  // be booked (FT/PT are not gated — salary deferred).
+  if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
+    throw badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`);
   }
 
   try {
@@ -574,26 +609,26 @@ export async function updateBookingStatus(
         );
         await issueCheckinToken(id, tx);
 
-        // SPEC-001 (TASK-002): committing a freelance booking draws its pay from the teacher's
-        // monthly budget-stock in backoffice — one ops OUT = P&L expense + real-time cap. A 409
-        // (budget exhausted, no override) rolls back the whole confirm (over-booking prevention).
-        // Best-effort/skip when backoffice is off or the teacher has no budget item (dev).
+        // SPEC-005 (TASK-019): committing a freelance booking draws its rate from the teacher's LOCAL
+        // budget — same DB tx as the confirm, so it's atomic (no cross-system orphan, no cache lag).
+        // Insufficient budget with no override → rolls back the whole confirm (over-booking prevention).
         if (teacher?.type === "FREELANCE") {
-          const rateMinor = await fetchFreelanceRateMinor(current.teacherId);
-          if (rateMinor != null) {
-            // Honour a durable per-teacher override (TASK-008) or a one-off request override.
+          const budget = await tx.query.freelanceBudgets.findFirst({
+            where: (b, { eq }) => eq(b.teacherId, current.teacherId),
+          });
+          if (budget) {
             const allowNegative = override || (await readLimitOverride(tx, current.teacherId));
-            const draw = await drawFreelanceBudget(current.teacherId, rateMinor, {
-              refId: id,
-              idempotencyKey: `fl-book:${id}`,
-              allowNegative,
-            });
+            const draw = freelanceDraw(budget.remainingMinor, budget.rateMinor, allowNegative);
             if (draw.blocked) {
               throw conflict(
                 "INSUFFICIENT_BUDGET",
                 "งบครูฟรีแลนซ์เต็มแล้ว — เติมงบหรือปลดล็อกก่อนยืนยันคาบ",
               );
             }
+            await tx
+              .update(freelanceBudgets)
+              .set({ remainingMinor: draw.remainingAfter })
+              .where(eq(freelanceBudgets.teacherId, current.teacherId));
           }
         }
       }
@@ -619,7 +654,9 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "CANCELLED", note: reason ?? current.note })
         .where(eq(bookings.id, id));
-      if (current.confirmedAt) releaseFreelanceTeacherId = current.teacherId;
+      // Reverse only a booking that was actually drawn (confirmed) and not already released.
+      if (current.confirmedAt && (current.status === "CONFIRMED" || current.status === "ATTENDED"))
+        releaseFreelanceTeacherId = current.teacherId;
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
@@ -639,7 +676,9 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "SICK_LEAVE", note: reason ?? current.note })
         .where(eq(bookings.id, id));
-      if (current.confirmedAt) releaseFreelanceTeacherId = current.teacherId;
+      // Reverse only a booking that was actually drawn (confirmed) and not already released.
+      if (current.confirmedAt && (current.status === "CONFIRMED" || current.status === "ATTENDED"))
+        releaseFreelanceTeacherId = current.teacherId;
 
       if (current.courseId && current.course) {
         if (canTakeLeave(current.course)) {
@@ -700,25 +739,25 @@ export async function updateBookingStatus(
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }
 
+    // SPEC-005: cancel / customer-leave of a drawn freelance booking returns its rate to the local
+    // budget — in the same tx (atomic). No-op for FT/PT or teachers without a budget row.
+    if (releaseFreelanceTeacherId) {
+      const rid = releaseFreelanceTeacherId;
+      const budget = await tx.query.freelanceBudgets.findFirst({
+        where: (b, { eq }) => eq(b.teacherId, rid),
+      });
+      if (budget) {
+        await tx
+          .update(freelanceBudgets)
+          .set({ remainingMinor: budget.remainingMinor + budget.rateMinor })
+          .where(eq(freelanceBudgets.teacherId, rid));
+      }
+    }
+
     const booking = await loadBookingDTO(tx, id);
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
     return { booking, extended, course: booking.course, locked, notification };
   });
-
-  // SPEC-001 (TASK-002): cancel / customer-leave of a *committed* freelance booking reverses
-  // the budget drawdown — returns the budget, releases the cap, un-books the P&L expense.
-  // Best-effort, post-commit, idempotent per booking (`fl-unbook:<id>`). Only fires when the
-  // booking had been confirmed (i.e. actually drawn). Amount = current rate × 1h (same-month
-  // rate is stable). The attend action no longer draws down (moved to commit).
-  if (releaseFreelanceTeacherId && result.booking.teacher.type === "FREELANCE") {
-    const rateMinor = await fetchFreelanceRateMinor(releaseFreelanceTeacherId);
-    if (rateMinor != null) {
-      void releaseFreelanceBudget(releaseFreelanceTeacherId, rateMinor, {
-        refId: id,
-        idempotencyKey: `fl-unbook:${id}`,
-      });
-    }
-  }
 
   return result;
 }
@@ -822,8 +861,7 @@ async function loadTeacherFull(id: string) {
     with: { teacherSubjects: { with: { subject: true } } },
   });
   if (!row) throw notFound("ไม่พบครู");
-  const [dto] = await attachTeacherQuotas([toTeacherDTO(row)]);
-  await attachSetupIncomplete([dto]);
+  const [dto] = await attachFreelanceBudgets([toTeacherDTO(row)]);
   dto.limitOverride = await readLimitOverride(db, id);
   return dto;
 }
@@ -931,6 +969,63 @@ export async function reactivateTeacher(id: string) {
     await opsSyncOr502(updateOpsTeacher(id, { active: true })); // blocking
   });
   return loadTeacherFull(id);
+}
+
+// ───────────────────── Local freelance budget admin (SPEC-005 / TASK-019) ─────────────────────
+
+/** Upsert a freelance teacher's budget. First set makes `remaining = monthlyBudget`; an edit changes
+ *  budget/rate/threshold but does NOT overwrite `remaining` (edit = next-reset target; use top-up to
+ *  change remaining now). */
+export async function setFreelanceBudget(
+  teacherId: string,
+  input: { monthlyBudgetMinor: number; rateMinor: number; reorderMinor?: number | null },
+) {
+  const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, teacherId) });
+  if (!teacher) throw notFound("ไม่พบครู");
+  const existing = await db.query.freelanceBudgets.findFirst({
+    where: (b, { eq }) => eq(b.teacherId, teacherId),
+  });
+  if (existing) {
+    await db
+      .update(freelanceBudgets)
+      .set({
+        monthlyBudgetMinor: input.monthlyBudgetMinor,
+        rateMinor: input.rateMinor,
+        reorderMinor: input.reorderMinor ?? null,
+      })
+      .where(eq(freelanceBudgets.teacherId, teacherId));
+  } else {
+    await db.insert(freelanceBudgets).values({
+      teacherId,
+      monthlyBudgetMinor: input.monthlyBudgetMinor,
+      rateMinor: input.rateMinor,
+      remainingMinor: input.monthlyBudgetMinor, // first set → full budget
+      reorderMinor: input.reorderMinor ?? null,
+    });
+  }
+  return loadTeacherFull(teacherId);
+}
+
+/** Top up remaining now (unlock a capped teacher / add mid-month budget). */
+export async function topUpFreelanceBudget(teacherId: string, amountMinor: number) {
+  const existing = await db.query.freelanceBudgets.findFirst({
+    where: (b, { eq }) => eq(b.teacherId, teacherId),
+  });
+  if (!existing) throw notFound("ครูยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะเติมได้");
+  await db
+    .update(freelanceBudgets)
+    .set({ remainingMinor: existing.remainingMinor + amountMinor })
+    .where(eq(freelanceBudgets.teacherId, teacherId));
+  return loadTeacherFull(teacherId);
+}
+
+/** Monthly reset: every budget's `remaining` back to its `monthlyBudget` (the month-reset job). */
+export async function resetFreelanceBudgets() {
+  const rows = await db
+    .update(freelanceBudgets)
+    .set({ remainingMinor: sql`${freelanceBudgets.monthlyBudgetMinor}` })
+    .returning({ teacherId: freelanceBudgets.teacherId });
+  return { reset: rows.length };
 }
 
 /** Read-only teacher↔ops drift report (SPEC-004 #5.2 / TASK-018). Compares the scheduling roster (incl.
