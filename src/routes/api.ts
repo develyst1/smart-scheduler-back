@@ -29,6 +29,15 @@ export const api = new Hono()
   .post("/teachers", zValidator("json", v.createTeacher), async (c) =>
     c.json(await svc.createTeacher(c.req.valid("json")), 201),
   )
+  // ⚠️ Literal `/teachers/<word>` PATCH routes MUST be registered before the param route
+  // `.patch("/teachers/:id")` below — else Hono matches them as id="availability"/"type-order"
+  // → updateTeacher(<word>) → Postgres 22P02 invalid uuid → 500 (TASK-029 §3).
+  .patch("/teachers/availability", zValidator("json", v.setAvailability), async (c) =>
+    c.json(await svc.setAvailability(c.req.valid("json"))),
+  )
+  .patch("/teachers/type-order", zValidator("json", v.setTeacherTypeOrder), async (c) =>
+    c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
+  )
   .patch("/teachers/:id", zValidator("json", v.updateTeacher), async (c) =>
     c.json(await svc.updateTeacher(c.req.param("id"), c.req.valid("json"))),
   )
@@ -43,10 +52,6 @@ export const api = new Hono()
     c.json(await svc.reactivateTeacher(c.req.param("id"))),
   )
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
-  .get("/teachers/reconcile", async (c) => c.json(await svc.reconcileTeachers()))
-  .patch("/teachers/type-order", zValidator("json", v.setTeacherTypeOrder), async (c) =>
-    c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
-  )
   .get("/courses", async (c) => c.json(await svc.getCourses()))
   .post("/courses", zValidator("json", v.createCoursePackage), async (c) =>
     c.json(await svc.createCoursePackage(c.req.valid("json")), 201),
@@ -72,9 +77,6 @@ export const api = new Hono()
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
-  )
-  .patch("/teachers/availability", zValidator("json", v.setAvailability), async (c) =>
-    c.json(await svc.setAvailability(c.req.valid("json"))),
   )
   .patch("/teachers/:id/work-days", zValidator("json", v.setTeacherWorkDays), async (c) =>
     c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays)),

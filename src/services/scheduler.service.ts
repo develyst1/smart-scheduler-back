@@ -12,25 +12,21 @@ import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../li
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
+import { recordSale } from "../lib/ops-client";
 import {
-  onboardOpsTeacher,
-  updateOpsTeacher,
-  offboardOpsTeacher,
-  switchTypeOpsTeacher,
-  fetchOpsPartyRefs,
-  fetchOpsBudgetRefs,
-  fetchOpsOpenSalaryRefs,
-  reconcileTeacherDrift,
-  recordSale,
-} from "../lib/ops-client";
-import { drawCeilingHour, overLimit } from "../lib/freelance-budget";
+  drawCeilingHour,
+  heldTarget,
+  overLimit,
+  reconcileDelta,
+  reconcileRemaining,
+} from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone } from "./parent.service";
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
-import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
@@ -89,6 +85,60 @@ async function findFreelanceItem(exec: any, teacherId: string) {
         sql`${i.metadata}->>'kind' = ${FREELANCE_KIND}`,
       ),
   });
+}
+
+// Reconcile a freelance booking's ceiling drawdown to its status (REQ-006 / TASK-028). `held ∈ {0,1}` is
+// derived from the net `bo.movement(refId=booking)` on the teacher's ceiling item — the single source of
+// truth — so any status round-trip is idempotent and can never inflate `remaining` past the ceiling. Posts
+// at most one movement to move held → target(status); no-op when already there. Runs inside the caller's tx
+// (atomic, same DB). No-op for non-FREELANCE teachers or a teacher with no ceiling item.
+async function reconcileFreelanceDraw(
+  tx: any,
+  bookingId: string,
+  teacherId: string,
+  status: string,
+  override: boolean,
+) {
+  const teacher = await tx.query.teachers.findFirst({
+    where: (t: any, { eq }: any) => eq(t.id, teacherId),
+  });
+  if (teacher?.type !== "FREELANCE") return;
+
+  const item = await findFreelanceItem(tx, teacherId);
+  if (!item || item.remainingQty === null) return;
+
+  // held = −Σ(movement.qty) for this booking on this item (a draw is qty −1 → held +1).
+  const movements = await tx.query.boMovement.findMany({
+    where: (m: any, { and, eq }: any) => and(eq(m.itemId, item.id), eq(m.refId, bookingId)),
+  });
+  const held = -movements.reduce((sum: number, m: any) => sum + m.qty, 0);
+
+  const delta = reconcileDelta(held, status);
+  if (delta === 0) return; // already at target — idempotent no-op
+
+  const allowNegative = override || (await readLimitOverride(tx, teacherId));
+  if (delta > 0 && drawCeilingHour(item.remainingQty, allowNegative).blocked) {
+    throw conflict(
+      "INSUFFICIENT_BUDGET",
+      "งบครูฟรีแลนซ์เต็มแล้ว — เติมงบหรือปลดล็อกก่อนยืนยันคาบ",
+    );
+  }
+
+  const qty = -delta; // draw → −1, refund → +1
+  const remainingAfter = reconcileRemaining(item.remainingQty, item.ceilingQty ?? item.remainingQty, delta);
+  await tx.update(boItem).set({ remainingQty: remainingAfter }).where(eq(boItem.id, item.id));
+  await tx
+    .insert(boMovement)
+    .values({
+      itemId: item.id,
+      qty,
+      remainingAfter,
+      valueMinor: -qty * item.unitPriceMinor, // draw → +rate (expense); refund → −rate (un-books it)
+      refType: delta > 0 ? "BOOKING" : "BOOKING_REVERSAL",
+      refId: bookingId,
+      idempotencyKey: `fl:${bookingId}:held${heldTarget(status)}`,
+    })
+    .onConflictDoNothing();
 }
 
 // Re-source the freelance budget DTO fields from the `bo.item` ceiling (hours × rate = baht, so the
@@ -598,9 +648,6 @@ export async function updateBookingStatus(
   reason?: string,
   override = false,
 ) {
-  // Set inside the tx when a *committed* freelance booking is cancelled/left, so the budget
-  // drawdown is reversed post-commit (SPEC-001 / TASK-002).
-  let releaseFreelanceTeacherId: string | null = null;
   const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
@@ -633,39 +680,6 @@ export async function updateBookingStatus(
           tx,
         );
         await issueCheckinToken(id, tx);
-
-        // REQ-006 (TASK-024): committing a freelance booking draws one hour from the teacher's `bo.item`
-        // ceiling + writes a `bo.movement` (qty −1) — in the booking's own tx (same DB), so it's atomic.
-        // < 1 hour left and no override → rolls back the whole confirm (over-booking prevention).
-        if (teacher?.type === "FREELANCE") {
-          const item = await findFreelanceItem(tx, current.teacherId);
-          if (item && item.remainingQty !== null) {
-            const allowNegative = override || (await readLimitOverride(tx, current.teacherId));
-            const draw = drawCeilingHour(item.remainingQty, allowNegative);
-            if (draw.blocked) {
-              throw conflict(
-                "INSUFFICIENT_BUDGET",
-                "งบครูฟรีแลนซ์เต็มแล้ว — เติมงบหรือปลดล็อกก่อนยืนยันคาบ",
-              );
-            }
-            await tx
-              .update(boItem)
-              .set({ remainingQty: draw.remainingAfter })
-              .where(eq(boItem.id, item.id));
-            await tx
-              .insert(boMovement)
-              .values({
-                itemId: item.id,
-                qty: -1,
-                remainingAfter: draw.remainingAfter,
-                valueMinor: item.unitPriceMinor, // = −qty × price = +rate (expense)
-                refType: "BOOKING",
-                refId: id,
-                idempotencyKey: `fl-book:${id}`,
-              })
-              .onConflictDoNothing();
-          }
-        }
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -689,9 +703,6 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "CANCELLED", note: reason ?? current.note })
         .where(eq(bookings.id, id));
-      // Reverse only a booking that was actually drawn (confirmed) and not already released.
-      if (current.confirmedAt && (current.status === "CONFIRMED" || current.status === "ATTENDED"))
-        releaseFreelanceTeacherId = current.teacherId;
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
@@ -711,9 +722,6 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "SICK_LEAVE", note: reason ?? current.note })
         .where(eq(bookings.id, id));
-      // Reverse only a booking that was actually drawn (confirmed) and not already released.
-      if (current.confirmedAt && (current.status === "CONFIRMED" || current.status === "ATTENDED"))
-        releaseFreelanceTeacherId = current.teacherId;
 
       if (current.courseId && current.course) {
         if (canTakeLeave(current.course)) {
@@ -774,31 +782,14 @@ export async function updateBookingStatus(
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }
 
-    // REQ-006 (TASK-024): cancel / customer-leave of a drawn freelance booking returns one hour to the
-    // `bo.item` ceiling + writes a reversal `bo.movement` (qty +1, negative value → nets the draw) — in
-    // the same tx. Only fires when the booking was actually drawn (guarded above). No-op for FT/PT.
-    if (releaseFreelanceTeacherId) {
-      const rid = releaseFreelanceTeacherId;
-      const item = await findFreelanceItem(tx, rid);
-      if (item && item.remainingQty !== null) {
-        await tx
-          .update(boItem)
-          .set({ remainingQty: item.remainingQty + 1 })
-          .where(eq(boItem.id, item.id));
-        await tx
-          .insert(boMovement)
-          .values({
-            itemId: item.id,
-            qty: 1,
-            remainingAfter: item.remainingQty + 1,
-            valueMinor: -item.unitPriceMinor, // = −qty × price = −rate → un-books the expense
-            refType: "BOOKING_REVERSAL",
-            refId: id,
-            idempotencyKey: `fl-unbook:${id}`,
-          })
-          .onConflictDoNothing();
-      }
-    }
+    // REQ-006 (TASK-028): reconcile the freelance ceiling drawdown to the booking's *actual* new status —
+    // one idempotent movement, `held` derived from the ledger. Replaces the old draw-on-confirm /
+    // refund-on-cancel-or-leave, which mutated `remaining` unconditionally and double-refunded on a status
+    // round-trip (ATTENDED↔SICK_LEAVE) → `remaining` past ceiling. Consuming (keeps the draw): CONFIRMED /
+    // ATTENDED / SICK_LEAVE / EXTENDED; releasing: NO_SHOW / CANCELLED / PENDING. The makeup EXTENDED row is
+    // deliberately NOT reconciled here — it draws on its own confirm, preserving today's behavior.
+    const after = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
+    if (after) await reconcileFreelanceDraw(tx, id, current.teacherId, after.status, override);
 
     const booking = await loadBookingDTO(tx, id);
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
@@ -889,16 +880,6 @@ export async function setLimitOverride(id: string, override: boolean) {
 
 // ───────────────────── Teacher lifecycle (SPEC-004 / TASK-016) ─────────────────────
 
-/** Map a blocking ops teacher-sync failure to a clean 502 (so the FE shows "backoffice sync failed —
- *  retry"), while DB errors keep their own codes. The throw still rolls back the enclosing tx. */
-async function opsSyncOr502<T>(p: Promise<T>): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    throw new ApiException(502, "OPS_SYNC_FAILED", "ซิงก์กับ backoffice ไม่สำเร็จ — ลองใหม่อีกครั้ง");
-  }
-}
-
 /** Load one teacher fully-decorated (rate/budget, setupIncomplete, override) — the DTO shape the
  *  lifecycle mutations return. */
 async function loadTeacherFull(id: string) {
@@ -912,8 +893,8 @@ async function loadTeacherFull(id: string) {
   return dto;
 }
 
-/** Create a teacher + its ops party in one flow. The ops onboard is BLOCKING and runs inside the tx,
- *  so a sync failure rolls back the insert — no teacher is ever left without a backoffice party (REQ #1.4). */
+/** Create a teacher (standalone — TASK-029). Freelance money is a local `bo.item` (set later via the
+ *  admin UI), so there is no backoffice party to sync; the tx just inserts the teacher + its subjects. */
 export async function createTeacher(input: {
   name: string;
   nickname: string;
@@ -938,23 +919,19 @@ export async function createTeacher(input: {
         .insert(teacherSubjects)
         .values(input.subjectIds.map((subjectId) => ({ teacherId: row.id, subjectId })));
     }
-    await opsSyncOr502(onboardOpsTeacher(row.id, input.name)); // blocking; throw → rollback
     return row.id;
   });
   return loadTeacherFull(id);
 }
 
-/** Edit a teacher. Name change → ops party rename; **type change → close the OLD money** (switch-type,
- *  effective this month) — new money is set later via the admin UI. Both sync calls are blocking. */
+/** Edit a teacher (standalone — TASK-029). Updates name/nickname/type/subjects locally; type change is
+ *  effective-dated only in the (deferred) backoffice salary model, so there is no money mutation here. */
 export async function updateTeacher(
   id: string,
   input: { name?: string; nickname?: string; type?: TeacherType; subjectIds?: string[] },
 ) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
-  const nameChanged = input.name !== undefined && input.name !== current.name;
-  const typeChanged = input.type !== undefined && input.type !== current.type;
-  const month = bangkokNow().date.slice(0, 7);
 
   await db.transaction(async (tx) => {
     const set: Partial<typeof teachers.$inferInsert> = {};
@@ -970,15 +947,12 @@ export async function updateTeacher(
           .insert(teacherSubjects)
           .values(input.subjectIds.map((subjectId) => ({ teacherId: id, subjectId })));
     }
-
-    if (nameChanged) await opsSyncOr502(updateOpsTeacher(id, { displayName: input.name }));
-    if (typeChanged) await opsSyncOr502(switchTypeOpsTeacher(id, month));
   });
   return loadTeacherFull(id);
 }
 
-/** Offboard a teacher (soft). Rejects with 409 if they have any future live booking (must be
- *  reassigned/cleared first); else archive + deactivate the ops party + stop money going forward. */
+/** Offboard a teacher (soft — TASK-029). Rejects with 409 if they have any future live booking (must be
+ *  reassigned/cleared first); else archive + deactivate locally (freelance money is a local `bo.item`). */
 export async function archiveTeacher(id: string) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
@@ -1000,20 +974,16 @@ export async function archiveTeacher(id: string) {
 
   await db.transaction(async (tx) => {
     await tx.update(teachers).set({ archived: true, active: false }).where(eq(teachers.id, id));
-    await opsSyncOr502(offboardOpsTeacher(id, today.slice(0, 7))); // blocking
   });
   return loadTeacherFull(id);
 }
 
-/** Bring an archived teacher back: un-archive + reactivate the ops party. Money is re-set via the
- *  admin UI (until then the teacher shows `setupIncomplete`). */
+/** Bring an archived teacher back (standalone — TASK-029): un-archive + reactivate locally. Money is
+ *  re-set via the admin UI (until then a freelance teacher shows `setupIncomplete`). */
 export async function reactivateTeacher(id: string) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
-  await db.transaction(async (tx) => {
-    await tx.update(teachers).set({ archived: false, active: true }).where(eq(teachers.id, id));
-    await opsSyncOr502(updateOpsTeacher(id, { active: true })); // blocking
-  });
+  await db.update(teachers).set({ archived: false, active: true }).where(eq(teachers.id, id));
   return loadTeacherFull(id);
 }
 
@@ -1090,34 +1060,9 @@ export async function resetFreelanceBudgets() {
   return { reset: rows.length };
 }
 
-/** Read-only teacher↔ops drift report (SPEC-004 #5.2 / TASK-018). Compares the scheduling roster (incl.
- *  archived) against live ops parties + money via the public ops GETs. No writes — repair is manual
- *  (re-run onboard/offboard). Fails cleanly (502) if backoffice is unreachable, rather than reporting
- *  false drift from empty responses. */
-export async function reconcileTeachers() {
-  let partyRefs: Set<string>, budgetRefs: Set<string>, salaryRefs: Set<string>;
-  try {
-    [partyRefs, budgetRefs, salaryRefs] = await Promise.all([
-      fetchOpsPartyRefs(),
-      fetchOpsBudgetRefs(),
-      fetchOpsOpenSalaryRefs(),
-    ]);
-  } catch {
-    throw new ApiException(502, "OPS_UNREACHABLE", "เชื่อมต่อ backoffice ไม่ได้ — ลองใหม่อีกครั้ง");
-  }
-  const rows = await db.query.teachers.findMany(); // includes archived
-  const report = reconcileTeacherDrift(
-    rows.map((t) => ({ id: t.id, archived: t.archived, type: t.type })),
-    partyRefs,
-    budgetRefs,
-    salaryRefs,
-  );
-  return {
-    ...report,
-    repairHint:
-      "Repair by re-running the teacher endpoints: missingParty → PATCH/re-onboard; moneyForArchived → re-archive (offboard).",
-  };
-}
+// Ops teacher↔party drift report (SPEC-004 #5.2 / TASK-018) removed by TASK-029: the backoffice `ops`
+// party model is retired (freelance money is a local `bo.item`), so there is no external roster to
+// reconcile against. `GET /api/teachers/reconcile` was removed with it.
 
 export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {
   if (input.adminUnlocked !== undefined) {

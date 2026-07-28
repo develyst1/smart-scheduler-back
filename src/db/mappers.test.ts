@@ -25,3 +25,21 @@ describe("toTeacherDTO budget fields (TASK-008)", () => {
     expect("quotaRemaining" in dto).toBe(false);
   });
 });
+
+describe("toTeacherDTO — dangling teacher_subjects row (TASK-029, availability 500 fix)", () => {
+  test("skips a teacher_subjects row whose joined subject is missing instead of throwing", () => {
+    const dto = toTeacherDTO({
+      id: "t2",
+      name: "Bob",
+      nickname: "บ๊อบ",
+      type: "PART_TIME",
+      active: true,
+      teacherSubjects: [
+        { subject: { id: "s1", name: "Balance Bike" } },
+        { subject: null }, // dangling row — used to crash `ts.subject.id`
+        { subject: undefined },
+      ],
+    });
+    expect(dto.subjects).toEqual([{ id: "s1", name: "Balance Bike" }]);
+  });
+});

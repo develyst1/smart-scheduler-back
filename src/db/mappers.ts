@@ -18,10 +18,14 @@ export const toTeacherDTO = (t: any) => ({
   nickname: t.nickname,
   type: t.type,
   active: t.active,
-  subjects: (t.teacherSubjects ?? []).map((ts: any) => ({
-    id: ts.subject.id,
-    name: ts.subject.name,
-  })),
+  // Guard against a dangling teacher_subjects row (no joined subject) — else `ts.subject.id` throws
+  // and crashes the whole endpoint (was the PATCH /api/teachers/availability 500). TASK-029.
+  subjects: (t.teacherSubjects ?? [])
+    .filter((ts: any) => ts.subject)
+    .map((ts: any) => ({
+      id: ts.subject.id,
+      name: ts.subject.name,
+    })),
   lineLinked: !!t.lineUserId,
   archived: t.archived ?? false,
   // SPEC-004 money-setup gate: set by attachSetupIncomplete (true = no budget/salary yet → not bookable).
