@@ -311,7 +311,10 @@ export async function setTeacherTypeOrder(order: TeacherType[]) {
 }
 
 export async function getCourses() {
-  const rows = await db.query.coursePackages.findMany({ with: { student: true } });
+  // Load one booking's subject per course to surface the sport program (a course ⇔ one subject; REQ-010).
+  const rows = await db.query.coursePackages.findMany({
+    with: { student: true, bookings: { with: { subject: true }, limit: 1 } },
+  });
   return rows.map(toCourseWithStudent);
 }
 

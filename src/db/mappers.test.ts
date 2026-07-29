@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toTeacherDTO } from "./mappers";
+import { toCourseWithStudent, toTeacherDTO } from "./mappers";
 
 describe("toTeacherDTO budget fields (TASK-008)", () => {
   test("carries satang budget fields, defaulting until quotas/override are attached", () => {
@@ -23,6 +23,31 @@ describe("toTeacherDTO budget fields (TASK-008)", () => {
     });
     // old hours-based field is gone (renamed to remainingMinor, satang)
     expect("quotaRemaining" in dto).toBe(false);
+  });
+});
+
+describe("toCourseWithStudent — sport program (subject) derived from bookings (TASK-034)", () => {
+  const base = {
+    id: "c1",
+    size: 10,
+    usedSessions: 2,
+    leaveUsed: 0,
+    adminUnlocked: false,
+    expiryDate: "2026-09-01",
+    student: { id: "s1", name: "น้องโอ๊ด", nickname: "โอ๊ด" },
+  };
+
+  test("derives subject from the course's first booking", () => {
+    const dto = toCourseWithStudent({
+      ...base,
+      bookings: [{ subject: { id: "sub1", name: "Balance Bike" } }],
+    });
+    expect(dto.subject).toEqual({ id: "sub1", name: "Balance Bike" });
+  });
+
+  test("subject is null when bookings aren't loaded / empty (safe for other callers)", () => {
+    expect(toCourseWithStudent(base).subject).toBeNull();
+    expect(toCourseWithStudent({ ...base, bookings: [] }).subject).toBeNull();
   });
 });
 

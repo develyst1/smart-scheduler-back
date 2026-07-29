@@ -143,6 +143,21 @@ export async function createStudent(input: {
   });
 }
 
+/** OR-conditions for the student search WHERE. The parent-phone `ilike` is included ONLY when the query has
+ *  digits — otherwise `normalizePhone(q)` is `""` and `ilike(phone, '%%')` matches every student with a phone,
+ *  which defeats the name/nickname filters and returns the whole roster (REQ-011 bug). Name + nickname always
+ *  match. Exported so the phone-clause rule is unit-testable without a DB. */
+export function studentSearchConditions(q: string) {
+  const term = q.trim();
+  const digits = normalizePhone(q);
+  const conditions = [
+    ilike(students.name, `%${term}%`),
+    ilike(students.nickname, `%${term}%`),
+  ];
+  if (digits) conditions.push(ilike(parents.phone, `%${digits}%`));
+  return conditions;
+}
+
 /** Booking dropdown source: students searchable by name, nickname, or parent phone. */
 export async function searchStudents(q?: string, limit = 50) {
   const rows = await db
@@ -156,15 +171,7 @@ export async function searchStudents(q?: string, limit = 50) {
     })
     .from(students)
     .leftJoin(parents, eq(parents.id, students.parentId))
-    .where(
-      q && q.trim()
-        ? or(
-            ilike(students.name, `%${q.trim()}%`),
-            ilike(students.nickname, `%${q.trim()}%`),
-            ilike(parents.phone, `%${normalizePhone(q)}%`),
-          )
-        : sql`true`,
-    )
+    .where(q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`)
     .orderBy(asc(students.name))
     .limit(Math.min(limit, 200));
 

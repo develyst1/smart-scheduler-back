@@ -120,6 +120,11 @@ export const toBookingDTO = (b: any) => ({
 export const toCourseWithStudent = (c: any) => ({
   ...toCourseSummary(c),
   student: studentRef(c.student),
+  // Sport program derived from any one of the course's bookings (all share the subject). null when bookings
+  // aren't loaded (other callers) — the /scheduler/bookings list loads them (REQ-010 / TASK-034).
+  subject: c.bookings?.[0]?.subject
+    ? { id: c.bookings[0].subject.id, name: c.bookings[0].subject.name }
+    : null,
 });
 
 export const toVoucherDTO = (v: any) => ({

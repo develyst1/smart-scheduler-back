@@ -107,6 +107,9 @@ export interface CourseSummary {
   leaveLocked: boolean; // over quota & not admin-unlocked → no more rescheduling
   adminUnlocked: boolean;
   expiryDate: IsoDate;
+  /** The course's sport program, derived from its bookings (a course ⇔ one subject). null only when the
+   *  course's bookings aren't loaded (e.g. post-mutation responses) — the list re-fetches. (REQ-010) */
+  subject: SubjectRef | null;
 }
 
 /** The universal booking shape — used by calendar cells, the table, and the modal. */
