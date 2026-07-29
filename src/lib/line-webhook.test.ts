@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import {
+  eventPostbackData,
   normalizePhone,
+  parsePostback,
   parseRoleChoice,
   verifyLineSignature,
 } from "./line-webhook";
@@ -24,5 +26,22 @@ describe("line-webhook (C.4)", () => {
     const sig = createHmac("sha256", secret).update(body).digest("base64");
     expect(verifyLineSignature(body, sig, secret)).toBe(true);
     expect(verifyLineSignature(body, "bad", secret)).toBe(false);
+  });
+});
+
+describe("postback parsing (REQ-015 / TASK-038)", () => {
+  test("parsePostback splits action + params", () => {
+    expect(parsePostback("action=checkin")).toEqual({ action: "checkin", params: { action: "checkin" } });
+    expect(parsePostback("action=leave&bookingId=abc-123")).toEqual({
+      action: "leave",
+      params: { action: "leave", bookingId: "abc-123" },
+    });
+  });
+  test("parsePostback with no action → empty action string", () => {
+    expect(parsePostback("foo=bar").action).toBe("");
+  });
+  test("eventPostbackData reads postback events only", () => {
+    expect(eventPostbackData({ type: "postback", postback: { data: "action=menu" } })).toBe("action=menu");
+    expect(eventPostbackData({ type: "message", message: { type: "text", id: "1", text: "hi" } })).toBeNull();
   });
 });

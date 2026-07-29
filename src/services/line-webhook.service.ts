@@ -1,20 +1,26 @@
-// LINE OA webhook handler — role verification (C.4) + parent self-service.
-// Parent flow: พิมพ์ "สมัคร" → เลือกบทบาท → ใส่เบอร์ → (ผูก/สร้างผู้ปกครอง) →
-// เพิ่มนักเรียน (ลูก) ได้สูงสุด 5 คนต่อเบอร์. เบอร์เดียวมีนักเรียนได้หลายคน และ
-// คำสั่งเช็คอิน/ลา/qr ทำงานกับนักเรียนทุกคนของเบอร์นั้น.
+// LINE OA webhook handler — role verification (C.4) + parent self-service, tap-driven (REQ-015) and bilingual
+// TH/EN (TASK-039). Every user-facing string comes from `line-i18n` (`t(key, lang, vars)`); the user's language
+// is resolved once per event from their LINE-link record (default TH, seeded from locale on link, toggled by the
+// language button). Rich-menu/quick-reply taps arrive as postback events routed to the SAME handlers as keywords.
 
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { lineLinkSessions, teachers } from "../db/schema";
+import { lineLinkSessions, parents, teachers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { replyMessage, type LineTextMessage } from "../lib/line-client";
+import { getProfileLang, replyMessage, type LineMessage } from "../lib/line-client";
 import {
+  eventPostbackData,
   eventText,
   eventUserId,
+  parsePostback,
   parseRoleChoice,
   type LineWebhookEvent,
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
+import { bookingPicker, childrenFlex, textReply } from "../lib/line-reply";
+import { linkRoleRichMenu } from "../lib/line-rich-menu";
+import { t, type Lang } from "../lib/line-i18n";
+import { resolveBotLang as resolveLang } from "../lib/line-lang";
 import {
   MAX_STUDENTS_PER_PARENT,
   createStudentForParent,
@@ -29,45 +35,17 @@ import { hhmm } from "../lib/time";
 import { checkinByToken, findTodayBookingsForParent, getCheckinQr } from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
 
-const WELCOME =
-  "สวัสดีค่ะ ยินดีต้อนรับสู่ Smart Scheduler\n\n" +
-  "พิมพ์ สมัคร เพื่อผูกบัญชี LINE\n" +
-  "หลังผูกแล้ว (ผู้ปกครอง): เพิ่มนักเรียน · เช็คอิน · ลา · qr";
-
-const ROLE_PROMPT =
-  "เลือกบทบาทของคุณ:\n" +
-  "1 = ลูกค้า/ผู้ปกครอง\n" +
-  "2 = ครู\n" +
-  "3 = แอดมิน";
-
-const CODE_PROMPT: Record<string, string> = {
-  customer: "กรุณาพิมพ์เบอร์โทรของผู้ปกครอง (เช่น 0812345678)",
-  teacher: "กรุณาพิมพ์ชื่อเล่นครูตามที่ลงทะเบียนในระบบ",
-  admin: "กรุณาพิมพ์รหัสแอดมิน (เช่น 229)",
-};
-
-const ADD_STUDENT_PROMPT =
-  `ต้องการเพิ่มนักเรียน (ลูก) ไหมคะ?\n` +
-  `พิมพ์ชื่อนักเรียน เช่น "น้องพีพี" (เพิ่มได้สูงสุด ${MAX_STUDENTS_PER_PARENT} คนต่อเบอร์)\n` +
-  `หรือพิมพ์ "ข้าม" หากยังไม่เพิ่มตอนนี้`;
-
-const LINKED_PARENT_MENU =
-  "คำสั่งที่ใช้ได้:\n" +
-  "· เพิ่มนักเรียน — เพิ่มลูกเข้าระบบ (สูงสุด 5 คน)\n" +
-  "· นักเรียน — ดูรายชื่อลูกของคุณ\n" +
-  "· เช็คอิน — เช็คอินคาบวันนี้\n" +
-  "· ลา — แจ้งลาคาบวันนี้\n" +
-  "· qr — รับลิงก์เช็คอิน\n" +
-  "· เมนู — แสดงคำสั่งนี้อีกครั้ง";
-
 const SKIP_WORDS = ["ข้าม", "ไม่", "ไม่เพิ่ม", "เสร็จ", "จบ", "skip", "no", "done"];
 
 type LinkRole = "customer" | "teacher" | "admin";
 type VerifyResult = { ok: boolean; message: string };
 
 async function reply(replyToken: string, text: string) {
-  const msg: LineTextMessage = { type: "text", text };
-  await replyMessage(replyToken, [msg]);
+  await replyMessage(replyToken, [{ type: "text", text }]);
+}
+
+async function send(replyToken: string, messages: LineMessage[]) {
+  await replyMessage(replyToken, messages);
 }
 
 async function getSession(lineUserId: string) {
@@ -92,7 +70,7 @@ async function clearSession(lineUserId: string) {
 
 async function detectLinkedRole(lineUserId: string): Promise<LinkRole | null> {
   const [teacher, parent, admins] = await Promise.all([
-    db.query.teachers.findFirst({ where: (t, { eq: e }) => e(t.lineUserId, lineUserId) }),
+    db.query.teachers.findFirst({ where: (t2, { eq: e }) => e(t2.lineUserId, lineUserId) }),
     findParentByLineUserId(lineUserId),
     getAdminLineUserIds(),
   ]);
@@ -102,50 +80,56 @@ async function detectLinkedRole(lineUserId: string): Promise<LinkRole | null> {
   return null;
 }
 
+/** Flip the stored language on whichever link record matches (parent/teacher). Returns the new language. */
+async function toggleLang(lineUserId: string, current: Lang): Promise<Lang> {
+  const next: Lang = current === "EN" ? "TH" : "EN";
+  await Promise.all([
+    db.update(teachers).set({ lineLang: next }).where(eq(teachers.lineUserId, lineUserId)),
+    db.update(parents).set({ lineLang: next }).where(eq(parents.lineUserId, lineUserId)),
+  ]);
+  return next;
+}
+
 async function verifyAndLink(
   lineUserId: string,
   role: LinkRole,
   code: string,
+  lang: Lang,
 ): Promise<VerifyResult> {
   if (role === "admin") {
     const expected = process.env.LINE_ADMIN_VERIFY_CODE ?? "229";
-    if (code.trim() !== expected) return { ok: false, message: "รหัสแอดมินไม่ถูกต้อง ลองใหม่อีกครั้ง" };
+    if (code.trim() !== expected) return { ok: false, message: t("verify_admin_bad", lang) };
     await addAdminLineUserId(lineUserId);
-    return { ok: true, message: "ผูกบัญชีแอดมินสำเร็จ ✅ จะได้รับแจ้งเตือนเมื่อมีการแจ้งลา" };
+    return { ok: true, message: t("verify_admin_ok", lang) };
   }
 
   if (role === "teacher") {
     const nick = code.trim();
     const rows = await db.select().from(teachers);
-    const teacher = rows.find((t) => t.nickname.toLowerCase() === nick.toLowerCase());
-    if (!teacher) return { ok: false, message: `ไม่พบครูชื่อเล่น "${nick}" — ตรวจสอบอีกครั้ง` };
+    const teacher = rows.find((tt) => tt.nickname.toLowerCase() === nick.toLowerCase());
+    if (!teacher) return { ok: false, message: t("verify_teacher_notfound", lang, { nick }) };
     if (teacher.lineUserId && teacher.lineUserId !== lineUserId) {
-      return { ok: false, message: "ครูคนนี้ผูก LINE กับบัญชีอื่นแล้ว ติดต่อแอดมิน" };
+      return { ok: false, message: t("verify_teacher_other", lang) };
     }
     await db.update(teachers).set({ lineUserId }).where(eq(teachers.id, teacher.id));
-    return {
-      ok: true,
-      message: `ผูกบัญชีครูสำเร็จ ✅ (${teacher.nickname}) จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง`,
-    };
+    return { ok: true, message: t("verify_teacher_ok", lang, { nick: teacher.nickname }) };
   }
 
   // customer / parent — keyed by phone. One phone = one parent (many children).
   const phone = normalizePhone(code);
-  if (phone.length < 9) {
-    return { ok: false, message: "เบอร์โทรไม่ถูกต้อง กรุณาพิมพ์เบอร์ที่ลงทะเบียน (เช่น 0812345678)" };
-  }
+  if (phone.length < 9) return { ok: false, message: t("verify_parent_badphone", lang) };
   const existing = await findParentByPhone(phone);
   if (existing) {
     if (existing.lineUserId && existing.lineUserId !== lineUserId) {
-      return { ok: false, message: "เบอร์นี้ผูกกับ LINE อื่นแล้ว ติดต่อแอดมิน" };
+      return { ok: false, message: t("verify_parent_other", lang) };
     }
     await linkParentLine(existing.id, lineUserId);
     const kids = await listStudentsOfParent(existing.id);
-    const list = kids.length ? `\nนักเรียนในระบบ: ${kids.map((k) => k.name).join(", ")}` : "";
-    return { ok: true, message: `ผูกบัญชีผู้ปกครองสำเร็จ ✅ (เบอร์ ${phone})${list}` };
+    const list = kids.length ? t("verify_parent_students", lang, { names: kids.map((k) => k.name).join(", ") }) : "";
+    return { ok: true, message: t("verify_parent_ok_existing", lang, { phone, list }) };
   }
   await findOrCreateParentByPhone(phone, { lineUserId });
-  return { ok: true, message: `ลงทะเบียนผู้ปกครองสำเร็จ ✅ (เบอร์ ${phone})` };
+  return { ok: true, message: t("verify_parent_ok_new", lang, { phone }) };
 }
 
 /** Create one student under the linked parent and craft the right reply. */
@@ -154,140 +138,154 @@ async function addStudentAndReply(
   name: string,
   replyToken: string,
   opts: { continueSession: boolean },
+  lang: Lang,
 ) {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) {
     await clearSession(lineUserId);
-    return reply(replyToken, "ไม่พบบัญชีผู้ปกครอง พิมพ์ สมัคร เพื่อเริ่มใหม่");
+    return reply(replyToken, t("add_no_parent", lang));
   }
   try {
     const { student, count } = await createStudentForParent(parent.id, { name });
     const atMax = count >= MAX_STUDENTS_PER_PARENT;
     if (opts.continueSession && !atMax) {
-      return reply(
-        replyToken,
-        `เพิ่ม "${student.name}" สำเร็จ ✅ (ตอนนี้มี ${count} คน)\n` +
-          `พิมพ์ชื่อคนถัดไป หรือพิมพ์ "ข้าม" เพื่อจบ`,
-      );
+      return reply(replyToken, t("added_more", lang, { name: student.name, count }));
     }
     await clearSession(lineUserId);
-    const note = atMax ? ` (ครบ ${MAX_STUDENTS_PER_PARENT} คนแล้ว)` : "";
-    return reply(replyToken, `เพิ่ม "${student.name}" สำเร็จ ✅${note}\n\n${LINKED_PARENT_MENU}`);
+    const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
+    return reply(replyToken, `${t("added_done", lang, { name: student.name, note })}\n\n${t("menu_body", lang)}`);
   } catch (e: any) {
-    const msg = e?.message ?? "ไม่สามารถเพิ่มนักเรียนได้";
+    // createStudentForParent throws a Thai validation message (shared with the REST API — out of the LINE
+    // reply layer's i18n scope); surface it, and drop the session on the "over max" case.
+    const msg = e?.message ?? t("add_generic_err", lang);
     if (msg.includes("สูงสุด")) {
       await clearSession(lineUserId);
-      return reply(replyToken, `${msg}\n\n${LINKED_PARENT_MENU}`);
+      return reply(replyToken, `${msg}\n\n${t("menu_body", lang)}`);
     }
     return reply(replyToken, msg); // keep the session so they can retry the name
   }
 }
 
-async function handleParentCommand(lineUserId: string, text: string, replyToken: string) {
+// ── Shared tap/keyword actions (reused by both the keyword branch and the postback branch) ──
+const bookingLabel = (b: { student: { name: string }; startTime: string }) =>
+  `${b.student.name} ${hhmm(b.startTime)}`;
+
+function parentActionItems(lang: Lang) {
+  const mk = (labelKey: string, action: string) => ({
+    type: "action" as const,
+    action: { type: "postback" as const, label: t(labelKey, lang), data: `action=${action}`, displayText: t(labelKey, lang) },
+  });
+  return [mk("btn_checkin", "checkin"), mk("btn_leave", "leave"), mk("btn_children", "children"), mk("btn_register", "register")];
+}
+
+function doMenu(replyToken: string, lang: Lang) {
+  return send(replyToken, [{ type: "text", text: t("menu_body", lang), quickReply: { items: parentActionItems(lang) } }]);
+}
+
+async function doCheckin(lineUserId: string, replyToken: string, date: string, lang: Lang) {
+  const today = await findTodayBookingsForParent(lineUserId, date);
+  if (!today.length) return send(replyToken, [textReply(t("empty_checkin", lang), lang)]);
+  if (today.length === 1) return doCheckinBooking(lineUserId, today[0]!.id, replyToken, date, lang);
+  const picks = today.map((b) => ({ id: b.id, label: bookingLabel(b) }));
+  return send(replyToken, [bookingPicker(t("pick_checkin", lang), "checkin", picks, lang)]);
+}
+
+async function doCheckinBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
+  const today = await findTodayBookingsForParent(lineUserId, date);
+  const b = today.find((x) => x.id === bookingId); // authorize: must be one of THIS parent's today bookings
+  if (!b) return send(replyToken, [textReply(t("checkin_notfound", lang), lang)]);
+  const qr = await getCheckinQr(b.id);
+  try {
+    const result = await checkinByToken(qr.token);
+    const key = result.already ? "checkin_already" : "checkin_ok";
+    return send(replyToken, [textReply(t(key, lang, { name: b.student.name, time: hhmm(b.startTime) }), lang)]);
+  } catch (e: any) {
+    return send(replyToken, [textReply(e?.message ?? t("checkin_err", lang), lang)]);
+  }
+}
+
+async function doLeave(lineUserId: string, replyToken: string, date: string, lang: Lang) {
+  const today = await findTodayBookingsForParent(lineUserId, date);
+  const eligible = today.filter((b) => b.status === "CONFIRMED");
+  if (!eligible.length) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  if (eligible.length === 1) return doLeaveBooking(lineUserId, eligible[0]!.id, replyToken, date, lang);
+  const picks = eligible.map((b) => ({ id: b.id, label: bookingLabel(b) }));
+  return send(replyToken, [bookingPicker(t("pick_leave", lang), "leave", picks, lang)]);
+}
+
+async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
+  const today = await findTodayBookingsForParent(lineUserId, date);
+  const b = today.find((x) => x.id === bookingId && x.status === "CONFIRMED"); // authorize + eligible
+  if (!b) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  const result = await updateBookingStatus(b.id, "sick-leave", "แจ้งลาผ่าน LINE");
+  const locked = result.locked ? t("leave_lockline", lang) : "";
+  const extended = result.extended
+    ? t("leave_extline", lang, { date: result.extended.date, time: result.extended.startTime })
+    : "";
+  return send(replyToken, [textReply(t("leave_ok", lang, { name: b.student.name, extended, locked }), lang)]);
+}
+
+async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
+  const parent = await findParentByLineUserId(lineUserId);
+  const kids = parent ? await listStudentsOfParent(parent.id) : [];
+  if (!kids.length) return send(replyToken, [textReply(t("children_none", lang), lang)]);
+  const title = `${t("children_title", lang)} (${kids.length}/${MAX_STUDENTS_PER_PARENT})`;
+  return send(replyToken, [childrenFlex(title, kids.map((k) => k.name), lang)]);
+}
+
+async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {
   const raw = text.trim();
   const cmd = raw.toLowerCase();
   const { date } = bangkokNow();
 
-  if (["เมนู", "menu", "help", "ช่วยเหลือ"].includes(cmd)) {
-    return reply(replyToken, LINKED_PARENT_MENU);
-  }
+  if (["เมนู", "menu", "help", "ช่วยเหลือ"].includes(cmd)) return doMenu(replyToken, lang);
 
   // Add a student — inline ("เพิ่มนักเรียน น้องเอ") or start a name prompt.
   const addMatch = raw.match(/^(?:เพิ่มนักเรียน|เพิ่มลูก|add)\s*(.*)$/i);
   if (addMatch) {
     const name = (addMatch[1] ?? "").trim();
-    if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false });
+    if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-    return reply(replyToken, `พิมพ์ชื่อนักเรียนที่ต้องการเพิ่ม (สูงสุด ${MAX_STUDENTS_PER_PARENT} คนต่อเบอร์)`);
+    return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
   }
 
   if (["นักเรียน", "ลูก", "รายชื่อ", "children", "students"].includes(cmd)) {
-    const parent = await findParentByLineUserId(lineUserId);
-    const kids = parent ? await listStudentsOfParent(parent.id) : [];
-    if (!kids.length) return reply(replyToken, 'ยังไม่มีนักเรียน — พิมพ์ "เพิ่มนักเรียน" เพื่อเพิ่ม');
-    const list = kids.map((k, i) => `${i + 1}. ${k.name}`).join("\n");
-    return reply(replyToken, `นักเรียนของคุณ (${kids.length}/${MAX_STUDENTS_PER_PARENT}):\n${list}`);
+    return doChildren(lineUserId, replyToken, lang);
   }
 
   if (["qr", "คิวอาร์"].includes(cmd)) {
     const today = await findTodayBookingsForParent(lineUserId, date);
-    if (!today.length) return reply(replyToken, "วันนี้ไม่มีคาบที่ยืนยันแล้ว");
+    if (!today.length) return reply(replyToken, t("qr_none", lang));
     const b = today[0]!;
     const qr = await getCheckinQr(b.id);
     return reply(
       replyToken,
-      `ลิงก์เช็คอิน ${b.student.name} ${hhmm(b.startTime)} น.\n${qr.url}\n${qr.window}`,
+      t("qr_line", lang, { name: b.student.name, time: hhmm(b.startTime), url: qr.url, window: qr.window }),
     );
   }
 
-  if (["เช็คอิน", "checkin", "check-in"].includes(cmd)) {
-    const today = await findTodayBookingsForParent(lineUserId, date);
-    if (!today.length) return reply(replyToken, "วันนี้ไม่มีคาบที่พร้อมเช็คอิน");
-    if (today.length > 1) {
-      const list = today
-        .map((b, i) => `${i + 1}. ${b.student.name} ${hhmm(b.startTime)} ${b.subject.name}`)
-        .join("\n");
-      return reply(replyToken, `มีหลายคาบวันนี้ — พิมพ์ เช็คอิน 1 หรือ 2 ...\n${list}`);
-    }
-    const b = today[0]!;
-    const qr = await getCheckinQr(b.id);
-    try {
-      const result = await checkinByToken(qr.token);
-      const status = result.already ? "เช็คอินแล้วก่อนหน้านี้" : "เช็คอินสำเร็จ ✅";
-      return reply(replyToken, `${status}\n${b.student.name} ${hhmm(b.startTime)} น.`);
-    } catch (e: any) {
-      return reply(replyToken, e?.message ?? "ไม่สามารถเช็คอินได้ในขณะนี้");
-    }
-  }
+  if (["เช็คอิน", "checkin", "check-in"].includes(cmd)) return doCheckin(lineUserId, replyToken, date, lang);
 
   const checkinMatch = cmd.match(/^เช็คอิน\s*(\d+)$/);
   if (checkinMatch) {
     const today = await findTodayBookingsForParent(lineUserId, date);
-    const idx = Number(checkinMatch[1]) - 1;
-    const b = today[idx];
-    if (!b) return reply(replyToken, "ไม่พบคาบตามหมายเลขที่เลือก");
-    const qr = await getCheckinQr(b.id);
-    try {
-      await checkinByToken(qr.token);
-      return reply(replyToken, `เช็คอินสำเร็จ ✅\n${b.student.name} ${hhmm(b.startTime)} น.`);
-    } catch (e: any) {
-      return reply(replyToken, e?.message ?? "ไม่สามารถเช็คอินได้");
-    }
+    const b = today[Number(checkinMatch[1]) - 1];
+    if (!b) return reply(replyToken, t("num_notfound", lang));
+    return doCheckinBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
-  if (["ลา", "แจ้งลา", "sick", "leave"].includes(cmd)) {
-    const today = await findTodayBookingsForParent(lineUserId, date);
-    const eligible = today.filter((b) => b.status === "CONFIRMED");
-    if (!eligible.length) return reply(replyToken, "วันนี้ไม่มีคาบที่แจ้งลาได้");
-    if (eligible.length > 1) {
-      const list = eligible
-        .map((b, i) => `${i + 1}. ${b.student.name} ${hhmm(b.startTime)}`)
-        .join("\n");
-      return reply(replyToken, `พิมพ์ ลา 1 หรือ ลา 2 ...\n${list}`);
-    }
-    return processSickLeave(eligible[0]!.id, replyToken, eligible[0]!.student.name);
-  }
+  if (["ลา", "แจ้งลา", "sick", "leave"].includes(cmd)) return doLeave(lineUserId, replyToken, date, lang);
 
   const leaveMatch = cmd.match(/^ลา\s*(\d+)$/);
   if (leaveMatch) {
     const today = await findTodayBookingsForParent(lineUserId, date);
     const eligible = today.filter((b) => b.status === "CONFIRMED");
-    const idx = Number(leaveMatch[1]) - 1;
-    const b = eligible[idx];
-    if (!b) return reply(replyToken, "ไม่พบคาบตามหมายเลข");
-    return processSickLeave(b.id, replyToken, b.student.name);
+    const b = eligible[Number(leaveMatch[1]) - 1];
+    if (!b) return reply(replyToken, t("num_notfound", lang));
+    return doLeaveBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
-  return reply(replyToken, LINKED_PARENT_MENU);
-}
-
-async function processSickLeave(bookingId: string, replyToken: string, studentName: string) {
-  const result = await updateBookingStatus(bookingId, "sick-leave", "แจ้งลาผ่าน LINE");
-  const locked = result.locked ? "\n⚠️ โควตาลาครบแล้ว — ต้องปลดล็อกโดยแอดมิน" : "";
-  const extended = result.extended
-    ? `\nคาบขยาย: ${result.extended.date} ${result.extended.startTime}`
-    : "";
-  return reply(replyToken, `แจ้งลาสำเร็จ ✅ (${studentName})${extended}${locked}`);
+  return doMenu(replyToken, lang);
 }
 
 async function handleMessage(ev: LineWebhookEvent) {
@@ -295,13 +293,13 @@ async function handleMessage(ev: LineWebhookEvent) {
   const lineUserId = eventUserId(ev);
   const text = eventText(ev);
   if (!replyToken || !lineUserId || !text) return;
-
+  const lang = await resolveLang(lineUserId);
   const lower = text.toLowerCase();
 
   // Registration (re)start — works from any state.
   if (["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"].includes(lower)) {
     await setStep(lineUserId, "CHOOSE_ROLE", null);
-    return reply(replyToken, ROLE_PROMPT);
+    return reply(replyToken, t("role_prompt", lang));
   }
 
   const session = await getSession(lineUserId);
@@ -310,65 +308,117 @@ async function handleMessage(ev: LineWebhookEvent) {
   if (session?.step === "AWAIT_STUDENT_NAME") {
     if (SKIP_WORDS.includes(lower)) {
       await clearSession(lineUserId);
-      return reply(replyToken, `เรียบร้อยค่ะ ✅\n\n${LINKED_PARENT_MENU}`);
+      return reply(replyToken, `${t("skip_done", lang)}\n\n${t("menu_body", lang)}`);
     }
-    return addStudentAndReply(lineUserId, text.trim(), replyToken, { continueSession: true });
+    return addStudentAndReply(lineUserId, text.trim(), replyToken, { continueSession: true }, lang);
   }
 
   // Already-linked routing.
   const linked = await detectLinkedRole(lineUserId);
-  if (linked === "customer") {
-    return handleParentCommand(lineUserId, text, replyToken);
-  }
+  if (linked === "customer") return handleParentCommand(lineUserId, text, replyToken, lang);
   if (linked === "teacher") {
-    return reply(
-      replyToken,
-      ["เมนู", "menu"].includes(lower)
-        ? "บัญชีครูผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง"
-        : "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ",
-    );
+    return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("teacher_linked_menu", lang) : t("teacher_linked", lang));
   }
   if (linked === "admin") {
-    return reply(
-      replyToken,
-      ["เมนู", "menu"].includes(lower)
-        ? "บัญชีแอดมินผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการแจ้งลา"
-        : "บัญชีแอดมิน — รอรับแจ้งเตือนจากระบบ",
-    );
+    return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("admin_linked_menu", lang) : t("admin_linked", lang));
   }
 
   // Linking conversation.
-  if (!session) {
-    return reply(replyToken, WELCOME);
-  }
+  if (!session) return reply(replyToken, t("welcome", lang));
 
   if (session.step === "CHOOSE_ROLE") {
     const role = parseRoleChoice(text);
-    if (!role) return reply(replyToken, ROLE_PROMPT);
+    if (!role) return reply(replyToken, t("role_prompt", lang));
     await setStep(lineUserId, "AWAIT_CODE", role);
-    return reply(replyToken, CODE_PROMPT[role]!);
+    return reply(replyToken, t(`code_${role}`, lang));
   }
 
   if (session.step === "AWAIT_CODE" && session.pendingRole) {
     const role = session.pendingRole as LinkRole;
-    const res = await verifyAndLink(lineUserId, role, text);
+    const res = await verifyAndLink(lineUserId, role, text, lang);
     if (!res.ok) return reply(replyToken, res.message); // keep session for retry
+    if (role !== "admin") {
+      // Seed the language from the LINE profile locale (best-effort), then link the role's rich menu.
+      const seed: Lang = (await getProfileLang(lineUserId)) ?? "TH";
+      await Promise.all([
+        db.update(teachers).set({ lineLang: seed }).where(eq(teachers.lineUserId, lineUserId)),
+        db.update(parents).set({ lineLang: seed }).where(eq(parents.lineUserId, lineUserId)),
+      ]).catch((e) => console.error("[line-webhook] seed lang failed:", e));
+      try {
+        await linkRoleRichMenu(lineUserId, role, seed);
+      } catch (e) {
+        console.error("[line-webhook] linkRoleRichMenu failed:", e);
+      }
+    }
     if (role === "customer") {
       // Linked — now offer to add children (multi-turn).
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-      return reply(replyToken, `${res.message}\n\n${ADD_STUDENT_PROMPT}`);
+      return reply(replyToken, `${res.message}\n\n${t("add_student_prompt", lang, { max: MAX_STUDENTS_PER_PARENT })}`);
     }
     await clearSession(lineUserId);
     return reply(replyToken, res.message);
   }
 
-  return reply(replyToken, WELCOME);
+  return reply(replyToken, t("welcome", lang));
+}
+
+/** Rich-menu / quick-reply taps arrive as postback events — route each action to the SAME handler the
+ *  keyword uses (keyword input stays supported). Business logic is untouched; only the entry point changes. */
+async function handlePostback(ev: LineWebhookEvent) {
+  const replyToken = ev.replyToken;
+  const lineUserId = eventUserId(ev);
+  const data = eventPostbackData(ev);
+  if (!replyToken || !lineUserId || !data) return;
+  const { action, params } = parsePostback(data);
+  const { date } = bangkokNow();
+  const lang = await resolveLang(lineUserId);
+
+  // Language toggle — flip, re-link the matching-language menu, confirm in the NEW language.
+  if (action === "lang") {
+    const next = await toggleLang(lineUserId, lang);
+    const linked = await detectLinkedRole(lineUserId);
+    if (linked === "customer" || linked === "teacher") {
+      try {
+        await linkRoleRichMenu(lineUserId, linked, next);
+      } catch (e) {
+        console.error("[line-webhook] relink menu on toggle failed:", e);
+      }
+    }
+    return send(replyToken, [textReply(t("lang_switched", next), next)]);
+  }
+
+  const linked = await detectLinkedRole(lineUserId);
+  if (linked === "teacher") {
+    if (action === "schedule") return send(replyToken, [textReply(t("teacher_schedule_soon", lang), lang)]);
+    return send(replyToken, [textReply(t("teacher_linked", lang), lang)]);
+  }
+  if (linked !== "customer") return send(replyToken, [textReply(t("welcome", lang), lang)]);
+
+  switch (action) {
+    case "checkin":
+      return params.bookingId
+        ? doCheckinBooking(lineUserId, params.bookingId, replyToken, date, lang)
+        : doCheckin(lineUserId, replyToken, date, lang);
+    case "leave":
+      return params.bookingId
+        ? doLeaveBooking(lineUserId, params.bookingId, replyToken, date, lang)
+        : doLeave(lineUserId, replyToken, date, lang);
+    case "children":
+      return doChildren(lineUserId, replyToken, lang);
+    case "register":
+      await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
+      return send(replyToken, [textReply(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang)]);
+    default: // menu / help / unknown → the menu
+      return doMenu(replyToken, lang);
+  }
 }
 
 async function handleFollow(ev: LineWebhookEvent) {
   const replyToken = ev.replyToken;
+  const lineUserId = eventUserId(ev);
   if (!replyToken) return;
-  return reply(replyToken, WELCOME);
+  const lang = lineUserId ? await resolveLang(lineUserId) : "TH";
+  return reply(replyToken, t("welcome", lang));
 }
 
 /** Process one webhook POST body (already signature-verified). */
@@ -377,6 +427,7 @@ export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
     try {
       if (ev.type === "follow") await handleFollow(ev);
       else if (ev.type === "message") await handleMessage(ev);
+      else if (ev.type === "postback") await handlePostback(ev);
     } catch (e) {
       console.error("[line-webhook] event error:", e);
     }

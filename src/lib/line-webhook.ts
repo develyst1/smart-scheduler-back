@@ -8,11 +8,16 @@ export interface LineTextMessage {
   text: string;
 }
 
+export interface LinePostback {
+  data: string;
+}
+
 export interface LineWebhookEvent {
   type: string;
   replyToken?: string;
   source?: { type?: string; userId?: string };
   message?: LineTextMessage;
+  postback?: LinePostback;
 }
 
 export interface LineWebhookBody {
@@ -44,6 +49,21 @@ export function eventUserId(ev: LineWebhookEvent): string | null {
 export function eventText(ev: LineWebhookEvent): string | null {
   if (ev.type !== "message" || ev.message?.type !== "text") return null;
   return ev.message.text.trim();
+}
+
+export function eventPostbackData(ev: LineWebhookEvent): string | null {
+  if (ev.type !== "postback") return null;
+  return ev.postback?.data ?? null;
+}
+
+/**
+ * Parse a rich-menu / quick-reply postback payload (`action=checkin&bookingId=…`) into a stable action key
+ * plus params. Pure — the webhook routes the returned `action` to the same handler a keyword uses.
+ */
+export function parsePostback(data: string): { action: string; params: Record<string, string> } {
+  const params: Record<string, string> = {};
+  for (const [k, v] of new URLSearchParams(data)) params[k] = v;
+  return { action: params.action ?? "", params };
 }
 
 /** Normalize user role choice: "1" / "ลูกค้า" / "customer" → customer */

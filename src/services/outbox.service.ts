@@ -12,6 +12,7 @@ import { notificationOutbox } from "../db/schema";
 import { hhmm } from "../lib/time";
 import { formatOutboxMessage, type MessageContext } from "../lib/line-message";
 import { LinePushError, lineConfigured, pushMessage } from "../lib/line-client";
+import { resolveBotLang } from "../lib/line-lang";
 
 const MAX_ATTEMPTS = 5;
 const BATCH = 20;
@@ -55,7 +56,8 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
 
   for (const row of rows) {
     const ctx = await bookingContext(row.bookingId);
-    const text = formatOutboxMessage(row.payload as any, ctx);
+    const lang = await resolveBotLang(row.recipientLineUserId);
+    const text = formatOutboxMessage(row.payload as any, ctx, lang);
     const attempts = row.attempts + 1;
     try {
       await pushMessage(row.recipientLineUserId!, [{ type: "text", text }]);

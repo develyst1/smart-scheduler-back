@@ -76,6 +76,7 @@ export const parents = pgTable(
     name: text("name"), // ชื่อผู้ปกครอง (ถ้ามี) — optional
     // LINE OA userId once the parent links via the chat flow (C.4). Null = not linked.
     lineUserId: text("line_user_id"),
+    lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -132,6 +133,7 @@ export const teachers = pgTable("teachers", {
   workDays: smallint("work_days").array().notNull().default(sql`ARRAY[0,1,2,3,4,5,6]::smallint[]`),
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.
   lineUserId: text("line_user_id"),
+  lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
