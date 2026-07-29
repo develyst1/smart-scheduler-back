@@ -122,6 +122,11 @@ export const updateStatus = z.object({
   override: z.boolean().optional(),
 });
 
+// Bulk-confirm many bookings in one call (REQ-008 / SPEC-011). 1..100 booking ids.
+export const bulkConfirm = z.object({
+  ids: z.array(ID).min(1).max(100),
+});
+
 // Manual move/edit a booking (reschedule). At least one field required.
 export const moveBooking = z
   .object({

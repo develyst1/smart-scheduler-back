@@ -174,6 +174,22 @@ export interface TeachersResponse {
 export type CoursesResponse = Array<CourseSummary & { student: StudentRef }>;
 
 /**
+ * POST /api/bookings/bulk-confirm { ids }
+ * Confirm many bookings in one call — partial success, no batch rollback (REQ-008 / SPEC-011).
+ */
+export type BulkConfirmOutcome = "confirmed" | "already_confirmed" | "skipped";
+export interface BulkConfirmResult {
+  id: string;
+  /** confirmed = newly confirmed (LINE queued + budget drawn once); already_confirmed = idempotent no-op;
+   *  skipped = not confirmed (`reason` set: over-budget freelance, non-PENDING booking, or not found). */
+  outcome: BulkConfirmOutcome;
+  reason?: string;
+}
+export interface BulkConfirmResponse {
+  results: BulkConfirmResult[];
+}
+
+/**
  * GET /api/bookings?from&to&type&status&teacherId&q&page&limit
  * All-bookings tab — teacher/student/subject embedded, server-filtered + paginated.
  */

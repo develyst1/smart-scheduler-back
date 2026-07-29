@@ -4,7 +4,8 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings, bookings, boItem, boMovement, coursePackages, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
-import type { TeacherType } from "../types/contract";
+import type { BulkConfirmResult, TeacherType } from "../types/contract";
+import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
 import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
@@ -800,6 +801,36 @@ export async function updateBookingStatus(
   });
 
   return result;
+}
+
+/**
+ * Confirm many PENDING bookings in one call (REQ-008 / TASK-036). Each id reuses the single
+ * `updateBookingStatus(id,"confirm")` — its **own** transaction, idempotency, LINE outbox and freelance draw —
+ * so one failure never rolls back the others (partial success). A non-PENDING id is classified without a write
+ * (never un-cancels). Results are returned in input order.
+ */
+export async function bulkConfirm(ids: string[]): Promise<{ results: BulkConfirmResult[] }> {
+  const results: BulkConfirmResult[] = [];
+  for (const id of ids) {
+    const booking = await db.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
+    const pre = preCheckBulkConfirm(booking);
+    if (!pre.proceed) {
+      results.push({ id, outcome: pre.outcome, reason: pre.reason });
+      continue;
+    }
+    try {
+      await updateBookingStatus(id, "confirm"); // no override — REQ-007 removed override-to-book
+      results.push({ id, outcome: "confirmed" });
+    } catch (err) {
+      // INSUFFICIENT_BUDGET (over-budget freelance) or any ApiException → skip this one, keep going.
+      results.push({
+        id,
+        outcome: "skipped",
+        reason: err instanceof Error ? err.message : "ยืนยันคาบไม่สำเร็จ",
+      });
+    }
+  }
+  return { results };
 }
 
 export async function moveBooking(
