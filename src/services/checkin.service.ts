@@ -84,3 +84,19 @@ export async function findTodayBookingsForParent(lineUserId: string, date: strin
     orderBy: (b, { asc }) => asc(b.startTime),
   });
 }
+
+/** Teacher LINE userId → their own bookings in [from..to] (REQ-016 / TASK-043). Excludes CANCELLED; every
+ *  other status is returned with its label. Teacher is resolved from the caller's own lineUserId — never a
+ *  payload id. Empty when not linked. Read-only. */
+export async function findBookingsForTeacher(lineUserId: string, from: string, to: string) {
+  const teacher = await db.query.teachers.findFirst({
+    where: (t, { eq: e }) => e(t.lineUserId, lineUserId),
+  });
+  if (!teacher) return [];
+  return db.query.bookings.findMany({
+    where: (b, { and, eq, ne, gte, lte }) =>
+      and(eq(b.teacherId, teacher.id), gte(b.date, from), lte(b.date, to), ne(b.status, "CANCELLED")),
+    with: { student: true, subject: true },
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+  });
+}

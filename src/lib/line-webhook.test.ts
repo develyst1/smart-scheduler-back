@@ -40,6 +40,12 @@ describe("postback parsing (REQ-015 / TASK-038)", () => {
   test("parsePostback with no action → empty action string", () => {
     expect(parsePostback("foo=bar").action).toBe("");
   });
+  test("parsePostback carries range for the schedule toggle (TASK-043)", () => {
+    expect(parsePostback("action=schedule&range=week")).toEqual({
+      action: "schedule",
+      params: { action: "schedule", range: "week" },
+    });
+  });
   test("eventPostbackData reads postback events only", () => {
     expect(eventPostbackData({ type: "postback", postback: { data: "action=menu" } })).toBe("action=menu");
     expect(eventPostbackData({ type: "message", message: { type: "text", id: "1", text: "hi" } })).toBeNull();

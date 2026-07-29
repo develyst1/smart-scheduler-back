@@ -31,8 +31,14 @@ import {
   listStudentsOfParent,
   normalizePhone,
 } from "./parent.service";
-import { hhmm } from "../lib/time";
-import { checkinByToken, findTodayBookingsForParent, getCheckinQr } from "./checkin.service";
+import { hhmm, weekRange } from "../lib/time";
+import { renderSchedule } from "../lib/line-schedule";
+import {
+  checkinByToken,
+  findBookingsForTeacher,
+  findTodayBookingsForParent,
+  getCheckinQr,
+} from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
 
 const SKIP_WORDS = ["ข้าม", "ไม่", "ไม่เพิ่ม", "เสร็จ", "จบ", "skip", "no", "done"];
@@ -233,6 +239,38 @@ async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
   return send(replyToken, [childrenFlex(title, kids.map((k) => k.name), lang)]);
 }
 
+/** Teacher "my schedule" (REQ-016 / TASK-043) — today or this week (Sun–Sat via `weekRange`), read-only.
+ *  Teacher resolved from `lineUserId` inside the service; every reply keeps a toggle + back-to-menu quick reply. */
+async function doTeacherSchedule(
+  lineUserId: string,
+  replyToken: string,
+  lang: Lang,
+  range: "today" | "week",
+) {
+  const { date } = bangkokNow();
+  const wk = weekRange(date);
+  const [from, to] = range === "week" ? [wk.start, wk.end] : [date, date];
+  const bookings = await findBookingsForTeacher(lineUserId, from, to);
+  const rows = bookings.map((b: any) => ({
+    date: b.date,
+    startTime: b.startTime,
+    studentName: b.student?.name ?? "",
+    subjectName: b.subject?.name ?? "",
+    status: b.status,
+  }));
+  const toggle =
+    range === "week"
+      ? {
+          type: "action" as const,
+          action: { type: "postback" as const, label: t("btn_today", lang), data: "action=schedule", displayText: t("btn_today", lang) },
+        }
+      : {
+          type: "action" as const,
+          action: { type: "postback" as const, label: t("btn_week", lang), data: "action=schedule&range=week", displayText: t("btn_week", lang) },
+        };
+  return send(replyToken, [textReply(renderSchedule(rows, lang, range), lang, [toggle])]);
+}
+
 async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {
   const raw = text.trim();
   const cmd = raw.toLowerCase();
@@ -317,6 +355,9 @@ async function handleMessage(ev: LineWebhookEvent) {
   const linked = await detectLinkedRole(lineUserId);
   if (linked === "customer") return handleParentCommand(lineUserId, text, replyToken, lang);
   if (linked === "teacher") {
+    if (["ตาราง", "ตารางสอน", "schedule"].includes(lower)) {
+      return doTeacherSchedule(lineUserId, replyToken, lang, "today"); // keyword fallback (REQ-015 principle)
+    }
     return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("teacher_linked_menu", lang) : t("teacher_linked", lang));
   }
   if (linked === "admin") {
@@ -389,7 +430,9 @@ async function handlePostback(ev: LineWebhookEvent) {
 
   const linked = await detectLinkedRole(lineUserId);
   if (linked === "teacher") {
-    if (action === "schedule") return send(replyToken, [textReply(t("teacher_schedule_soon", lang), lang)]);
+    if (action === "schedule") {
+      return doTeacherSchedule(lineUserId, replyToken, lang, params.range === "week" ? "week" : "today");
+    }
     return send(replyToken, [textReply(t("teacher_linked", lang), lang)]);
   }
   if (linked !== "customer") return send(replyToken, [textReply(t("welcome", lang), lang)]);

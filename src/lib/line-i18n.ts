@@ -80,7 +80,20 @@ const TABLE: Record<string, Entry> = {
 
   teacher_linked: { TH: "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ", EN: "Teacher account linked — you'll get schedule notifications" },
   teacher_linked_menu: { TH: "บัญชีครูผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ You'll be notified when a schedule is confirmed" },
-  teacher_schedule_soon: { TH: "ตารางวันนี้ — กำลังจะมาเร็ว ๆ นี้ 🗓️", EN: "Today's schedule — coming soon 🗓️" },
+  // Teacher "my schedule" (REQ-016 / TASK-043).
+  tsched_title_today: { TH: "🗓️ ตารางวันนี้", EN: "🗓️ Today's schedule" },
+  tsched_title_week: { TH: "🗓️ ตารางสัปดาห์นี้", EN: "🗓️ This week's schedule" },
+  tsched_empty: { TH: "ไม่มีคาบสอนในช่วงนี้", EN: "No classes in this range" },
+  tsched_row: { TH: "{when} · {student} · {subject} · {status}", EN: "{when} · {student} · {subject} · {status}" },
+  tsched_more: { TH: "…และอีก {count} คาบ", EN: "…and {count} more" },
+  btn_week: { TH: "สัปดาห์นี้", EN: "This week" },
+  btn_today: { TH: "วันนี้", EN: "Today" },
+  status_PENDING: { TH: "รอยืนยัน", EN: "Pending" },
+  status_CONFIRMED: { TH: "ยืนยันแล้ว", EN: "Confirmed" },
+  status_ATTENDED: { TH: "เข้าเรียนแล้ว", EN: "Attended" },
+  status_SICK_LEAVE: { TH: "ลา", EN: "Leave" },
+  status_EXTENDED: { TH: "คาบขยาย", EN: "Extended" },
+  status_NO_SHOW: { TH: "ไม่มา", EN: "No-show" },
   admin_linked: { TH: "บัญชีแอดมิน — รอรับแจ้งเตือนจากระบบ", EN: "Admin account — you'll get notifications" },
   admin_linked_menu: { TH: "บัญชีแอดมินผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการแจ้งลา", EN: "Admin account linked ✅ You'll be notified of leave requests" },
 
