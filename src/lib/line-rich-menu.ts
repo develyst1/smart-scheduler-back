@@ -124,9 +124,9 @@ export async function linkRichMenuToUser(userId: string, richMenuId: string): Pr
   if (!res.ok) throw new Error(`linkRichMenuToUser ${res.status}`);
 }
 
-type MenuIds = { parentTH?: string; parentEN?: string; teacherTH?: string; teacherEN?: string };
+export type MenuIds = { parentTH?: string; parentEN?: string; teacherTH?: string; teacherEN?: string };
 
-async function getMenuIds(): Promise<MenuIds> {
+export async function getMenuIds(): Promise<MenuIds> {
   const row = await db.query.appSettings.findFirst({
     where: (s, { eq }) => eq(s.key, MENU_IDS_KEY),
   });
@@ -157,6 +157,44 @@ export async function publishRichMenus(opts: {
     .onConflictDoUpdate({ target: appSettings.key, set: { value: ids } });
   await setDefaultRichMenu(parentTH); // TH parent menu is the default; EN/teacher menus link per user
   return ids;
+}
+
+// ── Read-only inspection (TASK-045 diagnostics — these NEVER create/link/delete anything) ──────────────
+
+/** GET /v2/bot/richmenu/{id} — the menu as LINE actually stores it (incl. its `areas`). null on 404/error. */
+export async function getRichMenu(richMenuId: string): Promise<any | null> {
+  const res = await fetch(`${API}/richmenu/${richMenuId}`, {
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** GET /v2/bot/richmenu/list — every menu on the channel, incl. any created outside our publish (OA Manager). */
+export async function listRichMenus(): Promise<any[]> {
+  const res = await fetch(`${API}/richmenu/list`, { headers: { authorization: `Bearer ${token()}` } });
+  if (!res.ok) return [];
+  const body = (await res.json()) as { richmenus?: any[] };
+  return body.richmenus ?? [];
+}
+
+/** GET /v2/bot/user/all/richmenu — the channel-wide default menu id (null if none is set). */
+export async function getDefaultRichMenuId(): Promise<string | null> {
+  const res = await fetch(`${API}/user/all/richmenu`, { headers: { authorization: `Bearer ${token()}` } });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { richMenuId?: string };
+  return body.richMenuId ?? null;
+}
+
+/** GET /v2/bot/user/{userId}/richmenu — the menu THIS user actually has linked (null = none → they see the
+ *  default). A per-user link from an earlier publish overrides the default, which is hypothesis (B). */
+export async function getUserRichMenuId(userId: string): Promise<string | null> {
+  const res = await fetch(`${API}/user/${userId}/richmenu`, {
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { richMenuId?: string };
+  return body.richMenuId ?? null;
 }
 
 /** Best-effort: link the menu matching the user's role + language (called on account-link and on toggle). */

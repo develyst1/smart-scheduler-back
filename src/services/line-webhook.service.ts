@@ -18,6 +18,11 @@ import {
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
 import { bookingPicker, childrenFlex, textReply } from "../lib/line-reply";
+import {
+  formatDroppedPostback,
+  formatInboundEvent,
+  formatUnknownAction,
+} from "../lib/line-log";
 import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import { t, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
@@ -42,6 +47,18 @@ import {
 import { updateBookingStatus } from "./scheduler.service";
 
 const SKIP_WORDS = ["ข้าม", "ไม่", "ไม่เพิ่ม", "เสร็จ", "จบ", "skip", "no", "done"];
+
+/** Every postback action this handler has a branch for — anything else is logged as UNHANDLED (TASK-045). */
+const KNOWN_POSTBACK_ACTIONS = new Set([
+  "lang",
+  "schedule",
+  "checkin",
+  "leave",
+  "children",
+  "register",
+  "menu",
+  "help",
+]);
 
 type LinkRole = "customer" | "teacher" | "admin";
 type VerifyResult = { ok: boolean; message: string };
@@ -409,8 +426,13 @@ async function handlePostback(ev: LineWebhookEvent) {
   const replyToken = ev.replyToken;
   const lineUserId = eventUserId(ev);
   const data = eventPostbackData(ev);
-  if (!replyToken || !lineUserId || !data) return;
+  if (!replyToken || !lineUserId || !data) {
+    console.warn(formatDroppedPostback(ev)); // was a silent return — TASK-045
+    return;
+  }
   const { action, params } = parsePostback(data);
+  // A typo'd/stale action would otherwise be indistinguishable from "nothing arrived" (TASK-045).
+  if (!KNOWN_POSTBACK_ACTIONS.has(action)) console.warn(formatUnknownAction(action, lineUserId));
   const { date } = bangkokNow();
   const lang = await resolveLang(lineUserId);
 
@@ -467,6 +489,9 @@ async function handleFollow(ev: LineWebhookEvent) {
 /** Process one webhook POST body (already signature-verified). */
 export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
   for (const ev of events) {
+    // One line per inbound event BEFORE dispatch (TASK-045) — so a rich-menu tap that reaches us is visible
+    // even when it succeeds. Never logs the full userId or any token (see lib/line-log.ts).
+    console.info(formatInboundEvent(ev));
     try {
       if (ev.type === "follow") await handleFollow(ev);
       else if (ev.type === "message") await handleMessage(ev);
