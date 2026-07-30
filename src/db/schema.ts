@@ -134,6 +134,9 @@ export const teachers = pgTable("teachers", {
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.
   lineUserId: text("line_user_id"),
   lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
+  /** Bearer secret for the private `.ics` subscription feed (REQ-017 / TASK-044). Null = never issued;
+   *  rotating replaces it, which immediately 404s the old link. Unique — it resolves to exactly one teacher. */
+  calendarToken: text("calendar_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()

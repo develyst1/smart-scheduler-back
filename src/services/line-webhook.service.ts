@@ -26,6 +26,10 @@ import {
 import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import { t, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
+import { decideMessageRoute, otherRosterTable } from "../lib/line-routing";
+import { decideTeacherMatch, parentChildrenNote } from "../lib/line-pairing";
+import { calendarUrls } from "../lib/calendar-link";
+import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
   MAX_STUDENTS_PER_PARENT,
   createStudentForParent,
@@ -52,6 +56,7 @@ const SKIP_WORDS = ["ข้าม", "ไม่", "ไม่เพิ่ม", "�
 const KNOWN_POSTBACK_ACTIONS = new Set([
   "lang",
   "schedule",
+  "calendar",
   "checkin",
   "leave",
   "children",
@@ -113,6 +118,24 @@ async function toggleLang(lineUserId: string, current: Lang): Promise<Lang> {
   return next;
 }
 
+/**
+ * One LINE user ⇒ one active ROSTER link (TASK-046). Linking as a teacher clears any parent link and
+ * vice-versa, so a role change **moves** the link instead of accumulating one — `detectLinkedRole` checks
+ * teacher before parent, so a leftover link would silently hide the other surface.
+ *
+ * The **admin notification list is deliberately left alone**: it is a subscription in `app_settings`, not a
+ * roster identity, and `detectLinkedRole` checks it *last* — so it can never shadow a parent/teacher surface
+ * (i.e. it cannot cause the bug this fixes). Silently unsubscribing someone from leave alerts because they
+ * registered a child would be a surprising, hard-to-reverse side effect.
+ */
+async function moveRosterLink(lineUserId: string, newRole: "customer" | "teacher") {
+  if (otherRosterTable(newRole) === "parents") {
+    await db.update(parents).set({ lineUserId: null }).where(eq(parents.lineUserId, lineUserId));
+  } else {
+    await db.update(teachers).set({ lineUserId: null }).where(eq(teachers.lineUserId, lineUserId));
+  }
+}
+
 async function verifyAndLink(
   lineUserId: string,
   role: LinkRole,
@@ -129,12 +152,20 @@ async function verifyAndLink(
   if (role === "teacher") {
     const nick = code.trim();
     const rows = await db.select().from(teachers);
-    const teacher = rows.find((tt) => tt.nickname.toLowerCase() === nick.toLowerCase());
-    if (!teacher) return { ok: false, message: t("verify_teacher_notfound", lang, { nick }) };
+    // TASK-047: count the matches — never silently bind the first of several teachers sharing a nickname.
+    const matches = rows.filter((tt) => tt.nickname.toLowerCase() === nick.toLowerCase());
+    const match = decideTeacherMatch(matches.length);
+    if (match === "none") return { ok: false, message: t("verify_teacher_notfound", lang, { nick }) };
+    if (match === "ambiguous") {
+      // Bind nobody. Session stays at AWAIT_CODE, so they can retype or restart with `สมัคร` — not a loop.
+      return { ok: false, message: t("verify_teacher_ambiguous", lang, { nick }) };
+    }
+    const teacher = matches[0]!;
     if (teacher.lineUserId && teacher.lineUserId !== lineUserId) {
       return { ok: false, message: t("verify_teacher_other", lang) };
     }
     await db.update(teachers).set({ lineUserId }).where(eq(teachers.id, teacher.id));
+    await moveRosterLink(lineUserId, "teacher"); // role change moves the link (TASK-046)
     return { ok: true, message: t("verify_teacher_ok", lang, { nick: teacher.nickname }) };
   }
 
@@ -147,11 +178,14 @@ async function verifyAndLink(
       return { ok: false, message: t("verify_parent_other", lang) };
     }
     await linkParentLine(existing.id, lineUserId);
+    await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
     const kids = await listStudentsOfParent(existing.id);
-    const list = kids.length ? t("verify_parent_students", lang, { names: kids.map((k) => k.name).join(", ") }) : "";
+    // TASK-047: a COUNT, never the children's names — phone alone is not proof of identity.
+    const list = parentChildrenNote(kids.length, lang);
     return { ok: true, message: t("verify_parent_ok_existing", lang, { phone, list }) };
   }
   await findOrCreateParentByPhone(phone, { lineUserId });
+  await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
   return { ok: true, message: t("verify_parent_ok_new", lang, { phone }) };
 }
 
@@ -285,7 +319,26 @@ async function doTeacherSchedule(
           type: "action" as const,
           action: { type: "postback" as const, label: t("btn_week", lang), data: "action=schedule&range=week", displayText: t("btn_week", lang) },
         };
-  return send(replyToken, [textReply(renderSchedule(rows, lang, range), lang, [toggle])]);
+  // REQ-017: offer the phone-calendar subscription right where the teacher is reading their schedule.
+  const calendarBtn = {
+    type: "action" as const,
+    action: {
+      type: "postback" as const,
+      label: t("btn_calendar", lang),
+      data: "action=calendar",
+      displayText: t("btn_calendar", lang),
+    },
+  };
+  return send(replyToken, [textReply(renderSchedule(rows, lang, range), lang, [toggle, calendarBtn])]);
+}
+
+/** Reply with the teacher's private `.ics` subscription link (REQ-017 / TASK-044). Token is resolved from the
+ *  caller's own `lineUserId` — never from the payload — and created on first ask. */
+async function doTeacherCalendar(lineUserId: string, replyToken: string, lang: Lang) {
+  const token = await getCalendarTokenForLineUser(lineUserId);
+  if (!token) return send(replyToken, [textReply(t("cal_not_teacher", lang), lang)]);
+  const { webcal } = calendarUrls(token);
+  return send(replyToken, [textReply(t("cal_link", lang, { url: webcal }), lang)]);
 }
 
 async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {
@@ -358,9 +411,14 @@ async function handleMessage(ev: LineWebhookEvent) {
   }
 
   const session = await getSession(lineUserId);
+  const linked = await detectLinkedRole(lineUserId);
+
+  // TASK-046: an in-progress multi-turn conversation (adding a student, OR linking) must win over
+  // already-linked routing — otherwise an already-linked user can never finish `สมัคร`.
+  const route = decideMessageRoute(session?.step, linked);
 
   // Multi-turn: adding students (right after linking, or via "เพิ่มนักเรียน").
-  if (session?.step === "AWAIT_STUDENT_NAME") {
+  if (route === "add-student") {
     if (SKIP_WORDS.includes(lower)) {
       await clearSession(lineUserId);
       return reply(replyToken, `${t("skip_done", lang)}\n\n${t("menu_body", lang)}`);
@@ -368,17 +426,21 @@ async function handleMessage(ev: LineWebhookEvent) {
     return addStudentAndReply(lineUserId, text.trim(), replyToken, { continueSession: true }, lang);
   }
 
-  // Already-linked routing.
-  const linked = await detectLinkedRole(lineUserId);
-  if (linked === "customer") return handleParentCommand(lineUserId, text, replyToken, lang);
-  if (linked === "teacher") {
-    if (["ตาราง", "ตารางสอน", "schedule"].includes(lower)) {
-      return doTeacherSchedule(lineUserId, replyToken, lang, "today"); // keyword fallback (REQ-015 principle)
+  // Already-linked routing (only when no conversation is in progress).
+  if (route === "linked") {
+    if (linked === "customer") return handleParentCommand(lineUserId, text, replyToken, lang);
+    if (linked === "teacher") {
+      if (["ตาราง", "ตารางสอน", "schedule"].includes(lower)) {
+        return doTeacherSchedule(lineUserId, replyToken, lang, "today"); // keyword fallback (REQ-015 principle)
+      }
+      if (["ปฏิทิน", "calendar"].includes(lower)) {
+        return doTeacherCalendar(lineUserId, replyToken, lang); // keyword fallback (REQ-017)
+      }
+      return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("teacher_linked_menu", lang) : t("teacher_linked", lang));
     }
-    return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("teacher_linked_menu", lang) : t("teacher_linked", lang));
-  }
-  if (linked === "admin") {
-    return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("admin_linked_menu", lang) : t("admin_linked", lang));
+    if (linked === "admin") {
+      return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("admin_linked_menu", lang) : t("admin_linked", lang));
+    }
   }
 
   // Linking conversation.
@@ -455,6 +517,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     if (action === "schedule") {
       return doTeacherSchedule(lineUserId, replyToken, lang, params.range === "week" ? "week" : "today");
     }
+    if (action === "calendar") return doTeacherCalendar(lineUserId, replyToken, lang);
     return send(replyToken, [textReply(t("teacher_linked", lang), lang)]);
   }
   if (linked !== "customer") return send(replyToken, [textReply(t("welcome", lang), lang)]);

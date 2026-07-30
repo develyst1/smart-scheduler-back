@@ -5,6 +5,8 @@ import * as svc from "../services/scheduler.service";
 import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
+import * as calendar from "../services/calendar.service";
+import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
@@ -47,6 +49,12 @@ export const api = new Hono()
   .post("/teachers/:id/budget/topup", zValidator("json", v.topUpBudget), async (c) =>
     c.json(await svc.topUpFreelanceBudget(c.req.param("id"), c.req.valid("json").amountMinor)),
   )
+  // Staff: get-or-create the teacher's calendar-subscription link; `?rotate=true` kills the old one (REQ-017).
+  .post("/teachers/:id/calendar-link", async (c) => {
+    const rotate = c.req.query("rotate") === "true";
+    const { token, rotated } = await calendar.getOrCreateCalendarToken(c.req.param("id"), { rotate });
+    return c.json({ ...calendarUrls(token), rotated });
+  })
   .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"))))
   .post("/teachers/:id/reactivate", async (c) =>
     c.json(await svc.reactivateTeacher(c.req.param("id"))),

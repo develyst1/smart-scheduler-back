@@ -9,6 +9,7 @@ import { authMiddleware } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
+import { publicCalendar } from "./routes/calendar";
 import { internalJobs } from "./routes/internal";
 import { apiDocs, rootDocs } from "./routes/docs";
 
@@ -39,6 +40,7 @@ app.route("/api", apiDocs);
 app.route("/api/auth", authRoutes);
 app.route("/api/webhooks", lineWebhook); // POST /api/webhooks/line (LINE Developers URL)
 app.route("/api", publicCheckin);
+app.route("/api", publicCalendar); // GET /api/calendar/<token>.ics — token is the credential (REQ-017)
 // Legacy path without /api prefix (direct to BE port, local tunnel, etc.)
 app.route("/webhooks", lineWebhook);
 // Internal job trigger (UC-012) — secret-guarded, not JWT. Called by Task Scheduler exe.
