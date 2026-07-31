@@ -34,24 +34,33 @@ describe("suspendedStudentIds — the set the pickers exclude (TASK-056)", () =>
   });
 });
 
-describe("picker filtering semantics", () => {
+describe("picker filtering semantics (TASK-058: exclusion is now the DEFAULT)", () => {
   const all = [{ id: "s-susp" }, { id: "s-active" }, { id: "s-walkin" }];
   const suspended = buildSuspendedSet([{ id: "s-susp", suspendedAt: SUSPENDED }]);
+  const visibleAfterExclusion = () =>
+    all.filter((s) => !suspended.has(s.id)).map((s) => s.id);
 
   test("/students/eligible filters UNCONDITIONALLY — it only ever answers 'who can be booked'", () => {
-    const visible = all.filter((s) => !suspended.has(s.id)).map((s) => s.id);
-    expect(visible).toEqual(["s-active", "s-walkin"]); // walk-in kept
+    expect(visibleAfterExclusion()).toEqual(["s-active", "s-walkin"]); // walk-in kept
   });
 
-  test("🔑 /students WITHOUT the flag is unchanged — the course/voucher SALE screens must not change", () => {
-    const bookable = false;
-    const excluded = bookable ? [...suspended] : [];
-    expect(excluded).toEqual([]); // no filter applied at all → byte-for-byte today's behaviour
+  test("🔑 /students now excludes suspended households with NO flag — all three consumers want it", () => {
+    // TASK-056's opt-in `bookable` is retired: an opt-in policy means "remember to ask", and whoever forgets
+    // opens a silent hole. Booking picker AND both sale modals get the same answer.
+    expect(visibleAfterExclusion()).toEqual(["s-active", "s-walkin"]);
   });
 
-  test("/students WITH bookable=true excludes the suspended household, keeps the walk-in", () => {
-    const excluded = [...suspended];
-    const visible = all.filter((s) => !excluded.includes(s.id)).map((s) => s.id);
-    expect(visible).toEqual(["s-active", "s-walkin"]);
+  test("🔑 the walk-in survives the default exclusion (no household to suspend)", () => {
+    expect(visibleAfterExclusion()).toContain("s-walkin");
+  });
+
+  test("nobody suspended → the exclusion list is empty and every student is returned", () => {
+    const none = buildSuspendedSet([{ id: "s-active", suspendedAt: null }]);
+    expect([...none]).toEqual([]); // the empty-array guard path
+    expect(all.filter((s) => !none.has(s.id)).map((s) => s.id)).toEqual([
+      "s-susp",
+      "s-active",
+      "s-walkin",
+    ]);
   });
 });

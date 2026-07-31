@@ -33,12 +33,9 @@ export const reportQuery = z.object({ date: DATE });
 export const studentsQuery = z.object({
   q: z.string().trim().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
-  /** OPT-IN (REQ-019 / TASK-056): exclude suspended households. The booking picker passes it; the course /
-   *  voucher SALE screens share this endpoint and must keep today's behaviour, so it defaults to off. */
-  bookable: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((v) => v === "true"),
+  // TASK-058 retired the `bookable` opt-in — suspended households are now excluded by default for every
+  // consumer. Zod strips unknown keys, so an older client still sending `bookable=true` is simply ignored
+  // (it asked for the behaviour that is now the default), which is what makes the FE/BE deploy order free.
 });
 
 // Staff student creation — under an existing parent (parentId) or a phone

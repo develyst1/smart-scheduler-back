@@ -333,12 +333,13 @@ export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> 
 }
 
 /**
- * Booking-dropdown search. `opts.bookable` is **opt-in**: it excludes suspended households, and is passed only
- * by the booking picker. Without it the response is exactly what it has always been — the course/voucher
- * **sale** screens (`CreateCourseModal` / `CreateVoucherModal`) share this endpoint and selling ≠ booking.
+ * Student-dropdown search. Suspended households are **always excluded** (TASK-058): all three consumers — the
+ * booking picker and both sale modals — now want the same policy, so an opt-in flag would just mean "remember
+ * to ask for it", and whoever forgot would open a silent hole. No `includeSuspended` escape hatch: the People
+ * screen reads `/parents`, where suspended families stay fully visible.
  */
-export async function searchStudents(q?: string, limit = 50, opts: { bookable?: boolean } = {}) {
-  const excluded = opts.bookable ? [...(await suspendedStudentIds())] : [];
+export async function searchStudents(q?: string, limit = 50) {
+  const excluded = [...(await suspendedStudentIds())];
   const searchWhere = q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`;
   const rows = await db
     .select({

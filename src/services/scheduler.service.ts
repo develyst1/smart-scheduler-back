@@ -24,7 +24,7 @@ import {
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
-import { bookingBlockedBySuspension } from "../lib/suspend";
+import { blockedBySuspension } from "../lib/suspend";
 import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
@@ -517,6 +517,18 @@ async function resolveStudentId(exec: any, student: any): Promise<string> {
 
 // Insert one booking; endTime is derived (+1h), slot clashes → 409. `pendingSlot`
 // marks the new booking that is waiting for an overbooked slot to be released.
+/** Suspension message — one string for booking and buying, so a household never sees two wordings for one
+ *  policy. (TASK-048 wrote the booking half; TASK-058 shares it with the sale paths.) */
+const SUSPENDED_MESSAGE = "บัญชีผู้ปกครองถูกระงับ — ติดต่อเจ้าหน้าที่เพื่อเปิดใช้งานก่อน";
+
+/** Refuse a purchase when the student's household is suspended (TASK-058). Walk-in students with no parent
+ *  are never blocked — same carve-out as the booking gate, via the same `blockedBySuspension`. */
+async function assertHouseholdNotSuspended(exec: any, studentId: string) {
+  if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
+    throw badRequest(SUSPENDED_MESSAGE);
+  }
+}
+
 async function insertBooking(
   exec: any,
   studentId: string,
@@ -538,8 +550,8 @@ async function insertBooking(
   }
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
-  if (bookingBlockedBySuspension(await findParentOfStudent(studentId, exec))) {
-    throw badRequest("บัญชีผู้ปกครองถูกระงับ — ติดต่อเจ้าหน้าที่เพื่อเปิดใช้งานก่อนจอง");
+  if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
+    throw badRequest(`${SUSPENDED_MESSAGE}จอง`);
   }
 
   try {
@@ -615,6 +627,10 @@ export async function createCoursePackage(input: any) {
   if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
+    // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
+    // reject the generated sessions anyway, but incidental enforcement stops being enforcement the moment
+    // someone reorders this or adds a course type that books no sessions.
+    await assertHouseholdNotSuspended(tx, studentId);
     const [course] = await tx
       .insert(coursePackages)
       .values({
@@ -694,6 +710,9 @@ export async function createVoucher(input: any) {
     throw badRequest("จำนวนชั่วโมงวอยเชอร์ต้องเป็น 5, 10 หรือ 15");
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
+    // TASK-058: a suspended household may not BUY. Inside the tx and BEFORE the insert, so the blocked sale
+    // never reaches the `recordSale(...)` revenue post below.
+    await assertHouseholdNotSuspended(tx, studentId);
     const [v] = await tx
       .insert(vouchers)
       .values({

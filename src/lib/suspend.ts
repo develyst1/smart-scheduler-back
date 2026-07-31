@@ -8,10 +8,15 @@ export const isSuspended = (suspendedAt: Date | string | null | undefined): bool
   suspendedAt !== null && suspendedAt !== undefined;
 
 /**
- * Should a new booking be refused because the student's household is suspended?
+ * Should this action be refused because the student's household is suspended?
+ *
+ * Covers **both** things a suspended household may not do: create a new **booking** (TASK-048) and **buy** a
+ * course/voucher (TASK-058). One neutral name rather than a booking- and a purchase-flavoured sibling, so there
+ * is exactly one definition of "suspended" to keep correct.
+ *
  * A student with **no parent** (walk-in / First-Trial — `students.parent_id` is nullable by design) has no
  * household to suspend, so it is never blocked.
  */
-export const bookingBlockedBySuspension = (
+export const blockedBySuspension = (
   parent: { suspendedAt?: Date | string | null } | null | undefined,
 ): boolean => !!parent && isSuspended(parent.suspendedAt);
