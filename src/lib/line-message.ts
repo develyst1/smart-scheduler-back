@@ -3,6 +3,7 @@
 // and passes the recipient's language; everything is optional so a deleted booking still sends. Default TH.
 
 import { t, type Lang } from "./line-i18n";
+import { buildDigestMessage } from "./attention";
 
 export interface OutboxPayload {
   kind?: string;
@@ -53,6 +54,9 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         line(t("ob_l_class", lang), ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
         line(t("ob_l_channel", lang), payload.via === "line" ? t("ob_ch_line", lang) : t("ob_ch_system", lang))
       ).trimEnd();
+    // REQ-023: the daily digest travels as its check results, so it renders in each admin's own language.
+    case "daily_digest":
+      return buildDigestMessage((payload.checks as any[]) ?? [], lang);
     default:
       return t("ob_default", lang);
   }

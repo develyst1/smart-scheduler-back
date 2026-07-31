@@ -186,6 +186,35 @@ async function attachFreelanceBudgets<
   return dtos;
 }
 
+/**
+ * Every freelance ceiling with its remaining HOURS — the same `bo.item` rows (and the same `remainingQty`)
+ * the calendar's `overLimit` reads. Exported so the attention checks (TASK-053) reuse this one source instead
+ * of re-deriving "over cap".
+ */
+export async function listFreelanceCeilings(): Promise<
+  Array<{ teacherId: string; nickname: string; remainingQty: number }>
+> {
+  const items = await db.query.boItem.findMany({
+    where: (i, { and, eq, sql }) =>
+      and(
+        eq(i.externalSource, SCHED_SOURCE),
+        eq(i.active, true),
+        sql`${i.metadata}->>'kind' = ${FREELANCE_KIND}`,
+      ),
+  });
+  const rows = await db.query.teachers.findMany({
+    where: (t, { eq }) => eq(t.archived, false),
+  });
+  const byId = new Map(rows.map((t) => [t.id, t]));
+  return items
+    .filter((i) => i.ownerRef && i.remainingQty !== null && byId.has(i.ownerRef))
+    .map((i) => ({
+      teacherId: i.ownerRef!,
+      nickname: byId.get(i.ownerRef!)!.nickname,
+      remainingQty: i.remainingQty!,
+    }));
+}
+
 /** Booking gate: a FREELANCE teacher with no ceiling item can't be booked; FT/PT ok. */
 async function isFreelanceSetupIncomplete(exec: any, teacherId: string, type: TeacherType) {
   if (type !== "FREELANCE") return false;

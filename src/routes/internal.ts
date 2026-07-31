@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import * as jobs from "../services/jobs.service";
+import * as attention from "../services/attention.service";
 import { resetFreelanceBudgets } from "../services/scheduler.service";
 
 const endOfDayBody = z.object({
@@ -37,6 +38,13 @@ export const internalJobs = new Hono()
     const err = internalSecretError(c);
     if (err) return err;
     return c.json(await jobs.runEndOfDayJob(c.req.valid("json").date));
+  })
+  // REQ-023 / TASK-053: 08:00 attention digest — one LINE message to admins, silent when everything is clear,
+  // idempotent per business date, and it ALWAYS writes a job_runs row so "never ran" stays visible.
+  .post("/jobs/daily-digest", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await attention.runDailyDigestJob(c.req.valid("json").date));
   })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {

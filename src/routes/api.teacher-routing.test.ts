@@ -13,9 +13,13 @@ mock.module("../services/scheduler.service", () => ({
   setAvailability: async () => ({ handler: "setAvailability" }),
   setTeacherTypeOrder: async () => ({ handler: "setTeacherTypeOrder" }),
   updateTeacher: async (id: string) => ({ handler: "updateTeacher", id }),
-  // Named export pulled in transitively by checkin.service (imported by ./api) — must exist on the stub
-  // or the ESM link fails ("Export named 'updateBookingStatus' not found").
+  // Named exports pulled in TRANSITIVELY by modules `./api` imports — they must exist on the stub or the ESM
+  // link fails ("Export named 'x' not found"). `updateBookingStatus` ← checkin.service;
+  // `getCourses`/`getVouchers`/`listFreelanceCeilings` ← attention.service (REQ-023).
   updateBookingStatus: async () => ({}),
+  getCourses: async () => [],
+  getVouchers: async () => [],
+  listFreelanceCeilings: async () => [],
 }));
 
 const { api } = await import("./api");

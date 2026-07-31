@@ -6,6 +6,7 @@ import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
 import * as calendar from "../services/calendar.service";
+import * as attention from "../services/attention.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
 
@@ -53,6 +54,8 @@ export const api = new Hono()
   .patch("/students/:id", zValidator("json", v.updateStudent), async (c) =>
     c.json(await parent.updateStudent(c.req.param("id"), c.req.valid("json"))),
   )
+  // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
+  .get("/attention", async (c) => c.json(await attention.getAttention()))
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>

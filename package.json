@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun run src/db/seed.ts",
+    "job:daily-digest": "bun run scripts/daily-digest.ts",
     "line:webhook-test": "bun run scripts/line-webhook-test.ts",
     "line:publish-menus": "bun run scripts/line-publish-menus.ts",
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",
