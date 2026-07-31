@@ -103,6 +103,11 @@ const TABLE: Record<string, Entry> = {
     EN: "📅 Subscribe to your teaching schedule in your phone calendar (updates automatically):\n{url}\n\nTap the link and choose \"Add/Subscribe\" — this link is private to you, don't share it.",
   },
   cal_not_teacher: { TH: "ฟีเจอร์นี้สำหรับครูที่ผูกบัญชีแล้วเท่านั้น", EN: "This feature is for linked teachers only" },
+  // REQ-019 / TASK-048: a suspended household gets a short refusal and NO data.
+  suspended_notice: {
+    TH: "บัญชีถูกระงับ — ติดต่อเจ้าหน้าที่",
+    EN: "This account is suspended — please contact staff",
+  },
   status_PENDING: { TH: "รอยืนยัน", EN: "Pending" },
   status_CONFIRMED: { TH: "ยืนยันแล้ว", EN: "Confirmed" },
   status_ATTENDED: { TH: "เข้าเรียนแล้ว", EN: "Attended" },

@@ -99,6 +99,13 @@
       "when": 1783000000009,
       "tag": "0013_teacher_calendar_token",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783000000010,
+      "tag": "0014_people_demographics_suspend",
+      "breakpoints": true
     }
   ]
 }

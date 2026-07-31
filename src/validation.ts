@@ -122,6 +122,46 @@ export const updateStatus = z.object({
   override: z.boolean().optional(),
 });
 
+// Who can be booked against an existing entitlement (REQ-022 / TASK-051). FIRST_TRIAL / SINGLE_SESSION are
+// deliberately not served here — those tabs use `GET /students?q=`.
+export const eligibleStudentsQuery = z.object({
+  type: z.enum(["COURSE_PACKAGE", "VOUCHER"]),
+});
+
+// Staff people management (REQ-019 / TASK-048). All demographics optional — never block quick entry.
+export const parentsQuery = z.object({
+  q: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export const createParent = z.object({
+  phone: z.string().trim().min(9),
+  name: z.string().trim().max(128).nullish(),
+  province: z.string().trim().max(64).nullish(),
+});
+
+export const updateParent = z.object({
+  phone: z.string().trim().min(9).optional(),
+  name: z.string().trim().max(128).nullish(),
+  province: z.string().trim().max(64).nullish(),
+});
+
+export const createParentStudent = z.object({
+  name: z.string().trim().min(1).max(128),
+  nickname: z.string().trim().max(64).nullish(),
+  note: z.string().trim().max(500).nullish(),
+});
+
+export const updateStudent = z.object({
+  name: z.string().trim().min(1).max(128).optional(),
+  nickname: z.string().trim().max(64).nullish(),
+  gender: z.string().trim().max(32).nullish(),
+  birthDate: DATE.nullish(), // DOB — age is derived at read time, never stored
+  nationality: z.string().trim().max(64).nullish(),
+  note: z.string().trim().max(500).nullish(),
+});
+
 // Bulk-confirm many bookings in one call (REQ-008 / SPEC-011). 1..100 booking ids.
 export const bulkConfirm = z.object({
   ids: z.array(ID).min(1).max(100),

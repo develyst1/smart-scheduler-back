@@ -23,7 +23,9 @@ import {
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
-import { findOrCreateParentByPhone } from "./parent.service";
+import { findOrCreateParentByPhone, findParentOfStudent } from "./parent.service";
+import { bookingBlockedBySuspension } from "../lib/suspend";
+import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
@@ -319,6 +321,64 @@ export async function getCourses() {
   return rows.map(toCourseWithStudent);
 }
 
+/**
+ * Students who can be booked against an existing entitlement, with the context staff need to choose
+ * (REQ-022 / TASK-051). Reuses `getCourses()` / `getVouchers()` and the pure eligibility rules — no new joins,
+ * no second definition of "active".
+ *
+ * A student with two active courses/vouchers appears **once per entitlement** (staff pick which).
+ * `FIRST_TRIAL` / `SINGLE_SESSION` are deliberately not served here — those keep `GET /students?q=`, since any
+ * student (including a brand-new one) is valid for them.
+ */
+export async function getEligibleStudents(type: string) {
+  const { date } = bangkokNow();
+
+  if (type === "COURSE_PACKAGE") {
+    const courses = await getCourses();
+    return {
+      students: courses
+        .filter((c: any) => courseEligible(c, date))
+        .map((c: any) => ({
+          id: c.student.id,
+          name: c.student.name,
+          nickname: c.student.nickname ?? null,
+          context: {
+            courseId: c.id,
+            subject: c.subject ?? null,
+            size: c.size,
+            usedSessions: c.usedSessions,
+            remainingSessions: courseRemainingSessions(c),
+            leaveUsed: c.leaveUsed,
+            leaveQuota: c.leaveQuota,
+            expiryDate: c.expiryDate,
+          },
+        })),
+    };
+  }
+
+  if (type === "VOUCHER") {
+    const vouchers = await getVouchers();
+    return {
+      students: vouchers
+        .filter((v: any) => voucherEligible(v, date))
+        .map((v: any) => ({
+          id: v.student.id,
+          name: v.student.name,
+          nickname: v.student.nickname ?? null,
+          context: {
+            voucherId: v.id,
+            totalHours: v.totalHours,
+            usedHours: v.usedHours,
+            remainingHours: v.remaining,
+            expiryDate: v.expiryDate,
+          },
+        })),
+    };
+  }
+
+  throw badRequest("type ต้องเป็น COURSE_PACKAGE หรือ VOUCHER");
+}
+
 export async function getBookings(f: {
   from?: string;
   to?: string;
@@ -443,6 +503,11 @@ async function insertBooking(
   // be booked (FT/PT are not gated — salary deferred).
   if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
     throw badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`);
+  }
+  // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
+  // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
+  if (bookingBlockedBySuspension(await findParentOfStudent(studentId, exec))) {
+    throw badRequest("บัญชีผู้ปกครองถูกระงับ — ติดต่อเจ้าหน้าที่เพื่อเปิดใช้งานก่อนจอง");
   }
 
   try {

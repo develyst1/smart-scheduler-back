@@ -77,6 +77,11 @@ export const parents = pgTable(
     // LINE OA userId once the parent links via the chat flow (C.4). Null = not linked.
     lineUserId: text("line_user_id"),
     lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
+    /** Household address — kept on the PARENT, not duplicated per student (REQ-019 / TASK-048). */
+    province: text("province"),
+    /** Reversible "off" switch — nothing is ever deleted. Null = active. Enforced server-side: a suspended
+     *  parent can't use the LINE bot and no new bookings can be made for their students (TASK-048). */
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -106,6 +111,11 @@ export const students = pgTable(
     /** CRM (C.2): แต้มสะสม + ระดับลูกค้า — คำนวณ level จาก points ใน service */
     crmPoints: integer("crm_points").notNull().default(0),
     crmLevel: smallint("crm_level").notNull().default(1),
+    /** Demographics for the SOM dashboard (REQ-019 / TASK-048). All optional so LINE self-registration and
+     *  quick staff entry are never blocked. Store the DOB and derive age at read time — never store age. */
+    gender: text("gender"),
+    birthDate: date("birth_date"),
+    nationality: text("nationality"),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

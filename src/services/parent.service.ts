@@ -2,10 +2,10 @@
 // to MAX_STUDENTS_PER_PARENT students. Used by the LINE OA parent flow (register →
 // add children) and the staff endpoints (POST /students, GET /students dropdown).
 
-import { and, asc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { parents, students } from "../db/schema";
-import { badRequest } from "../lib/http";
+import { badRequest, notFound } from "../lib/http";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
 export const MAX_STUDENTS_PER_PARENT = 5;
@@ -141,6 +141,160 @@ export async function createStudent(input: {
     );
     return { student, parent };
   });
+}
+
+// ───────────────────── Staff people management (REQ-019 / TASK-048) ─────────────────────
+// Nothing here ever deletes: `suspend` is the only "off" switch, and it is reversible.
+
+/** Parent + their students, the shape the `/scheduler/people` screen renders. */
+async function loadParentWithStudents(id: string, exec: any = db) {
+  const parent = await exec.query.parents.findFirst({
+    where: (p: any, { eq: e }: any) => e(p.id, id),
+  });
+  if (!parent) return null;
+  return { ...parent, students: await listStudentsOfParent(id, exec) };
+}
+
+/**
+ * Parents with their students embedded. `q` searches the parent's name/phone **and** their students'
+ * name/nickname — the phone term is only added when the query has digits (the REQ-011 rule: a non-numeric
+ * query must not `ilike '%%'` its way to the whole roster).
+ */
+export async function listParents(q?: string, limit = 50, offset = 0) {
+  const term = q?.trim();
+  let ids: string[] | null = null;
+
+  if (term) {
+    const digits = normalizePhone(term);
+    const conditions = [ilike(parents.name, `%${term}%`)];
+    if (digits) conditions.push(ilike(parents.phone, `%${digits}%`));
+    // Parents matched directly...
+    const direct = await db
+      .select({ id: parents.id })
+      .from(parents)
+      .where(or(...conditions));
+    // ...plus parents whose STUDENT matches (staff search by the child's name).
+    const viaStudent = await db
+      .select({ id: students.parentId })
+      .from(students)
+      .where(
+        and(
+          isNotNull(students.parentId),
+          or(ilike(students.name, `%${term}%`), ilike(students.nickname, `%${term}%`)),
+        ),
+      );
+    ids = [...new Set([...direct.map((r) => r.id), ...viaStudent.map((r) => r.id!)])];
+    if (!ids.length) return { parents: [], total: 0 };
+  }
+
+  const where = ids ? inArray(parents.id, ids) : undefined;
+  const rows = await db
+    .select()
+    .from(parents)
+    .where(where)
+    .orderBy(asc(parents.createdAt))
+    .limit(Math.min(limit, 200))
+    .offset(offset);
+
+  // `total` is always present so the screen can paginate (a search knows its own match count).
+  const total = ids
+    ? ids.length
+    : Number((await db.select({ n: sql<number>`count(*)` }).from(parents))[0]?.n ?? 0);
+
+  const withKids = await Promise.all(
+    rows.map(async (p) => ({ ...p, students: await listStudentsOfParent(p.id) })),
+  );
+  return { parents: withKids, total };
+}
+
+export async function getParent(id: string) {
+  const row = await loadParentWithStudents(id);
+  if (!row) throw notFound("ไม่พบผู้ปกครอง");
+  return row;
+}
+
+export async function createParent(input: {
+  phone: string;
+  name?: string | null;
+  province?: string | null;
+}) {
+  const phone = normalizePhone(input.phone);
+  if (phone.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");
+  if (await findParentByPhone(phone)) throw badRequest("เบอร์นี้มีผู้ปกครองในระบบแล้ว");
+  const [row] = await db
+    .insert(parents)
+    .values({ phone, name: input.name ?? null, province: input.province ?? null })
+    .returning();
+  return { ...row, students: [] };
+}
+
+export async function updateParent(
+  id: string,
+  input: { name?: string | null; phone?: string; province?: string | null },
+) {
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.province !== undefined) patch.province = input.province;
+  if (input.phone !== undefined) {
+    const phone = normalizePhone(input.phone);
+    if (phone.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");
+    const owner = await findParentByPhone(phone);
+    if (owner && owner.id !== id) throw badRequest("เบอร์นี้มีผู้ปกครองรายอื่นใช้อยู่");
+    patch.phone = phone;
+  }
+  if (Object.keys(patch).length) {
+    await db.update(parents).set(patch).where(eq(parents.id, id));
+  }
+  return getParent(id);
+}
+
+/** Patch a student's details/demographics. DOB is stored; age is derived at read time, never stored. */
+export async function updateStudent(
+  id: string,
+  input: {
+    name?: string;
+    nickname?: string | null;
+    gender?: string | null;
+    birthDate?: string | null;
+    nationality?: string | null;
+    note?: string | null;
+  },
+) {
+  const patch: Record<string, unknown> = {};
+  for (const k of ["name", "nickname", "gender", "birthDate", "nationality", "note"] as const) {
+    if (input[k] !== undefined) patch[k] = input[k];
+  }
+  if (patch.name !== undefined && !String(patch.name).trim()) throw badRequest("กรุณาระบุชื่อนักเรียน");
+  if (Object.keys(patch).length) {
+    await db.update(students).set(patch).where(eq(students.id, id));
+  }
+  const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
+  if (!row) throw notFound("ไม่พบนักเรียน");
+  return row;
+}
+
+/** Reversible household suspend — enforced server-side (LINE bot + booking creation), never a delete. */
+export async function setParentSuspended(id: string, suspended: boolean) {
+  const parent = await db.query.parents.findFirst({ where: (p, { eq: e }) => e(p.id, id) });
+  if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  await db
+    .update(parents)
+    .set({ suspendedAt: suspended ? new Date() : null })
+    .where(eq(parents.id, id));
+  return getParent(id);
+}
+
+/** The household owning this student, or null for a walk-in/trial student with no parent. */
+export async function findParentOfStudent(studentId: string, exec: any = db) {
+  const student = await exec.query.students.findFirst({
+    where: (s: any, { eq: e }: any) => e(s.id, studentId),
+  });
+  if (!student?.parentId) return null;
+  return (
+    (await exec.query.parents.findFirst({
+      where: (p: any, { eq: e }: any) => e(p.id, student.parentId),
+    })) ?? null
+  );
 }
 
 /** OR-conditions for the student search WHERE. The parent-phone `ilike` is included ONLY when the query has

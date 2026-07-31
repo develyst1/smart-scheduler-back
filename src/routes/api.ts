@@ -14,6 +14,11 @@ export const api = new Hono()
   .get("/calendar", zValidator("query", v.calendarQuery), async (c) =>
     c.json(await svc.getCalendar(c.req.valid("query"))),
   )
+  // ⚠️ Literal `/students/<word>` routes go BEFORE any `/students/:id` param route (the TASK-029 lesson).
+  // Who can be booked against an existing course/voucher, with the context staff pick from (REQ-022).
+  .get("/students/eligible", zValidator("query", v.eligibleStudentsQuery), async (c) =>
+    c.json(await svc.getEligibleStudents(c.req.valid("query").type)),
+  )
   // Booking dropdown source — searchable by name / nickname / parent phone.
   .get("/students", zValidator("query", v.studentsQuery), async (c) => {
     const { q, limit } = c.req.valid("query");
@@ -22,6 +27,31 @@ export const api = new Hono()
   // Staff student creation — under an existing parent or a phone (find-or-create).
   .post("/students", zValidator("json", v.createStudent), async (c) =>
     c.json(await parent.createStudent(c.req.valid("json")), 201),
+  )
+  // ── People management (REQ-019 / TASK-048) — staff only. Nothing is ever deleted; suspend is the off switch.
+  .get("/parents", zValidator("query", v.parentsQuery), async (c) => {
+    const { q, limit, offset } = c.req.valid("query");
+    return c.json(await parent.listParents(q, limit, offset));
+  })
+  .post("/parents", zValidator("json", v.createParent), async (c) =>
+    c.json(await parent.createParent(c.req.valid("json")), 201),
+  )
+  .get("/parents/:id", async (c) => c.json(await parent.getParent(c.req.param("id"))))
+  .patch("/parents/:id", zValidator("json", v.updateParent), async (c) =>
+    c.json(await parent.updateParent(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/parents/:id/students", zValidator("json", v.createParentStudent), async (c) => {
+    const { student } = await parent.createStudentForParent(c.req.param("id"), c.req.valid("json"));
+    return c.json(student, 201);
+  })
+  .post("/parents/:id/suspend", async (c) =>
+    c.json(await parent.setParentSuspended(c.req.param("id"), true)),
+  )
+  .post("/parents/:id/unsuspend", async (c) =>
+    c.json(await parent.setParentSuspended(c.req.param("id"), false)),
+  )
+  .patch("/students/:id", zValidator("json", v.updateStudent), async (c) =>
+    c.json(await parent.updateStudent(c.req.param("id"), c.req.valid("json"))),
   )
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))

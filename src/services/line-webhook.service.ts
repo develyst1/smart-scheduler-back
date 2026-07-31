@@ -29,6 +29,7 @@ import { resolveBotLang as resolveLang } from "../lib/line-lang";
 import { decideMessageRoute, otherRosterTable } from "../lib/line-routing";
 import { decideTeacherMatch, parentChildrenNote } from "../lib/line-pairing";
 import { calendarUrls } from "../lib/calendar-link";
+import { isSuspended } from "../lib/suspend";
 import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
   MAX_STUDENTS_PER_PARENT,
@@ -106,6 +107,12 @@ async function detectLinkedRole(lineUserId: string): Promise<LinkRole | null> {
   if (parent) return "customer";
   if (admins.includes(lineUserId)) return "admin";
   return null;
+}
+
+/** A suspended household is refused at the bot boundary and gets NO data back (REQ-019 / TASK-048). */
+async function isSuspendedLineParent(lineUserId: string): Promise<boolean> {
+  const parent = await findParentByLineUserId(lineUserId);
+  return isSuspended(parent?.suspendedAt);
 }
 
 /** Flip the stored language on whichever link record matches (parent/teacher). Returns the new language. */
@@ -428,7 +435,10 @@ async function handleMessage(ev: LineWebhookEvent) {
 
   // Already-linked routing (only when no conversation is in progress).
   if (route === "linked") {
-    if (linked === "customer") return handleParentCommand(lineUserId, text, replyToken, lang);
+    if (linked === "customer") {
+      if (await isSuspendedLineParent(lineUserId)) return reply(replyToken, t("suspended_notice", lang));
+      return handleParentCommand(lineUserId, text, replyToken, lang);
+    }
     if (linked === "teacher") {
       if (["ตาราง", "ตารางสอน", "schedule"].includes(lower)) {
         return doTeacherSchedule(lineUserId, replyToken, lang, "today"); // keyword fallback (REQ-015 principle)
@@ -521,6 +531,10 @@ async function handlePostback(ev: LineWebhookEvent) {
     return send(replyToken, [textReply(t("teacher_linked", lang), lang)]);
   }
   if (linked !== "customer") return send(replyToken, [textReply(t("welcome", lang), lang)]);
+  // Suspended household → refuse every postback too, not just typed commands (TASK-048).
+  if (await isSuspendedLineParent(lineUserId)) {
+    return send(replyToken, [textReply(t("suspended_notice", lang), lang)]);
+  }
 
   switch (action) {
     case "checkin":
