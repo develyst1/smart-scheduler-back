@@ -22,8 +22,8 @@ export const api = new Hono()
   )
   // Booking dropdown source — searchable by name / nickname / parent phone.
   .get("/students", zValidator("query", v.studentsQuery), async (c) => {
-    const { q, limit } = c.req.valid("query");
-    return c.json(await parent.searchStudents(q, limit));
+    const { q, limit, bookable } = c.req.valid("query");
+    return c.json(await parent.searchStudents(q, limit, { bookable }));
   })
   // Staff student creation — under an existing parent or a phone (find-or-create).
   .post("/students", zValidator("json", v.createStudent), async (c) =>

@@ -23,7 +23,7 @@ import {
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
-import { findOrCreateParentByPhone, findParentOfStudent } from "./parent.service";
+import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import { bookingBlockedBySuspension } from "../lib/suspend";
 import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
 import { attachBookingBadges } from "./badge.service";
@@ -361,12 +361,15 @@ export async function getCourses() {
  */
 export async function getEligibleStudents(type: string) {
   const { date } = bangkokNow();
+  // REQ-019 / TASK-056: this endpoint exists ONLY to answer "who can be booked", so a suspended household
+  // never belongs in it — filtered unconditionally. Parentless walk-in students are never in the set.
+  const suspended = await suspendedStudentIds();
 
   if (type === "COURSE_PACKAGE") {
     const courses = await getCourses();
     return {
       students: courses
-        .filter((c: any) => courseEligible(c, date))
+        .filter((c: any) => courseEligible(c, date) && !suspended.has(c.student.id))
         .map((c: any) => ({
           id: c.student.id,
           name: c.student.name,
@@ -389,7 +392,7 @@ export async function getEligibleStudents(type: string) {
     const vouchers = await getVouchers();
     return {
       students: vouchers
-        .filter((v: any) => voucherEligible(v, date))
+        .filter((v: any) => voucherEligible(v, date) && !suspended.has(v.student.id))
         .map((v: any) => ({
           id: v.student.id,
           name: v.student.name,

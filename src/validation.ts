@@ -33,6 +33,12 @@ export const reportQuery = z.object({ date: DATE });
 export const studentsQuery = z.object({
   q: z.string().trim().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** OPT-IN (REQ-019 / TASK-056): exclude suspended households. The booking picker passes it; the course /
+   *  voucher SALE screens share this endpoint and must keep today's behaviour, so it defaults to off. */
+  bookable: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 // Staff student creation — under an existing parent (parentId) or a phone
@@ -90,6 +96,12 @@ export const createBooking = z
   .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
     message: "การจองแบบ Voucher ต้องเลือกวอยเชอร์ (voucherId)",
     path: ["voucherId"],
+  })
+  // TASK-055 — symmetric backstop: การจองแบบคอร์สต้องผูกคอร์สเสมอ (ไม่งั้นครั้งเรียนจะไม่ถูกตัด ทั้งตอนเช็คอิน
+  // และตอนตัดรอบสิ้นวัน → กลายเป็นคาบฟรี และยอดคงเหลือของคอร์สจะเพี้ยน)
+  .refine((d) => d.bookingType !== "COURSE_PACKAGE" || !!d.courseId, {
+    message: "การจองแบบคอร์สต้องเลือกคอร์ส (courseId)",
+    path: ["courseId"],
   });
 
 // รายการวอยเชอร์ (GET /api/vouchers) — กรองตามนักเรียน/ค้นหาชื่อได้

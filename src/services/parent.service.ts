@@ -2,10 +2,11 @@
 // to MAX_STUDENTS_PER_PARENT students. Used by the LINE OA parent flow (register →
 // add children) and the staff endpoints (POST /students, GET /students dropdown).
 
-import { and, asc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { parents, students } from "../db/schema";
 import { badRequest, notFound } from "../lib/http";
+import { isSuspended } from "../lib/suspend";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
 export const MAX_STUDENTS_PER_PARENT = 5;
@@ -313,7 +314,32 @@ export function studentSearchConditions(q: string) {
 }
 
 /** Booking dropdown source: students searchable by name, nickname, or parent phone. */
-export async function searchStudents(q?: string, limit = 50) {
+/**
+ * Ids of students belonging to a **suspended** household (REQ-019 / TASK-056). Built on
+ * `lib/suspend.ts`'s `isSuspended` — one rule, shared by both booking pickers, never restated.
+ *
+ * ⚠️ The `innerJoin` is correct **here and only here**: this builds the set of students to EXCLUDE, so a
+ * student with no parent (walk-in / First-Trial — `students.parent_id` is nullable by design) simply isn't in
+ * it and therefore **stays visible**. Do not "fix" this to a LEFT join.
+ */
+export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> {
+  const rows = await exec
+    .select({ id: students.id, suspendedAt: parents.suspendedAt })
+    .from(students)
+    .innerJoin(parents, eq(parents.id, students.parentId));
+  return new Set(
+    rows.filter((r: any) => isSuspended(r.suspendedAt)).map((r: any) => r.id as string),
+  );
+}
+
+/**
+ * Booking-dropdown search. `opts.bookable` is **opt-in**: it excludes suspended households, and is passed only
+ * by the booking picker. Without it the response is exactly what it has always been — the course/voucher
+ * **sale** screens (`CreateCourseModal` / `CreateVoucherModal`) share this endpoint and selling ≠ booking.
+ */
+export async function searchStudents(q?: string, limit = 50, opts: { bookable?: boolean } = {}) {
+  const excluded = opts.bookable ? [...(await suspendedStudentIds())] : [];
+  const searchWhere = q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`;
   const rows = await db
     .select({
       id: students.id,
@@ -325,7 +351,9 @@ export async function searchStudents(q?: string, limit = 50) {
     })
     .from(students)
     .leftJoin(parents, eq(parents.id, students.parentId))
-    .where(q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`)
+    .where(
+      excluded.length ? and(searchWhere, notInArray(students.id, excluded)) : searchWhere,
+    )
     .orderBy(asc(students.name))
     .limit(Math.min(limit, 200));
 
