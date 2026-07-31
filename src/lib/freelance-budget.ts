@@ -15,6 +15,17 @@ export function drawCeilingHour(
 /** Ceiling exhausted → the calendar hides the teacher (FE folds into `bookable`). */
 export const overLimit = (remainingQty: number) => remainingQty <= 0;
 
+/**
+ * Does a teacher edit end their freelance arrangement, so the monthly ceiling must be closed?
+ * (REQ-009 / TASK-060.) Pure, so the carve-outs are pinned independently of the DB write:
+ * only **FREELANCE → something else** qualifies — FT↔PT, FREELANCE→FREELANCE, and an edit that doesn't
+ * touch the type (`newType` undefined) all leave the ceiling alone.
+ */
+export const shouldCloseCeiling = (
+  currentType: string,
+  newType: string | undefined,
+): boolean => newType !== undefined && currentType === "FREELANCE" && newType !== "FREELANCE";
+
 // ── Reconcile-to-target invariant (REQ-006 / TASK-028) ──────────────────────────────────────────
 // A freelance booking holds exactly one hour while its status is "consuming" and zero otherwise.
 // Drawing/refunding is driven by this target vs. the hours currently held (derived from the ledger),

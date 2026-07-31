@@ -20,6 +20,7 @@ import {
   overLimit,
   reconcileDelta,
   reconcileRemaining,
+  shouldCloseCeiling,
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
@@ -184,6 +185,24 @@ async function attachFreelanceBudgets<
     d.setupIncomplete = d.type === "FREELANCE" && !b && !d.archived;
   }
   return dtos;
+}
+
+/**
+ * Close a teacher's freelance ceiling (REQ-009 / TASK-060) — a **consequence** of them ceasing to be freelance
+ * (type change or archive), never a separate call.
+ *
+ * "Closed" already has a representation: `bo.item.active = false`. `findFreelanceItem`, `listFreelanceCeilings`
+ * and `resetFreelanceBudgets` all filter `active = true`, so one flag removes the ceiling from enforcement, the
+ * budget list and the monthly re-fill at once. **No migration, nothing deleted.**
+ *
+ * ⚠️ `remainingQty` / `ceilingQty` / `bo.movement` rows are deliberately **untouched** — that's what makes
+ * "history is preserved" true rather than merely claimed: a past month still reports exactly what it did.
+ * No-op when the teacher has no active item (FT/PT who never had one, or already closed).
+ */
+async function closeFreelanceCeiling(exec: any, teacherId: string) {
+  const item = await findFreelanceItem(exec, teacherId);
+  if (!item) return; // nothing to close
+  await exec.update(boItem).set({ active: false }).where(eq(boItem.id, item.id));
 }
 
 /**
@@ -1097,6 +1116,12 @@ export async function updateTeacher(
           .insert(teacherSubjects)
           .values(input.subjectIds.map((subjectId) => ({ teacherId: id, subjectId })));
     }
+
+    // REQ-009 / TASK-060: leaving FREELANCE closes the monthly ceiling — inside this tx, so the type change
+    // and the closure land together or not at all. FT↔PT and FREELANCE→FREELANCE are not this case.
+    if (shouldCloseCeiling(current.type, input.type)) {
+      await closeFreelanceCeiling(tx, id);
+    }
   });
   return loadTeacherFull(id);
 }
@@ -1124,6 +1149,10 @@ export async function archiveTeacher(id: string) {
 
   await db.transaction(async (tx) => {
     await tx.update(teachers).set({ archived: true, active: false }).where(eq(teachers.id, id));
+    // REQ-009 / TASK-060: archiving also ends the freelance arrangement. Without this the dead budget is
+    // re-filled to its ceiling every month forever — `resetFreelanceBudgets` joins no teacher table, so it
+    // can't tell an archived teacher from a working one. No-op for FT/PT.
+    await closeFreelanceCeiling(tx, id);
   });
   return loadTeacherFull(id);
 }

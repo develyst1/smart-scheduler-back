@@ -6,6 +6,7 @@ import {
   overLimit,
   reconcileDelta,
   reconcileRemaining,
+  shouldCloseCeiling,
 } from "./freelance-budget";
 
 describe("drawCeilingHour — 1h ceiling draw (TASK-024)", () => {
@@ -108,5 +109,30 @@ describe("reconcile invariant — remaining == ceiling − (# consuming bookings
     expect(s).toEqual({ held: 0, remaining: 140, ceiling: 140 });
     s = step(s, "CANCELLED"); // idempotent
     expect(s).toEqual({ held: 0, remaining: 140, ceiling: 140 });
+  });
+});
+
+describe("shouldCloseCeiling — only leaving FREELANCE closes the ceiling (REQ-009 / TASK-060)", () => {
+  test("🔑 FREELANCE → FT/PT closes it", () => {
+    expect(shouldCloseCeiling("FREELANCE", "FULL_TIME")).toBe(true);
+    expect(shouldCloseCeiling("FREELANCE", "PART_TIME")).toBe(true);
+  });
+
+  test("FT↔PT never closes anything (they have no ceiling to begin with)", () => {
+    expect(shouldCloseCeiling("FULL_TIME", "PART_TIME")).toBe(false);
+    expect(shouldCloseCeiling("PART_TIME", "FULL_TIME")).toBe(false);
+  });
+
+  test("FREELANCE → FREELANCE is not a change — the ceiling survives a name/subject edit", () => {
+    expect(shouldCloseCeiling("FREELANCE", "FREELANCE")).toBe(false);
+  });
+
+  test("🔑 an edit that doesn't touch the type leaves it alone (name-only edit)", () => {
+    expect(shouldCloseCeiling("FREELANCE", undefined)).toBe(false);
+    expect(shouldCloseCeiling("FULL_TIME", undefined)).toBe(false);
+  });
+
+  test("becoming freelance does not close anything", () => {
+    expect(shouldCloseCeiling("FULL_TIME", "FREELANCE")).toBe(false);
   });
 });
