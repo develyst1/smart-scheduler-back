@@ -126,6 +126,8 @@ export interface AttentionCtx {
     vouchers: () => Promise<any[]>;
     studentsWithParent: () => Promise<Array<{ student: any; parent: any | null }>>;
     freelanceCeilings: () => Promise<Array<{ teacherId: string; nickname: string; remainingQty: number }>>;
+    /** How many teacher link requests are waiting for staff (TASK-075). */
+    pendingTeacherLinks: () => Promise<number>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
     salesPostingState: () => Promise<{
       sold: Array<{ id: string; label: string }>;
@@ -248,6 +250,16 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
     // read by someone already looking. This puts it where someone looks every morning.
     // Counts only in the digest: an unposted sale is an ops fault, not a person, and a name adds nothing an
     // admin can act on. The web panel shows which ones, behind login.
+    // TASK-075 — a queue nobody is told about is a queue nobody empties, and ~22 of ~23 teachers are about
+    // to claim during the launch fortnight. Counts-only: it's a worklist, not a person.
+    key: "pending_teacher_links",
+    titleKey: "att_pending_teacher_links",
+    run: async (ctx) => {
+      const count = await ctx.load.pendingTeacherLinks();
+      return { count, items: [] };
+    },
+  },
+  {
     key: "sales_not_posted",
     titleKey: "att_sales_not_posted",
     run: async (ctx) => {

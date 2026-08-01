@@ -60,6 +60,9 @@ export const bookingsQuery = z.object({
   status: BOOKING_STATUS.optional(),
   teacherId: ID.optional(),
   q: z.string().trim().min(1).optional(),
+  // TASK-073. `upcoming` = today/future soonest-first, then the past most-recent-first. An unknown value is a
+  // clean 400 from the enum — never a silent fallback to some other order.
+  sort: z.enum(["upcoming", "date_asc", "date_desc"]).default("upcoming"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -336,4 +339,20 @@ export const setBookingBadges = z.object({
 export const badgeReportQuery = z.object({
   from: DATE,
   to: DATE,
+});
+
+// ── Teacher LINE link requests (REQ-020 Stage 2 / TASK-075) ──
+export const linkRequestsQuery = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).default("PENDING"),
+});
+
+// `teacherId` is optional here and REQUIRED by the service when the request carries none (a nickname
+// collision) — the rule lives in `decideApproval` so both the route and any future caller obey it.
+export const approveLinkRequest = z.object({
+  teacherId: ID.optional(),
+  decidedBy: z.string().trim().min(1).max(120).optional(),
+});
+
+export const rejectLinkRequest = z.object({
+  decidedBy: z.string().trim().min(1).max(120).optional(),
 });

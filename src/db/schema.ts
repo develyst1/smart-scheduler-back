@@ -394,6 +394,34 @@ export const appSettings = pgTable("app_settings", {
     .$onUpdate(() => new Date()),
 });
 
+// ─────────────────── Teacher LINE link requests (REQ-020 Stage 2 / TASK-075) ───────────────────
+// A nickname claim on the LINE bot creates a request here instead of binding `teachers.line_user_id`.
+// **Approval is the only code path that grants a teacher link**, so "how did this account get linked?"
+// has exactly one answer.
+//
+// `teacherId` is nullable BY DESIGN: on a nickname collision we don't know who the claimant is, and
+// guessing is precisely the bug this replaces — staff name the teacher when they approve.
+export const teacherLinkRequests = pgTable(
+  "teacher_link_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    lineUserId: text("line_user_id").notNull(),
+    claimedNickname: text("claimed_nickname").notNull(),
+    teacherId: uuid("teacher_id").references(() => teachers.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("PENDING"), // PENDING | APPROVED | REJECTED
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: text("decided_by"),
+  },
+  (t) => [
+    // One PENDING row per LINE account — a retry updates it rather than queueing a duplicate.
+    uniqueIndex("teacher_link_requests_pending_uq")
+      .on(t.lineUserId)
+      .where(sql`${t.status} = 'PENDING'`),
+    index("teacher_link_requests_status_idx").on(t.status, t.createdAt),
+  ],
+);
+
 // ───────────────────────── Job runs (UC-012 auto-cut) ─────────────────────────
 // Audit log for the end-of-day sweep, so ops can confirm the Windows Task Scheduler
 // trigger actually fired and see what it cut. One row per run (idempotent re-runs

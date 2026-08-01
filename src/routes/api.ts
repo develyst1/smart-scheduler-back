@@ -7,6 +7,7 @@ import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
 import * as calendar from "../services/calendar.service";
 import * as attention from "../services/attention.service";
+import * as teacherLink from "../services/teacher-link.service";
 import * as som from "../services/som-report.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
@@ -57,6 +58,22 @@ export const api = new Hono()
   )
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
   .get("/attention", async (c) => c.json(await attention.getAttention()))
+  // REQ-020 Stage 2 (TASK-075) — teacher LINE link requests. Approval is the ONLY path that grants a link.
+  .get("/teacher-link-requests", zValidator("query", v.linkRequestsQuery), async (c) =>
+    c.json({ items: await teacherLink.listTeacherLinkRequests(c.req.valid("query").status) }),
+  )
+  .post(
+    "/teacher-link-requests/:id/approve",
+    zValidator("json", v.approveLinkRequest),
+    async (c) => {
+      const { id } = c.req.param();
+      return c.json(await teacherLink.approveTeacherLinkRequest(id, c.req.valid("json")));
+    },
+  )
+  .post("/teacher-link-requests/:id/reject", zValidator("json", v.rejectLinkRequest), async (c) => {
+    const { id } = c.req.param();
+    return c.json(await teacherLink.rejectTeacherLinkRequest(id, c.req.valid("json").decidedBy));
+  })
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
@@ -88,6 +105,13 @@ export const api = new Hono()
     const rotate = c.req.query("rotate") === "true";
     const { token, rotated } = await calendar.getOrCreateCalendarToken(c.req.param("id"), { rotate });
     return c.json({ ...calendarUrls(token), rotated });
+  })
+  // TASK-075 — unlink a teacher's LINE account. A departed teacher otherwise keeps receiving schedule
+  // pushes forever with no way to stop it. Reversible: they can claim again, which queues a request.
+  // (No shadowing risk: `line-link` is the 3rd segment, so it can't be matched as an `:id`.)
+  .delete("/teachers/:id/line-link", async (c) => {
+    const { id } = c.req.param();
+    return c.json(await teacherLink.unlinkTeacherLine(id));
   })
   .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"))))
   .post("/teachers/:id/reactivate", async (c) =>

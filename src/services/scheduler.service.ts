@@ -27,11 +27,13 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import {
+  bookingsOrderBy,
   courseCountQuery,
   courseSearchQuery,
   studentSearchQuery,
   voucherCountQuery,
   voucherSearchQuery,
+  type BookingSort,
 } from "./search.queries";
 import { blockedBySuspension } from "../lib/suspend";
 import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
@@ -498,6 +500,7 @@ export async function getBookings(f: {
   status?: any;
   teacherId?: string;
   q?: string;
+  sort?: BookingSort;
   page: number;
   limit: number;
 }) {
@@ -533,7 +536,9 @@ export async function getBookings(f: {
     .innerJoin(subjects, eq(subjects.id, bookings.subjectId))
     .leftJoin(coursePackages, eq(coursePackages.id, bookings.courseId))
     .where(cond)
-    .orderBy(asc(bookings.date), asc(bookings.startTime))
+    // TASK-073: default `upcoming` — today/future soonest-first, then the past most-recent-first.
+    // Pure sort: nothing is filtered out, so `total` still matches the filtered set in every direction.
+    .orderBy(...bookingsOrderBy(f.sort ?? "upcoming", bangkokNow().date))
     .limit(f.limit)
     .offset((f.page - 1) * f.limit);
 

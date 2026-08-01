@@ -17,6 +17,7 @@ import {
 import { t } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { getCourses, getVouchers, listFreelanceCeilings } from "./scheduler.service";
+import { countPendingTeacherLinks } from "./teacher-link.service";
 
 export const DIGEST_JOB = "daily-digest";
 
@@ -43,6 +44,7 @@ function buildCtx(today: string): AttentionCtx {
     sold: Array<{ id: string; label: string }>;
     postedRefIds: Set<string>;
   }> | null = null;
+  let pendingLinks: Promise<number> | null = null;
   const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
@@ -74,6 +76,7 @@ function buildCtx(today: string): AttentionCtx {
             parent: s.parentId ? (byId.get(s.parentId) ?? null) : null,
           }));
         })()),
+      pendingTeacherLinks: () => (pendingLinks ??= countPendingTeacherLinks()),
       // TASK-067. The three things `recordSale` is called for — a course sale, a voucher sale, and an
       // ATTENDED trial/single (revenue recognised at day-end) — against the refIds that actually reached
       // `bo.movement`. The movement carries the entitlement's own id as `ref_id`, so absence IS the signal.

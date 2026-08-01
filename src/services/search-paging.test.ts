@@ -10,6 +10,10 @@ import {
   voucherSearchQuery,
 } from "./search.queries";
 import { studentSearchConditions } from "./parent.service";
+import { bookingsOrderBy, type BookingSort } from "./search.queries";
+import { db } from "../db";
+import { bookings } from "../db/schema";
+import { bookingsQuery } from "../validation";
 
 const sqlOf = (q: { toSQL: () => { sql: string; params: unknown[] } }) => q.toSQL();
 const ALL = [
@@ -85,5 +89,56 @@ describe("no search term → no filtering (the internal consumers' path)", () =>
   test("a studentId filter still applies (the booking modal's own-vouchers load)", () => {
     const { params } = sqlOf(voucherSearchQuery({ studentId: "stu-1" }));
     expect(params).toContain("stu-1");
+  });
+});
+
+// ── TASK-073 — /bookings ordering, asserted on generated SQL (no DB) ────────────────────────────────
+describe("🔑 /bookings sort — 'upcoming' is NOT 'newest first'", () => {
+  const TODAY = "2026-08-01";
+  const orderSql = (sort: BookingSort) => {
+    const { sql } = db.select().from(bookings).orderBy(...bookingsOrderBy(sort, TODAY)).toSQL();
+    return sql.slice(sql.indexOf("order by"));
+  };
+
+  test("🔴 the default puts today/future FIRST and soonest-first — not the furthest-future booking", () => {
+    // A 10-session course books 10 weeks forward, so `date_desc` would top page 1 with rows ~2-3 months
+    // out. `upcoming` splits on today, then orders the future ascending.
+    const o = orderSql("upcoming");
+    expect(o).toContain("<"); // the (date < today) split
+    expect(o).toContain("case when");
+    expect(db.select().from(bookings).orderBy(...bookingsOrderBy("upcoming", TODAY)).toSQL().params)
+      .toContain(TODAY);
+  });
+
+  test("date_asc → oldest first; date_desc → newest first, startTime in the SAME direction", () => {
+    expect(orderSql("date_asc")).not.toContain("desc");
+    const d = orderSql("date_desc");
+    expect((d.match(/desc/g) ?? []).length).toBe(2); // date desc + start_time desc
+  });
+
+  test("🔑 every direction is a TOTAL order — ends with id, so no row lands on two pages or none", () => {
+    for (const s of ["upcoming", "date_asc", "date_desc"] as const) {
+      expect(orderSql(s)).toContain('"id"');
+    }
+  });
+
+  test("ordering is deterministic — same sort builds identical SQL", () => {
+    expect(orderSql("upcoming")).toBe(orderSql("upcoming"));
+  });
+
+  test("sorting never filters — no direction adds a WHERE, so `total` can't disagree with the page", () => {
+    for (const s of ["upcoming", "date_asc", "date_desc"] as const) {
+      expect(db.select().from(bookings).orderBy(...bookingsOrderBy(s, TODAY)).toSQL().sql)
+        .not.toContain("where");
+    }
+  });
+});
+
+describe("sort validation — an unknown value is a clean 400, not a silent fallback", () => {
+  test("the enum rejects anything else, and defaults to upcoming", () => {
+    expect(bookingsQuery.safeParse({ sort: "sideways" }).success).toBe(false);
+    const ok = bookingsQuery.safeParse({});
+    expect(ok.success && ok.data.sort).toBe("upcoming");
+    expect(bookingsQuery.safeParse({ sort: "date_asc" }).success).toBe(true);
   });
 });

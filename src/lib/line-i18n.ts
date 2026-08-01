@@ -60,6 +60,13 @@ const TABLE: Record<string, Entry> = {
     EN: 'More than one teacher uses the nickname "{nick}" — for safety nothing was linked. Please ask staff to complete the pairing.',
   },
   verify_teacher_other: { TH: "ครูคนนี้ผูก LINE กับบัญชีอื่นแล้ว ติดต่อแอดมิน", EN: "This teacher is already linked to another LINE — contact admin" },
+  // TASK-075. ⚠️ Used for BOTH the single-match and the nickname-collision case, on purpose: the wording must
+  // not tell an unauthenticated stranger whether a nickname exists or how many teachers share it.
+  // Deliberately does NOT echo {nick} back, for the same reason.
+  verify_teacher_pending: {
+    TH: "ส่งคำขอผูกบัญชีให้เจ้าหน้าที่แล้ว ✅ รอการอนุมัติ แล้วจะแจ้งให้ทราบอีกครั้ง",
+    EN: "Your link request has been sent to staff ✅ You'll be told once it's approved",
+  },
   verify_teacher_ok: { TH: "ผูกบัญชีครูสำเร็จ ✅ ({nick}) จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ ({nick}) You'll be notified when a schedule is confirmed" },
   verify_parent_badphone: { TH: "เบอร์โทรไม่ถูกต้อง กรุณาพิมพ์เบอร์ที่ลงทะเบียน (เช่น 0812345678)", EN: "Invalid phone. Please type the registered number (e.g. 0812345678)" },
   verify_parent_other: { TH: "เบอร์นี้ผูกกับ LINE อื่นแล้ว ติดต่อแอดมิน", EN: "This number is already linked to another LINE — contact admin" },
@@ -111,6 +118,10 @@ const TABLE: Record<string, Entry> = {
   att_freelance_near_cap: { TH: "ครูฟรีแลนซ์ที่งบใกล้เต็ม", EN: "Freelance budgets near their cap" },
   att_incomplete_students: { TH: "นักเรียนที่ข้อมูลไม่ครบ", EN: "Students with incomplete details" },
   att_yesterday_no_shows: { TH: "ไม่มาเรียนเมื่อวาน", EN: "No-shows yesterday" },
+  att_pending_teacher_links: {
+    TH: "คำขอผูกบัญชีครูที่รออนุมัติ",
+    EN: "Teacher link requests awaiting approval",
+  },
   att_sales_not_posted: {
     TH: "การขายที่ยังไม่ลงบัญชี",
     EN: "Sales not posted to backoffice",

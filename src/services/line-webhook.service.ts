@@ -26,8 +26,11 @@ import {
 import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import { t, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
-import { decideMessageRoute, otherRosterTable } from "../lib/line-routing";
-import { decideTeacherMatch, parentChildrenNote } from "../lib/line-pairing";
+import { decideMessageRoute } from "../lib/line-routing";
+import { moveRosterLink } from "../lib/roster-link";
+import { parentChildrenNote } from "../lib/line-pairing";
+import { claimReplyKey } from "../lib/teacher-link";
+import { requestTeacherLink } from "./teacher-link.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { isSuspended } from "../lib/suspend";
 import { getCalendarTokenForLineUser } from "./calendar.service";
@@ -125,23 +128,8 @@ async function toggleLang(lineUserId: string, current: Lang): Promise<Lang> {
   return next;
 }
 
-/**
- * One LINE user ⇒ one active ROSTER link (TASK-046). Linking as a teacher clears any parent link and
- * vice-versa, so a role change **moves** the link instead of accumulating one — `detectLinkedRole` checks
- * teacher before parent, so a leftover link would silently hide the other surface.
- *
- * The **admin notification list is deliberately left alone**: it is a subscription in `app_settings`, not a
- * roster identity, and `detectLinkedRole` checks it *last* — so it can never shadow a parent/teacher surface
- * (i.e. it cannot cause the bug this fixes). Silently unsubscribing someone from leave alerts because they
- * registered a child would be a surprising, hard-to-reverse side effect.
- */
-async function moveRosterLink(lineUserId: string, newRole: "customer" | "teacher") {
-  if (otherRosterTable(newRole) === "parents") {
-    await db.update(parents).set({ lineUserId: null }).where(eq(parents.lineUserId, lineUserId));
-  } else {
-    await db.update(teachers).set({ lineUserId: null }).where(eq(teachers.lineUserId, lineUserId));
-  }
-}
+// `moveRosterLink` moved to `lib/roster-link.ts` in TASK-075 so the approval path can reuse it — this module
+// now imports `teacher-link.service`, so that module importing back would be a cycle.
 
 async function verifyAndLink(
   lineUserId: string,
@@ -157,23 +145,18 @@ async function verifyAndLink(
   }
 
   if (role === "teacher") {
+    // 🔐 TASK-075: a nickname claim no longer links anyone. It queues a request for staff to approve.
+    // This line used to be `db.update(teachers).set({ lineUserId })` — i.e. typing a teacher's nickname
+    // granted that teacher's access, immediately, to whoever typed it. `teachers.lineUserId` is now written
+    // only by `approveTeacherLinkRequest`.
     const nick = code.trim();
-    const rows = await db.select().from(teachers);
-    // TASK-047: count the matches — never silently bind the first of several teachers sharing a nickname.
-    const matches = rows.filter((tt) => tt.nickname.toLowerCase() === nick.toLowerCase());
-    const match = decideTeacherMatch(matches.length);
-    if (match === "none") return { ok: false, message: t("verify_teacher_notfound", lang, { nick }) };
-    if (match === "ambiguous") {
-      // Bind nobody. Session stays at AWAIT_CODE, so they can retype or restart with `สมัคร` — not a loop.
-      return { ok: false, message: t("verify_teacher_ambiguous", lang, { nick }) };
-    }
-    const teacher = matches[0]!;
-    if (teacher.lineUserId && teacher.lineUserId !== lineUserId) {
-      return { ok: false, message: t("verify_teacher_other", lang) };
-    }
-    await db.update(teachers).set({ lineUserId }).where(eq(teachers.id, teacher.id));
-    await moveRosterLink(lineUserId, "teacher"); // role change moves the link (TASK-046)
-    return { ok: true, message: t("verify_teacher_ok", lang, { nick: teacher.nickname }) };
+    const outcome = await requestTeacherLink(lineUserId, nick);
+    // ⚠️ `pending` and `pending-ambiguous` deliberately share one reply key: the bot must not tell an
+    // unauthenticated stranger whether a nickname exists, or how many teachers share it.
+    const message = t(claimReplyKey(outcome), lang, { nick });
+    // They stay UNLINKED until approved — no teacher menu, no schedule pushes. `ok:false` keeps the session
+    // at AWAIT_CODE so a typo can be retyped, exactly as the ambiguous case already did.
+    return { ok: false, message };
   }
 
   // customer / parent — keyed by phone. One phone = one parent (many children).

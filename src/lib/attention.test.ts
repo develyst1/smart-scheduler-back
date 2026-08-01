@@ -125,11 +125,12 @@ describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole 
 });
 
 describe("registry — extensibility is one array entry", () => {
-  test("all eight checks are registered, with unique keys", () => {
-    // 8th = sales_not_posted (TASK-067). This count moving by exactly one, with nothing else in this
-    // describe block changing, IS the evidence for SPEC-018's extensibility claim.
-    expect(ATTENTION_CHECKS).toHaveLength(8);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(8);
+  test("all nine checks are registered, with unique keys", () => {
+    // 8th = sales_not_posted (TASK-067), 9th = pending_teacher_links (TASK-075). This count moving by
+    // exactly one per task, with nothing else in this describe block changing, IS the running evidence for
+    // SPEC-018's extensibility claim.
+    expect(ATTENTION_CHECKS).toHaveLength(9);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(9);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {

@@ -15,7 +15,7 @@
 
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { coursePackages, parents, students, vouchers } from "../db/schema";
+import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
 import { studentSearchConditions } from "./parent.service";
 
 /** The student-side filter. `true` when there's no term, so the same builder serves the unfiltered path. */
@@ -77,4 +77,35 @@ export const voucherCountQuery = (f: { studentId?: string; q?: string } = {}) =>
     .innerJoin(students, eq(students.id, vouchers.studentId))
     .leftJoin(parents, eq(parents.id, students.parentId))
     .where(and(...conds));
+};
+
+// ── /bookings ordering (TASK-073) ───────────────────────────────────────────────────────────────────
+export type BookingSort = "upcoming" | "date_asc" | "date_desc";
+
+/**
+ * How `/bookings` orders its rows. Exported so both directions are testable from the generated SQL.
+ *
+ * ⚠️ **`upcoming` is not the same thing as `date_desc`, and that distinction is the point of this task.**
+ * A 10-session course creates a booking every week for **10 weeks forward** at registration
+ * (`courseSessionDates`), so the newest booking in the table is routinely **2–3 months away**. Sorting
+ * newest-first would hand staff November when it's August — wrong in the opposite direction from the
+ * oldest-first bug it replaces, and just as useless.
+ *
+ * `upcoming` puts **today and the future first, soonest first**, then the past **most-recent first** — so the
+ * top of page 1 is the next thing that happens, and nothing is hidden. It's a pure sort: no filter, no rows
+ * removed, `total` unchanged.
+ *
+ * Every direction ends with `startTime` then **`id`**, so the order is *total*: a merely-nearly-total order
+ * lets a row appear on two pages or on none.
+ */
+export const bookingsOrderBy = (sort: BookingSort, today: string) => {
+  if (sort === "date_asc") return [asc(bookings.date), asc(bookings.startTime), asc(bookings.id)];
+  if (sort === "date_desc") return [desc(bookings.date), desc(bookings.startTime), asc(bookings.id)];
+  return [
+    sql`(${bookings.date} < ${today})`, // false (today/future) sorts before true (past)
+    sql`case when ${bookings.date} >= ${today} then ${bookings.date} end`, // future: soonest first
+    desc(bookings.date), // past: most recent first (NULL above ties them, so this decides)
+    asc(bookings.startTime),
+    asc(bookings.id),
+  ];
 };
