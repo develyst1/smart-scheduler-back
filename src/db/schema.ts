@@ -175,8 +175,10 @@ export const boItem = bo.table("item", {
   ceilingQty: integer("ceiling_qty"),
   remainingQty: integer("remaining_qty"),
   unitPriceMinor: integer("unit_price_minor").notNull().default(0),
-  ownerRef: text("owner_ref"),
+  ownerRef: text("owner_ref"), // teacher id on freelance ceiling items — never a product code
   externalSource: text("external_source"),
+  externalRef: text("external_ref"), // sale product code ("course-6", …) — TASK-066; migrated in backoffice-back
+
   active: boolean("active").notNull().default(true),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

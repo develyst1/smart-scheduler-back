@@ -9,10 +9,12 @@ import {
   isNearlyFinishedCourse,
   isStudentIncomplete,
   isUnconfirmedSoon,
+  isSaleUnposted,
   isVoucherExpiringSoon,
   isYesterdayNoShow,
   teacherNeedsLine,
 } from "./attention";
+import { t } from "./line-i18n";
 
 const TODAY = "2026-08-01";
 const TOMORROW = "2026-08-02";
@@ -103,10 +105,38 @@ describe("check 7 — yesterday_no_shows", () => {
   });
 });
 
+describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole signal", () => {
+  const posted = new Set(["course-1", "voucher-1"]);
+
+  test("🔑 a sale with no SALE movement is counted", () => {
+    expect(isSaleUnposted({ id: "course-2" }, posted)).toBe(true);
+  });
+  test("a sale that DID reach the books is not counted", () => {
+    expect(isSaleUnposted({ id: "course-1" }, posted)).toBe(false);
+  });
+  test("nothing posted at all → every sale is flagged (the exact state that went unnoticed for days)", () => {
+    const none = new Set<string>();
+    expect(["c1", "v1", "b1"].filter((id) => isSaleUnposted({ id }, none))).toHaveLength(3);
+  });
+  test("a healthy pipeline reports zero — that is what a working detector looks like", () => {
+    const all = new Set(["c1", "v1"]);
+    expect(["c1", "v1"].filter((id) => isSaleUnposted({ id }, all))).toHaveLength(0);
+  });
+});
+
 describe("registry — extensibility is one array entry", () => {
-  test("all seven checks are registered, with unique keys", () => {
-    expect(ATTENTION_CHECKS).toHaveLength(7);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(7);
+  test("all eight checks are registered, with unique keys", () => {
+    // 8th = sales_not_posted (TASK-067). This count moving by exactly one, with nothing else in this
+    // describe block changing, IS the evidence for SPEC-018's extensibility claim.
+    expect(ATTENTION_CHECKS).toHaveLength(8);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(8);
+  });
+  test("every check has an i18n title key — a new check can't ship label-less", () => {
+    for (const c of ATTENTION_CHECKS) {
+      expect(c.titleKey).toBe(`att_${c.key}`);
+      expect(t(c.titleKey, "EN")).not.toBe(c.titleKey); // t() returns the key when it's missing
+      expect(t(c.titleKey, "TH")).not.toBe(c.titleKey);
+    }
   });
   test("🔐 exactly two checks may name people in the digest (REQ-020 privacy)", () => {
     const named = ATTENTION_CHECKS.filter((c) => c.namesPeopleInDigest).map((c) => c.key);

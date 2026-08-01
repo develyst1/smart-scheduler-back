@@ -4,10 +4,8 @@ import {
   drawFreelanceBudget,
   isSetupIncomplete,
   onboardOpsTeacher,
-  recordSale,
   reconcileTeacherDrift,
   releaseFreelanceBudget,
-  revenueItemRef,
 } from "./ops-client";
 
 // ops-client reads OPS_API_URL at call time (see ops-client.ts), so setting it here is enough.
@@ -97,31 +95,10 @@ describe("ops-client freelance budget (TASK-002)", () => {
   });
 });
 
-describe("day-end revenue (TASK-007)", () => {
-  test("revenueItemRef maps only one-off trial/single (course/voucher recognise revenue at sale)", () => {
-    expect(revenueItemRef("FIRST_TRIAL")).toBe("first-trial");
-    expect(revenueItemRef("SINGLE_SESSION")).toBe("single-session");
-    expect(revenueItemRef("COURSE_PACKAGE")).toBeNull();
-    expect(revenueItemRef("VOUCHER")).toBeNull();
-  });
-
-  test("recordSale posts an INCOME OUT/SALE with rev:<id> key and no explicit amount (server prices it)", async () => {
-    const calls = mockFetch(201);
-    const r = await recordSale("first-trial", 1, { refId: "bk1", idempotencyKey: "rev:bk1" });
-    expect(r.ok).toBe(true);
-    expect(calls[0].body).toMatchObject({
-      externalSource: "smart-scheduler",
-      externalRef: "first-trial",
-      direction: "OUT",
-      quantity: 1,
-      refType: "SALE",
-      refId: "bk1",
-      idempotencyKey: "rev:bk1",
-    });
-    // no explicit amountMinor → ops defaults to quantity × sale_price_minor
-    expect("amountMinor" in calls[0].body).toBe(false);
-  });
-});
+// Day-end revenue (TASK-007) moved out of this module in TASK-066: `recordSale` no longer goes over
+// HTTP (the route was retired and every call 404'd silently), so an HTTP-shape assertion here would
+// have been testing the bug. `revenueItemRef` is covered in sale-items.test.ts; the write itself is
+// in sale-post.test.ts.
 
 describe("isSetupIncomplete — money-setup gate (TASK-016)", () => {
   const budget = new Set(["fl-has"]);

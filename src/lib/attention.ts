@@ -16,6 +16,8 @@ import { t, type Lang } from "./line-i18n";
 export const EXPIRING_WITHIN_DAYS = 14;
 export const NEARLY_FINISHED_SESSIONS = 2;
 export const FREELANCE_NEAR_CAP_HOURS = 2;
+/** How far back "sold but not posted to backoffice" looks (TASK-067). */
+export const NOT_POSTED_WINDOW_DAYS = 7;
 
 /** Max people named in a single LINE list before it truncates (privacy + message size). */
 export const DIGEST_LIST_LIMIT = 5;
@@ -81,6 +83,16 @@ export const isVoucherExpiringSoon = (
   cutoff: string,
 ): boolean => voucherEligible(v, today) && isExpiringSoon(v.expiryDate, today, cutoff);
 
+/**
+ * A sale that reached the books. `postedRefIds` is the set of `bo.movement.ref_id` with
+ * `refType: "SALE"`; a sale is **unposted** when its own id isn't in it (TASK-067).
+ *
+ * Deliberately a set-membership test and not "does a movement exist for this course": the movement is
+ * written with the entitlement's id as `refId`, so absence — not any status field — is the whole signal.
+ */
+export const isSaleUnposted = (sale: { id: string }, postedRefIds: Set<string>): boolean =>
+  !postedRefIds.has(sale.id);
+
 /** Course still active and expiring soon. */
 export const isCourseExpiringSoon = (
   c: { size: number; usedSessions: number; expiryDate: string },
@@ -104,6 +116,8 @@ export interface AttentionCtx {
   tomorrow: string;
   yesterday: string;
   expiryCutoff: string;
+  /** Start of the "sold recently" window — `today − NOT_POSTED_WINDOW_DAYS` (TASK-067). */
+  salesWindowStart: string;
   /** Data loaders — supplied by the service so the registry stays free of query plumbing. */
   load: {
     bookings: (dates: string[]) => Promise<any[]>;
@@ -112,6 +126,11 @@ export interface AttentionCtx {
     vouchers: () => Promise<any[]>;
     studentsWithParent: () => Promise<Array<{ student: any; parent: any | null }>>;
     freelanceCeilings: () => Promise<Array<{ teacherId: string; nickname: string; remainingQty: number }>>;
+    /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
+    salesPostingState: () => Promise<{
+      sold: Array<{ id: string; label: string }>;
+      postedRefIds: Set<string>;
+    }>;
   };
 }
 export interface AttentionCheck {
@@ -221,6 +240,20 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
         count: rows.length,
         items: rows.map((b) => ({ id: b.id, label: `${hhmm(b.startTime)} · ${b.student?.nickname ?? "-"}` })),
       };
+    },
+  },
+  {
+    // TASK-067 — the detector for the failure that cost us all course/voucher revenue: the sale write was
+    // best-effort, so when it broke it broke silently. TASK-066 makes it log loudly, but a log line is only
+    // read by someone already looking. This puts it where someone looks every morning.
+    // Counts only in the digest: an unposted sale is an ops fault, not a person, and a name adds nothing an
+    // admin can act on. The web panel shows which ones, behind login.
+    key: "sales_not_posted",
+    titleKey: "att_sales_not_posted",
+    run: async (ctx) => {
+      const { sold, postedRefIds } = await ctx.load.salesPostingState();
+      const rows = sold.filter((s) => isSaleUnposted(s, postedRefIds));
+      return { count: rows.length, items: rows.map((s) => ({ id: s.id, label: s.label })) };
     },
   },
 ];

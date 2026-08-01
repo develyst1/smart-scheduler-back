@@ -13,7 +13,8 @@ import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../li
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
-import { recordSale } from "../lib/ops-client";
+import { recordSale } from "../lib/sale-post";
+import { courseItemRef, voucherItemRef } from "../lib/sale-items";
 import {
   drawCeilingHour,
   heldTarget,
@@ -694,7 +695,7 @@ export async function createCoursePackage(input: any) {
 
   // Phase 2 (item-centric): a course sale → record revenue on its INCOME item in backoffice.
   // Best-effort; no-op if the "course-{size}" income item isn't set up yet.
-  void recordSale(`course-${input.size}`, 1, {
+  void recordSale(courseItemRef(input.size), 1, {
     refId: result.course.id,
     idempotencyKey: `course-sale:${result.course.id}`,
   });
@@ -748,7 +749,7 @@ export async function createVoucher(input: any) {
   });
 
   // Phase 2: a voucher sale → record revenue on its INCOME item ("voucher-{hours}").
-  void recordSale(`voucher-${input.totalHours}`, 1, {
+  void recordSale(voucherItemRef(input.totalHours), 1, {
     refId: result.voucher.id,
     idempotencyKey: `voucher-sale:${result.voucher.id}`,
   });

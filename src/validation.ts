@@ -148,18 +148,25 @@ export const createParent = z.object({
   phone: z.string().trim().min(9),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
+  note: z.string().trim().max(500).nullish(), // TASK-050 — `parents.note` existed but was unreachable
 });
 
 export const updateParent = z.object({
   phone: z.string().trim().min(9).optional(),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
+  note: z.string().trim().max(500).nullish(),
 });
 
 export const createParentStudent = z.object({
   name: z.string().trim().min(1).max(128),
   nickname: z.string().trim().max(64).nullish(),
   note: z.string().trim().max(500).nullish(),
+  // TASK-050 — optional demographics so a student can be created COMPLETE in one call (the FE no longer
+  // needs create → PATCH, where a failure between the two left a student with no demographics).
+  gender: z.string().trim().max(32).nullish(),
+  birthDate: DATE.nullish(),
+  nationality: z.string().trim().max(64).nullish(),
 });
 
 export const updateStudent = z.object({

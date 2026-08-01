@@ -20,6 +20,7 @@ mock.module("../services/scheduler.service", () => ({
   getCourses: async () => [],
   getVouchers: async () => [],
   listFreelanceCeilings: async () => [],
+  getDailyReport: async () => ({ totalBooked: 0, attended: 0 }), // ← som-report.service (REQ-013)
 }));
 
 const { api } = await import("./api");

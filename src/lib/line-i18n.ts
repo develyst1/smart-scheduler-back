@@ -111,6 +111,10 @@ const TABLE: Record<string, Entry> = {
   att_freelance_near_cap: { TH: "ครูฟรีแลนซ์ที่งบใกล้เต็ม", EN: "Freelance budgets near their cap" },
   att_incomplete_students: { TH: "นักเรียนที่ข้อมูลไม่ครบ", EN: "Students with incomplete details" },
   att_yesterday_no_shows: { TH: "ไม่มาเรียนเมื่อวาน", EN: "No-shows yesterday" },
+  att_sales_not_posted: {
+    TH: "การขายที่ยังไม่ลงบัญชี",
+    EN: "Sales not posted to backoffice",
+  },
   digest_header: { TH: "📋 สรุปสิ่งที่ต้องดูแลวันนี้", EN: "📋 Today's attention summary" },
   digest_footer: { TH: "ดูรายละเอียดทั้งหมดในเว็บแอป", EN: "See full details in the web app" },
   digest_more: { TH: "+ อีก {n} รายการ — ดูในเว็บแอป", EN: "+{n} more — see the web app" },

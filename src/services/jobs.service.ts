@@ -11,7 +11,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { recordSale, revenueItemRef } from "../lib/ops-client";
+import { recordSale } from "../lib/sale-post";
+import { revenueItemRef } from "../lib/sale-items";
 import { getDailyReport } from "./scheduler.service";
 
 export async function runEndOfDayJob(date?: string) {

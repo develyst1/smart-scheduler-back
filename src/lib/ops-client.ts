@@ -93,24 +93,10 @@ export function releaseFreelanceBudget(
   });
 }
 
-/** Map a booking type to its INCOME item external ref for day-end revenue (TASK-007).
- *  Only one-off trial/single recognise revenue at attendance; course/voucher already booked
- *  revenue at sale, so they map to null (not re-posted at day-end). */
-export function revenueItemRef(bookingType: string): string | null {
-  if (bookingType === "FIRST_TRIAL") return "first-trial";
-  if (bookingType === "SINGLE_SESSION") return "single-session";
-  return null;
-}
-
-/** A course / voucher / trial was sold → record revenue on its INCOME item.
- *  `externalRef` is the product code (e.g. "course-6", "voucher-10"). */
-export function recordSale(
-  externalRef: string,
-  quantity: number,
-  opts: { refId?: string; idempotencyKey?: string; amountMinor?: number } = {},
-) {
-  return opsMovementByRef(externalRef, "OUT", quantity, { refType: "SALE", ...opts });
-}
+// ⚠️ `recordSale` / `revenueItemRef` used to live here and went over the HTTP hop above. They moved
+// to `lib/sale-post.ts` + `lib/sale-items.ts` in TASK-066: the route they called was retired by the
+// REQ-006 rebuild, so every sale 404'd silently. Sales now write `bo.movement` directly, the way the
+// freelance ceiling already does. **Nothing on the sale path calls this module any more.**
 
 let cache: { at: number; map: Map<string, TeacherQuota> } | null = null;
 

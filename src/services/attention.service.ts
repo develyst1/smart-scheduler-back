@@ -1,14 +1,15 @@
 // The ONE producer of "what needs attention" (REQ-023 / TASK-053). Both the 08:00 LINE digest and the web
 // panel read this, so the two can never disagree.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { jobRuns } from "../db/schema";
+import { boMovement, jobRuns } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { addDays } from "../lib/time";
 import {
   ATTENTION_CHECKS,
   EXPIRING_WITHIN_DAYS,
+  NOT_POSTED_WINDOW_DAYS,
   buildDigestMessage,
   decideDigest,
   type AttentionCtx,
@@ -38,12 +39,18 @@ function buildCtx(today: string): AttentionCtx {
   let teachers: Promise<any[]> | null = null;
   let ceilings: Promise<any[]> | null = null;
   let studentsWithParent: Promise<Array<{ student: any; parent: any | null }>> | null = null;
+  let salesState: Promise<{
+    sold: Array<{ id: string; label: string }>;
+    postedRefIds: Set<string>;
+  }> | null = null;
+  const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
     today,
     tomorrow: addDays(today, 1),
     yesterday: addDays(today, -1),
     expiryCutoff: addDays(today, EXPIRING_WITHIN_DAYS),
+    salesWindowStart,
     load: {
       bookings: (dates) =>
         db.query.bookings.findMany({
@@ -66,6 +73,49 @@ function buildCtx(today: string): AttentionCtx {
             student: s,
             parent: s.parentId ? (byId.get(s.parentId) ?? null) : null,
           }));
+        })()),
+      // TASK-067. The three things `recordSale` is called for — a course sale, a voucher sale, and an
+      // ATTENDED trial/single (revenue recognised at day-end) — against the refIds that actually reached
+      // `bo.movement`. The movement carries the entitlement's own id as `ref_id`, so absence IS the signal.
+      //
+      // ⚠️ The window is a Bangkok *date* compared against a `timestamptz`, so at the boundary it can reach
+      // back up to 7h further than 7×24h. That is deliberate and the safe direction: a detector that
+      // over-includes shows something a few hours early, one that under-includes hides the fault it exists
+      // to find. It is not a money figure — nothing is bucketed by month here (cf. TASK-062).
+      salesPostingState: () =>
+        (salesState ??= (async () => {
+          const [courseRows, voucherRows, bookingRows, movements] = await Promise.all([
+            db.query.coursePackages.findMany({
+              where: (c, { gte: g }) => g(c.createdAt, sql`${salesWindowStart}::date`),
+            }),
+            db.query.vouchers.findMany({
+              where: (v, { gte: g }) => g(v.createdAt, sql`${salesWindowStart}::date`),
+            }),
+            db.query.bookings.findMany({
+              where: (b, { and: a, gte: g, lte: l, eq: e, inArray: inA }) =>
+                a(
+                  g(b.date, salesWindowStart),
+                  l(b.date, today),
+                  e(b.status, "ATTENDED"),
+                  inA(b.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION"]),
+                ),
+            }),
+            db
+              .select({ refId: boMovement.refId })
+              .from(boMovement)
+              .where(eq(boMovement.refType, "SALE")),
+          ]);
+
+          return {
+            sold: [
+              ...courseRows.map((c) => ({ id: c.id, label: `course ${c.size}` })),
+              ...voucherRows.map((v) => ({ id: v.id, label: `voucher ${v.totalHours}h` })),
+              ...bookingRows.map((b) => ({ id: b.id, label: `${b.bookingType} ${b.date}` })),
+            ],
+            postedRefIds: new Set(
+              movements.map((m) => m.refId).filter((r): r is string => r !== null),
+            ),
+          };
         })()),
     },
   };

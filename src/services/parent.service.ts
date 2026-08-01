@@ -82,7 +82,16 @@ export async function listStudentsOfParent(
 /** Create a student under a parent, enforcing the 5-per-parent cap. */
 export async function createStudentForParent(
   parentId: string,
-  input: { name: string; nickname?: string | null; note?: string | null },
+  input: {
+    name: string;
+    nickname?: string | null;
+    note?: string | null;
+    // Optional demographics (TASK-050) — supplied by the staff screen so a student is created complete in one
+    // call. The LINE self-registration flow omits them, exactly as before.
+    gender?: string | null;
+    birthDate?: string | null;
+    nationality?: string | null;
+  },
   exec: any = db,
 ): Promise<{ student: StudentRow; count: number }> {
   const name = input.name?.trim();
@@ -100,6 +109,9 @@ export async function createStudentForParent(
       nickname: input.nickname?.trim() || name,
       parentId,
       note: input.note ?? null,
+      gender: input.gender ?? null,
+      birthDate: input.birthDate ?? null,
+      nationality: input.nationality ?? null,
     })
     .returning();
 
@@ -218,24 +230,31 @@ export async function createParent(input: {
   phone: string;
   name?: string | null;
   province?: string | null;
+  note?: string | null;
 }) {
   const phone = normalizePhone(input.phone);
   if (phone.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");
   if (await findParentByPhone(phone)) throw badRequest("เบอร์นี้มีผู้ปกครองในระบบแล้ว");
   const [row] = await db
     .insert(parents)
-    .values({ phone, name: input.name ?? null, province: input.province ?? null })
+    .values({
+      phone,
+      name: input.name ?? null,
+      province: input.province ?? null,
+      note: input.note ?? null,
+    })
     .returning();
   return { ...row, students: [] };
 }
 
 export async function updateParent(
   id: string,
-  input: { name?: string | null; phone?: string; province?: string | null },
+  input: { name?: string | null; phone?: string; province?: string | null; note?: string | null },
 ) {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.province !== undefined) patch.province = input.province;
+  if (input.note !== undefined) patch.note = input.note;
   if (input.phone !== undefined) {
     const phone = normalizePhone(input.phone);
     if (phone.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");

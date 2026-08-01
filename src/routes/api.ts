@@ -7,6 +7,7 @@ import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
 import * as calendar from "../services/calendar.service";
 import * as attention from "../services/attention.service";
+import * as som from "../services/som-report.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
 
@@ -109,6 +110,8 @@ export const api = new Hono()
   .get("/reports/daily", zValidator("query", v.reportQuery), async (c) =>
     c.json(await svc.getDailyReport(c.req.valid("query").date)),
   )
+  // REQ-013: the SOM dashboard in ONE snapshot — no params, "today"/"this month" resolved server-side.
+  .get("/reports/som", async (c) => c.json(await som.getSomReport()))
   .post("/bookings", zValidator("json", v.createBooking), async (c) =>
     c.json(await svc.createBooking(c.req.valid("json")), 201),
   )
