@@ -1,7 +1,7 @@
 // Route-level shape test for the people endpoints (TASK-048). The service is stubbed so the contract the
 // `/scheduler/people` screen consumes — parents with their students EMBEDDED, and suspend/unsuspend being
 // reversible — is verified without a DB (the queries themselves are deploy smoke).
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.SKIP_AUTH = "true";
@@ -17,26 +17,28 @@ const PARENT = {
   ],
 };
 
-mock.module("../services/parent.service", () => ({
-  listParents: async (q?: string) => ({
+// TASK-072: narrow spies instead of a whole-module `mock.module`, which replaced the module PROCESS-WIDE and
+// leaked into every other test file. Only the functions these routes actually reach are spied, then restored —
+// so the transitive exports this stub used to carry (`searchStudents`, `createStudent`) are gone with it.
+const parent = await import("../services/parent.service");
+const { api } = await import("./api");
+
+const spies = [
+  spyOn(parent, "listParents").mockImplementation((async (q?: string) => ({
     parents: q && q !== "เอ" ? [] : [PARENT],
     total: q && q !== "เอ" ? 0 : 1,
-  }),
-  getParent: async () => PARENT,
-  createParent: async () => ({ ...PARENT, students: [] }),
-  updateParent: async () => PARENT,
-  createStudentForParent: async () => ({ student: PARENT.students[0], count: 1 }),
-  updateStudent: async () => PARENT.students[0],
-  setParentSuspended: async (_id: string, suspended: boolean) => ({
+  })) as any),
+  spyOn(parent, "getParent").mockResolvedValue(PARENT as any),
+  spyOn(parent, "createParent").mockResolvedValue({ ...PARENT, students: [] } as any),
+  spyOn(parent, "updateParent").mockResolvedValue(PARENT as any),
+  spyOn(parent, "createStudentForParent").mockResolvedValue({ student: PARENT.students[0], count: 1 } as any),
+  spyOn(parent, "updateStudent").mockResolvedValue(PARENT.students[0] as any),
+  spyOn(parent, "setParentSuspended").mockImplementation((async (_id: string, suspended: boolean) => ({
     ...PARENT,
     suspendedAt: suspended ? new Date("2026-08-01T00:00:00Z") : null,
-  }),
-  // named exports the api route module pulls in transitively
-  searchStudents: async () => [],
-  createStudent: async () => ({}),
-}));
-
-const { api } = await import("./api");
+  })) as any),
+];
+afterAll(() => spies.forEach((s) => s.mockRestore()));
 
 describe("GET /parents — parents with students embedded (TASK-048)", () => {
   test("returns the household with its students nested (what the screen renders)", async () => {

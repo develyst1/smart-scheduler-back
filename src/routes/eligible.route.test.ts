@@ -1,8 +1,10 @@
 // Route-level test for `GET /students/eligible` (TASK-051) — proves the literal path is NOT shadowed by
 // `GET /students` (the TASK-029 lesson) and that the type enum is enforced.
 //
-// No service mock: `./api` is already imported by other test files, so a late `mock.module` wouldn't apply.
-// Instead this uses the assertion that needs no DB and still proves dispatch — `?type=FIRST_TRIAL` must 400.
+// No service mock — and since TASK-072 that's a free choice rather than a workaround. (It used to be forced:
+// `./api` was already imported by another test file whose whole-module `mock.module` had won the race, so a
+// late one here wouldn't apply. Those stubs are gone; narrow spies would work fine now if this ever needs one.)
+// This uses the assertion that needs no DB and still proves dispatch — `?type=FIRST_TRIAL` must 400.
 // If the request were being served by `GET /students` (whose query schema has only optional q/limit), an
 // unknown `type` param would simply be ignored and the response would be 200. A 400 can therefore only come
 // from the eligible route's own `z.enum([...])`. The 200 path hits the DB, so it's deploy smoke.
