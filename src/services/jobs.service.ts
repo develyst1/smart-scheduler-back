@@ -13,7 +13,7 @@ import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { revenueItemRef } from "../lib/sale-items";
-import { getDailyReport } from "./scheduler.service";
+import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -68,7 +68,7 @@ export async function runEndOfDayJob(date?: string) {
   // here. Best-effort + idempotent (`rev:<bookingId>`): safe to re-run; skips if ops is off or the
   // INCOME item isn't seeded; never fails the job.
   const attended = await db
-    .select({ id: bookings.id, bookingType: bookings.bookingType })
+    .select({ id: bookings.id, bookingType: bookings.bookingType, subjectId: bookings.subjectId })
     .from(bookings)
     .where(
       and(
@@ -80,8 +80,21 @@ export async function runEndOfDayJob(date?: string) {
 
   let revenuePosted = 0;
   for (const b of attended) {
-    const ref = revenueItemRef(b.bookingType);
-    if (!ref) continue;
+    // TASK-077: a SINGLE_SESSION is priced by PROGRAM (1,690 / 1,390 / 1,090 an hour), so the item depends
+    // on the booking's subject. FIRST_TRIAL is one price for everyone and ignores the group.
+    const priceGroup = await resolvePriceGroup(b.subjectId);
+    const ref = revenueItemRef(b.bookingType, priceGroup);
+    if (!ref) {
+      // Loud, not silent — TASK-066's lesson. A single session on a program with no price group (or on
+      // bike/skate, which has no 1-hour rate on the card) must not fall back to some default price.
+      if (b.bookingType === "SINGLE_SESSION") {
+        console.error(
+          `[sale] NOT POSTED — no price group for booking ${b.id}'s program, so its single-session rate ` +
+            `is unknown. Revenue for this session is NOT in the books.`,
+        );
+      }
+      continue;
+    }
     // Amount defaults to quantity × the INCOME item's sale_price_minor (don't hardcode prices).
     const res = await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}` });
     if (res.ok) revenuePosted++;

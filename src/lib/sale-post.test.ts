@@ -2,13 +2,13 @@
 // the two things that can be wrong *in code* are the sign rule and the unknown-code guard.
 import { describe, expect, test } from "bun:test";
 import { recordSale, saleMovement } from "./sale-post";
-import { PLACEHOLDER_HOURLY_MINOR, courseItemRef } from "./sale-items";
+import { FIRST_TRIAL_MINOR, courseItemRef } from "./sale-items";
 
 describe("sign rule — must match backoffice-back's bo-money.ts or the P&L reads backwards", () => {
   test("🔑 a sale is an OUT (qty negative) worth a POSITIVE value on an INCOME item", () => {
-    const m = saleMovement(1, PLACEHOLDER_HOURLY_MINOR);
+    const m = saleMovement(1, FIRST_TRIAL_MINOR);
     expect(m.qty).toBe(-1);
-    expect(m.valueMinor).toBe(PLACEHOLDER_HOURLY_MINOR);
+    expect(m.valueMinor).toBe(FIRST_TRIAL_MINOR);
     expect(m.valueMinor).toBeGreaterThan(0); // negative here = revenue subtracted from the month
   });
 
@@ -48,6 +48,6 @@ describe("unknown product code is loud, not silent", () => {
   test("a real code gets past the guard (it then needs a DB, which is deploy smoke)", () => {
     // Proves the guard isn't rejecting everything — the failure mode that would make the test above
     // pass for the wrong reason.
-    expect(courseItemRef(6)).toBe("course-6");
+    expect(courseItemRef("onewheel", 6)).toBe("course-onewheel-6");
   });
 });

@@ -222,6 +222,12 @@ export const subjects = pgTable("subjects", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   active: boolean("active").notNull().default(true),
+  // SPEC-024 / TASK-077 — which price line this program sells on ('bike-skate' | 'onewheel' |
+  // 'balance-private' | 'balance-group'). Six skate programs share one line, so the GROUP is the unit
+  // prices are keyed on, and the mapping is data so a new program needs no deploy.
+  // ⚠️ NULL means "cannot be sold as a course/session" — the sale refuses loudly rather than falling back
+  // to a default price. "1st Trial" is deliberately NULL.
+  priceGroup: text("price_group"),
 });
 
 // Which subjects a teacher can teach (M2M).
@@ -258,6 +264,10 @@ export const coursePackages = pgTable(
     weekday: smallint("weekday").notNull(), // 0-6 (Sun-Sat)
     startTime: time("start_time").notNull(),
     expiryDate: date("expiry_date").notNull(),
+    // SPEC-025 / TASK-079 — SALE (bought here) or IMPORT (bought before go-live, entitlement only, never
+    // revenue). Recorded, not inferred: `sales_not_posted` must skip imports or it flags ~30 families as
+    // revenue faults on go-live morning and gets muted.
+    source: text("source").notNull().default("SALE"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -279,6 +289,7 @@ export const vouchers = pgTable("vouchers", {
   totalHours: smallint("total_hours").notNull(), // 5 | 10 | 15
   usedHours: integer("used_hours").notNull().default(0),
   expiryDate: date("expiry_date").notNull(),
+  source: text("source").notNull().default("SALE"), // SALE | IMPORT — see course_packages.source
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

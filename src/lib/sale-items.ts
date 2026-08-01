@@ -1,65 +1,149 @@
-// TASK-066 — the ONE definition of what a sale's product code is, and what item it posts to.
+// TASK-066 + TASK-077 — the ONE definition of what a sale's product code is, and what it costs.
 //
-// Before this, the codes were spelled in three places: `revenueItemRef` (trial/single), and two
-// inline template strings in scheduler.service (`course-${size}` / `voucher-${hours}`). Nothing tied
-// them to the backoffice items they're supposed to hit — which is part of why nobody noticed that
-// the course/voucher items had never been created at all. One list, used by both the sale path and
-// the ensure-items script, so a code can't exist without an item to post it to.
+// Prices are **per price GROUP × package size**, not per size. A 6-hour package is 6,490 / 7,990 / 7,490 /
+// 5,290 depending on the program, so one `course-6` could never have held the real card.
+//
+// Keyed on the *group*, not the subject: six skate programs share one price line, so keying by subject would
+// mean ~24 items where 13 are needed — and a seventh skate program would need a price invented rather than
+// inherited. The subject → group mapping lives in `subjects.price_group` (data, not code) so the owner can
+// add a program without a deploy.
+//
+// ⚠️ **Availability is the catalogue, not a rule.** Onewheel has no 10 h and Balance Play has no 4 h, so
+// those items simply do not exist and `isKnownSaleItem` refuses them loudly. There is deliberately no
+// availability table to drift from this one.
 //
 // Pure — no DB, no I/O.
 
 /** `bo.item.external_source` for everything this app sells. */
 export const SALE_SOURCE = "smart-scheduler";
 
-export const COURSE_SIZES = [4, 6, 10] as const;
-export const VOUCHER_HOURS = [5, 10, 15] as const;
+/**
+ * 🔴 **EVERY PRICE IN THIS FILE IS VAT-INCLUSIVE — the final amount the customer pays.**
+ * Post it as-is; never add tax on top. Any net-of-VAT figure must be *derived* from these, never assumed.
+ * This is a named constant rather than a comment beside a number because gross-vs-net is exactly the
+ * assumption that gets made silently inside a pricing constant and then quietly misstates every report
+ * built on top of it.
+ */
+export const PRICES_ARE_VAT_INCLUSIVE = true;
 
-export const courseItemRef = (size: number): string => `course-${size}`;
-export const voucherItemRef = (hours: number): string => `voucher-${hours}`;
+export type PriceGroup = "bike-skate" | "onewheel" | "balance-private" | "balance-group";
 
-/** Booking type → its INCOME product code for day-end revenue (TASK-007). Only one-off
- *  trial/single recognise revenue at attendance; course/voucher already posted at sale, so they
- *  map to null and are not re-posted. */
-export function revenueItemRef(bookingType: string): string | null {
-  if (bookingType === "FIRST_TRIAL") return "first-trial";
-  if (bookingType === "SINGLE_SESSION") return "single-session";
-  return null;
-}
+export const PRICE_GROUPS: PriceGroup[] = [
+  "bike-skate",
+  "onewheel",
+  "balance-private",
+  "balance-group",
+];
 
 const THB = (baht: number) => baht * 100; // satang
 
-// ⚠️ PLACEHOLDER PRICING — NOT a real price list. See TASK-066 notes.
-//
-// ฿1,390 per hour is the *existing* placeholder already live for first-trial / single-session
-// (seeded 2026-07-20, project-docs/seed-data-placeholder-2026-07-20.md §4). Every other price below
-// is that same figure × the product's hours — i.e. derived from an approved placeholder, not a
-// number I chose. Real courses almost certainly carry a bulk discount, so these are very likely
-// TOO HIGH for the 6- and 10-session packages. They are marked `metadata.pricePlaceholder: true`
-// so they are identifiable in the data, not just in a comment. @Porter is chasing the real figures.
-export const PLACEHOLDER_HOURLY_MINOR = THB(1390);
+/**
+ * The owner's card, transcribed. `undefined` = **not offered** for that group — Onewheel has no 10 h,
+ * Balance Play has no 4 h, and bike/skate has no single-hour rate (see the flagged question in the task).
+ *
+ * `1` is the single-session (`session-{group}`) row; 4/6/10 are course packages.
+ */
+const CARD: Record<PriceGroup, Partial<Record<1 | 4 | 6 | 10, number>>> = {
+  "bike-skate": { 4: THB(4790), 6: THB(6490), 10: THB(9790) },
+  onewheel: { 1: THB(1690), 4: THB(5790), 6: THB(7990) },
+  "balance-private": { 1: THB(1390), 6: THB(7490), 10: THB(11390) },
+  "balance-group": { 1: THB(1090), 6: THB(5290), 10: THB(7790) },
+};
+
+export const COURSE_SIZES = [4, 6, 10] as const;
+export const VOUCHER_HOURS = [5, 10, 15] as const;
+
+/** Vouchers are hour buckets — not program-specific, so they keep a single price each. */
+const VOUCHER_PRICE: Record<(typeof VOUCHER_HOURS)[number], number> = {
+  5: THB(6000),
+  10: THB(10500),
+  15: THB(13500),
+};
+
+/** One price, all ages, not program-specific (unchanged by TASK-077). */
+export const FIRST_TRIAL_MINOR = THB(1390);
+
+export const courseItemRef = (group: string, size: number): string => `course-${group}-${size}`;
+export const sessionItemRef = (group: string): string => `session-${group}`;
+export const voucherItemRef = (hours: number): string => `voucher-${hours}`;
+
+/**
+ * Booking type → its INCOME product code for day-end revenue (TASK-007).
+ *
+ * ⚠️ **`SINGLE_SESSION` is now program-priced** (`session-{group}`): the card charges 1,690 / 1,390 / 1,090
+ * for an hour depending on the program, so a flat code would post the wrong number for two groups out of
+ * three. Course/voucher already posted at sale, so they stay `null` here.
+ *
+ * Returns `null` when the group is unknown — the caller must then refuse loudly rather than fall back to a
+ * default price, which is the whole point of TASK-077.
+ */
+export function revenueItemRef(bookingType: string, priceGroup?: string | null): string | null {
+  if (bookingType === "FIRST_TRIAL") return "first-trial";
+  if (bookingType === "SINGLE_SESSION") return priceGroup ? sessionItemRef(priceGroup) : null;
+  return null;
+}
 
 export interface SaleItemSeed {
   externalRef: string;
   name: string;
-  hours: number;
   unitPriceMinor: number;
 }
 
-const seed = (externalRef: string, name: string, hours: number): SaleItemSeed => ({
-  externalRef,
-  name,
-  hours,
-  unitPriceMinor: PLACEHOLDER_HOURLY_MINOR * hours,
-});
-
-/** Every INCOME item a sale can post to. The ensure-items script creates exactly these. */
+/** Every INCOME item a sale can post to — exactly the combinations the card offers. */
 export const SALE_ITEMS: SaleItemSeed[] = [
-  seed("first-trial", "First Trial (1h)", 1),
-  seed("single-session", "Single Session (1h)", 1),
-  ...COURSE_SIZES.map((size) => seed(courseItemRef(size), `Course Package (${size} sessions)`, size)),
-  ...VOUCHER_HOURS.map((hours) => seed(voucherItemRef(hours), `Voucher (${hours}h)`, hours)),
+  { externalRef: "first-trial", name: "First Trial (1h)", unitPriceMinor: FIRST_TRIAL_MINOR },
+  ...VOUCHER_HOURS.map((hours) => ({
+    externalRef: voucherItemRef(hours),
+    name: `Voucher (${hours}h)`,
+    unitPriceMinor: VOUCHER_PRICE[hours],
+  })),
+  ...PRICE_GROUPS.flatMap((group) =>
+    ([1, 4, 6, 10] as const).flatMap((size) => {
+      const price = CARD[group][size];
+      if (price === undefined) return []; // not offered → no item → sales refuse loudly
+      return [
+        {
+          externalRef: size === 1 ? sessionItemRef(group) : courseItemRef(group, size),
+          name: size === 1 ? `Session 1h (${group})` : `Course ${size}h (${group})`,
+          unitPriceMinor: price,
+        },
+      ];
+    }),
+  ),
 ];
 
 /** Is this a product code we know how to post? Guards against a sale silently going nowhere. */
 export const isKnownSaleItem = (externalRef: string): boolean =>
   SALE_ITEMS.some((i) => i.externalRef === externalRef);
+
+export interface SellablePackage {
+  priceGroup: PriceGroup;
+  /** 1 = a single session; 4/6/10 = a course package. */
+  size: 1 | 4 | 6 | 10;
+  externalRef: string;
+  priceMinor: number;
+}
+
+/**
+ * The combinations that actually exist, for `GET /api/sellable-packages` — so the FE offers only what is
+ * offered instead of hard-coding the card into a dropdown that will drift from it.
+ */
+export const sellablePackages = (): SellablePackage[] =>
+  PRICE_GROUPS.flatMap((priceGroup) =>
+    ([1, 4, 6, 10] as const).flatMap((size) => {
+      const priceMinor = CARD[priceGroup][size];
+      if (priceMinor === undefined) return [];
+      return [
+        {
+          priceGroup,
+          size,
+          externalRef: size === 1 ? sessionItemRef(priceGroup) : courseItemRef(priceGroup, size),
+          priceMinor,
+        },
+      ];
+    }),
+  );
+
+/** Can this (group, size) be sold at all? Derived from the catalogue — never a second list. */
+export const isSellable = (group: string | null | undefined, size: number): boolean =>
+  !!group && sellablePackages().some((p) => p.priceGroup === group && p.size === size);

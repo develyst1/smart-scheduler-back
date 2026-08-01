@@ -75,6 +75,9 @@ export const api = new Hono()
     return c.json(await teacherLink.rejectTeacherLinkRequest(id, c.req.valid("json").decidedBy));
   })
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
+  // SPEC-024 — the (program, size, price) combinations that actually exist, so the FE offers only what is
+  // offered instead of hard-coding the price card into a dropdown that will drift from it.
+  .get("/sellable-packages", async (c) => c.json(await svc.getSellablePackages()))
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
     c.json(await svc.getTeachers({ archived: c.req.valid("query").archived })),
@@ -120,6 +123,15 @@ export const api = new Hono()
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
   .get("/courses", zValidator("query", v.coursesQuery), async (c) =>
     c.json(await svc.listCoursesPaged(c.req.valid("query"))),
+  )
+  // 🔴 SPEC-025 — IMPORT is a separate VERB, never a flag on the sale path: a boolean is one forgotten
+  // default away from posting a fictional month of revenue. Registered before `/courses` so the literal
+  // path can never be read as anything else (the TASK-029 lesson).
+  .post("/courses/import", zValidator("json", v.importCoursePackage), async (c) =>
+    c.json(await svc.importCoursePackage(c.req.valid("json")), 201),
+  )
+  .post("/vouchers/import", zValidator("json", v.importVoucher), async (c) =>
+    c.json(await svc.importVoucher(c.req.valid("json")), 201),
   )
   .post("/courses", zValidator("json", v.createCoursePackage), async (c) =>
     c.json(await svc.createCoursePackage(c.req.valid("json")), 201),

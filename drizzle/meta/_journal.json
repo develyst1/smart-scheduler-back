@@ -113,6 +113,20 @@
       "when": 1783000000011,
       "tag": "0015_teacher_link_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783000000012,
+      "tag": "0016_subjects_price_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783000000013,
+      "tag": "0017_entitlement_source",
+      "breakpoints": true
     }
   ]
 }

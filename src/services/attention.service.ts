@@ -18,6 +18,7 @@ import { t } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { getCourses, getVouchers, listFreelanceCeilings } from "./scheduler.service";
 import { countPendingTeacherLinks } from "./teacher-link.service";
+import { soldCoursesSince, soldVouchersSince } from "./search.queries";
 
 export const DIGEST_JOB = "daily-digest";
 
@@ -88,12 +89,10 @@ function buildCtx(today: string): AttentionCtx {
       salesPostingState: () =>
         (salesState ??= (async () => {
           const [courseRows, voucherRows, bookingRows, movements] = await Promise.all([
-            db.query.coursePackages.findMany({
-              where: (c, { gte: g }) => g(c.createdAt, sql`${salesWindowStart}::date`),
-            }),
-            db.query.vouchers.findMany({
-              where: (v, { gte: g }) => g(v.createdAt, sql`${salesWindowStart}::date`),
-            }),
+            // 🔴 TASK-079: these filter `source = 'SALE'` — an IMPORTed entitlement has no SALE movement
+            // by design. See `search.queries.ts`, where the filter is asserted from the generated SQL.
+            soldCoursesSince(salesWindowStart),
+            soldVouchersSince(salesWindowStart),
             db.query.bookings.findMany({
               where: (b, { and: a, gte: g, lte: l, eq: e, inArray: inA }) =>
                 a(

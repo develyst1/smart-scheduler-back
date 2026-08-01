@@ -17,6 +17,17 @@ export function courseSessionDates(startDate: string, size: number): string[] {
   return Array.from({ length: size }, (_, i) => addDays(startDate, i * 7));
 }
 
+/**
+ * Sessions still owed on an imported entitlement (SPEC-025 / TASK-079) — **the balance, not the history**.
+ *
+ * Never negative: a course whose `used` already meets or exceeds `size` is finished, so it imports with
+ * **zero** future bookings rather than being refused — staff may still want the record. Guarding here rather
+ * than at the call site is what stops `size - used` becoming a negative loop bound.
+ */
+export function remainingSessions(size: number, used: number): number {
+  return Math.max(0, Math.floor(size) - Math.max(0, Math.floor(used)));
+}
+
 /** Course expiry = startDate + (max-week ceiling) weeks. 4→5wk, 6→8wk, 10→13wk. */
 export function courseExpiry(startDate: string, size: number): string {
   const weeks = MAX_WEEK_BY_SIZE[size] ?? size + 1;

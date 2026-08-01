@@ -9,12 +9,24 @@ import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave } from "../lib/leave";
 import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
-import { courseExpiry, courseSessionDates, isCourseSize, weekdayOf } from "../lib/recurring";
+import {
+  courseExpiry,
+  courseSessionDates,
+  isCourseSize,
+  remainingSessions,
+  weekdayOf,
+} from "../lib/recurring";
 import { teacherWorksOnDay } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
-import { courseItemRef, voucherItemRef } from "../lib/sale-items";
+import {
+  PRICES_ARE_VAT_INCLUSIVE,
+  courseItemRef,
+  isSellable,
+  sellablePackages,
+  voucherItemRef,
+} from "../lib/sale-items";
 import {
   drawCeilingHour,
   heldTarget,
@@ -702,12 +714,152 @@ export async function createBooking(input: any) {
   });
 }
 
+/**
+ * A program's price group (TASK-077). `null` when the subject has none — the caller must refuse loudly
+ * rather than fall back to a default price.
+ */
+export async function resolvePriceGroup(subjectId: string, exec: any = db): Promise<string | null> {
+  const row = await exec.query.subjects.findFirst({
+    where: (s: any, { eq: e }: any) => e(s.id, subjectId),
+  });
+  return row?.priceGroup ?? null;
+}
+
+/** The combinations that exist, for `GET /api/sellable-packages` — with each program that sells on them. */
+export async function getSellablePackages() {
+  const rows = await db.select().from(subjects);
+  const packages = sellablePackages();
+  return {
+    vatInclusive: PRICES_ARE_VAT_INCLUSIVE,
+    packages: packages.map((p) => ({
+      ...p,
+      subjects: rows
+        .filter((s) => s.priceGroup === p.priceGroup && s.active)
+        .map((s) => ({ id: s.id, name: s.name })),
+    })),
+    // Named so the FE can show "this program has no price group yet" instead of an empty dropdown.
+    unpricedSubjects: rows
+      .filter((s) => s.active && !s.priceGroup)
+      .map((s) => ({ id: s.id, name: s.name })),
+  };
+}
+
+// ─────────────────── Import an in-progress entitlement (SPEC-025 / TASK-079) ───────────────────
+//
+// 🔴 **A separate VERB, not a flag on the sale path.** Since TASK-066 revenue posts at the point of sale, so
+// anything that creates entitlement *through* the sale path inherits that. Importing ~30 families behind a
+// `skipRevenue: true` boolean would post a large, entirely fictional month of revenue — money collected months
+// ago, counted again — and a boolean is one forgotten default away from exactly that, in the week everyone is
+// watching something else. **Two verbs cannot be confused; a flag can.**
+//
+// ⚠️ Neither function calls `recordSale`. That is the point, and there is a test asserting no `bo.movement`
+// row appears.
+
+/**
+ * Import a course a family is already part-way through: `size` bought, `usedSessions` already taught,
+ * bookings created for the **remainder only**.
+ *
+ * ⚠️ **`expiryDate` is taken, never computed.** `courseExpiry` counts from the start date, and an imported
+ * course started months ago — computing it would silently extend or shorten what the family actually bought.
+ *
+ * ⚠️ Pricing and availability (SPEC-024) deliberately do **not** apply: nothing is being sold, and an
+ * off-card size is importable **on purpose** — the family already bought it, whatever the card says today.
+ */
+export async function importCoursePackage(input: any) {
+  const remaining = remainingSessions(input.size, input.usedSessions);
+  return await db.transaction(async (tx) => {
+    const studentId = await resolveStudentId(tx, input.student);
+    // Import does not bypass the suspend gate — a suspended household is refused loudly, as everywhere else.
+    await assertHouseholdNotSuspended(tx, studentId);
+
+    const [course] = await tx
+      .insert(coursePackages)
+      .values({
+        studentId,
+        size: input.size,
+        usedSessions: input.usedSessions,
+        startDate: input.startDate,
+        weekday: weekdayOf(input.startDate),
+        startTime: input.startTime,
+        expiryDate: input.expiryDate, // taken, not computed
+        source: "IMPORT",
+      })
+      .returning({ id: coursePackages.id });
+
+    // The remaining sessions only. We deliberately do NOT create the ones already taught: we don't have that
+    // history, and the balance is the point — inventing past bookings to make a number look right would put
+    // fictional attendance in the reports.
+    for (const date of courseSessionDates(input.startDate, remaining)) {
+      try {
+        await insertBooking(tx, studentId, {
+          teacherId: input.teacherId,
+          subjectId: input.subjectId,
+          date,
+          startTime: input.startTime,
+          bookingType: "COURSE_PACKAGE",
+          courseId: course.id,
+          note: input.note,
+        });
+      } catch (e: any) {
+        if (e?.code === "SLOT_TAKEN")
+          throw conflict("SLOT_TAKEN", `มีคาบชนในวันที่ ${date} — เลือกวัน/เวลาอื่นสำหรับคอร์สนี้`);
+        throw e;
+      }
+    }
+
+    const courseRow = await tx.query.coursePackages.findFirst({
+      where: (c, { eq: e }) => e(c.id, course.id),
+      with: { student: true },
+    });
+    return { course: toCourseWithStudent(courseRow), remaining };
+  });
+}
+
+/** Import a voucher with hours already used. Same rules: explicit expiry, no revenue, suspend gate applies. */
+export async function importVoucher(input: any) {
+  return await db.transaction(async (tx) => {
+    const studentId = await resolveStudentId(tx, input.student);
+    await assertHouseholdNotSuspended(tx, studentId);
+    const [row] = await tx
+      .insert(vouchers)
+      .values({
+        studentId,
+        totalHours: input.totalHours,
+        usedHours: input.usedHours,
+        expiryDate: input.expiryDate, // taken, not computed
+        source: "IMPORT",
+      })
+      .returning({ id: vouchers.id });
+    const voucher = await tx.query.vouchers.findFirst({
+      where: (v, { eq: e }) => e(v.id, row.id),
+      with: { student: true },
+    });
+    return {
+      voucher: toVoucherDTO(voucher),
+      remaining: remainingSessions(input.totalHours, input.usedHours),
+    };
+  });
+}
+
 // ───────────────────── Course package + voucher (B.4 / B.5) ─────────────────────
 
 // Register a 4/6/10-session course: create the package and lock its weekly slots
 // forward (auto-recurring). A clash on any week aborts the whole registration.
 export async function createCoursePackage(input: any) {
   if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
+  // TASK-077 — resolve the program's price group up front and refuse BEFORE creating anything if this
+  // (program, size) isn't on the card. Onewheel has no 10 h and Balance Play has no 4 h; staff could
+  // previously sell those, and the sale would then post a price the owner doesn't charge.
+  // A subject with no price_group is refused too — it must never fall back to a default price.
+  const priceGroup = await resolvePriceGroup(input.subjectId);
+  if (!priceGroup) {
+    throw badRequest(
+      "โปรแกรมนี้ยังไม่ได้ตั้งกลุ่มราคา — ตั้งค่าก่อนจึงจะขายคอร์สได้ (subjects.price_group)",
+    );
+  }
+  if (!isSellable(priceGroup, input.size)) {
+    throw badRequest(`โปรแกรมนี้ไม่มีแพ็กเกจ ${input.size} ชั่วโมงตามราคาที่กำหนด`);
+  }
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
@@ -758,7 +910,7 @@ export async function createCoursePackage(input: any) {
 
   // Phase 2 (item-centric): a course sale → record revenue on its INCOME item in backoffice.
   // Best-effort; no-op if the "course-{size}" income item isn't set up yet.
-  void recordSale(courseItemRef(input.size), 1, {
+  void recordSale(courseItemRef(priceGroup, input.size), 1, {
     refId: result.course.id,
     idempotencyKey: `course-sale:${result.course.id}`,
   });

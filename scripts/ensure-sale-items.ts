@@ -25,7 +25,7 @@ const have = new Set(existing.map((r) => r.externalRef).filter((r): r is string 
 let created = 0;
 for (const item of SALE_ITEMS) {
   if (have.has(item.externalRef)) {
-    console.log(`  = ${item.externalRef.padEnd(16)} exists — left alone (price not overwritten)`);
+    console.log(`  = ${item.externalRef.padEnd(28)} exists — left alone (price NOT overwritten)`);
     continue;
   }
   await db.insert(boItem).values({
@@ -38,18 +38,21 @@ for (const item of SALE_ITEMS) {
     externalRef: item.externalRef,
     metadata: {
       category: "REVENUE",
-      pricePlaceholder: true,
-      priceNote:
-        "PLACEHOLDER — hours x the existing 1,390 THB/hr placeholder. Not a real price list; " +
-        "courses very likely carry a bulk discount. TASK-066; real figures pending from Porter.",
+      // TASK-077: real card prices, VAT-INCLUSIVE. No `pricePlaceholder` flag any more — that flag is now
+      // the marker for TASK-066's wrong rows, which `sale:retire-placeholders` reports on.
+      vatInclusive: true,
+      priceSource: "owner price card 2026-08-01 (SPEC-024)",
     },
   });
   created++;
-  console.log(`  + ${item.externalRef.padEnd(16)} created at ${item.unitPriceMinor / 100} THB (PLACEHOLDER)`);
+  console.log(`  + ${item.externalRef.padEnd(28)} ${item.unitPriceMinor / 100} THB (VAT incl.)`);
 }
 
 console.log(
   `\nDone. ${created} created, ${SALE_ITEMS.length - created} already present.` +
-    (created > 0 ? "\n⚠️  Prices above are PLACEHOLDERS — see lib/sale-items.ts." : ""),
+    (created > 0
+      ? "\n⚠️  Prices are the owner's VAT-INCLUSIVE card prices (SPEC-024). Never add tax on top." +
+        "\n   Run `bun run sale:retire-placeholders` to review TASK-066's now-wrong placeholder rows."
+      : ""),
 );
 process.exit(0);

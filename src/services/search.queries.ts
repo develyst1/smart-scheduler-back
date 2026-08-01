@@ -13,7 +13,7 @@
 // These are query *builders* (not awaited) so their SQL — the shared rule and the ordering — is testable
 // without a database, the way `lastDigestRunQuery` is.
 
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
 import { studentSearchConditions } from "./parent.service";
@@ -109,3 +109,24 @@ export const bookingsOrderBy = (sort: BookingSort, today: string) => {
     asc(bookings.id),
   ];
 };
+
+// ── The `sales_not_posted` candidate queries (TASK-067, amended by TASK-079) ─────────────────────────
+//
+// 🔴 **`source = 'SALE'` is the whole point.** An IMPORTed entitlement has no `bo.movement` **by design**
+// (it was bought before go-live), so without this filter go-live morning would list ~30 imported families as
+// revenue faults for a week — and a detector that cries wolf gets muted, in the exact fortnight we most need
+// it to tell us the sale path broke again.
+//
+// Exported as builders so that filter is provable from the generated SQL, without a database.
+
+export const soldCoursesSince = (since: string) =>
+  db
+    .select({ id: coursePackages.id, size: coursePackages.size })
+    .from(coursePackages)
+    .where(and(gte(coursePackages.createdAt, sql`${since}::date`), eq(coursePackages.source, "SALE")));
+
+export const soldVouchersSince = (since: string) =>
+  db
+    .select({ id: vouchers.id, totalHours: vouchers.totalHours })
+    .from(vouchers)
+    .where(and(gte(vouchers.createdAt, sql`${since}::date`), eq(vouchers.source, "SALE")));

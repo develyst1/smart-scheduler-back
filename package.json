@@ -17,6 +17,7 @@
     "line:publish-menus": "bun run scripts/line-publish-menus.ts",
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",
     "sale:ensure-items": "bun run scripts/ensure-sale-items.ts",
+    "sale:retire-placeholders": "bun run scripts/retire-placeholder-items.ts",
     "db:check-migrate": "bun run scripts/db-check-migrate.ts"
   },
   "dependencies": {

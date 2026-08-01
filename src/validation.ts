@@ -356,3 +356,26 @@ export const approveLinkRequest = z.object({
 export const rejectLinkRequest = z.object({
   decidedBy: z.string().trim().min(1).max(120).optional(),
 });
+
+// ── Importing an in-progress entitlement (SPEC-025 / TASK-079) ──
+// 🔴 A separate SCHEMA for a separate VERB. `expiryDate` is REQUIRED and taken as given — an imported course
+// started months ago, so computing it from the start date would silently extend or shorten what the family
+// bought. There is deliberately no `skipRevenue` flag anywhere: import and sale are different endpoints.
+export const importCoursePackage = z.object({
+  student: studentInput,
+  teacherId: ID,
+  subjectId: ID,
+  size: z.coerce.number().int().min(1).max(100), // NOT restricted to 4/6/10 — an off-card size is
+  usedSessions: z.coerce.number().int().min(0), //  importable on purpose: they already bought it
+  startDate: DATE, // when the REMAINING sessions resume
+  startTime: TIME,
+  expiryDate: DATE,
+  note: z.string().optional(),
+});
+
+export const importVoucher = z.object({
+  student: studentInput,
+  totalHours: z.coerce.number().int().min(1).max(100),
+  usedHours: z.coerce.number().int().min(0),
+  expiryDate: DATE,
+});
