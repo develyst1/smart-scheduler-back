@@ -94,12 +94,14 @@ export const api = new Hono()
     c.json(await svc.reactivateTeacher(c.req.param("id"))),
   )
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
-  .get("/courses", async (c) => c.json(await svc.getCourses()))
+  .get("/courses", zValidator("query", v.coursesQuery), async (c) =>
+    c.json(await svc.listCoursesPaged(c.req.valid("query"))),
+  )
   .post("/courses", zValidator("json", v.createCoursePackage), async (c) =>
     c.json(await svc.createCoursePackage(c.req.valid("json")), 201),
   )
   .get("/vouchers", zValidator("query", v.vouchersQuery), async (c) =>
-    c.json(await svc.getVouchers(c.req.valid("query"))),
+    c.json(await svc.listVouchersPaged(c.req.valid("query"))),
   )
   .post("/vouchers", zValidator("json", v.createVoucher), async (c) =>
     c.json(await svc.createVoucher(c.req.valid("json")), 201),

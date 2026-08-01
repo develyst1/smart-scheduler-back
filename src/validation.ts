@@ -102,9 +102,19 @@ export const createBooking = z
   });
 
 // รายการวอยเชอร์ (GET /api/vouchers) — กรองตามนักเรียน/ค้นหาชื่อได้
+// Courses/vouchers tabs (TASK-070) — same q/page/limit shape as `bookingsQuery`, so the FE ends up with one
+// pagination component instead of three.
 export const vouchersQuery = z.object({
   studentId: ID.optional(),
   q: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const coursesQuery = z.object({
+  q: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 // Register a recurring course package (B.4): size + first slot → weekly sessions.

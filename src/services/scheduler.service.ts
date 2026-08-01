@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, boItem, boMovement, coursePackages, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { appSettings, bookings, boItem, boMovement, coursePackages, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, TeacherType } from "../types/contract";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
@@ -26,6 +26,13 @@ import {
 import { bangkokNow } from "../lib/bangkok-time";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
+import {
+  courseCountQuery,
+  courseSearchQuery,
+  studentSearchQuery,
+  voucherCountQuery,
+  voucherSearchQuery,
+} from "./search.queries";
 import { blockedBySuspension } from "../lib/suspend";
 import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
 import { attachBookingBadges } from "./badge.service";
@@ -362,12 +369,54 @@ export async function setTeacherTypeOrder(order: TeacherType[]) {
   return { order };
 }
 
-export async function getCourses() {
+/**
+ * Course ids in the ONE canonical order — student name, then the course's own `createdAt`, then id as a final
+ * tiebreak so the sequence is total. Ordering lives here rather than at the call sites, because "the same
+ * request returns the same order" is what makes paging mean anything (before this there was no `ORDER BY` at
+ * all, so identical requests could return cards in different orders).
+ *
+ * ⚠️ `leftJoin(parents)`: the phone half of the search rule needs the parent row, but a walk-in student
+ * legitimately has none — an inner join would hide every parentless student from the list *and* the search.
+ */
+async function courseIdsOrdered(f: { q?: string; page?: number; limit?: number } = {}) {
+  const base = courseSearchQuery(f.q);
+  const rows =
+    f.page && f.limit ? await base.limit(f.limit).offset((f.page - 1) * f.limit) : await base;
+  return rows.map((r) => r.id);
+}
+
+/** Hydrate courses to their DTO shape, preserving the id order handed in. */
+async function coursesByIds(ids: string[]) {
+  if (ids.length === 0) return [];
   // Load one booking's subject per course to surface the sport program (a course ⇔ one subject; REQ-010).
   const rows = await db.query.coursePackages.findMany({
+    where: (c, { inArray: inA }) => inA(c.id, ids),
     with: { student: true, bookings: { with: { subject: true }, limit: 1 } },
   });
-  return rows.map(toCourseWithStudent);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [toCourseWithStudent(row)] : [];
+  });
+}
+
+/**
+ * **Every** course, unpaged — the shape three internal consumers depend on (attention checks TASK-053,
+ * eligible-students TASK-051, the SOM report TASK-062). Paging this would silently truncate a digest count,
+ * an eligibility list and a dashboard figure, so paging is **opt-in via `listCoursesPaged`** instead.
+ * The only change here is that the order is now deterministic.
+ */
+export async function getCourses() {
+  return coursesByIds(await courseIdsOrdered());
+}
+
+/** The `/courses` tab: same rows, same order, plus the shared search rule and paging. */
+export async function listCoursesPaged(f: { q?: string; page: number; limit: number }) {
+  const [ids, [{ value: total }]] = await Promise.all([
+    courseIdsOrdered(f),
+    courseCountQuery(f.q),
+  ]);
+  return { items: await coursesByIds(ids), page: f.page, limit: f.limit, total };
 }
 
 /**
@@ -431,6 +480,17 @@ export async function getEligibleStudents(type: string) {
   throw badRequest("type ต้องเป็น COURSE_PACKAGE หรือ VOUCHER");
 }
 
+/**
+ * Resolve a free-text student search to ids using the **one** shared rule — name · nickname · parent phone
+ * (`studentSearchConditions`, REQ-011). Courses/vouchers apply the same rule inside their own joins.
+ *
+ * ⚠️ **LEFT join, and it must stay one.** A walk-in / First-Trial student has `parent_id = null` **by design**;
+ * an inner join here would delete the entire walk-in cohort from every search box in the app.
+ */
+async function searchStudentIds(q: string): Promise<string[]> {
+  return (await studentSearchQuery(q)).map((r) => r.id);
+}
+
 export async function getBookings(f: {
   from?: string;
   to?: string;
@@ -445,9 +505,7 @@ export async function getBookings(f: {
   let studentIds: string[] | null = null;
   let subjectIds: string[] | null = null;
   if (f.q) {
-    studentIds = (
-      await db.select({ id: students.id }).from(students).where(ilike(students.name, `%${f.q}%`))
-    ).map((r) => r.id);
+    studentIds = await searchStudentIds(f.q);
     subjectIds = (
       await db.select({ id: subjects.id }).from(subjects).where(ilike(subjects.name, `%${f.q}%`))
     ).map((r) => r.id);
@@ -705,22 +763,58 @@ export async function createCoursePackage(input: any) {
 
 // List vouchers for the voucher tab + the booking picker. Optional studentId
 // (booking modal loads a student's own vouchers) / q (name search).
-export async function getVouchers(f: { studentId?: string; q?: string } = {}) {
+/**
+ * Voucher ids, newest first (`id` breaks ties so the order is total and paging is stable).
+ *
+ * ⚠️ `leftJoin(parents)` for the same reason as courses: a walk-in student has no parent row and must still
+ * be findable by name/nickname.
+ */
+async function voucherIdsOrdered(
+  f: { studentId?: string; q?: string; page?: number; limit?: number } = {},
+) {
+  const base = voucherSearchQuery(f);
+  const rows =
+    f.page && f.limit ? await base.limit(f.limit).offset((f.page - 1) * f.limit) : await base;
+  return rows.map((r) => r.id);
+}
+
+async function vouchersByIds(ids: string[]) {
+  if (ids.length === 0) return [];
   const rows = await db.query.vouchers.findMany({
-    where: f.studentId ? (v, { eq }) => eq(v.studentId, f.studentId!) : undefined,
+    where: (v, { inArray: inA }) => inA(v.id, ids),
     with: { student: true },
-    orderBy: (v, { desc }) => desc(v.createdAt),
   });
-  let list = rows.map(toVoucherDTO);
-  if (f.q) {
-    const q = f.q.toLowerCase();
-    list = list.filter(
-      (v) =>
-        v.student.name.toLowerCase().includes(q) ||
-        (v.student.nickname ?? "").toLowerCase().includes(q),
-    );
-  }
-  return list;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [toVoucherDTO(row)] : [];
+  });
+}
+
+/**
+ * All matching vouchers, unpaged — same opt-in contract as `getCourses` (attention checks, eligible-students
+ * and the SOM report all need the whole list).
+ *
+ * `q` now filters **in SQL** using the shared rule. It previously loaded every voucher and filtered in JS on
+ * name/nickname only, so the parameter bought nothing — the whole table was read either way, and a parent
+ * phone never matched.
+ */
+export async function getVouchers(f: { studentId?: string; q?: string } = {}) {
+  return vouchersByIds(await voucherIdsOrdered(f));
+}
+
+/** The `/vouchers` tab: same rows and order, plus paging. */
+export async function listVouchersPaged(f: {
+  studentId?: string;
+  q?: string;
+  page: number;
+  limit: number;
+}) {
+  const [ids, [{ value: total }]] = await Promise.all([
+    voucherIdsOrdered(f),
+    voucherCountQuery(f),
+  ]);
+  return { items: await vouchersByIds(ids), page: f.page, limit: f.limit, total };
 }
 
 // Issue a voucher (5/10/15h). Validity starts at the first booking (B.5); a

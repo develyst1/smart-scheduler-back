@@ -19,6 +19,9 @@ mock.module("../services/scheduler.service", () => ({
   updateBookingStatus: async () => ({}),
   getCourses: async () => [],
   getVouchers: async () => [],
+  // TASK-070: the /courses and /vouchers routes now call the paged variants.
+  listCoursesPaged: async () => ({ items: [], page: 1, limit: 50, total: 0 }),
+  listVouchersPaged: async () => ({ items: [], page: 1, limit: 50, total: 0 }),
   listFreelanceCeilings: async () => [],
   getDailyReport: async () => ({ totalBooked: 0, attended: 0 }), // ← som-report.service (REQ-013)
 }));
