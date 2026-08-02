@@ -19,9 +19,10 @@ export const api = new Hono()
   )
   // ⚠️ Literal `/students/<word>` routes go BEFORE any `/students/:id` param route (the TASK-029 lesson).
   // Who can be booked against an existing course/voucher, with the context staff pick from (REQ-022).
-  .get("/students/eligible", zValidator("query", v.eligibleStudentsQuery), async (c) =>
-    c.json(await svc.getEligibleStudents(c.req.valid("query").type)),
-  )
+  .get("/students/eligible", zValidator("query", v.eligibleStudentsQuery), async (c) => {
+    const { type, q } = c.req.valid("query");
+    return c.json(await svc.getEligibleStudents(type, q));
+  })
   // Booking dropdown source — searchable by name / nickname / parent phone.
   .get("/students", zValidator("query", v.studentsQuery), async (c) => {
     const { q, limit } = c.req.valid("query");

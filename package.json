@@ -8,7 +8,7 @@
     "build": "bun build src/index.ts --compile --minify --outfile dist/smart-scheduler-back",
     "start": "bun src/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate && bun run db:verify",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun run src/db/seed.ts",
@@ -18,7 +18,8 @@
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",
     "sale:ensure-items": "bun run scripts/ensure-sale-items.ts",
     "sale:retire-placeholders": "bun run scripts/retire-placeholder-items.ts",
-    "db:check-migrate": "bun run scripts/db-check-migrate.ts"
+    "db:verify": "bun run scripts/verify-migrations.ts",
+    "db:seed-ledger": "bun run scripts/seed-ledger-from-schema.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

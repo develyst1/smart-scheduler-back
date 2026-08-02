@@ -148,6 +148,9 @@ export const updateStatus = z.object({
 // deliberately not served here — those tabs use `GET /students?q=`.
 export const eligibleStudentsQuery = z.object({
   type: z.enum(["COURSE_PACKAGE", "VOUCHER"]),
+  // TASK-088 — name · nickname · parent phone, via the SAME `studentSearchConditions` as /students and
+  // /bookings. Optional: omitting it must leave the response exactly as it was.
+  q: z.string().trim().min(1).optional(),
 });
 
 // Staff people management (REQ-019 / TASK-048). All demographics optional — never block quick entry.

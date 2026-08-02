@@ -48,7 +48,12 @@ import {
   type BookingSort,
 } from "./search.queries";
 import { blockedBySuspension } from "../lib/suspend";
-import { courseEligible, courseRemainingSessions, voucherEligible } from "../lib/eligibility";
+import {
+  courseEligible,
+  courseRemainingSessions,
+  matchesSearch,
+  voucherEligible,
+} from "../lib/eligibility";
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
@@ -442,17 +447,29 @@ export async function listCoursesPaged(f: { q?: string; page: number; limit: num
  * `FIRST_TRIAL` / `SINGLE_SESSION` are deliberately not served here — those keep `GET /students?q=`, since any
  * student (including a brand-new one) is valid for them.
  */
-export async function getEligibleStudents(type: string) {
+export async function getEligibleStudents(type: string, q?: string) {
   const { date } = bangkokNow();
   // REQ-019 / TASK-056: this endpoint exists ONLY to answer "who can be booked", so a suspended household
   // never belongs in it — filtered unconditionally. Parentless walk-in students are never in the set.
   const suspended = await suspendedStudentIds();
 
+  // TASK-088 — `q` resolves through the SAME rule as /students and /bookings (`studentSearchConditions`,
+  // via `searchStudentIds`), so one term finds the same child on all three surfaces. Resolving to ids and
+  // intersecting is what lets us match a **parent phone** without putting the phone in this response — the
+  // payload is deliberately `{id, name, nickname, context}` and adding PII to it would be the REQ-020 mistake.
+  // ⚠️ `searchStudentIds` LEFT joins parents, so a parentless walk-in still matches on name/nickname.
+  const matching = q?.trim() ? new Set(await searchStudentIds(q)) : null;
+
   if (type === "COURSE_PACKAGE") {
     const courses = await getCourses();
     return {
       students: courses
-        .filter((c: any) => courseEligible(c, date) && !suspended.has(c.student.id))
+        .filter(
+          (c: any) =>
+            courseEligible(c, date) &&
+            !suspended.has(c.student.id) &&
+            matchesSearch(c.student.id, matching),
+        )
         .map((c: any) => ({
           id: c.student.id,
           name: c.student.name,
@@ -475,7 +492,12 @@ export async function getEligibleStudents(type: string) {
     const vouchers = await getVouchers();
     return {
       students: vouchers
-        .filter((v: any) => voucherEligible(v, date) && !suspended.has(v.student.id))
+        .filter(
+          (v: any) =>
+            voucherEligible(v, date) &&
+            !suspended.has(v.student.id) &&
+            matchesSearch(v.student.id, matching),
+        )
         .map((v: any) => ({
           id: v.student.id,
           name: v.student.name,
