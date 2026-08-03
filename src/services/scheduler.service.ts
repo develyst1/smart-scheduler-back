@@ -31,6 +31,7 @@ import {
   drawCeilingHour,
   heldTarget,
   overLimit,
+  planHoldMoves,
   reconcileDelta,
   reconcileRemaining,
   shouldCloseCeiling,
@@ -118,45 +119,34 @@ async function findFreelanceItem(exec: any, teacherId: string) {
   });
 }
 
-// Reconcile a freelance booking's ceiling drawdown to its status (REQ-006 / TASK-028). `held ∈ {0,1}` is
-// derived from the net `bo.movement(refId=booking)` on the teacher's ceiling item — the single source of
-// truth — so any status round-trip is idempotent and can never inflate `remaining` past the ceiling. Posts
-// at most one movement to move held → target(status); no-op when already there. Runs inside the caller's tx
-// (atomic, same DB). No-op for non-FREELANCE teachers or a teacher with no ceiling item.
-async function reconcileFreelanceDraw(
+/**
+ * TASK-091 — apply ONE adjustment to ONE ceiling item. Extracted from `reconcileFreelanceDraw` so the
+ * whole-booking reconcile can drive several items in a single transaction without restating the money math.
+ *
+ * ⚠️ The idempotency key now includes the **item**. It used to be `fl:<booking>:held<target>`, which is
+ * unique per (booking, target) but NOT per item — so on a round trip A→B→A the release of B would collide
+ * with the earlier release of A (both `held0`), `onConflictDoNothing` would swallow it, and the booking would
+ * end up held on **two** items at once. That is exactly the round-trip off-by-one this task warned about.
+ */
+async function applyHoldMove(
   tx: any,
   bookingId: string,
-  teacherId: string,
-  status: string,
-  override: boolean,
+  item: { id: string; remainingQty: number; ceilingQty: number | null; unitPriceMinor: number },
+  delta: number,
+  allowNegative: boolean,
 ) {
-  const teacher = await tx.query.teachers.findFirst({
-    where: (t: any, { eq }: any) => eq(t.id, teacherId),
-  });
-  if (teacher?.type !== "FREELANCE") return;
-
-  const item = await findFreelanceItem(tx, teacherId);
-  if (!item || item.remainingQty === null) return;
-
-  // held = −Σ(movement.qty) for this booking on this item (a draw is qty −1 → held +1).
-  const movements = await tx.query.boMovement.findMany({
-    where: (m: any, { and, eq }: any) => and(eq(m.itemId, item.id), eq(m.refId, bookingId)),
-  });
-  const held = -movements.reduce((sum: number, m: any) => sum + m.qty, 0);
-
-  const delta = reconcileDelta(held, status);
-  if (delta === 0) return; // already at target — idempotent no-op
-
-  const allowNegative = override || (await readLimitOverride(tx, teacherId));
   if (delta > 0 && drawCeilingHour(item.remainingQty, allowNegative).blocked) {
     throw conflict(
       "INSUFFICIENT_BUDGET",
       "งบครูฟรีแลนซ์เต็มแล้ว — เติมงบหรือปลดล็อกก่อนยืนยันคาบ",
     );
   }
-
   const qty = -delta; // draw → −1, refund → +1
-  const remainingAfter = reconcileRemaining(item.remainingQty, item.ceilingQty ?? item.remainingQty, delta);
+  const remainingAfter = reconcileRemaining(
+    item.remainingQty,
+    item.ceilingQty ?? item.remainingQty,
+    delta,
+  );
   await tx.update(boItem).set({ remainingQty: remainingAfter }).where(eq(boItem.id, item.id));
   await tx
     .insert(boMovement)
@@ -167,10 +157,70 @@ async function reconcileFreelanceDraw(
       valueMinor: -qty * item.unitPriceMinor, // draw → +rate (expense); refund → −rate (un-books it)
       refType: delta > 0 ? "BOOKING" : "BOOKING_REVERSAL",
       refId: bookingId,
-      idempotencyKey: `fl:${bookingId}:held${heldTarget(status)}`,
+      idempotencyKey: `fl:${bookingId}:${item.id}:held${delta > 0 ? 1 : 0}`,
     })
     .onConflictDoNothing();
 }
+
+/**
+ * 🔴 TASK-091 — reconcile a booking's freelance hold **across every item**, not just one teacher's.
+ *
+ * A booking must hold **at most one hour, on exactly one item — the current teacher's**. `moveBooking` used
+ * to change `teacherId` with no reconcile at all, which left the old teacher's ceiling drawn for a session
+ * they no longer teach *and* the new teacher's never drawn — so the new teacher could be booked **past their
+ * cap**, which is the one thing the cap exists to prevent. Both directions were wrong and nothing said so.
+ *
+ * `heldTarget`/`reconcileDelta` still decide **how many** hours a status holds; `planHoldMoves` decides
+ * **which item** holds them. No second definition of either.
+ */
+async function reconcileBookingHolds(
+  tx: any,
+  bookingId: string,
+  currentTeacherId: string,
+  status: string,
+  override: boolean,
+) {
+  // Every freelance item holding this booking — including teachers it was moved away from.
+  const movements = await tx.query.boMovement.findMany({
+    where: (m: any, { and, eq, inArray }: any) =>
+      and(eq(m.refId, bookingId), inArray(m.refType, ["BOOKING", "BOOKING_REVERSAL"])),
+  });
+  const heldByItem = new Map<string, number>();
+  for (const m of movements) {
+    heldByItem.set(m.itemId, (heldByItem.get(m.itemId) ?? 0) - m.qty); // draw qty −1 ⇒ held +1
+  }
+
+  const teacher = await tx.query.teachers.findFirst({
+    where: (t: any, { eq }: any) => eq(t.id, currentTeacherId),
+  });
+  const currentItem =
+    teacher?.type === "FREELANCE" ? await findFreelanceItem(tx, currentTeacherId) : null;
+  // A ceiling with `remainingQty === null` isn't tracking hours — treat it as "no item to draw on", the
+  // same carve-out `reconcileFreelanceDraw` has always made.
+  const usableCurrent = currentItem && currentItem.remainingQty !== null ? currentItem : null;
+
+  const moves = planHoldMoves(
+    [...heldByItem.entries()].map(([itemId, held]) => ({ itemId, held })),
+    usableCurrent?.id ?? null,
+    heldTarget(status),
+  );
+  if (moves.length === 0) return;
+
+  const allowNegative = override || (await readLimitOverride(tx, currentTeacherId));
+  for (const move of moves) {
+    const item =
+      move.itemId === usableCurrent?.id
+        ? usableCurrent
+        : await tx.query.boItem.findFirst({ where: (i: any, { eq }: any) => eq(i.id, move.itemId) });
+    if (!item || item.remainingQty === null) continue; // can't reconcile an item that isn't tracking hours
+    // A release is never blocked by a cap, so `allowNegative` only matters for the draw.
+    await applyHoldMove(tx, bookingId, item, move.delta, move.delta > 0 ? allowNegative : true);
+  }
+}
+
+// TASK-091: the per-teacher `reconcileFreelanceDraw` was REPLACED by `reconcileBookingHolds` above.
+// It only ever looked at one item, which was correct for status changes but blind to a teacher MOVE — and
+// keeping both would have been two definitions of the same reconcile, one of them subtly wrong.
 
 // Re-source the freelance budget DTO fields from the `bo.item` ceiling (hours × rate = baht, so the
 // FE display — budgetMinor/remainingMinor/overLimit — is unchanged). setupIncomplete = FREELANCE with
@@ -1202,7 +1252,7 @@ export async function updateBookingStatus(
     // ATTENDED / SICK_LEAVE / EXTENDED; releasing: NO_SHOW / CANCELLED / PENDING. The makeup EXTENDED row is
     // deliberately NOT reconciled here — it draws on its own confirm, preserving today's behavior.
     const after = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
-    if (after) await reconcileFreelanceDraw(tx, id, current.teacherId, after.status, override);
+    if (after) await reconcileBookingHolds(tx, id, current.teacherId, after.status, override);
 
     const booking = await loadBookingDTO(tx, id);
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
@@ -1260,7 +1310,16 @@ export async function moveBooking(
   if (input.note !== undefined) patch.note = input.note;
 
   try {
-    await db.update(bookings).set(patch).where(eq(bookings.id, id));
+    // 🔴 TASK-091 — the teacher write and the money move must be ONE transaction, or a failure between them
+    // leaves the assignment and the ceiling disagreeing about who is teaching (and being paid for) the hour.
+    await db.transaction(async (tx) => {
+      await tx.update(bookings).set(patch).where(eq(bookings.id, id));
+      // Reconcile whole-booking against the CURRENT teacher — `patch.teacherId` if it moved, else the one it
+      // already had. Releases any item still holding this booking for a teacher who no longer teaches it, and
+      // draws the new one. A move with no teacher change produces no adjustments, so date/time-only edits are
+      // unchanged. `current.status` is used because a move never changes status.
+      await reconcileBookingHolds(tx, id, patch.teacherId ?? current.teacherId, current.status, false);
+    });
   } catch (e: any) {
     const code = pgErrorCode(e);
     if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
