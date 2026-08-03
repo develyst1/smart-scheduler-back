@@ -126,6 +126,10 @@ const TABLE: Record<string, Entry> = {
     TH: "การขายที่ยังไม่ลงบัญชี",
     EN: "Sales not posted to backoffice",
   },
+  att_orphaned_sessions: {
+    TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
+    EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
+  },
   digest_header: { TH: "📋 สรุปสิ่งที่ต้องดูแลวันนี้", EN: "📋 Today's attention summary" },
   digest_footer: { TH: "ดูรายละเอียดทั้งหมดในเว็บแอป", EN: "See full details in the web app" },
   digest_more: { TH: "+ อีก {n} รายการ — ดูในเว็บแอป", EN: "+{n} more — see the web app" },

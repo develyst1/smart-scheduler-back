@@ -11,6 +11,8 @@
 import { courseEligible, courseRemainingSessions, voucherEligible } from "./eligibility";
 import { overLimit } from "./freelance-budget";
 import { t, type Lang } from "./line-i18n";
+import { weekdayOf } from "./recurring";
+import { teacherWorksOnDay } from "./work-days";
 
 // ── Thresholds — ONE named-constant block (placeholders until คุณฟีน gives real numbers) ─────────────
 export const EXPIRING_WITHIN_DAYS = 14;
@@ -100,6 +102,23 @@ export const isCourseExpiringSoon = (
   cutoff: string,
 ): boolean => courseEligible(c, today) && isExpiringSoon(c.expiryDate, today, cutoff);
 
+/**
+ * A future course session whose teacher can no longer take it — **archived** or **no longer works that
+ * weekday** (SPEC-028 §7.5). LIVE only (a delivered/cancelled session is settled). The re-planning to fix it
+ * exists (the editor); this is the missing *detection*.
+ */
+const ORPHAN_LIVE = new Set(["PENDING", "CONFIRMED", "EXTENDED"]);
+export const isOrphanedSession = (
+  b: { status: string; date: string },
+  teacher: { archived?: boolean | null; workDays?: number[] | null } | null | undefined,
+  today: string,
+): boolean => {
+  if (!ORPHAN_LIVE.has(b.status)) return false;
+  if (b.date < today) return false; // only future/today sessions can still be disrupted
+  if (!teacher) return false;
+  return teacher.archived === true || !teacherWorksOnDay(teacher.workDays ?? [], weekdayOf(b.date));
+};
+
 // ── Registry ─────────────────────────────────────────────────────────────────────────────────────────
 
 export interface AttentionItem {
@@ -128,6 +147,8 @@ export interface AttentionCtx {
     freelanceCeilings: () => Promise<Array<{ teacherId: string; nickname: string; remainingQty: number }>>;
     /** How many teacher link requests are waiting for staff (TASK-075). */
     pendingTeacherLinks: () => Promise<number>;
+    /** Future bookings (date >= today) with their teacher joined — for the orphaned-session check (TASK-096). */
+    orphanedCandidates: () => Promise<Array<{ booking: any; teacher: any }>>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
     salesPostingState: () => Promise<{
       sold: Array<{ id: string; label: string }>;
@@ -266,6 +287,25 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
       const { sold, postedRefIds } = await ctx.load.salesPostingState();
       const rows = sold.filter((s) => isSaleUnposted(s, postedRefIds));
       return { count: rows.length, items: rows.map((s) => ({ id: s.id, label: s.label })) };
+    },
+  },
+  {
+    // SPEC-028 §7.5 (TASK-096) — a future course session whose teacher was archived or stopped working that
+    // weekday. Names people (time · student · teacher) so an admin can act; re-plan via the editor.
+    key: "orphaned_sessions",
+    titleKey: "att_orphaned_sessions",
+    namesPeopleInDigest: true,
+    run: async (ctx) => {
+      const rows = (await ctx.load.orphanedCandidates()).filter(({ booking, teacher }) =>
+        isOrphanedSession(booking, teacher, ctx.today),
+      );
+      return {
+        count: rows.length,
+        items: rows.map(({ booking, teacher }) => ({
+          id: booking.id,
+          label: `${booking.date} ${hhmm(booking.startTime)} · ${booking.student?.nickname ?? booking.student?.name ?? "-"} · ${teacher?.nickname ?? "-"}`,
+        })),
+      };
     },
   },
 ];

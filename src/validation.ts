@@ -212,6 +212,42 @@ export const moveBooking = z
     message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
   });
 
+// SPEC-028 / TASK-093 — one body for the shared plan-edit applier (discriminated on `kind`).
+export const planChange = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("mark-absence"),
+    bookingId: ID,
+    planned: z.boolean(),
+    reason: z.string().trim().max(500).optional(),
+    override: z.boolean().optional(),
+  }),
+  z.object({
+    kind: z.literal("insert"),
+    teacherId: ID,
+    subjectId: ID,
+    date: DATE,
+    startTime: TIME,
+  }),
+  z
+    .object({
+      kind: z.literal("move"),
+      bookingId: ID,
+      teacherId: ID.optional(),
+      subjectId: ID.optional(),
+      date: DATE.optional(),
+      startTime: TIME.optional(),
+      override: z.boolean().optional(),
+    })
+    .refine(
+      (d) =>
+        d.teacherId !== undefined ||
+        d.subjectId !== undefined ||
+        d.date !== undefined ||
+        d.startTime !== undefined,
+      { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" },
+    ),
+]);
+
 export const setAvailability = z
   .object({
     teacherId: ID.optional(),

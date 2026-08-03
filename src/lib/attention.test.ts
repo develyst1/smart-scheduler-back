@@ -125,12 +125,12 @@ describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole 
 });
 
 describe("registry — extensibility is one array entry", () => {
-  test("all nine checks are registered, with unique keys", () => {
-    // 8th = sales_not_posted (TASK-067), 9th = pending_teacher_links (TASK-075). This count moving by
-    // exactly one per task, with nothing else in this describe block changing, IS the running evidence for
-    // SPEC-018's extensibility claim.
-    expect(ATTENTION_CHECKS).toHaveLength(9);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(9);
+  test("all ten checks are registered, with unique keys", () => {
+    // 8th = sales_not_posted (TASK-067), 9th = pending_teacher_links (TASK-075), 10th = orphaned_sessions
+    // (SPEC-028 §7.5 / TASK-096). This count moving by exactly one per task, with nothing else in this
+    // describe block changing, IS the running evidence for SPEC-018's extensibility claim.
+    expect(ATTENTION_CHECKS).toHaveLength(10);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(10);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {
@@ -139,9 +139,14 @@ describe("registry — extensibility is one array entry", () => {
       expect(t(c.titleKey, "TH")).not.toBe(c.titleKey);
     }
   });
-  test("🔐 exactly two checks may name people in the digest (REQ-020 privacy)", () => {
+  test("🔐 only these checks may name people in the digest (REQ-020 privacy; SPEC-028 §7.5 adds orphaned)", () => {
     const named = ATTENTION_CHECKS.filter((c) => c.namesPeopleInDigest).map((c) => c.key);
-    expect(named.sort()).toEqual(["teachers_without_line", "unconfirmed_bookings"]);
+    // orphaned_sessions names time·student·teacher so an admin can act on the disrupted plan (owner-approved).
+    expect(named.sort()).toEqual([
+      "orphaned_sessions",
+      "teachers_without_line",
+      "unconfirmed_bookings",
+    ]);
   });
 });
 

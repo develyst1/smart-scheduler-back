@@ -46,6 +46,7 @@ function buildCtx(today: string): AttentionCtx {
     postedRefIds: Set<string>;
   }> | null = null;
   let pendingLinks: Promise<number> | null = null;
+  let orphaned: Promise<Array<{ booking: any; teacher: any }>> | null = null;
   const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
@@ -78,6 +79,16 @@ function buildCtx(today: string): AttentionCtx {
           }));
         })()),
       pendingTeacherLinks: () => (pendingLinks ??= countPendingTeacherLinks()),
+      // TASK-096 — future bookings with their teacher joined; the predicate flags archived / off-that-weekday.
+      orphanedCandidates: () =>
+        (orphaned ??= (async () => {
+          const rows = await db.query.bookings.findMany({
+            where: (b, { gte }) => gte(b.date, today),
+            with: { student: true, teacher: true },
+            orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+          });
+          return rows.map((b) => ({ booking: b, teacher: b.teacher }));
+        })()),
       // TASK-067. The three things `recordSale` is called for — a course sale, a voucher sale, and an
       // ATTENDED trial/single (revenue recognised at day-end) — against the refIds that actually reached
       // `bo.movement`. The movement carries the entitlement's own id as `ref_id`, so absence IS the signal.

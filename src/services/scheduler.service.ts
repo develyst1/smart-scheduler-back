@@ -7,7 +7,7 @@ import { appSettings, bookings, boItem, boMovement, coursePackages, parents, stu
 import type { BulkConfirmResult, TeacherType } from "../types/contract";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
-import { canTakeLeave } from "../lib/leave";
+import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
 import {
   courseExpiry,
@@ -37,6 +37,15 @@ import {
   shouldCloseCeiling,
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
+import {
+  COURSE_LIVE,
+  canInsert,
+  courseCurrent,
+  exceedsExtensionCeiling,
+  isDelivered,
+  planCourseMoves,
+  type PlanSession,
+} from "../lib/course-plan";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import {
@@ -696,25 +705,35 @@ async function assertHouseholdNotSuspended(exec: any, studentId: string) {
   }
 }
 
+/**
+ * The teacher-availability gate for a booking landing on `date`: teacher exists, not archived, works that
+ * weekday, and (if FREELANCE) has a budget set. ONE definition — used by `insertBooking` (new bookings),
+ * `moveBooking` and `applyPlanChange` (per-session edits) so a move can't skip what an insert enforces.
+ */
+async function assertTeacherBookable(exec: any, teacherId: string, date: string) {
+  const teacher = await exec.query.teachers.findFirst({
+    where: (t: any, { eq }: any) => eq(t.id, teacherId),
+  });
+  if (!teacher) throw badRequest("ไม่พบครู");
+  if (teacher.archived) throw badRequest(`ครู${teacher.nickname} ถูกปิดการใช้งานแล้ว`);
+  if (!teacherWorksOnDay(teacher.workDays, weekdayOf(date))) {
+    throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
+  }
+  // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't be
+  // booked (FT/PT are not gated — salary deferred).
+  if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
+    throw badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`);
+  }
+  return teacher;
+}
+
 async function insertBooking(
   exec: any,
   studentId: string,
   input: any,
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
-  const teacher = await exec.query.teachers.findFirst({
-    where: (t: any, { eq }: any) => eq(t.id, input.teacherId),
-  });
-  if (!teacher) throw badRequest("ไม่พบครู");
-  if (teacher.archived) throw badRequest(`ครู${teacher.nickname} ถูกปิดการใช้งานแล้ว`);
-  if (!teacherWorksOnDay(teacher.workDays, weekdayOf(input.date))) {
-    throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
-  }
-  // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't
-  // be booked (FT/PT are not gated — salary deferred).
-  if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
-    throw badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`);
-  }
+  await assertTeacherBookable(exec, input.teacherId, input.date);
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
   if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
@@ -1105,6 +1124,211 @@ async function findFreeExtensionDate(
   return d;
 }
 
+/**
+ * SPEC-028 / TASK-092 — apply the pure `planCourseMoves` to a course's bookings in the passed tx: cancel
+ * the trailing appended `EXTENDED` sessions (long) and/or append make-ups after the last live date (short),
+ * bringing the course back to its `size`-target. Returns the moves for the caller to log. The applier mirrors
+ * TASK-091's `reconcileBookingHolds` (pure planner + tx applier); TASK-093's `applyPlanChange` gates the rules.
+ */
+export async function reconcileCoursePlan(tx: any, courseId: string) {
+  const course = await tx.query.coursePackages.findFirst({
+    where: (c: any, { eq }: any) => eq(c.id, courseId),
+  });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+
+  const rows = await tx.query.bookings.findMany({
+    where: (b: any, { eq }: any) => eq(b.courseId, courseId),
+  });
+
+  const plan = planCourseMoves(
+    rows.map(
+      (r: any): PlanSession => ({
+        id: r.id,
+        status: r.status,
+        date: r.date,
+        extendedFromId: r.extendedFromId,
+      }),
+    ),
+    course.size,
+  );
+
+  const cancelled: string[] = [];
+  for (const id of plan.cancelIds) {
+    await tx
+      .update(bookings)
+      .set({ status: "CANCELLED", note: "ยกเลิกคาบขยายอัตโนมัติ (ปรับแผนคอร์ส)" })
+      .where(eq(bookings.id, id));
+    cancelled.push(id);
+  }
+
+  const appended: string[] = [];
+  if (plan.append.length) {
+    const byId = new Map(rows.map((r: any) => [r.id, r]));
+    const cancelledSet = new Set(plan.cancelIds);
+    const liveAfterCancel = rows.filter(
+      (r: any) => COURSE_LIVE.has(r.status) && !cancelledSet.has(r.id),
+    );
+    // Append after the last still-live session date (fall back to the course start).
+    let fromDate: string = liveAfterCancel.reduce(
+      (m: string, r: any) => (r.date > m ? r.date : m),
+      course.startDate,
+    );
+    for (const a of plan.append) {
+      // Mirror the makeup's teacher/subject/time from the absence it replaces (or a live session).
+      const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
+      if (!template) break;
+      const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate);
+      // SPEC-028 §5 #2 (TASK-093): the extension is HARD-bounded by the course's MAX_WEEK ceiling.
+      if (exceedsExtensionCeiling(extDate, course.startDate, course.size)) {
+        throw conflict(
+          "EXTENSION_CEILING",
+          `คอร์สขยายเกินสัปดาห์ที่ ${MAX_WEEK_BY_SIZE[course.size] ?? "?"} ไม่ได้`,
+        );
+      }
+      const [ext] = await tx
+        .insert(bookings)
+        .values({
+          studentId: template.studentId,
+          teacherId: template.teacherId,
+          subjectId: template.subjectId,
+          date: extDate,
+          startTime: template.startTime,
+          endTime: template.endTime,
+          bookingType: "COURSE_PACKAGE",
+          status: "EXTENDED",
+          courseId,
+          extendedFromId: a.extendedFromId,
+          note: "คาบขยายอัตโนมัติจากการปรับแผนคอร์ส",
+        })
+        .returning({ id: bookings.id });
+      appended.push(ext.id);
+      fromDate = extDate;
+    }
+  }
+
+  return { appended, cancelled };
+}
+
+export type PlanChange =
+  | { kind: "mark-absence"; bookingId: string; planned: boolean; reason?: string; override?: boolean }
+  | { kind: "insert"; teacherId: string; subjectId: string; date: string; startTime: string }
+  | {
+      kind: "move";
+      bookingId: string;
+      teacherId?: string;
+      subjectId?: string;
+      date?: string;
+      startTime?: string;
+      override?: boolean;
+    };
+
+/**
+ * SPEC-028 §3 (TASK-093) — the ONE shared, ATOMIC plan-edit applier (calendar / course screen / purchase-time
+ * all call it, so the rule has a single implementation). Opens a tx, applies the booking mutation, runs the
+ * `size`-reconcile (TASK-092) + the freelance-hold reconcile (TASK-091), and commits or rolls back with a
+ * typed reason. All validation is inside the tx: any failure ⇒ **nothing written** (a half-applied plan is
+ * worse than a rejected one).
+ */
+export async function applyPlanChange(courseId: string, change: PlanChange) {
+  try {
+    return await db.transaction(async (tx) => {
+      const course = await tx.query.coursePackages.findFirst({
+        where: (c: any, { eq }: any) => eq(c.id, courseId),
+      });
+      if (!course) throw notFound("ไม่พบคอร์ส");
+
+      if (change.kind === "mark-absence") {
+        const b = await tx.query.bookings.findFirst({
+          where: (x: any, { eq }: any) => eq(x.id, change.bookingId),
+        });
+        if (!b || b.courseId !== courseId) throw notFound("ไม่พบคาบในคอร์สนี้");
+        if (isDelivered(b.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
+        if (!change.override) {
+          const teacher = await tx.query.teachers.findFirst({
+            where: (t: any, { eq }: any) => eq(t.id, b.teacherId),
+          });
+          if (teacher && !hasEnoughLeaveNotice(b.date, b.startTime, teacher.type))
+            throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(teacher.type));
+        }
+        // A plain sick-leave over quota stays LOCKED (needs adminUnlocked / override); a PLANNED absence
+        // bypasses the soft lock but is still MAX_WEEK-bound (enforced inside reconcileCoursePlan). SPEC §6.
+        if (!change.planned && !change.override && toCourseSummary(course).leaveLocked) {
+          throw conflict("LEAVE_LOCKED", "โควตาการลาเต็มแล้ว — ต้องปลดล็อกโดยแอดมินก่อน");
+        }
+        await tx
+          .update(bookings)
+          .set({ status: "SICK_LEAVE", note: change.reason ?? b.note })
+          .where(eq(bookings.id, b.id));
+        await tx
+          .update(coursePackages)
+          .set({ leaveUsed: course.leaveUsed + 1 })
+          .where(eq(coursePackages.id, courseId));
+        const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
+        await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
+        return { change: "mark-absence" as const, ...moves };
+      }
+
+      if (change.kind === "insert") {
+        const rows = await tx.query.bookings.findMany({
+          where: (x: any, { eq }: any) => eq(x.courseId, courseId),
+        });
+        if (
+          !canInsert(
+            rows.map((r: any) => ({
+              id: r.id,
+              status: r.status,
+              date: r.date,
+              extendedFromId: r.extendedFromId,
+            })),
+            course.size,
+          )
+        ) {
+          throw conflict("NO_OWED_SESSION", "คอร์สนี้ครบจำนวนคาบแล้ว — ไม่มีคาบค้างให้เลื่อน");
+        }
+        const studentId = rows[0]?.studentId;
+        if (!studentId) throw badRequest("คอร์สนี้ยังไม่มีคาบเรียน");
+        // insertBooking runs the availability gate + slot-clash; the reconcile then cancels the newest
+        // appended EXTENDED to net-zero (an insert that satisfies a previously-appended gap).
+        const newId = await insertBooking(tx, studentId, {
+          teacherId: change.teacherId,
+          subjectId: change.subjectId,
+          date: change.date,
+          startTime: change.startTime,
+          bookingType: "COURSE_PACKAGE",
+          courseId,
+        });
+        const moves = await reconcileCoursePlan(tx, courseId);
+        return { change: "insert" as const, bookingId: newId, ...moves };
+      }
+
+      // move / change-teacher / change-day-time — no size change, so no course reconcile; money reconciles.
+      const b = await tx.query.bookings.findFirst({
+        where: (x: any, { eq }: any) => eq(x.id, change.bookingId),
+      });
+      if (!b || b.courseId !== courseId) throw notFound("ไม่พบคาบในคอร์สนี้");
+      if (isDelivered(b.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
+      const patch: any = {};
+      if (change.teacherId) patch.teacherId = change.teacherId;
+      if (change.subjectId) patch.subjectId = change.subjectId;
+      if (change.date) patch.date = change.date;
+      if (change.startTime) {
+        patch.startTime = change.startTime;
+        patch.endTime = addHour(change.startTime);
+      }
+      const newTeacherId = patch.teacherId ?? b.teacherId;
+      await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date);
+      await tx.update(bookings).set(patch).where(eq(bookings.id, b.id));
+      await reconcileBookingHolds(tx, b.id, newTeacherId, b.status, change.override ?? false);
+      return { change: "move" as const, bookingId: b.id };
+    });
+  } catch (e: any) {
+    const code = pgErrorCode(e);
+    if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
+    if (code === "23503") throw badRequest("teacher / subject อ้างอิงไม่ถูกต้อง");
+    throw e;
+  }
+}
+
 export async function updateBookingStatus(
   id: string,
   action: string,
@@ -1162,6 +1386,8 @@ export async function updateBookingStatus(
         }
       }
     } else if (action === "cancel") {
+      // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable, can't be cancelled.
+      if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว ยกเลิกไม่ได้");
       await tx
         .update(bookings)
         .set({ status: "CANCELLED", note: reason ?? current.note })
@@ -1298,6 +1524,8 @@ export async function moveBooking(
 ) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
+  // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable.
+  if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
 
   const patch: any = {};
   if (input.teacherId) patch.teacherId = input.teacherId;
@@ -1313,6 +1541,13 @@ export async function moveBooking(
     // 🔴 TASK-091 — the teacher write and the money move must be ONE transaction, or a failure between them
     // leaves the assignment and the ceiling disagreeing about who is teaching (and being paid for) the hour.
     await db.transaction(async (tx) => {
+      // SPEC-028 §5 (TASK-093) — the availability re-check `insertBooking` does, which `moveBooking` skipped:
+      // a teacher/date edit can't land a teacher on a day off / archived / with no freelance budget set.
+      await assertTeacherBookable(
+        tx,
+        patch.teacherId ?? current.teacherId,
+        patch.date ?? current.date,
+      );
       await tx.update(bookings).set(patch).where(eq(bookings.id, id));
       // Reconcile whole-booking against the CURRENT teacher — `patch.teacherId` if it moved, else the one it
       // already had. Releases any item still holding this booking for a teacher who no longer teaches it, and

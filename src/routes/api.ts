@@ -170,6 +170,9 @@ export const api = new Hono()
   .patch("/teachers/:id/limit-override", zValidator("json", v.setLimitOverride), async (c) =>
     c.json(await svc.setLimitOverride(c.req.param("id"), c.req.valid("json").override)),
   )
+  .post("/courses/:id/plan", zValidator("json", v.planChange), async (c) =>
+    c.json(await svc.applyPlanChange(c.req.param("id"), c.req.valid("json"))),
+  )
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
   )
