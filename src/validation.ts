@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BADGE_COLORS } from "./lib/badge-colors";
+import { isRentalCode } from "./lib/sale-items";
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
@@ -121,14 +122,44 @@ export const coursesQuery = z.object({
 });
 
 // Register a recurring course package (B.4): size + first slot → weekly sessions.
-export const createCoursePackage = z.object({
-  student: studentInput,
+export const createCoursePackage = z
+  .object({
+    student: studentInput,
+    teacherId: ID,
+    subjectId: ID,
+    size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
+    startDate: DATE,
+    startTime: TIME,
+    note: z.string().optional(),
+    // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
+    sessions: z
+      .array(
+        z.object({
+          date: DATE,
+          startTime: TIME.optional(),
+          teacherId: ID.optional(),
+          subjectId: ID.optional(),
+        }),
+      )
+      .optional(),
+  })
+  .refine((d) => !d.sessions || d.sessions.length === d.size, {
+    message: "จำนวนคาบต้องเท่ากับขนาดคอร์ส",
+  });
+
+// TASK-095 — generate the editable `size`-row plan without writing (purchase-time preview).
+export const previewCourse = z.object({
   teacherId: ID,
   subjectId: ID,
   size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
   startDate: DATE,
   startTime: TIME,
-  note: z.string().optional(),
+});
+
+// TASK-095 — free-teachers-and-clashes for a single slot.
+export const slotAvailabilityQuery = z.object({
+  date: DATE,
+  startTime: TIME,
 });
 
 // Issue a voucher (B.5): hours bucket only, no teacher/slot.
@@ -319,6 +350,14 @@ export const setTeacherWorkDays = z.object({
     .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
 });
 
+// TASK-100 — preview the orphan impact of a proposed workDays change (query: comma-separated weekdays, e.g. "1,2,3").
+export const workDaysImpactQuery = z.object({
+  workDays: z
+    .string()
+    .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean).map(Number))
+    .pipe(z.array(z.number().int().min(0).max(6)).max(7)),
+});
+
 /** Admin over-budget override for a freelance teacher (SPEC-001 / TASK-008). */
 export const setLimitOverride = z.object({
   override: z.boolean(),
@@ -412,9 +451,23 @@ export const importCoursePackage = z.object({
   note: z.string().optional(),
 });
 
+// SPEC-031 / TASK-108 — record an equipment rental. `code` ∈ the four rental codes; `hours` a positive int; `refId`
+// optional (present = session add-on, absent = standalone). The registry (`isRentalCode`) is the source of validity.
+export const recordRental = z.object({
+  code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
+  hours: z.coerce.number().int().positive("จำนวนชั่วโมงต้องมากกว่า 0").max(24),
+  refId: z.string().uuid().optional(),
+});
+
 export const importVoucher = z.object({
   student: studentInput,
   totalHours: z.coerce.number().int().min(1).max(100),
   usedHours: z.coerce.number().int().min(0),
   expiryDate: DATE,
+});
+
+// SPEC-029 / TASK-101 — PUT /api/settings/:key. Shape-check only; the registry's `parse` owns the real
+// bounds/coercion (single source of validity), so accept a number or numeric string and let the service reject.
+export const putSetting = z.object({
+  value: z.union([z.number(), z.string()]),
 });

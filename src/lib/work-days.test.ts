@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { formatWorkDaysLabel, teacherWorksOnDay, WEEKDAY_DAYS, WEEKEND_DAYS } from "./work-days";
+import {
+  formatWorkDaysLabel,
+  removedWorkDays,
+  sessionsOnRemovedDays,
+  teacherWorksOnDay,
+  WEEKDAY_DAYS,
+  WEEKEND_DAYS,
+} from "./work-days";
 
 describe("teacherWorksOnDay", () => {
   test("empty = every day", () => {
@@ -16,6 +23,40 @@ describe("teacherWorksOnDay", () => {
   test("sunday only", () => {
     expect(teacherWorksOnDay([0], 0)).toBe(true);
     expect(teacherWorksOnDay([0], 6)).toBe(false);
+  });
+});
+
+describe("removedWorkDays — days a teacher stops working (TASK-100)", () => {
+  test("narrowing to a subset removes the dropped days", () => {
+    expect(removedWorkDays([1, 2, 3, 4, 5], [1, 2, 3])).toEqual([4, 5]);
+  });
+
+  test("empty means all-days on BOTH sides", () => {
+    // all-days → weekdays-only drops Sat+Sun
+    expect(removedWorkDays([], WEEKDAY_DAYS)).toEqual([0, 6]);
+    // weekend-only → all-days (empty) removes nothing (widening)
+    expect(removedWorkDays(WEEKEND_DAYS, [])).toEqual([]);
+  });
+
+  test("adding a day / no change removes nothing (no warning path)", () => {
+    expect(removedWorkDays([1, 2, 3], [1, 2, 3, 4])).toEqual([]);
+    expect(removedWorkDays([2, 6], [6, 2])).toEqual([]); // reorder/dupe-insensitive
+  });
+
+  test("swapping a day removes only the one dropped", () => {
+    expect(removedWorkDays([1, 3], [1, 5])).toEqual([3]);
+  });
+});
+
+describe("sessionsOnRemovedDays (TASK-100)", () => {
+  test("keeps only sessions on a removed weekday", () => {
+    const ss = [
+      { id: "a", weekday: 3 },
+      { id: "b", weekday: 5 },
+      { id: "c", weekday: 3 },
+    ];
+    expect(sessionsOnRemovedDays(ss, [3]).map((s) => s.id)).toEqual(["a", "c"]);
+    expect(sessionsOnRemovedDays(ss, [])).toEqual([]); // nothing removed → no orphans
   });
 });
 

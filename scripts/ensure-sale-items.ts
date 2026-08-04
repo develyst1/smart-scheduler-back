@@ -42,6 +42,8 @@ for (const item of SALE_ITEMS) {
       // the marker for TASK-066's wrong rows, which `sale:retire-placeholders` reports on.
       vatInclusive: true,
       priceSource: "owner price card 2026-08-01 (SPEC-024)",
+      // TASK-108: per-item overrides — e.g. rentals carry `revenueKind:"RENTAL"` for the rental-vs-tuition rollup.
+      ...item.metadata,
     },
   });
   created++;

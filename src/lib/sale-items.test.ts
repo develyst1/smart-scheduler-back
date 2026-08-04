@@ -15,13 +15,77 @@ import {
   courseItemRef,
   isKnownSaleItem,
   isSellable,
+  RENTAL_CODES,
+  RENTAL_ITEMS,
+  isRentalCode,
+  rentalIdempotencyKey,
   revenueItemRef,
   sellablePackages,
   sessionItemRef,
+  voucherAllowedGroups,
+  voucherAllowsProgram,
   voucherItemRef,
 } from "./sale-items";
+import { saleMovement } from "./sale-post";
 
 const THB = (baht: number) => baht * 100;
+
+describe("voucher program exclusion (SPEC-030 / TASK-106)", () => {
+  test("Onewheel + both Balance Play are excluded; bike/skate is allowed", () => {
+    expect(voucherAllowsProgram("bike-skate")).toBe(true);
+    for (const g of ["onewheel", "balance-private", "balance-group"]) {
+      expect(voucherAllowsProgram(g)).toBe(false);
+    }
+  });
+
+  test("null/empty group is NOT allowed — 1st Trial (no price group) goes through the same null-group path", () => {
+    // `resolvePriceGroup` returns a real PriceGroup or null; a null/absent group is refused (no special case).
+    expect(voucherAllowsProgram(null)).toBe(false);
+    expect(voucherAllowsProgram(undefined)).toBe(false);
+    expect(voucherAllowsProgram("")).toBe(false);
+  });
+
+  test("voucherAllowedGroups is derived from PRICE_GROUPS (never a hardcoded FE list)", () => {
+    expect(voucherAllowedGroups()).toEqual(["bike-skate"]);
+    // every allowed group is a real price group, and none is an excluded one
+    for (const g of voucherAllowedGroups()) {
+      expect(PRICE_GROUPS).toContain(g);
+      expect(voucherAllowsProgram(g)).toBe(true);
+    }
+  });
+});
+
+describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
+  const EXPECTED = { "rental-set": 200, "rental-ride": 150, "rental-helmet": 50, "rental-pads": 50 } as const;
+
+  test("the four codes are known sale items at the VAT-inclusive card price", () => {
+    expect([...RENTAL_CODES]).toEqual(["rental-set", "rental-ride", "rental-helmet", "rental-pads"]);
+    for (const code of RENTAL_CODES) {
+      expect(isKnownSaleItem(code)).toBe(true); // recordSale won't refuse it
+      const item = SALE_ITEMS.find((i) => i.externalRef === code)!;
+      expect(item.unitPriceMinor).toBe(THB(EXPECTED[code]));
+      expect(item.metadata).toEqual({ revenueKind: "RENTAL" }); // separates rental from tuition in reports (AC #3)
+    }
+  });
+
+  test("hours × price posts the right signed movement (a sale is OUT, positive value)", () => {
+    const set = SALE_ITEMS.find((i) => i.externalRef === "rental-set")!;
+    // 3h of a 200/hr full set = 600 THB income
+    expect(saleMovement(3, set.unitPriceMinor)).toEqual({ qty: -3, valueMinor: THB(600) });
+  });
+
+  test("isRentalCode guards the endpoint's code param", () => {
+    expect(isRentalCode("rental-set")).toBe(true);
+    expect(isRentalCode("course-6")).toBe(false);
+    expect(isRentalCode("rental-unknown")).toBe(false);
+  });
+
+  test("RENTAL_ITEMS all carry the RENTAL marker; idempotency key is stable per (base, code)", () => {
+    expect(RENTAL_ITEMS).toHaveLength(4);
+    expect(RENTAL_ITEMS.every((i) => (i.metadata as any)?.revenueKind === "RENTAL")).toBe(true);
+    expect(rentalIdempotencyKey("booking-123", "rental-set")).toBe("rental:booking-123:rental-set");
+  });
+});
 
 describe("🔑 the catalogue IS the availability rule — no second list to drift", () => {
   test("every sellable combination has an item, and every item has a price", () => {
@@ -132,14 +196,15 @@ describe("revenueItemRef — the day-end path is now program-priced too", () => 
 });
 
 describe("shape", () => {
-  test("12 program items + 3 vouchers + first trial = 16", () => {
+  test("12 program items + 3 vouchers + first trial + 4 rentals", () => {
     // 3 single-session rows (onewheel · balance-private · balance-group — bike/skate has no 1h rate)
     // + 9 course rows (bike-skate 4/6/10 · onewheel 4/6 · balance-private 6/10 · balance-group 6/10).
     const sessions = sellablePackages().filter((p) => p.size === 1);
     const courses = sellablePackages().filter((p) => p.size !== 1);
     expect(sessions).toHaveLength(3);
     expect(courses).toHaveLength(9);
-    expect(SALE_ITEMS).toHaveLength(12 + VOUCHER_HOURS.length + 1);
+    // + TASK-108: the 4 equipment-rental codes.
+    expect(SALE_ITEMS).toHaveLength(12 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
   });
 
   test("every course size the DB allows is priced for at least one group", () => {

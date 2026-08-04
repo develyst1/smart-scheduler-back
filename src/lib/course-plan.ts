@@ -4,7 +4,8 @@
 // `reconcileCoursePlan` does). Direct analog of TASK-091's `planHoldMoves`: a target + moves toward it.
 
 /** LIVE = still owed/scheduled; DELIVERED = the session happened (attended, or forfeited as NO_SHOW). */
-export const COURSE_LIVE = new Set(["PENDING", "CONFIRMED", "EXTENDED"]);
+export const COURSE_LIVE_STATUSES = ["PENDING", "CONFIRMED", "EXTENDED"] as const;
+export const COURSE_LIVE = new Set<string>(COURSE_LIVE_STATUSES);
 export const COURSE_DELIVERED = new Set(["ATTENDED", "NO_SHOW"]);
 // SICK_LEAVE earns a replacement (neither live nor delivered); CANCELLED is out of the plan.
 
@@ -29,10 +30,26 @@ export function courseCurrent(sessions: PlanSession[]): number {
   return sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).length;
 }
 
+/**
+ * The plan's DISPLAYED end date (SPEC-028 §4 / TASK-097) — `max(date)` over the LIVE sessions, derived on
+ * every read (never the stored `expiryDate`, which is only the MAX_WEEK ceiling). `null` when nothing is live.
+ */
+export function deriveLiveEndDate(sessions: Array<{ status: string; date: string }>): string | null {
+  const live = sessions.filter((s) => COURSE_LIVE.has(s.status)).map((s) => s.date);
+  return live.length ? live.reduce((m, d) => (d > m ? d : m)) : null;
+}
+
 // ── Guards for the applier (TASK-093) — pure, so each rule is pinned independently of the DB write ──
 
-/** A delivered session (attended, or forfeited as NO_SHOW) is immutable — can't be edited/moved/cancelled. */
+/** A delivered session (attended, or forfeited as NO_SHOW) is immutable — can't be edited/moved. */
 export const isDelivered = (status: string): boolean => COURSE_DELIVERED.has(status);
+
+/**
+ * TASK-105 (SPEC-028 §11.2) — cancelling a DELIVERED session is allowed (to undo a mis-marked attendance) but
+ * ONLY with a non-empty reason, audited. Edit/move of a delivered session stays blocked (that's `isDelivered`);
+ * this opens just the cancel-with-reason door. A non-delivered cancel needs no reason.
+ */
+export const requiresCancelReason = (status: string): boolean => isDelivered(status);
 
 /**
  * An insert is only valid when the course has an outstanding owed session to satisfy: it's currently **short**

@@ -35,6 +35,20 @@ export const PRICE_GROUPS: PriceGroup[] = [
   "balance-group",
 ];
 
+/**
+ * SPEC-030 / TASK-106 (REQ-027b) — programs a VOUCHER (hour-bucket) may NOT be used on. Onewheel and both Balance
+ * Play programs are course-only per the owner; a voucher only books the drop-in bike/skate program. Enforced at
+ * booking time, and exposed so the FE filters from this one source, not a hardcoded list.
+ */
+export const VOUCHER_EXCLUDED_GROUPS = new Set<PriceGroup>(["onewheel", "balance-private", "balance-group"]);
+
+/** True when a voucher may book this program. A null/unknown group is NOT allowed (1st Trial etc. — no special case). */
+export const voucherAllowsProgram = (group: string | null | undefined): boolean =>
+  !!group && !VOUCHER_EXCLUDED_GROUPS.has(group as PriceGroup);
+
+/** The programs a voucher CAN book — for the FE picker (derived, never hardcoded). */
+export const voucherAllowedGroups = (): PriceGroup[] => PRICE_GROUPS.filter(voucherAllowsProgram);
+
 const THB = (baht: number) => baht * 100; // satang
 
 /**
@@ -87,7 +101,40 @@ export interface SaleItemSeed {
   externalRef: string;
   name: string;
   unitPriceMinor: number;
+  /** Extra `bo.item.metadata` merged over the seed defaults (e.g. rentals carry `revenueKind:"RENTAL"`). */
+  metadata?: Record<string, unknown>;
 }
+
+// SPEC-031 / TASK-108 (REQ-028) — equipment rental as recorded revenue. A rental is just four more product codes
+// through the existing `recordSale` path (no new money mechanism). VAT-inclusive per HOUR; `quantity = hours`.
+export const RENTAL_CODES = ["rental-set", "rental-ride", "rental-helmet", "rental-pads"] as const;
+export type RentalCode = (typeof RENTAL_CODES)[number];
+export const isRentalCode = (code: string): code is RentalCode =>
+  (RENTAL_CODES as readonly string[]).includes(code);
+
+const RENTAL_PRICE: Record<RentalCode, number> = {
+  "rental-set": THB(200),
+  "rental-ride": THB(150),
+  "rental-helmet": THB(50),
+  "rental-pads": THB(50),
+};
+const RENTAL_NAME: Record<RentalCode, string> = {
+  "rental-set": "Equipment rental — full set / hr",
+  "rental-ride": "Equipment rental — ride only / hr",
+  "rental-helmet": "Equipment rental — helmet / hr",
+  "rental-pads": "Equipment rental — pads / hr",
+};
+
+/** The rental seeds — marked `revenueKind:"RENTAL"` so reports separate rental from tuition (NOT program-attributed). */
+export const RENTAL_ITEMS: SaleItemSeed[] = RENTAL_CODES.map((code) => ({
+  externalRef: code,
+  name: RENTAL_NAME[code],
+  unitPriceMinor: RENTAL_PRICE[code],
+  metadata: { revenueKind: "RENTAL" },
+}));
+
+/** SPEC-031: the idempotency key for a rental post — `rental:{refId ?? saleId}:{code}` (double-submit posts once). */
+export const rentalIdempotencyKey = (idBase: string, code: string): string => `rental:${idBase}:${code}`;
 
 /** Every INCOME item a sale can post to — exactly the combinations the card offers. */
 export const SALE_ITEMS: SaleItemSeed[] = [
@@ -110,6 +157,7 @@ export const SALE_ITEMS: SaleItemSeed[] = [
       ];
     }),
   ),
+  ...RENTAL_ITEMS, // SPEC-031 / TASK-108 — the four equipment-rental codes
 ];
 
 /** Is this a product code we know how to post? Guards against a sale silently going nowhere. */

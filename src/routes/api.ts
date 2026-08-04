@@ -9,8 +9,12 @@ import * as calendar from "../services/calendar.service";
 import * as attention from "../services/attention.service";
 import * as teacherLink from "../services/teacher-link.service";
 import * as som from "../services/som-report.service";
+import * as settings from "../services/settings.service";
+import * as rental from "../services/rental.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
+import { isSettingKey } from "../lib/settings";
+import { badRequest } from "../lib/http";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -128,6 +132,14 @@ export const api = new Hono()
   // 🔴 SPEC-025 — IMPORT is a separate VERB, never a flag on the sale path: a boolean is one forgotten
   // default away from posting a fictional month of revenue. Registered before `/courses` so the literal
   // path can never be read as anything else (the TASK-029 lesson).
+  // TASK-095 — purchase-time slot picker + preview. Preview writes nothing; registered before `/courses/:id`.
+  .get("/slots/availability", zValidator("query", v.slotAvailabilityQuery), async (c) => {
+    const q = c.req.valid("query");
+    return c.json(await svc.getSlotAvailability(q.date, q.startTime));
+  })
+  .post("/courses/preview", zValidator("json", v.previewCourse), async (c) =>
+    c.json(await svc.previewCoursePackage(c.req.valid("json"))),
+  )
   .post("/courses/import", zValidator("json", v.importCoursePackage), async (c) =>
     c.json(await svc.importCoursePackage(c.req.valid("json")), 201),
   )
@@ -164,6 +176,10 @@ export const api = new Hono()
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
   )
+  // TASK-100: soft-warning preview — orphan impact of a proposed workDays change, without applying it.
+  .get("/teachers/:id/work-days/impact", zValidator("query", v.workDaysImpactQuery), async (c) =>
+    c.json(await svc.previewWorkDaysChange(c.req.param("id"), c.req.valid("query").workDays)),
+  )
   .patch("/teachers/:id/work-days", zValidator("json", v.setTeacherWorkDays), async (c) =>
     c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays)),
   )
@@ -172,6 +188,9 @@ export const api = new Hono()
   )
   .post("/courses/:id/plan", zValidator("json", v.planChange), async (c) =>
     c.json(await svc.applyPlanChange(c.req.param("id"), c.req.valid("json"))),
+  )
+  .get("/entitlements/:id/plan", async (c) =>
+    c.json(await svc.getEntitlementPlan(c.req.param("id"))),
   )
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
@@ -201,4 +220,16 @@ export const api = new Hono()
   )
   .patch("/bookings/:id/badges", zValidator("json", v.setBookingBadges), async (c) =>
     c.json(await badge.setBookingBadges(c.req.param("id"), c.req.valid("json").badgeValueIds)),
-  );
+  )
+  // ── Equipment rental as revenue (SPEC-031 / REQ-028) — the post IS the event, so the result is surfaced ──
+  .post("/rentals", zValidator("json", v.recordRental), async (c) => {
+    const r = await rental.recordRental(c.req.valid("json"));
+    return c.json(r, r.status === "recorded" ? 201 : 200);
+  })
+  // ── Configurable business rules (SPEC-029 / REQ-031) ──
+  .get("/settings", async (c) => c.json(await settings.listSettings()))
+  .put("/settings/:key", zValidator("json", v.putSetting), async (c) => {
+    const key = c.req.param("key");
+    if (!isSettingKey(key)) throw badRequest(`ไม่รู้จักการตั้งค่า "${key}"`);
+    return c.json(await settings.setSetting(key, c.req.valid("json").value));
+  });

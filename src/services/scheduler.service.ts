@@ -8,7 +8,13 @@ import type { BulkConfirmResult, TeacherType } from "../types/contract";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
+import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
 import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
+import {
+  hasEnoughTeacherChangeNotice,
+  teacherChangeNoticeMessage,
+} from "../lib/teacher-change-notice";
+import { getSetting } from "./settings.service";
 import {
   courseExpiry,
   courseSessionDates,
@@ -16,7 +22,12 @@ import {
   remainingSessions,
   weekdayOf,
 } from "../lib/recurring";
-import { teacherWorksOnDay } from "../lib/work-days";
+import {
+  formatWorkDaysLabel,
+  removedWorkDays,
+  sessionsOnRemovedDays,
+  teacherWorksOnDay,
+} from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
@@ -25,6 +36,8 @@ import {
   courseItemRef,
   isSellable,
   sellablePackages,
+  voucherAllowedGroups,
+  voucherAllowsProgram,
   voucherItemRef,
 } from "../lib/sale-items";
 import {
@@ -39,11 +52,14 @@ import {
 import { bangkokNow } from "../lib/bangkok-time";
 import {
   COURSE_LIVE,
+  COURSE_LIVE_STATUSES,
   canInsert,
   courseCurrent,
+  deriveLiveEndDate,
   exceedsExtensionCeiling,
   isDelivered,
   planCourseMoves,
+  requiresCancelReason,
   type PlanSession,
 } from "../lib/course-plan";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
@@ -739,6 +755,12 @@ async function insertBooking(
   if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
     throw badRequest(`${SUSPENDED_MESSAGE}จอง`);
   }
+  // SPEC-030 / TASK-106: a voucher can't book Onewheel or Balance Play (course-only programs). Enforced here —
+  // insertBooking is the single chokepoint every VOUCHER booking passes. A null/unknown group is refused too
+  // (same null-group path, no special case for 1st Trial). Already-sold voucher hours are untouched (AC #5).
+  if (input.bookingType === "VOUCHER" && !voucherAllowsProgram(await resolvePriceGroup(input.subjectId, exec))) {
+    throw conflict("VOUCHER_PROGRAM_EXCLUDED", "วอยเชอร์ใช้กับคลาส Onewheel หรือ Balance Play ไม่ได้");
+  }
 
   try {
     const [row] = await exec
@@ -832,6 +854,8 @@ export async function getSellablePackages() {
     unpricedSubjects: rows
       .filter((s) => s.active && !s.priceGroup)
       .map((s) => ({ id: s.id, name: s.name })),
+    // SPEC-030 / TASK-106 — the programs a voucher may book, so the FE picker filters from here (not a hardcoded list).
+    voucherAllowedGroups: voucherAllowedGroups(),
   };
 }
 
@@ -969,20 +993,37 @@ export async function createCoursePackage(input: any) {
       })
       .returning({ id: coursePackages.id });
 
-    for (const date of courseSessionDates(input.startDate, input.size)) {
+    // TASK-095 — an optional per-session plan (purchase-time modal). Each row overrides teacher/subject/time;
+    // absent ⇒ today's uniform weekly chain (back-compat). Either way it commits in this one clash-aborts-all tx.
+    const plannedSessions: Array<{ teacherId: string; subjectId: string; date: string; startTime: string }> =
+      input.sessions?.length
+        ? input.sessions.map((s: any) => ({
+            teacherId: s.teacherId ?? input.teacherId,
+            subjectId: s.subjectId ?? input.subjectId,
+            date: s.date,
+            startTime: s.startTime ?? input.startTime,
+          }))
+        : courseSessionDates(input.startDate, input.size).map((date: string) => ({
+            teacherId: input.teacherId,
+            subjectId: input.subjectId,
+            date,
+            startTime: input.startTime,
+          }));
+
+    for (const s of plannedSessions) {
       try {
         await insertBooking(tx, studentId, {
-          teacherId: input.teacherId,
-          subjectId: input.subjectId,
-          date,
-          startTime: input.startTime,
+          teacherId: s.teacherId,
+          subjectId: s.subjectId,
+          date: s.date,
+          startTime: s.startTime,
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
           note: input.note,
         });
       } catch (e: any) {
         if (e?.code === "SLOT_TAKEN")
-          throw conflict("SLOT_TAKEN", `มีคาบชนในวันที่ ${date} — เลือกวัน/เวลาอื่นสำหรับคอร์สนี้`);
+          throw conflict("SLOT_TAKEN", `มีคาบชนในวันที่ ${s.date} — เลือกวัน/เวลาอื่นสำหรับคอร์สนี้`);
         throw e;
       }
     }
@@ -1047,6 +1088,150 @@ async function vouchersByIds(ids: string[]) {
  * name/nickname only, so the parameter bought nothing — the whole table was read either way, and a parent
  * phone never matched.
  */
+// SPEC-028 §7 (TASK-097) — the per-entitlement plan read model: "what does this child have, how do I move
+// it?". ONE DTO shape (discriminated by `kind`) the FE renders for both a course and a voucher, so the view
+// isn't two code paths. The live end date is DERIVED from the sessions each read, never the stored expiryDate.
+const teacherRef = (t: any) => (t ? { id: t.id, name: t.name, nickname: t.nickname } : null);
+const subjectRef = (s: any) => (s ? { id: s.id, name: s.name } : null);
+const studentRef = (s: any) => (s ? { id: s.id, name: s.name, nickname: s.nickname } : null);
+const toSessionRow = (b: any) => ({
+  id: b.id,
+  date: b.date,
+  startTime: b.startTime,
+  status: b.status,
+  teacher: teacherRef(b.teacher),
+  subject: subjectRef(b.subject),
+});
+
+export async function getEntitlementPlan(id: string) {
+  const loadSessions = (col: "courseId" | "voucherId") =>
+    db.query.bookings.findMany({
+      where: (b: any, { eq }: any) => eq(b[col], id),
+      with: { teacher: true, subject: true },
+      orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
+    });
+
+  const course = await db.query.coursePackages.findFirst({
+    where: (c, { eq }) => eq(c.id, id),
+  });
+  if (course) {
+    const rows = await loadSessions("courseId");
+    const student = course.studentId
+      ? await db.query.students.findFirst({ where: (s, { eq }) => eq(s.id, course.studentId!) })
+      : null;
+    const summary = toCourseSummary(course);
+    const current = courseCurrent(
+      rows.map((r) => ({ id: r.id, status: r.status, date: r.date, extendedFromId: r.extendedFromId })),
+    );
+    return {
+      kind: "course" as const,
+      id,
+      student: studentRef(student),
+      sessions: rows.map(toSessionRow),
+      liveEndDate: deriveLiveEndDate(rows), // derived, not the stored expiryDate
+      summary: {
+        kind: "course" as const,
+        size: course.size,
+        leaveUsed: summary.leaveUsed,
+        leaveQuota: summary.leaveQuota,
+        maxWeek: summary.maxWeek,
+        owedCount: Math.max(0, course.size - current),
+        expiryDate: course.expiryDate, // the MAX_WEEK ceiling, not the live end
+      },
+    };
+  }
+
+  const voucher = await db.query.vouchers.findFirst({ where: (v, { eq }) => eq(v.id, id) });
+  if (voucher) {
+    const rows = await loadSessions("voucherId");
+    const student = voucher.studentId
+      ? await db.query.students.findFirst({ where: (s, { eq }) => eq(s.id, voucher.studentId!) })
+      : null;
+    return {
+      kind: "voucher" as const,
+      id,
+      student: studentRef(student),
+      sessions: rows.map(toSessionRow),
+      liveEndDate: deriveLiveEndDate(rows),
+      summary: {
+        kind: "voucher" as const,
+        totalHours: voucher.totalHours,
+        usedHours: voucher.usedHours,
+        hoursRemaining: voucher.totalHours - voucher.usedHours,
+        expiryDate: voucher.expiryDate,
+      },
+    };
+  }
+
+  throw notFound("ไม่พบคอร์สหรือวอยเชอร์");
+}
+
+/**
+ * SPEC-028 §8 (TASK-095) — teacher availability + clash for ONE slot (purchase-time slot picker). Uses the
+ * SAME predicates `insertBooking`/`assertTeacherBookable` enforce (works-that-day, not archived, freelance-set)
+ * + the unique-slot rule — read-only for preview, enforced for real at confirm. One definition, not a copy.
+ */
+export async function getSlotAvailability(date: string, startTime: string) {
+  const weekday = weekdayOf(date);
+  const teachers = await db.query.teachers.findMany({
+    where: (t, { eq }) => eq(t.archived, false),
+    orderBy: (t, { asc }) => asc(t.nickname),
+  });
+  // The clash set is EXACTLY the partial unique index `bookings_teacher_slot_uq` (schema.ts:354): a slot is
+  // taken unless the occupant is CANCELLED / PENDING_RESCHEDULE / SICK_LEAVE — a teacher on leave frees the
+  // slot for a replacement (UC-004), so a SICK_LEAVE row must NOT read as a clash.
+  const booked = await db.query.bookings.findMany({
+    where: (b, { and, eq, notInArray }) =>
+      and(eq(b.date, date), eq(b.startTime, startTime), notInArray(b.status, [...SLOT_NON_BLOCKING])),
+    with: { student: true },
+  });
+  const clashByTeacher = new Map(booked.map((b: any) => [b.teacherId, b]));
+
+  const out = [];
+  for (const t of teachers) {
+    if (!teacherWorksOnDay(t.workDays, weekday)) continue; // off that weekday → not a candidate
+    const noBudget = await isFreelanceSetupIncomplete(db, t.id, t.type);
+    const clash = clashByTeacher.get(t.id);
+    out.push({
+      teacher: { id: t.id, name: t.name, nickname: t.nickname, type: t.type },
+      available: !clash && !noBudget,
+      reason: noBudget ? ("NO_BUDGET" as const) : clash ? ("BOOKED" as const) : null,
+      clash: clash
+        ? { bookingId: clash.id, student: clash.student?.nickname ?? clash.student?.name ?? null }
+        : null,
+    });
+  }
+  return { date, startTime, teachers: out };
+}
+
+/**
+ * SPEC-028 §8 (TASK-095) — the generated `size`-row plan for the purchase modal, WITHOUT writing (AC: editable
+ * rows before creation). The FE edits these rows then `POST /courses` with `sessions[]`.
+ */
+export async function previewCoursePackage(input: {
+  teacherId: string;
+  subjectId: string;
+  size: number;
+  startDate: string;
+  startTime: string;
+}) {
+  if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
+  const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, input.teacherId) });
+  const subject = await db.query.subjects.findFirst({ where: (s, { eq }) => eq(s.id, input.subjectId) });
+  return {
+    size: input.size,
+    startDate: input.startDate,
+    startTime: input.startTime,
+    expiryDate: courseExpiry(input.startDate, input.size), // the MAX_WEEK ceiling
+    sessions: courseSessionDates(input.startDate, input.size).map((date) => ({
+      date,
+      startTime: input.startTime,
+      teacher: teacherRef(teacher),
+      subject: subjectRef(subject),
+    })),
+  };
+}
+
 export async function getVouchers(f: { studentId?: string; q?: string } = {}) {
   return vouchersByIds(await voucherIdsOrdered(f));
 }
@@ -1316,9 +1501,47 @@ export async function applyPlanChange(courseId: string, change: PlanChange) {
         patch.endTime = addHour(change.startTime);
       }
       const newTeacherId = patch.teacherId ?? b.teacherId;
+      // TASK-094 (SPEC-028 §5 #3): a teacher swap must be ≥3 days before the class the new teacher inherits, so
+      // they get warning. Admin `override` bypasses (REQ-031 will make the day count editable — the lib stays
+      // pure). Only the notice/notify fire on an ACTUAL change of teacher; a date/subject-only edit is untouched.
+      const teacherChanged = change.teacherId !== undefined && change.teacherId !== b.teacherId;
+      const noticeDate = patch.date ?? b.date;
+      const noticeTime = patch.startTime ?? b.startTime;
+      if (teacherChanged && !(change.override ?? false)) {
+        // SPEC-029: the notice threshold is a configurable rule — resolve at action time (default 3), pass in.
+        const { value: noticeDays } = await getSetting("teacher_change_notice_days", tx);
+        if (!hasEnoughTeacherChangeNotice(noticeDate, noticeTime, bangkokNow(), noticeDays)) {
+          throw conflict("TEACHER_CHANGE_TOO_LATE", teacherChangeNoticeMessage(noticeDays));
+        }
+      }
       await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date);
       await tx.update(bookings).set(patch).where(eq(bookings.id, b.id));
       await reconcileBookingHolds(tx, b.id, newTeacherId, b.status, change.override ?? false);
+      // Notify BOTH sides of the swap: the old teacher (off your schedule) + the new teacher (now yours).
+      if (teacherChanged) {
+        const [oldTeacher, newTeacher] = await Promise.all([
+          tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, b.teacherId) }),
+          tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, newTeacherId) }),
+        ]);
+        await enqueueLine(
+          {
+            recipientType: "teacher",
+            recipientLineUserId: oldTeacher?.lineUserId ?? null,
+            bookingId: b.id,
+            payload: { kind: "teacher_unassigned", bookingId: b.id },
+          },
+          tx,
+        );
+        await enqueueLine(
+          {
+            recipientType: "teacher",
+            recipientLineUserId: newTeacher?.lineUserId ?? null,
+            bookingId: b.id,
+            payload: { kind: "teacher_assigned", bookingId: b.id },
+          },
+          tx,
+        );
+      }
       return { change: "move" as const, bookingId: b.id };
     });
   } catch (e: any) {
@@ -1386,12 +1609,22 @@ export async function updateBookingStatus(
         }
       }
     } else if (action === "cancel") {
-      // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable, can't be cancelled.
-      if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว ยกเลิกไม่ได้");
+      // SPEC-028 §11.2 (TASK-105, relaxes TASK-093) — cancelling a DELIVERED session (attended/no-show) is now
+      // allowed to undo a mis-marked attendance, but ONLY with a non-empty reason, audited into `note`. Edit/move
+      // of a delivered session stays blocked (that guard lives in moveBooking / applyPlanChange).
+      const cancelReason = reason?.trim();
+      if (requiresCancelReason(current.status) && !cancelReason) {
+        throw conflict("REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิกคาบที่เรียนไปแล้ว");
+      }
       await tx
         .update(bookings)
-        .set({ status: "CANCELLED", note: reason ?? current.note })
+        .set({ status: "CANCELLED", note: cancelReason ?? current.note })
         .where(eq(bookings.id, id));
+      // SPEC-028 §11.3 — EVERY course-session cancel is a reschedule, not a forfeit: re-owe a makeup so `current`
+      // returns to `size` (only NO_SHOW consumes, and that's the no-show action, not this path). Was NOT wired into
+      // cancel before TASK-105. The money hold releases below (CANCELLED is releasing); the makeup draws on its
+      // own confirm — so a cancel nets zero freelance hours until the makeup is taught.
+      if (current.courseId) await reconcileCoursePlan(tx, current.courseId);
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
@@ -1474,9 +1707,10 @@ export async function updateBookingStatus(
     // REQ-006 (TASK-028): reconcile the freelance ceiling drawdown to the booking's *actual* new status —
     // one idempotent movement, `held` derived from the ledger. Replaces the old draw-on-confirm /
     // refund-on-cancel-or-leave, which mutated `remaining` unconditionally and double-refunded on a status
-    // round-trip (ATTENDED↔SICK_LEAVE) → `remaining` past ceiling. Consuming (keeps the draw): CONFIRMED /
-    // ATTENDED / SICK_LEAVE / EXTENDED; releasing: NO_SHOW / CANCELLED / PENDING. The makeup EXTENDED row is
-    // deliberately NOT reconciled here — it draws on its own confirm, preserving today's behavior.
+    // round-trip (ATTENDED↔SICK_LEAVE) → `remaining` past ceiling. Consuming (holds the draw): CONFIRMED /
+    // ATTENDED / EXTENDED; releasing: SICK_LEAVE / NO_SHOW / CANCELLED / PENDING (SICK_LEAVE now RELEASES —
+    // owner reversal TASK-104). The makeup EXTENDED row is deliberately NOT reconciled here — it draws on its
+    // own confirm, so a sick-leave costs one freelance hour total (the makeup), not two.
     const after = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
     if (after) await reconcileBookingHolds(tx, id, current.teacherId, after.status, override);
 
@@ -1581,6 +1815,40 @@ export async function setAvailability(input: {
     with: { teacherSubjects: { with: { subject: true } } },
   });
   return { teachers: rows.map(toTeacherDTO) };
+}
+
+/**
+ * TASK-100 (SPEC-028 §7.5) — the ORPHAN IMPACT of a proposed `workDays` change, WITHOUT applying it. A workDays
+ * change is the one path that can still strand a future session (archiving is already hard-guarded), and a hard
+ * block there is wrong — a genuine availability change mustn't trap the admin. So this feeds a soft FE confirm:
+ * how many future LIVE sessions fall on a weekday the teacher would stop working. TASK-096 is the after-the-fact net.
+ */
+export async function previewWorkDaysChange(id: string, nextWorkDays: number[]) {
+  const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
+  if (!teacher) throw notFound("ไม่พบครู");
+
+  const removed = removedWorkDays(teacher.workDays, nextWorkDays);
+  if (!removed.length) {
+    return { removedDays: [], removedDaysLabel: "", orphanCount: 0, sessions: [] };
+  }
+
+  // Future LIVE sessions only — a delivered/cancelled session can't be orphaned.
+  const today = bangkokNow().date;
+  const rows = await db.query.bookings.findMany({
+    where: (b, { and, eq, gte, inArray }) =>
+      and(eq(b.teacherId, id), gte(b.date, today), inArray(b.status, [...COURSE_LIVE_STATUSES])),
+    with: { student: true, subject: true, teacher: true },
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+  });
+
+  const withWeekday = rows.map((b) => ({ ...toSessionRow(b), weekday: weekdayOf(b.date), student: studentRef(b.student) }));
+  const orphaned = sessionsOnRemovedDays(withWeekday, removed);
+  return {
+    removedDays: removed,
+    removedDaysLabel: formatWorkDaysLabel(removed),
+    orphanCount: orphaned.length,
+    sessions: orphaned,
+  };
 }
 
 export async function setTeacherWorkDays(id: string, workDays: number[]) {

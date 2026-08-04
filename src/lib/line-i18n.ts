@@ -169,6 +169,9 @@ const TABLE: Record<string, Entry> = {
   ob_ch_line: { TH: "LINE", EN: "LINE" },
   ob_ch_system: { TH: "ระบบ", EN: "System" },
   ob_default: { TH: "🔔 แจ้งเตือนจากระบบตารางเรียน", EN: "🔔 Notification from the scheduler" },
+  // TASK-094: a per-session teacher swap notifies BOTH teachers — the one it leaves and the one it lands on.
+  ob_teacher_assigned_title: { TH: "👩‍🏫 คุณได้รับมอบหมายคาบสอนใหม่", EN: "👩‍🏫 A class has been assigned to you" },
+  ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };
 
 export function t(key: string, lang: Lang = "TH", vars?: Record<string, string | number>): string {

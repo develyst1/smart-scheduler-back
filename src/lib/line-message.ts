@@ -54,6 +54,19 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         line(t("ob_l_class", lang), ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
         line(t("ob_l_channel", lang), payload.via === "line" ? t("ob_ch_line", lang) : t("ob_ch_system", lang))
       ).trimEnd();
+    // TASK-094: teacher reassigned on a course session — same body as a confirmation, different title per side.
+    case "teacher_assigned":
+    case "teacher_unassigned": {
+      const when =
+        ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
+      const title = payload.kind === "teacher_assigned" ? "ob_teacher_assigned_title" : "ob_teacher_unassigned_title";
+      return (
+        t(title, lang) + "\n" +
+        line(t("ob_l_student", lang), ctx.studentName) +
+        line(t("ob_l_subject", lang), ctx.subject) +
+        line(t("ob_l_time", lang), when)
+      ).trimEnd();
+    }
     // REQ-023: the daily digest travels as its check results, so it renders in each admin's own language.
     case "daily_digest":
       return buildDigestMessage((payload.checks as any[]) ?? [], lang);

@@ -32,22 +32,23 @@ describe("overLimit", () => {
   });
 });
 
-describe("reconcile target — status → held (TASK-028, locked state machine)", () => {
+describe("reconcile target — status → held (TASK-104 owner reversal: SICK_LEAVE now releases)", () => {
   test("consuming statuses (freelance is paid) hold 1h", () => {
-    for (const s of ["CONFIRMED", "ATTENDED", "SICK_LEAVE", "EXTENDED"]) {
+    for (const s of ["CONFIRMED", "ATTENDED", "EXTENDED"]) {
       expect(isFreelanceConsuming(s)).toBe(true);
       expect(heldTarget(s)).toBe(1);
     }
   });
-  test("releasing statuses (freelance NOT paid) hold 0h", () => {
-    for (const s of ["NO_SHOW", "CANCELLED", "PENDING"]) {
+  test("releasing statuses (freelance NOT paid) hold 0h — SICK_LEAVE joined these (TASK-104)", () => {
+    for (const s of ["NO_SHOW", "SICK_LEAVE", "CANCELLED", "PENDING"]) {
       expect(isFreelanceConsuming(s)).toBe(false);
       expect(heldTarget(s)).toBe(0);
     }
   });
-  test("SICK_LEAVE keeps the draw (the REQ-004 refund-on-leave flip)", () => {
-    // held 1 → SICK_LEAVE → delta 0 → the draw is KEPT, not refunded.
-    expect(reconcileDelta(1, "SICK_LEAVE")).toBe(0);
+  test("SICK_LEAVE RELEASES the draw (owner reversal 2026-08-03 — a sick-leave costs 1h total, not 2)", () => {
+    // held 1 → SICK_LEAVE → delta −1 → the held hour is REFUNDED (was 0/kept under the old locked rule).
+    expect(reconcileDelta(1, "SICK_LEAVE")).toBe(-1);
+    expect(heldTarget("SICK_LEAVE")).toBe(0);
   });
 });
 
@@ -92,15 +93,17 @@ describe("reconcile invariant — remaining == ceiling − (# consuming bookings
     };
   };
 
-  test("the prod repro CONFIRMED→SICK_LEAVE→ATTENDED→SICK_LEAVE never inflates remaining", () => {
+  test("round-trip CONFIRMED→SICK_LEAVE→ATTENDED→SICK_LEAVE holds 1→0→1→0 and never inflates remaining (TASK-104)", () => {
     let s = { held: 0, remaining: 140, ceiling: 140 };
-    for (const status of ["CONFIRMED", "SICK_LEAVE", "ATTENDED", "SICK_LEAVE"]) {
+    const expectedHeld = [1, 0, 1, 0]; // SICK_LEAVE now refunds; ATTENDED re-draws; final SICK_LEAVE refunds again
+    ["CONFIRMED", "SICK_LEAVE", "ATTENDED", "SICK_LEAVE"].forEach((status, i) => {
       s = step(s, status);
+      expect(s.held).toBe(expectedHeld[i]);
       expect(s.remaining).toBeLessThanOrEqual(s.ceiling); // never past ceiling (the money leak)
-    }
-    // one booking, still consuming → exactly one hour held.
-    expect(s.held).toBe(1);
-    expect(s.remaining).toBe(139);
+    });
+    // ends on SICK_LEAVE → releasing → zero held, full ceiling back.
+    expect(s.held).toBe(0);
+    expect(s.remaining).toBe(140);
   });
 
   test("cancel returns the hour and re-cancel is a no-op", () => {

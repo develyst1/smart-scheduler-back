@@ -30,12 +30,15 @@ export const shouldCloseCeiling = (
 // A freelance booking holds exactly one hour while its status is "consuming" and zero otherwise.
 // Drawing/refunding is driven by this target vs. the hours currently held (derived from the ledger),
 // never by the raw action — so any status round-trip is idempotent and can't inflate `remaining`.
-// State machine LOCKED by คุณฟีน (2026-07-20, via Porter): SICK_LEAVE *keeps* the draw; NO_SHOW releases.
+// State machine: NO_SHOW releases. SICK_LEAVE also RELEASES — owner reversal 2026-08-03 (SPEC-028 §11.1 / TASK-104),
+// overturning the 2026-07-20 "SICK_LEAVE keeps the draw" rule. A sick-leave now refunds the held hour; the makeup
+// draws only when it's confirmed/taught — so a sick-leave costs 1 freelance hour (the makeup), not 2. The
+// course-size reconcile (TASK-092) is untouched: a sick-leave still appends a makeup; only the money hold changed.
 
 /** Booking statuses for which the center pays the freelance → the booking holds 1 ceiling hour. */
-const FREELANCE_CONSUMING_STATUSES = new Set(["CONFIRMED", "ATTENDED", "SICK_LEAVE", "EXTENDED"]);
+const FREELANCE_CONSUMING_STATUSES = new Set(["CONFIRMED", "ATTENDED", "EXTENDED"]);
 
-/** true → paying (holds 1h); false → not paying (holds 0h). Releasing: NO_SHOW / CANCELLED / PENDING. */
+/** true → paying (holds 1h); false → not paying (holds 0h). Releasing: NO_SHOW / SICK_LEAVE / CANCELLED / PENDING. */
 export const isFreelanceConsuming = (status: string) => FREELANCE_CONSUMING_STATUSES.has(status);
 
 /** Hours a booking should hold given its status: 1 when consuming, 0 when releasing. */

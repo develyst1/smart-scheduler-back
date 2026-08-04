@@ -38,6 +38,20 @@ describe("LINE outbox message formatting (B.3)", () => {
     expect(msg).toContain("น้องซี");
   });
 
+  test("teacher_assigned / teacher_unassigned → distinct titles, shared body (TASK-094)", () => {
+    const ctx = { studentName: "น้องดี", subject: "อังกฤษ", date: "2026-08-20", startTime: "16:00", endTime: "17:00" };
+    const assigned = formatOutboxMessage({ kind: "teacher_assigned" }, ctx);
+    expect(assigned).toContain("ได้รับมอบหมาย");
+    expect(assigned).toContain("น้องดี");
+    expect(assigned).toContain("2026-08-20 16:00-17:00");
+
+    const unassigned = formatOutboxMessage({ kind: "teacher_unassigned" }, ctx);
+    expect(unassigned).toContain("ย้ายออกจากตาราง");
+    expect(unassigned).toContain("น้องดี");
+    // EN falls through cleanly too
+    expect(formatOutboxMessage({ kind: "teacher_assigned" }, ctx, "EN")).toContain("assigned to you");
+  });
+
   test("unknown kind → generic fallback", () => {
     expect(formatOutboxMessage({ kind: "something_else" })).toContain("แจ้งเตือนจากระบบ");
     expect(formatOutboxMessage({})).toContain("แจ้งเตือนจากระบบ");

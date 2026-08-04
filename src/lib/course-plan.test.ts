@@ -4,9 +4,11 @@ import {
   COURSE_LIVE,
   canInsert,
   courseCurrent,
+  deriveLiveEndDate,
   exceedsExtensionCeiling,
   isDelivered,
   planCourseMoves,
+  requiresCancelReason,
   type PlanSession,
 } from "./course-plan";
 import { courseExpiry } from "./recurring";
@@ -126,12 +128,49 @@ describe("planCourseMoves — contraction touches only appended EXTENDED, never 
   });
 });
 
+describe("cancel re-owes a makeup — every course cancel is a reschedule (TASK-105 §11.3)", () => {
+  test("a CANCELLED session drops current below size → planCourseMoves appends one makeup", () => {
+    // Whatever the session WAS (a live CONFIRMED or a delivered ATTENDED), once cancelled its status is CANCELLED
+    // — out of the plan — so the same re-owe fires for both the delivered and non-delivered cancel.
+    const size = 4;
+    const base = [
+      S("s7", "CONFIRMED", "2026-08-07"),
+      S("s14", "CONFIRMED", "2026-08-14"),
+      S("s21", "CONFIRMED", "2026-08-21"),
+      S("s28", "CONFIRMED", "2026-08-28"),
+    ];
+    // non-delivered cancel: s14 CONFIRMED → CANCELLED
+    const afterLiveCancel = base.map((s) => (s.id === "s14" ? { ...s, status: "CANCELLED" } : s));
+    expect(courseCurrent(afterLiveCancel)).toBe(3);
+    expect(planCourseMoves(afterLiveCancel, size).append).toHaveLength(1);
+
+    // delivered cancel: s7 was ATTENDED, then cancelled-with-reason → CANCELLED
+    const afterDeliveredCancel = base.map((s) => (s.id === "s7" ? { ...s, status: "CANCELLED" } : s));
+    expect(courseCurrent(afterDeliveredCancel)).toBe(3);
+    expect(planCourseMoves(afterDeliveredCancel, size).append).toHaveLength(1);
+  });
+
+  test("NO_SHOW still consumes — a session left NO_SHOW keeps current at size (no re-owe, unchanged)", () => {
+    const ss = [S("a", "ATTENDED", "2026-08-07"), S("n", "NO_SHOW", "2026-08-14")];
+    expect(courseCurrent(ss)).toBe(2);
+    expect(planCourseMoves(ss, 2)).toEqual({ append: [], cancelIds: [] });
+  });
+});
+
 describe("guards for the applier (TASK-093)", () => {
   test("isDelivered — attended/no-show only", () => {
     expect(isDelivered("ATTENDED")).toBe(true);
     expect(isDelivered("NO_SHOW")).toBe(true);
     for (const s of ["PENDING", "CONFIRMED", "EXTENDED", "SICK_LEAVE", "CANCELLED"]) {
       expect(isDelivered(s)).toBe(false);
+    }
+  });
+
+  test("requiresCancelReason — a delivered cancel needs a reason; a live cancel doesn't (TASK-105)", () => {
+    expect(requiresCancelReason("ATTENDED")).toBe(true);
+    expect(requiresCancelReason("NO_SHOW")).toBe(true);
+    for (const s of ["PENDING", "CONFIRMED", "EXTENDED", "SICK_LEAVE"]) {
+      expect(requiresCancelReason(s)).toBe(false);
     }
   });
 
@@ -151,5 +190,22 @@ describe("guards for the applier (TASK-093)", () => {
     const ceiling = courseExpiry(start, 6); // start + MAX_WEEK(6)=8 weeks
     expect(exceedsExtensionCeiling(ceiling, start, 6)).toBe(false); // week 8 allowed (owner-confirmed)
     expect(exceedsExtensionCeiling(addDays(ceiling, 7), start, 6)).toBe(true); // week 9 refused
+  });
+});
+
+describe("deriveLiveEndDate — displayed end is derived from LIVE sessions (TASK-097)", () => {
+  test("max date over LIVE only — ignores delivered/cancelled/sick", () => {
+    const ss = [
+      S("a", "ATTENDED", "2026-09-30"), // delivered, later — must NOT count
+      S("b", "CONFIRMED", "2026-08-14"),
+      S("c", "EXTENDED", "2026-08-28"),
+      S("d", "SICK_LEAVE", "2026-09-10"), // not live
+      S("e", "CANCELLED", "2026-12-01"), // not live
+    ];
+    expect(deriveLiveEndDate(ss)).toBe("2026-08-28");
+  });
+  test("null when nothing is live", () => {
+    expect(deriveLiveEndDate([S("a", "ATTENDED", "2026-08-07"), S("b", "CANCELLED", "2026-08-14")])).toBeNull();
+    expect(deriveLiveEndDate([])).toBeNull();
   });
 });

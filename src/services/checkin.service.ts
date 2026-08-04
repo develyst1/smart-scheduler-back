@@ -4,6 +4,7 @@ import { isWithinCheckinWindow, checkinWindowMessage } from "../lib/checkin";
 import { formatCheckinPayload, issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { awardCrmPoints } from "../lib/line-admin";
+import { getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
 import { updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
@@ -29,15 +30,17 @@ export async function getCheckinQr(bookingId: string) {
     with: { student: true },
   });
   if (!row) throw notFound("ไม่พบคาบเรียน");
+  const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
   if (!row.checkinToken) {
     const issued = await issueCheckinToken(bookingId);
     if (!issued) throw notFound("ไม่พบคาบเรียน");
-    return formatCheckinPayload(row, issued.token, issued.expiresAt);
+    return formatCheckinPayload(row, issued.token, issued.expiresAt, earlyMinutes);
   }
   return formatCheckinPayload(
     row,
     row.checkinToken,
     row.checkinTokenExpiresAt?.toISOString() ?? "",
+    earlyMinutes,
   );
 }
 
@@ -55,9 +58,11 @@ export async function checkinByToken(token: string) {
   if (row.checkinTokenExpiresAt && row.checkinTokenExpiresAt < new Date()) {
     throw badRequest("โทเคนเช็คอินหมดอายุแล้ว");
   }
-  if (!isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime))) {
+  // SPEC-029: the early-window is a configurable rule — resolve at action time, pass into the pure check.
+  const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
+  if (!isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes)) {
     throw badRequest(
-      checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime)),
+      checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime), earlyMinutes),
     );
   }
 

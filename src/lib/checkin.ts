@@ -11,21 +11,28 @@ export function generateCheckinToken(): string {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-/** True when Bangkok wall-clock is inside [start−early, end] on the booking date. */
+/** True when Bangkok wall-clock is inside [start−early, end] on the booking date. `earlyMinutes` defaults to the
+ *  coded constant; the check-in service resolves the `checkin_early_minutes` setting and passes it (SPEC-029). */
 export function isWithinCheckinWindow(
   bookingDate: string,
   startTime: string,
   endTime: string,
   now = bangkokNow(),
+  earlyMinutes: number = CHECKIN_EARLY_MINUTES,
 ): boolean {
   if (now.date !== bookingDate) return false;
-  const start = timeToMinutes(hhmm(startTime)) - CHECKIN_EARLY_MINUTES;
+  const start = timeToMinutes(hhmm(startTime)) - earlyMinutes;
   const end = timeToMinutes(hhmm(endTime));
   return now.minutes >= start && now.minutes <= end;
 }
 
-export function checkinWindowMessage(bookingDate: string, startTime: string, endTime: string): string {
-  const open = timeToMinutes(hhmm(startTime)) - CHECKIN_EARLY_MINUTES;
+export function checkinWindowMessage(
+  bookingDate: string,
+  startTime: string,
+  endTime: string,
+  earlyMinutes: number = CHECKIN_EARLY_MINUTES,
+): string {
+  const open = timeToMinutes(hhmm(startTime)) - earlyMinutes;
   const oh = String(Math.floor(open / 60)).padStart(2, "0");
   const om = String(open % 60).padStart(2, "0");
   return `เช็คอินได้ ${bookingDate} เวลา ${oh}:${om}–${hhmm(endTime)} น.`;
