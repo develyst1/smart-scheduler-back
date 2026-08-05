@@ -83,7 +83,7 @@ import {
 import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
-import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
@@ -1624,7 +1624,22 @@ export async function updateBookingStatus(
       // returns to `size` (only NO_SHOW consumes, and that's the no-show action, not this path). Was NOT wired into
       // cancel before TASK-105. The money hold releases below (CANCELLED is releasing); the makeup draws on its
       // own confirm — so a cancel nets zero freelance hours until the makeup is taught.
-      if (current.courseId) await reconcileCoursePlan(tx, current.courseId);
+      if (current.courseId) {
+        try {
+          await reconcileCoursePlan(tx, current.courseId);
+        } catch (e) {
+          // TASK-105 follow-up: on a cancel, the re-owe makeup can't fit within MAX_WEEK → reconcileCoursePlan
+          // throws EXTENSION_CEILING, whose "course extends past week N" wording is confusing on a CANCEL. Re-map to
+          // a cancel-specific reason (the extend paths keep the generic message). Fix rides REQ-036 (early termination).
+          if (e instanceof ApiException && e.code === "EXTENSION_CEILING") {
+            throw conflict(
+              "CANCEL_AT_CEILING",
+              "ยกเลิกคาบนี้ไม่ได้: คอร์สเต็มกำหนดสัปดาห์สูงสุดแล้ว คาบชดเชยจึงไม่มีที่ลง — ใช้สิทธิ์แอดมิน (override) หรือจัดการแบบสิ้นสุดคอร์สก่อนกำหนด",
+            );
+          }
+          throw e;
+        }
+      }
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.

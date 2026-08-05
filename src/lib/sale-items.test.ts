@@ -18,6 +18,7 @@ import {
   RENTAL_CODES,
   RENTAL_ITEMS,
   isRentalCode,
+  rentalIdBase,
   rentalIdempotencyKey,
   revenueItemRef,
   sellablePackages,
@@ -84,6 +85,16 @@ describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
     expect(RENTAL_ITEMS).toHaveLength(4);
     expect(RENTAL_ITEMS.every((i) => (i.metadata as any)?.revenueKind === "RENTAL")).toBe(true);
     expect(rentalIdempotencyKey("booking-123", "rental-set")).toBe("rental:booking-123:rental-set");
+  });
+
+  test("rentalIdBase — refId wins, else client key, else undefined (AC #4 standalone idempotency)", () => {
+    expect(rentalIdBase("booking-1", "client-key")).toBe("booking-1"); // add-on: refId wins
+    expect(rentalIdBase(undefined, "client-key")).toBe("client-key"); // standalone: client key makes it idempotent
+    expect(rentalIdBase(null, "client-key")).toBe("client-key");
+    expect(rentalIdBase(undefined, undefined)).toBeUndefined(); // → service mints a fresh id (its own sale)
+    // two standalone posts with the SAME client key derive the SAME key → recordSale dedupes to one movement.
+    const k = rentalIdBase(undefined, "abc")!;
+    expect(rentalIdempotencyKey(k, "rental-set")).toBe(rentalIdempotencyKey(rentalIdBase(undefined, "abc")!, "rental-set"));
   });
 });
 

@@ -136,6 +136,16 @@ export const RENTAL_ITEMS: SaleItemSeed[] = RENTAL_CODES.map((code) => ({
 /** SPEC-031: the idempotency key for a rental post — `rental:{refId ?? saleId}:{code}` (double-submit posts once). */
 export const rentalIdempotencyKey = (idBase: string, code: string): string => `rental:${idBase}:${code}`;
 
+/**
+ * The stable part of a rental's idempotency key: the session `refId` (add-on — already idempotent), else the
+ * client-supplied `idempotencyKey` (standalone — the client makes retries idempotent, AC #4), else `undefined`
+ * → the service mints a fresh id so each un-keyed standalone rental is its own sale. `refId` always wins.
+ */
+export const rentalIdBase = (
+  refId: string | null | undefined,
+  clientKey: string | null | undefined,
+): string | undefined => refId ?? clientKey ?? undefined;
+
 /** Every INCOME item a sale can post to — exactly the combinations the card offers. */
 export const SALE_ITEMS: SaleItemSeed[] = [
   { externalRef: "first-trial", name: "First Trial (1h)", unitPriceMinor: FIRST_TRIAL_MINOR },

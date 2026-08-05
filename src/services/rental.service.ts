@@ -4,12 +4,17 @@
 
 import { ApiException } from "../lib/http";
 import { recordSale } from "../lib/sale-post";
-import { rentalIdempotencyKey } from "../lib/sale-items";
+import { rentalIdBase, rentalIdempotencyKey } from "../lib/sale-items";
 
-export async function recordRental(input: { code: string; hours: number; refId?: string }) {
-  // refId present = attached to a session; absent = a standalone walk-in, which has no natural id, so mint one so
-  // each standalone rental is its own sale (a session add-on de-dupes on refId+code — a double-click posts once).
-  const idBase = input.refId ?? crypto.randomUUID();
+export async function recordRental(input: {
+  code: string;
+  hours: number;
+  refId?: string;
+  idempotencyKey?: string;
+}) {
+  // refId present = session add-on (idempotent on booking+code); else a client-supplied key makes a STANDALONE
+  // rental idempotent (AC #4); else mint a fresh id so each un-keyed standalone rental is its own sale.
+  const idBase = rentalIdBase(input.refId, input.idempotencyKey) ?? crypto.randomUUID();
   const idempotencyKey = rentalIdempotencyKey(idBase, input.code);
 
   const result = await recordSale(input.code, input.hours, { refId: input.refId, idempotencyKey });

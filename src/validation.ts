@@ -457,6 +457,9 @@ export const recordRental = z.object({
   code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
   hours: z.coerce.number().int().positive("จำนวนชั่วโมงต้องมากกว่า 0").max(24),
   refId: z.string().uuid().optional(),
+  // TASK-108 follow-up (owner Q2=both): a STANDALONE rental has no natural key, so the client supplies one per
+  // action → a double-submit posts once (AC #4). Ignored when refId is present (that's already idempotent).
+  idempotencyKey: z.string().min(1).max(200).optional(),
 });
 
 export const importVoucher = z.object({
