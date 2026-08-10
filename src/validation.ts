@@ -451,6 +451,14 @@ export const importCoursePackage = z.object({
   note: z.string().optional(),
 });
 
+// SPEC-033 / TASK-112 — add a one-time EXTRA paid session to a course (SINGLE_SESSION, soft-linked, out of quota).
+export const extraSession = z.object({
+  teacherId: ID,
+  subjectId: ID,
+  date: DATE,
+  startTime: TIME,
+});
+
 // SPEC-031 / TASK-108 — record an equipment rental. `code` ∈ the four rental codes; `hours` a positive int; `refId`
 // optional (present = session add-on, absent = standalone). The registry (`isRentalCode`) is the source of validity.
 export const recordRental = z.object({

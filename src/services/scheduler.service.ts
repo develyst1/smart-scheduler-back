@@ -57,6 +57,7 @@ import {
   courseCurrent,
   deriveLiveEndDate,
   exceedsExtensionCeiling,
+  isCoursePlanRow,
   isDelivered,
   planCourseMoves,
   requiresCancelReason,
@@ -828,6 +829,31 @@ export async function createBooking(input: any) {
 }
 
 /**
+ * SPEC-033 / TASK-112 (REQ-037) — add a one-time EXTRA paid session to a course. It is a normal `SINGLE_SESSION`
+ * booking, **soft-linked** to the course by `courseId` (so it shows on the course view), but the SPEC-033 seam-keeper
+ * (`bookingType === "COURSE_PACKAGE"` filter in the course engine) guarantees it never counts toward size/owed/end
+ * and its cancel never re-owes. Reuses `createBooking` → `insertBooking`, so availability/clash/freelance-set gates,
+ * freelance drawdown on confirm, and day-end single-session revenue are all the existing paths — no new mechanism.
+ */
+export async function addExtraSession(
+  courseId: string,
+  input: { teacherId: string; subjectId: string; date: string; startTime: string },
+) {
+  const course = await db.query.coursePackages.findFirst({ where: (c, { eq }) => eq(c.id, courseId) });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+  if (!course.studentId) throw badRequest("คอร์สนี้ไม่มีนักเรียนที่ผูกไว้");
+  return createBooking({
+    student: { id: course.studentId },
+    teacherId: input.teacherId,
+    subjectId: input.subjectId,
+    date: input.date,
+    startTime: input.startTime,
+    bookingType: "SINGLE_SESSION",
+    courseId, // soft link — visible on the course view; the engine ignores it (SPEC-033 §2)
+  });
+}
+
+/**
  * A program's price group (TASK-077). `null` when the subject has none — the caller must refuse loudly
  * rather than fall back to a default price.
  */
@@ -1099,6 +1125,7 @@ const toSessionRow = (b: any) => ({
   date: b.date,
   startTime: b.startTime,
   status: b.status,
+  bookingType: b.bookingType, // SPEC-033: lets the course view flag a soft-linked SINGLE_SESSION extra distinctly
   teacher: teacherRef(b.teacher),
   subject: subjectRef(b.subject),
 });
@@ -1120,15 +1147,25 @@ export async function getEntitlementPlan(id: string) {
       ? await db.query.students.findFirst({ where: (s, { eq }) => eq(s.id, course.studentId!) })
       : null;
     const summary = toCourseSummary(course);
-    const current = courseCurrent(
-      rows.map((r) => ({ id: r.id, status: r.status, date: r.date, extendedFromId: r.extendedFromId })),
-    );
+    const planSessions = rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      date: r.date,
+      extendedFromId: r.extendedFromId,
+      bookingType: r.bookingType, // SPEC-033: lets courseCurrent/canInsert ignore a soft-linked extra
+    }));
+    const current = courseCurrent(planSessions);
     return {
       kind: "course" as const,
       id,
       student: studentRef(student),
-      sessions: rows.map(toSessionRow),
-      liveEndDate: deriveLiveEndDate(rows), // derived, not the stored expiryDate
+      sessions: rows.map(toSessionRow), // ALL rows — the extra shows on the course view (SPEC-033 §4)
+      // SPEC-033: the derived end is over COURSE_PACKAGE rows only — an extra must not move the plan's end date.
+      liveEndDate: deriveLiveEndDate(rows.filter(isCoursePlanRow)), // derived, not the stored expiryDate
+      // SPEC-028 §12.1 — the FE disables Insert only when there's genuinely nothing to reschedule (a full course
+      // with no appended EXTENDED). `owedCount==0` alone can't tell that from a post-absence course (owed 0 but an
+      // EXTENDED present), so the DTO carries the real predicate. The BE still refuses the empty case (NO_OWED_SESSION).
+      insertable: canInsert(planSessions, course.size),
       summary: {
         kind: "course" as const,
         size: course.size,
@@ -1153,6 +1190,7 @@ export async function getEntitlementPlan(id: string) {
       student: studentRef(student),
       sessions: rows.map(toSessionRow),
       liveEndDate: deriveLiveEndDate(rows),
+      insertable: false, // SPEC-028 §12.1 — a voucher has no course-plan insert.
       summary: {
         kind: "voucher" as const,
         totalHours: voucher.totalHours,
@@ -1321,8 +1359,11 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
   });
   if (!course) throw notFound("ไม่พบคอร์ส");
 
+  // SPEC-033 §2 seam-keeper: the course engine loads ONLY COURSE_PACKAGE rows — a soft-linked SINGLE_SESSION extra
+  // shares the courseId but must not be seen here (so it doesn't count toward size, and its cancel — which TASK-105
+  // routes through this fn — never re-owes a makeup).
   const rows = await tx.query.bookings.findMany({
-    where: (b: any, { eq }: any) => eq(b.courseId, courseId),
+    where: (b: any, { and, eq }: any) => and(eq(b.courseId, courseId), eq(b.bookingType, "COURSE_PACKAGE")),
   });
 
   const plan = planCourseMoves(
@@ -1332,6 +1373,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         status: r.status,
         date: r.date,
         extendedFromId: r.extendedFromId,
+        bookingType: r.bookingType,
       }),
     ),
     course.size,
@@ -1407,20 +1449,56 @@ export type PlanChange =
       override?: boolean;
     };
 
+// SPEC-028 §12.2 — thrown to abort the tx in `dryRun` mode: the change is fully applied inside the transaction,
+// its result captured, then this rolls everything back. Carries the preview so the outer catch can return it.
+class DryRunSignal {
+  constructor(public result: unknown) {}
+}
+
+/** Read back a course's resulting plan (after the in-tx apply) for the dry-run preview — same shape a real read gives. */
+async function planPreviewResult(tx: any, courseId: string, applied: any) {
+  const rows = await tx.query.bookings.findMany({
+    where: (b: any, { eq }: any) => eq(b.courseId, courseId),
+    with: { teacher: true, subject: true },
+    orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
+  });
+  return {
+    change: applied.change,
+    moves: { appended: applied.appended ?? [], cancelled: applied.cancelled ?? [] },
+    resultingSessions: rows.map(toSessionRow),
+    liveEndDate: deriveLiveEndDate(rows.filter(isCoursePlanRow)), // SPEC-033: end over COURSE_PACKAGE rows only
+  };
+}
+
 /**
  * SPEC-028 §3 (TASK-093) — the ONE shared, ATOMIC plan-edit applier (calendar / course screen / purchase-time
  * all call it, so the rule has a single implementation). Opens a tx, applies the booking mutation, runs the
  * `size`-reconcile (TASK-092) + the freelance-hold reconcile (TASK-091), and commits or rolls back with a
  * typed reason. All validation is inside the tx: any failure ⇒ **nothing written** (a half-applied plan is
  * worse than a rejected one).
+ *
+ * `opts.dryRun` (SPEC-028 §12.2 / TASK-114) runs the **full** transaction — every guard + both reconciles — then
+ * reads back the resulting plan and ROLLS BACK instead of committing, returning `{ change, moves, resultingSessions,
+ * liveEndDate }`. Reusing the real applier is the point: preview can never diverge from apply. A refused change
+ * throws the **same typed reason** in dry-run as in a real apply.
  */
-export async function applyPlanChange(courseId: string, change: PlanChange) {
+export async function applyPlanChange(
+  courseId: string,
+  change: PlanChange,
+  opts: { dryRun?: boolean } = {},
+) {
   try {
     return await db.transaction(async (tx) => {
       const course = await tx.query.coursePackages.findFirst({
         where: (c: any, { eq }: any) => eq(c.id, courseId),
       });
       if (!course) throw notFound("ไม่พบคอร์ส");
+
+      // In dry-run, capture the applied result + resulting plan, then roll the whole tx back (nothing is written).
+      const finalize = async (applied: any) => {
+        if (opts.dryRun) throw new DryRunSignal(await planPreviewResult(tx, courseId, applied));
+        return applied;
+      };
 
       if (change.kind === "mark-absence") {
         const b = await tx.query.bookings.findFirst({
@@ -1450,7 +1528,7 @@ export async function applyPlanChange(courseId: string, change: PlanChange) {
           .where(eq(coursePackages.id, courseId));
         const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
-        return { change: "mark-absence" as const, ...moves };
+        return await finalize({ change: "mark-absence" as const, ...moves });
       }
 
       if (change.kind === "insert") {
@@ -1464,6 +1542,7 @@ export async function applyPlanChange(courseId: string, change: PlanChange) {
               status: r.status,
               date: r.date,
               extendedFromId: r.extendedFromId,
+              bookingType: r.bookingType, // SPEC-033: a soft-linked extra must not read as an owed session
             })),
             course.size,
           )
@@ -1483,7 +1562,7 @@ export async function applyPlanChange(courseId: string, change: PlanChange) {
           courseId,
         });
         const moves = await reconcileCoursePlan(tx, courseId);
-        return { change: "insert" as const, bookingId: newId, ...moves };
+        return await finalize({ change: "insert" as const, bookingId: newId, ...moves });
       }
 
       // move / change-teacher / change-day-time — no size change, so no course reconcile; money reconciles.
@@ -1542,9 +1621,10 @@ export async function applyPlanChange(courseId: string, change: PlanChange) {
           tx,
         );
       }
-      return { change: "move" as const, bookingId: b.id };
+      return await finalize({ change: "move" as const, bookingId: b.id });
     });
   } catch (e: any) {
+    if (e instanceof DryRunSignal) return e.result; // §12.2 — the intended rollback; return the captured preview.
     const code = pgErrorCode(e);
     if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
     if (code === "23503") throw badRequest("teacher / subject อ้างอิงไม่ถูกต้อง");

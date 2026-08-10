@@ -189,6 +189,16 @@ export const api = new Hono()
   .post("/courses/:id/plan", zValidator("json", v.planChange), async (c) =>
     c.json(await svc.applyPlanChange(c.req.param("id"), c.req.valid("json"))),
   )
+  // SPEC-028 §12.2 (TASK-114): a dry-run of the SAME applier — full tx, read back the resulting plan, roll back.
+  // preview == apply by construction; a refused change returns the same typed reason.
+  .post("/courses/:id/plan/preview", zValidator("json", v.planChange), async (c) =>
+    c.json(await svc.applyPlanChange(c.req.param("id"), c.req.valid("json"), { dryRun: true })),
+  )
+  // SPEC-033 §4 (TASK-112): a PAID extra session beside the plan — SINGLE_SESSION soft-linked by courseId, out of
+  // quota. Distinct route from /plan so the seam is visible in the API, not just the UI.
+  .post("/courses/:id/extra-session", zValidator("json", v.extraSession), async (c) =>
+    c.json(await svc.addExtraSession(c.req.param("id"), c.req.valid("json")), 201),
+  )
   .get("/entitlements/:id/plan", async (c) =>
     c.json(await svc.getEntitlementPlan(c.req.param("id"))),
   )

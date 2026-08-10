@@ -16,7 +16,15 @@ export interface PlanSession {
   status: string;
   date: string; // "YYYY-MM-DD" — ISO, so string compare = date order
   extendedFromId: string | null;
+  /** SPEC-033 §2 — the course engine counts only COURSE_PACKAGE rows. A soft-linked SINGLE_SESSION "extra" shares
+   *  the courseId but must NOT count toward size/owed/end. Absent (legacy/tests) ⇒ treated as a plan row. */
+  bookingType?: string;
 }
+
+/** SPEC-033 seam-keeper: is this a row the course-plan engine should count? Only COURSE_PACKAGE (absent = yes, for
+ *  back-compat) — a SINGLE_SESSION extra soft-linked by courseId is deliberately excluded. */
+export const isCoursePlanRow = (s: { bookingType?: string }): boolean =>
+  s.bookingType === undefined || s.bookingType === "COURSE_PACKAGE";
 
 export interface CoursePlan {
   /** Sessions to add (short course). One per owed slot; carries the absence id that opened the gap. */
@@ -25,9 +33,11 @@ export interface CoursePlan {
   cancelIds: string[];
 }
 
-/** Count toward the target: LIVE + DELIVERED. The invariant is `this == size` after any reconcile. */
+/** Count toward the target: LIVE + DELIVERED, over COURSE_PACKAGE rows only (SPEC-033 — extras don't count). */
 export function courseCurrent(sessions: PlanSession[]): number {
-  return sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).length;
+  return sessions.filter(
+    (s) => isCoursePlanRow(s) && (COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)),
+  ).length;
 }
 
 /**
@@ -58,7 +68,10 @@ export const requiresCancelReason = (status: string): boolean => isDelivered(sta
  * ("คอร์สนี้ครบจำนวนคาบแล้ว — ไม่มีคาบค้างให้เลื่อน", SPEC-028 §2).
  */
 export function canInsert(sessions: PlanSession[], size: number): boolean {
-  return courseCurrent(sessions) < size || sessions.some((s) => s.status === "EXTENDED");
+  return (
+    courseCurrent(sessions) < size ||
+    sessions.some((s) => isCoursePlanRow(s) && s.status === "EXTENDED")
+  );
 }
 
 /**
@@ -77,7 +90,9 @@ export function exceedsExtensionCeiling(date: string, startDate: string, size: n
  *   attended/delivered or a hand-placed (non-`EXTENDED`) session.
  * - at target: no moves (idempotent — a date/teacher-only edit yields zero moves).
  */
-export function planCourseMoves(sessions: PlanSession[], size: number): CoursePlan {
+export function planCourseMoves(allSessions: PlanSession[], size: number): CoursePlan {
+  // SPEC-033 seam-keeper: the engine only ever moves COURSE_PACKAGE rows — a soft-linked extra is invisible here.
+  const sessions = allSessions.filter(isCoursePlanRow);
   const current = courseCurrent(sessions);
 
   if (current === size) return { append: [], cancelIds: [] };

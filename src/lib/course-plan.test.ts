@@ -6,6 +6,7 @@ import {
   courseCurrent,
   deriveLiveEndDate,
   exceedsExtensionCeiling,
+  isCoursePlanRow,
   isDelivered,
   planCourseMoves,
   requiresCancelReason,
@@ -125,6 +126,58 @@ describe("planCourseMoves — contraction touches only appended EXTENDED, never 
     const ss = [S("a", "ATTENDED", "2026-08-07"), S("n", "NO_SHOW", "2026-08-14")];
     expect(courseCurrent(ss)).toBe(2);
     expect(planCourseMoves(ss, 2)).toEqual({ append: [], cancelIds: [] });
+  });
+});
+
+describe("seam-keeper — a soft-linked SINGLE_SESSION extra never counts (SPEC-033 / TASK-112)", () => {
+  // An extra shares the courseId but is bookingType SINGLE_SESSION. The engine (courseCurrent/planCourseMoves/
+  // canInsert) must ignore it, so `size`/owed/moves are unchanged and its cancel doesn't re-owe.
+  const EXTRA = (id: string, status: string, date: string): PlanSession => ({
+    id,
+    status,
+    date,
+    extendedFromId: null,
+    bookingType: "SINGLE_SESSION",
+  });
+  const full = [
+    S("c0", "CONFIRMED", "2026-09-07"),
+    S("c1", "CONFIRMED", "2026-09-14"),
+  ].map((s) => ({ ...s, bookingType: "COURSE_PACKAGE" }));
+
+  test("adding an extra leaves current == size and yields NO moves (6 stays 6 — here 2 stays 2)", () => {
+    expect(courseCurrent(full)).toBe(2);
+    const withExtra = [...full, EXTRA("x", "CONFIRMED", "2026-09-10")];
+    expect(courseCurrent(withExtra)).toBe(2); // the extra doesn't count
+    expect(planCourseMoves(withExtra, 2)).toEqual({ append: [], cancelIds: [] }); // no re-plan
+  });
+
+  test("cancelling the extra does NOT re-owe — plan stays at size, no append", () => {
+    // extra CONFIRMED → CANCELLED. A COURSE_PACKAGE cancel would drop current and append; an extra must not.
+    const withExtra = [...full, EXTRA("x", "CANCELLED", "2026-09-10")];
+    expect(courseCurrent(withExtra)).toBe(2);
+    expect(planCourseMoves(withExtra, 2).append).toHaveLength(0);
+  });
+
+  test("the extra never makes a full course look insertable", () => {
+    const withExtra = [...full, EXTRA("x", "CONFIRMED", "2026-09-10")];
+    expect(canInsert(withExtra, 2)).toBe(false); // full COURSE_PACKAGE + an extra ⇒ still nothing to reschedule
+  });
+
+  test("isCoursePlanRow — COURSE_PACKAGE and legacy (absent type) count; SINGLE_SESSION does not", () => {
+    expect(isCoursePlanRow({ bookingType: "COURSE_PACKAGE" })).toBe(true);
+    expect(isCoursePlanRow({})).toBe(true); // absent ⇒ treated as a plan row (back-compat)
+    expect(isCoursePlanRow({ bookingType: "SINGLE_SESSION" })).toBe(false);
+    expect(isCoursePlanRow({ bookingType: "VOUCHER" })).toBe(false);
+  });
+
+  test("a genuine COURSE_PACKAGE absence still re-owes with the extra present (extra doesn't mask the gap)", () => {
+    const shorted = [
+      { ...S("c0", "SICK_LEAVE", "2026-09-07"), bookingType: "COURSE_PACKAGE" },
+      { ...S("c1", "CONFIRMED", "2026-09-14"), bookingType: "COURSE_PACKAGE" },
+      EXTRA("x", "CONFIRMED", "2026-09-10"),
+    ];
+    expect(courseCurrent(shorted)).toBe(1); // only the CONFIRMED course row counts
+    expect(planCourseMoves(shorted, 2).append).toHaveLength(1); // re-owes the leave, extra ignored
   });
 });
 
