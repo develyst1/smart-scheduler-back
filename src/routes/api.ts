@@ -199,6 +199,9 @@ export const api = new Hono()
   .post("/courses/:id/extra-session", zValidator("json", v.extraSession), async (c) =>
     c.json(await svc.addExtraSession(c.req.param("id"), c.req.valid("json")), 201),
   )
+  // SPEC-035 (TASK-119): read-only "ประวัติการตัดคอร์ส" — a timeline reconstructed from existing bookings + the
+  // freelance ledger. No migration; who/intermediate-hops are honest gaps (actor:null, current-status-only).
+  .get("/courses/:id/history", async (c) => c.json(await svc.getCourseHistory(c.req.param("id"))))
   .get("/entitlements/:id/plan", async (c) =>
     c.json(await svc.getEntitlementPlan(c.req.param("id"))),
   )
@@ -242,4 +245,11 @@ export const api = new Hono()
     const key = c.req.param("key");
     if (!isSettingKey(key)) throw badRequest(`ไม่รู้จักการตั้งค่า "${key}"`);
     return c.json(await settings.setSetting(key, c.req.valid("json").value));
+  })
+  // TASK-122: reset-to-default — DELETE drops the override row so the resolver returns the coded default
+  // (isOverridden:false). Idempotent (no-op if already default); same isSettingKey guard as PUT.
+  .delete("/settings/:key", async (c) => {
+    const key = c.req.param("key");
+    if (!isSettingKey(key)) throw badRequest(`ไม่รู้จักการตั้งค่า "${key}"`);
+    return c.json(await settings.resetSetting(key));
   });

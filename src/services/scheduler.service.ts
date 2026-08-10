@@ -63,6 +63,7 @@ import {
   requiresCancelReason,
   type PlanSession,
 } from "../lib/course-plan";
+import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import {
@@ -1202,6 +1203,53 @@ export async function getEntitlementPlan(id: string) {
   }
 
   throw notFound("ไม่พบคอร์สหรือวอยเชอร์");
+}
+
+/**
+ * SPEC-035 / TASK-119 (REQ-038 #5) — "ประวัติการตัดคอร์ส". A READ-ONLY timeline reconstructed from existing durable
+ * data (no migration): the course's bookings (all statuses) + the freelance-ledger `bo.movement` entries for those
+ * bookings. The pure `buildCourseHistory` derives the kinds/ordering/summary; here we just load + map refs.
+ */
+export async function getCourseHistory(courseId: string) {
+  const course = await db.query.coursePackages.findFirst({ where: (c, { eq }) => eq(c.id, courseId) });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+
+  const rows = await db.query.bookings.findMany({
+    where: (b, { eq }) => eq(b.courseId, courseId),
+    with: { teacher: true, subject: true },
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+  });
+
+  // The freelance draw/refund ledger for these bookings (refId = bookingId). Empty query guard avoids inArray([]).
+  const bookingIds = rows.map((r) => r.id);
+  const movements = bookingIds.length
+    ? await db.select().from(boMovement).where(inArray(boMovement.refId, bookingIds))
+    : [];
+
+  const history = buildCourseHistory(
+    { size: course.size, leaveUsed: course.leaveUsed },
+    rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      bookingType: r.bookingType,
+      date: r.date,
+      extendedFromId: r.extendedFromId,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      teacher: teacherRef(r.teacher),
+      subject: subjectRef(r.subject),
+    })),
+    movements.map((m) => ({
+      refId: m.refId,
+      refType: m.refType,
+      qty: m.qty,
+      valueMinor: m.valueMinor,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  );
+
+  return { courseId, ...history };
 }
 
 /**

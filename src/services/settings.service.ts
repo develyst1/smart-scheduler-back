@@ -2,7 +2,7 @@
 // this is the ONLY place that reads/writes `app_settings` for these rules. Mirrors the `lib/line-admin.ts`
 // read + `onConflictDoUpdate` write pattern (the codebase precedent for KV settings).
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings } from "../db/schema";
 import { badRequest } from "../lib/http";
@@ -29,6 +29,17 @@ export async function setSetting(key: SettingKey, value: unknown, exec: any = db
     .values({ key, value: parsed })
     .onConflictDoUpdate({ target: appSettings.key, set: { value: parsed, updatedAt: sql`now()` } });
   return { key, label: spec.label, unit: spec.unit, value: parsed, default: spec.default, isOverridden: true };
+}
+
+/**
+ * TASK-122 — a TRUE reset-to-default: DELETE the override row so the resolver falls back to the coded default with
+ * `isOverridden:false`. A PUT-the-default would leave a lying override row (`isOverridden` stays true), so reset must
+ * REMOVE the row. Idempotent — deleting a key with no override is a no-op success (already at default), not a 404.
+ */
+export async function resetSetting(key: SettingKey, exec: any = db) {
+  await exec.delete(appSettings).where(eq(appSettings.key, key));
+  const spec = SETTINGS[key];
+  return { key, label: spec.label, unit: spec.unit, value: spec.default, default: spec.default, isOverridden: false };
 }
 
 /** The whole configurable set for the Settings screen (SPEC-029 §3) — one entry per registered rule. */
