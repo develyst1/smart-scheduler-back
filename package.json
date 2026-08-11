@@ -19,7 +19,8 @@
     "sale:ensure-items": "bun run scripts/ensure-sale-items.ts",
     "sale:retire-placeholders": "bun run scripts/retire-placeholder-items.ts",
     "db:verify": "bun run scripts/verify-migrations.ts",
-    "db:seed-ledger": "bun run scripts/seed-ledger-from-schema.ts"
+    "db:seed-ledger": "bun run scripts/seed-ledger-from-schema.ts",
+    "db:backup": "bun run scripts/backup.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

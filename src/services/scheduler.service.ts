@@ -35,6 +35,7 @@ import {
   PRICES_ARE_VAT_INCLUSIVE,
   courseItemRef,
   isSellable,
+  rentalPriceList,
   sellablePackages,
   voucherAllowedGroups,
   voucherAllowsProgram,
@@ -883,6 +884,8 @@ export async function getSellablePackages() {
       .map((s) => ({ id: s.id, name: s.name })),
     // SPEC-030 / TASK-106 — the programs a voucher may book, so the FE picker filters from here (not a hardcoded list).
     voucherAllowedGroups: voucherAllowedGroups(),
+    // SPEC-031 / TASK-123 — rental prices (code + VAT-incl priceMinor) from the one authority; FE owns the labels.
+    rentalItems: rentalPriceList(),
   };
 }
 

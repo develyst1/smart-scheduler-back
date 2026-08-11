@@ -125,6 +125,11 @@ const RENTAL_NAME: Record<RentalCode, string> = {
   "rental-pads": "Equipment rental — pads / hr",
 };
 
+/** SPEC-031 / TASK-123 — the rental price card for the FE (code + VAT-incl `priceMinor` only; the FE owns labels via
+ *  i18n). Derived from the one authority `RENTAL_PRICE`, so no second copy of the prices can drift. */
+export const rentalPriceList = (): { code: RentalCode; priceMinor: number }[] =>
+  RENTAL_CODES.map((code) => ({ code, priceMinor: RENTAL_PRICE[code] }));
+
 /** The rental seeds — marked `revenueKind:"RENTAL"` so reports separate rental from tuition (NOT program-attributed). */
 export const RENTAL_ITEMS: SaleItemSeed[] = RENTAL_CODES.map((code) => ({
   externalRef: code,

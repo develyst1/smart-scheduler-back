@@ -20,6 +20,7 @@ import {
   isRentalCode,
   rentalIdBase,
   rentalIdempotencyKey,
+  rentalPriceList,
   revenueItemRef,
   sellablePackages,
   sessionItemRef,
@@ -73,6 +74,20 @@ describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
     const set = SALE_ITEMS.find((i) => i.externalRef === "rental-set")!;
     // 3h of a 200/hr full set = 600 THB income
     expect(saleMovement(3, set.unitPriceMinor)).toEqual({ qty: -3, valueMinor: THB(600) });
+  });
+
+  test("rentalPriceList exposes code+priceMinor from the one authority (TASK-123) — no labels cross the wire", () => {
+    const list = rentalPriceList();
+    expect(list).toEqual([
+      { code: "rental-set", priceMinor: THB(200) },
+      { code: "rental-ride", priceMinor: THB(150) },
+      { code: "rental-helmet", priceMinor: THB(50) },
+      { code: "rental-pads", priceMinor: THB(50) },
+    ]);
+    // each price matches the seed item's price (single source — can't drift from what recordSale charges)
+    for (const { code, priceMinor } of list) {
+      expect(SALE_ITEMS.find((i) => i.externalRef === code)!.unitPriceMinor).toBe(priceMinor);
+    }
   });
 
   test("isRentalCode guards the endpoint's code param", () => {
