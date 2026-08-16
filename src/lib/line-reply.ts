@@ -41,6 +41,28 @@ export function bookingPicker(
   return { type: "text", text: prompt, quickReply: { items } };
 }
 
+/**
+ * TASK-135 (AC-3): "which child?" step — one tappable button per child, carrying the studentId so the next
+ * step filters to that child's sessions. Same shape as `bookingPicker`, different payload key.
+ */
+export function childPicker(
+  prompt: string,
+  children: Array<{ studentId: string; name: string }>,
+  lang: Lang,
+): LineMessage {
+  const items: LineQuickReply["items"] = children.slice(0, 12).map((c) => ({
+    type: "action",
+    action: {
+      type: "postback",
+      label: clampLabel(c.name),
+      data: `action=leave&studentId=${c.studentId}`,
+      displayText: c.name,
+    },
+  }));
+  items.push(backToMenuItem(lang));
+  return { type: "text", text: prompt, quickReply: { items } };
+}
+
 /** Render a student list as a flex bubble, with a back-to-menu quick reply. `title` is already translated. */
 export function childrenFlex(title: string, names: string[], lang: Lang): LineMessage {
   const rows = names.map((name, i) => ({

@@ -9,6 +9,11 @@ import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
+import {
+  COURSE_SUBJECT_LOCKED,
+  COURSE_SUBJECT_LOCKED_MESSAGE,
+  changesCourseSubject,
+} from "../lib/course-subject-lock";
 import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
 import {
   hasEnoughTeacherChangeNotice,
@@ -1622,6 +1627,11 @@ export async function applyPlanChange(
       });
       if (!b || b.courseId !== courseId) throw notFound("ไม่พบคาบในคอร์สนี้");
       if (isDelivered(b.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
+      // SPEC-042 (TASK-134): this branch is by definition a course session (`b.courseId === courseId`),
+      // and a course's program is fixed at creation — refuse a subject change, allow a no-op.
+      if (changesCourseSubject(b, change.subjectId)) {
+        throw conflict(COURSE_SUBJECT_LOCKED, COURSE_SUBJECT_LOCKED_MESSAGE);
+      }
       const patch: any = {};
       if (change.teacherId) patch.teacherId = change.teacherId;
       if (change.subjectId) patch.subjectId = change.subjectId;
@@ -1906,6 +1916,11 @@ export async function moveBooking(
   if (!current) throw notFound("ไม่พบคาบเรียน");
   // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable.
   if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
+  // SPEC-042 (TASK-134): course sessions only (`courseId != null`) — voucher / single / trial may still
+  // change subject. A no-op (same subjectId) passes.
+  if (changesCourseSubject(current, input.subjectId)) {
+    throw conflict(COURSE_SUBJECT_LOCKED, COURSE_SUBJECT_LOCKED_MESSAGE);
+  }
 
   const patch: any = {};
   if (input.teacherId) patch.teacherId = input.teacherId;

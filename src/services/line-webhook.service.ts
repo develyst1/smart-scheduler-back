@@ -17,7 +17,8 @@ import {
   type LineWebhookEvent,
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
-import { bookingPicker, childrenFlex, textReply } from "../lib/line-reply";
+import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
+import { childrenWithSessions, leaveSessionLabel, needsChildStep } from "../lib/line-leave";
 import {
   formatDroppedPostback,
   formatInboundEvent,
@@ -251,13 +252,24 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
   }
 }
 
-async function doLeave(lineUserId: string, replyToken: string, date: string, lang: Lang) {
+/** TASK-135: leave is per session, so the flow names the session — and asks which child first when more than
+ *  one has a class today. `studentId` is the answer to that step (arrives on the postback). */
+async function doLeave(lineUserId: string, replyToken: string, date: string, lang: Lang, studentId?: string) {
   const today = await findTodayBookingsForParent(lineUserId, date);
-  const eligible = today.filter((b) => b.status === "CONFIRMED");
+  let eligible = today.filter((b) => b.status === "CONFIRMED");
   if (!eligible.length) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  if (studentId) {
+    eligible = eligible.filter((b) => b.studentId === studentId); // authorize: still this parent's own rows
+    if (!eligible.length) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  } else if (needsChildStep(eligible)) {
+    return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible), lang)]);
+  }
   if (eligible.length === 1) return doLeaveBooking(lineUserId, eligible[0]!.id, replyToken, date, lang);
-  const picks = eligible.map((b) => ({ id: b.id, label: bookingLabel(b) }));
-  return send(replyToken, [bookingPicker(t("pick_leave", lang), "leave", picks, lang)]);
+  const picks = eligible.map((b) => ({ id: b.id, label: leaveSessionLabel(b, lang) }));
+  // The button label is clamped to LINE's 20 chars, so the full time · teacher · program also goes in the
+  // prompt body — otherwise the program is exactly what gets truncated away.
+  const prompt = [t("pick_leave", lang), ...picks.map((p) => `· ${p.label}`)].join("\n");
+  return send(replyToken, [bookingPicker(prompt, "leave", picks, lang)]);
 }
 
 async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
@@ -269,7 +281,15 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
   const extended = result.extended
     ? t("leave_extline", lang, { date: result.extended.date, time: result.extended.startTime })
     : "";
-  return send(replyToken, [textReply(t("leave_ok", lang, { name: b.student.name, extended, locked }), lang)]);
+  // TASK-135 (AC-1/AC-3): the confirmation names the session that was cancelled — date · time · teacher.
+  const body = t("leave_ok_session", lang, {
+    date: b.date,
+    time: hhmm(b.startTime),
+    teacher: b.teacher?.nickname ?? "-",
+    extended,
+    locked,
+  });
+  return send(replyToken, [textReply(body, lang)]);
 }
 
 async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
@@ -527,7 +547,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     case "leave":
       return params.bookingId
         ? doLeaveBooking(lineUserId, params.bookingId, replyToken, date, lang)
-        : doLeave(lineUserId, replyToken, date, lang);
+        : doLeave(lineUserId, replyToken, date, lang, params.studentId); // studentId = the AC-3 child step
     case "children":
       return doChildren(lineUserId, replyToken, lang);
     case "register":

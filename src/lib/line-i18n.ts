@@ -45,6 +45,9 @@ const TABLE: Record<string, Entry> = {
   pick_checkin: { TH: "เลือกคาบที่จะเช็คอิน 👇", EN: "Pick a class to check in 👇" },
   pick_leave: { TH: "เลือกคาบที่จะแจ้งลา 👇", EN: "Pick a class to report leave 👇" },
   empty_checkin: { TH: "วันนี้ไม่มีคาบที่พร้อมเช็คอิน", EN: "No class to check in today" },
+  // TASK-135 (REQ-046): leave is per SESSION — the picker has to say which one.
+  pick_leave_child: { TH: "ลาให้ใครคะ 👇", EN: "Which child? 👇" },
+  leave_pick_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
   empty_leave: { TH: "วันนี้ไม่มีคาบที่แจ้งลาได้", EN: "No class eligible for leave today" },
 
   children_title: { TH: "นักเรียนของคุณ", EN: "Your children" },
@@ -89,6 +92,12 @@ const TABLE: Record<string, Entry> = {
   checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
 
   leave_ok: { TH: "แจ้งลาสำเร็จ ✅ ({name}){extended}{locked}", EN: "Leave recorded ✅ ({name}){extended}{locked}" },
+  // TASK-135 (REQ-046) AC-1/AC-3: name the session that was cancelled, not just the student. Wording is the
+  // REQ's; `{extended}`/`{locked}` keep the existing make-up + quota lines.
+  leave_ok_session: {
+    TH: "แจ้งลาแล้ว: {date} {time} น. ครู{teacher} — คาบนี้จะถูกเลื่อนไปต่อท้ายคอร์ส{extended}{locked}",
+    EN: "Leave recorded: {date} {time} with {teacher} — this session moves to the end of the course.{extended}{locked}",
+  },
   leave_extline: { TH: "\nคาบขยาย: {date} {time}", EN: "\nMake-up class: {date} {time}" },
   leave_lockline: { TH: "\n⚠️ โควตาลาครบแล้ว — ต้องปลดล็อกโดยแอดมิน", EN: "\n⚠️ Leave quota used up — needs admin unlock" },
   num_notfound: { TH: "ไม่พบคาบตามหมายเลขที่เลือก", EN: "No class for that number" },
