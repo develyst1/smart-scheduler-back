@@ -134,6 +134,14 @@ export async function getMenuIds(): Promise<MenuIds> {
   return v && typeof v === "object" ? (v as MenuIds) : {};
 }
 
+/** Upsert the four ids into app_settings (the only write both publish and adopt (TASK-130) need). */
+export async function storeMenuIds(ids: MenuIds): Promise<void> {
+  await db
+    .insert(appSettings)
+    .values({ key: MENU_IDS_KEY, value: ids })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value: ids } });
+}
+
 /** One-shot (re)publish: create all four menus (parent/teacher × TH/EN), upload images, store the ids,
  *  set the Thai parent menu as the default. Supply four 2500-wide images (parent 2500×1686, teacher 2500×843). */
 export async function publishRichMenus(opts: {
@@ -151,10 +159,7 @@ export async function publishRichMenus(opts: {
   const teacherEN = await createRichMenu(TEACHER_RICH_MENU_EN);
   await uploadRichMenuImage(teacherEN, opts.teacherEnImage);
   const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN };
-  await db
-    .insert(appSettings)
-    .values({ key: MENU_IDS_KEY, value: ids })
-    .onConflictDoUpdate({ target: appSettings.key, set: { value: ids } });
+  await storeMenuIds(ids);
   await setDefaultRichMenu(parentTH); // TH parent menu is the default; EN/teacher menus link per user
   return ids;
 }

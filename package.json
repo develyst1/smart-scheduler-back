@@ -16,6 +16,7 @@
     "line:webhook-test": "bun run scripts/line-webhook-test.ts",
     "line:publish-menus": "bun run scripts/line-publish-menus.ts",
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",
+    "line:adopt-menus": "bun run scripts/line-adopt-menus.ts",
     "sale:ensure-items": "bun run scripts/ensure-sale-items.ts",
     "sale:retire-placeholders": "bun run scripts/retire-placeholder-items.ts",
     "db:verify": "bun run scripts/verify-migrations.ts",
