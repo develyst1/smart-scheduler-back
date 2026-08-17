@@ -127,6 +127,13 @@
       "when": 1783000000013,
       "tag": "0017_entitlement_source",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783000000014,
+      "tag": "0018_course_subject",
+      "breakpoints": true
     }
   ]
 }

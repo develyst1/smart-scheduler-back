@@ -490,10 +490,11 @@ async function courseIdsOrdered(f: { q?: string; page?: number; limit?: number }
 /** Hydrate courses to their DTO shape, preserving the id order handed in. */
 async function coursesByIds(ids: string[]) {
   if (ids.length === 0) return [];
-  // Load one booking's subject per course to surface the sport program (a course ⇔ one subject; REQ-010).
+  // TASK-140: the course's own `subject` is the program. The one-booking load stays only as the pre-0018
+  // fallback the mapper falls through to (a course ⇔ one subject; REQ-010).
   const rows = await db.query.coursePackages.findMany({
     where: (c, { inArray: inA }) => inA(c.id, ids),
-    with: { student: true, bookings: { with: { subject: true }, limit: 1 } },
+    with: { student: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },
   });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => {
@@ -927,7 +928,8 @@ export async function importCoursePackage(input: any) {
       .values({
         studentId,
         size: input.size,
-        usedSessions: input.usedSessions,
+        subjectId: input.subjectId, // TASK-140 — an import records its program too, or it would be the one
+        usedSessions: input.usedSessions, // course left deriving it from a booking
         startDate: input.startDate,
         weekday: weekdayOf(input.startDate),
         startTime: input.startTime,
@@ -1021,6 +1023,7 @@ export async function createCoursePackage(input: any) {
       .values({
         studentId,
         size: input.size,
+        subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
         startDate: input.startDate,
         weekday: weekdayOf(input.startDate),
         startTime: input.startTime,
@@ -1044,6 +1047,12 @@ export async function createCoursePackage(input: any) {
             date,
             startTime: input.startTime,
           }));
+
+    // SPEC-045 / TASK-138 (REQ-054): defensive second layer — the zod refine already rejects a mixed request,
+    // but every session that lands in this course must share one program, whatever path built the plan.
+    if (new Set(plannedSessions.map((s) => s.subjectId)).size !== 1) {
+      throw badRequest("ทุกคาบในคอร์สต้องเป็นกิจกรรมเดียวกัน");
+    }
 
     for (const s of plannedSessions) {
       try {
@@ -1781,6 +1790,11 @@ export async function updateBookingStatus(
           throw e;
         }
       }
+    } else if (action === "sick-leave" && current.status === "SICK_LEAVE") {
+      // SPEC-044 / TASK-136 AC-6 — a re-save (or a retry) of an already-cancelled session changes nothing and
+      // must NOT enqueue a second notification. Mirrors the confirm (`confirmedAt`) and attend guards; it also
+      // fixes the pre-existing admin double-notify. The tail reconcile below is idempotent by design.
+      notification = { channel: "line", status: "skipped", reason: "คาบนี้แจ้งลาแล้ว" };
     } else if (action === "sick-leave") {
       // Advance-notice rule (UC-029): leave must be requested early enough for the
       // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
@@ -1847,15 +1861,36 @@ export async function updateBookingStatus(
       const student = await tx.query.students.findFirst({
         where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
       });
+      const via = reason?.includes("LINE") ? "line" : "staff";
       await notifyAdmins(
         {
           kind: "sick_leave",
           bookingId: id,
           studentName: student?.name ?? "",
-          via: reason?.includes("LINE") ? "line" : "staff",
+          via,
         },
         tx,
+        id, // TASK-136: the outbox row now carries the booking, so the worker can enrich date/teacher/program
       );
+      // SPEC-044 / TASK-136 (AC-1/AC-2/AC-3): the teacher of THIS session is told the slot is free — but only
+      // when the school has opted in. Default `admin_only` ⇒ nothing here fires, so no coach is messaged by an
+      // upgrade. Additive and non-throwing: `enqueueLine` writes a SKIPPED row when the teacher has no LINE
+      // link (AC-4), so a leave never fails because of a notification.
+      const { value: notifyOnLeave } = await getSetting("notify_on_leave", tx);
+      if (notifyOnLeave === "admin_and_teacher") {
+        const leaveTeacher = await tx.query.teachers.findFirst({
+          where: (t, { eq }) => eq(t.id, current.teacherId),
+        });
+        await enqueueLine(
+          {
+            recipientType: "teacher",
+            recipientLineUserId: leaveTeacher?.lineUserId ?? null,
+            bookingId: id,
+            payload: { kind: "leave_teacher", bookingId: id, studentName: student?.name ?? "", via },
+          },
+          tx,
+        );
+      }
     } else {
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }

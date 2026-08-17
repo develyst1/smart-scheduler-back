@@ -7,7 +7,9 @@
 // legitimately carry a chosen program (SPEC-026/030) and are untouched.
 
 export const COURSE_SUBJECT_LOCKED = "COURSE_SUBJECT_LOCKED";
-export const COURSE_SUBJECT_LOCKED_MESSAGE = "A course session's subject cannot be changed";
+// Thai to match every neighbouring conflict in scheduler.service.ts and the staff who read it (Porter's
+// ruling on TASK-134 Q1, 2026-08-16; the wording is REQ-053's own).
+export const COURSE_SUBJECT_LOCKED_MESSAGE = "ไม่สามารถเปลี่ยนวิชาของคาบในคอร์สได้";
 
 /** true = this edit would change a course session's subject and must be refused. A no-op (same subjectId,
  *  or no subjectId in the patch) passes, so re-sending an unchanged payload stays idempotent. */

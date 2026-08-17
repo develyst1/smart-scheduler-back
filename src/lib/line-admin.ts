@@ -29,12 +29,13 @@ export async function addAdminLineUserId(lineUserId: string, exec: any = db): Pr
     });
 }
 
-/** Enqueue LINE to every linked admin (C.5). */
-export async function notifyAdmins(payload: unknown, exec: any = db): Promise<void> {
+/** Enqueue LINE to every linked admin (C.5). `bookingId` (TASK-136) links the outbox row to its booking so the
+ *  worker can enrich the message with date/teacher/program — without it those fields render empty. */
+export async function notifyAdmins(payload: unknown, exec: any = db, bookingId?: string): Promise<void> {
   const ids = await getAdminLineUserIds(exec);
   for (const userId of ids) {
     await enqueueLine(
-      { recipientType: "admin", recipientLineUserId: userId, payload },
+      { recipientType: "admin", recipientLineUserId: userId, bookingId, payload },
       exec,
     );
   }

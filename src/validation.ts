@@ -145,6 +145,12 @@ export const createCoursePackage = z
   })
   .refine((d) => !d.sessions || d.sessions.length === d.size, {
     message: "จำนวนคาบต้องเท่ากับขนาดคอร์ส",
+  })
+  // SPEC-045 / TASK-138 (REQ-054): a course is ONE program. A per-row override may repeat the course subject
+  // but never introduce a second one — otherwise the course is born mixed-program (the hole TASK-134 closed
+  // for edits).
+  .refine((d) => !d.sessions || d.sessions.every((s) => !s.subjectId || s.subjectId === d.subjectId), {
+    message: "ทุกคาบในคอร์สต้องเป็นกิจกรรมเดียวกัน",
   });
 
 // TASK-095 — generate the editable `size`-row plan without writing (purchase-time preview).

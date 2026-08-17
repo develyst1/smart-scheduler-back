@@ -47,13 +47,27 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         t("ob_reschedule_foot", lang)
       ).trimEnd();
     }
+    // REQ-049 / TASK-136 — admin and teacher read the same event in their own language, each in the REQ's
+    // wording. `-` rather than an empty gap when a field is missing (a deleted booking still sends).
     case "sick_leave":
       return (
         t("ob_sick_title", lang) + "\n" +
-        line(t("ob_l_student", lang), (payload.studentName as string) ?? ctx.studentName) +
-        line(t("ob_l_class", lang), ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
-        line(t("ob_l_channel", lang), payload.via === "line" ? t("ob_ch_line", lang) : t("ob_ch_system", lang))
+        t("ob_leave_admin", lang, {
+          student: (payload.studentName as string) || ctx.studentName || "-",
+          date: ctx.date ?? "-",
+          time: ctx.startTime ?? "-",
+          teacher: ctx.teacherNickname ?? "-",
+          program: ctx.subject ?? "-",
+          by: payload.via === "line" ? t("ob_ch_line", lang) : t("ob_ch_system", lang),
+        })
       ).trimEnd();
+    case "leave_teacher":
+      return t("ob_leave_teacher", lang, {
+        student: (payload.studentName as string) || ctx.studentName || "-",
+        date: ctx.date ?? "-",
+        time: ctx.startTime ?? "-",
+        program: ctx.subject ?? "-",
+      });
     // TASK-094: teacher reassigned on a course session — same body as a confirmation, different title per side.
     case "teacher_assigned":
     case "teacher_unassigned": {

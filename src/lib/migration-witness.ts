@@ -194,6 +194,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
     why: "The LAST object 0017 creates — after both `source` columns and the course_packages constraint.",
     rerunnable: true,
   },
+  {
+    tag: "0018_course_subject",
+    probe: { kind: "constraint", constraint: "course_packages_subject_id_subjects_id_fk" },
+    why:
+      "0018's later statements are a data back-fill and a CONDITIONAL `SET NOT NULL` — neither is a reliable " +
+      "schema footprint (the NOT NULL is deliberately skipped when a course has no bookings to derive from). " +
+      "The FK is the last unconditional object, and the whole migration runs in one transaction, so the FK " +
+      "existing means the back-fill ran too. Whether NOT NULL landed is a deploy observation, not this witness.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

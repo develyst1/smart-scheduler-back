@@ -257,6 +257,10 @@ export const coursePackages = pgTable(
       .notNull()
       .references(() => students.id, { onDelete: "restrict" }),
     size: smallint("size").notNull(), // 4 | 6 | 10
+    // SPEC-045 / TASK-140 (REQ-054): the course's program, canonical at last. It used to be DERIVED from
+    // `bookings[0].subject` — order-dependent, which is exactly why a per-session edit or a mixed create could
+    // silently re-brand a course. Nullable in `0018` only so the back-fill can run; `0019` sets it NOT NULL.
+    subjectId: uuid("subject_id").references(() => subjects.id),
     usedSessions: integer("used_sessions").notNull().default(0),
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
@@ -551,6 +555,8 @@ export const coursePackagesRelations = relations(coursePackages, ({ one, many })
     references: [students.id],
   }),
   bookings: many(bookings),
+  // TASK-140 — the course's own program, so readers stop going through `bookings[0]`.
+  subject: one(subjects, { fields: [coursePackages.subjectId], references: [subjects.id] }),
 }));
 
 export const vouchersRelations = relations(vouchers, ({ one }) => ({

@@ -94,9 +94,11 @@ const TABLE: Record<string, Entry> = {
   leave_ok: { TH: "แจ้งลาสำเร็จ ✅ ({name}){extended}{locked}", EN: "Leave recorded ✅ ({name}){extended}{locked}" },
   // TASK-135 (REQ-046) AC-1/AC-3: name the session that was cancelled, not just the student. Wording is the
   // REQ's; `{extended}`/`{locked}` keep the existing make-up + quota lines.
+  // `{name}` is back on Porter's ruling (TASK-135 Q2, 2026-08-16): a parent with two children must not have to
+  // guess which child's session was cancelled — that is the point of REQ-046.
   leave_ok_session: {
-    TH: "แจ้งลาแล้ว: {date} {time} น. ครู{teacher} — คาบนี้จะถูกเลื่อนไปต่อท้ายคอร์ส{extended}{locked}",
-    EN: "Leave recorded: {date} {time} with {teacher} — this session moves to the end of the course.{extended}{locked}",
+    TH: "แจ้งลาแล้ว: {name} — {date} {time} น. ครู{teacher} — คาบนี้จะถูกเลื่อนไปต่อท้ายคอร์ส{extended}{locked}",
+    EN: "Leave recorded: {name} — {date} {time} with {teacher} — this session moves to the end of the course.{extended}{locked}",
   },
   leave_extline: { TH: "\nคาบขยาย: {date} {time}", EN: "\nMake-up class: {date} {time}" },
   leave_lockline: { TH: "\n⚠️ โควตาลาครบแล้ว — ต้องปลดล็อกโดยแอดมิน", EN: "\n⚠️ Leave quota used up — needs admin unlock" },
@@ -173,6 +175,15 @@ const TABLE: Record<string, Entry> = {
   ob_l_target: { TH: "ปลายทางที่เสนอ", EN: "Proposed" },
   ob_reschedule_foot: { TH: "กรุณาติดต่อกลับเพื่อยืนยันการย้าย", EN: "Please reply to confirm the move" },
   ob_sick_title: { TH: "🤒 แจ้งลา", EN: "🤒 Sick leave" },
+  // REQ-049 / TASK-136 — one line each, per recipient language (AC-7). Admin keeps the 🤒 title above it.
+  ob_leave_admin: {
+    TH: "แจ้งลา: {student} · {date} {time} น. · ครู{teacher} · {program} — แจ้งโดย {by}",
+    EN: "Leave: {student} · {date} {time} · {teacher} · {program} — reported by {by}",
+  },
+  ob_leave_teacher: {
+    TH: "{student} ลาคาบ {date} {time} น. ({program}) — ช่วงเวลานี้ว่างแล้วค่ะ",
+    EN: "{student} has cancelled {date} {time} ({program}) — that slot is now free.",
+  },
   ob_l_class: { TH: "คาบ", EN: "Class" },
   ob_l_channel: { TH: "ช่องทาง", EN: "Channel" },
   ob_ch_line: { TH: "LINE", EN: "LINE" },

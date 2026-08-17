@@ -283,6 +283,7 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
     : "";
   // TASK-135 (AC-1/AC-3): the confirmation names the session that was cancelled — date · time · teacher.
   const body = t("leave_ok_session", lang, {
+    name: b.student.name,
     date: b.date,
     time: hhmm(b.startTime),
     teacher: b.teacher?.nickname ?? "-",

@@ -49,6 +49,26 @@ describe("toCourseWithStudent — sport program (subject) derived from bookings 
     expect(toCourseWithStudent(base).subject).toBeNull();
     expect(toCourseWithStudent({ ...base, bookings: [] }).subject).toBeNull();
   });
+
+  // TASK-140 — the course's own column is the source of truth; the booking derivation is now only a fallback
+  // for rows that predate 0018's back-fill.
+  test("the course's own subject wins over the first booking's", () => {
+    const dto = toCourseWithStudent({
+      ...base,
+      subject: { id: "sub-course", name: "Surfskate" },
+      bookings: [{ subject: { id: "sub1", name: "Balance Bike" } }],
+    });
+    expect(dto.subject).toEqual({ id: "sub-course", name: "Surfskate" });
+  });
+
+  test("a course with no subject_id yet still derives from its booking (pre-0018 rows)", () => {
+    const dto = toCourseWithStudent({
+      ...base,
+      subject: null,
+      bookings: [{ subject: { id: "sub1", name: "Balance Bike" } }],
+    });
+    expect(dto.subject).toEqual({ id: "sub1", name: "Balance Bike" });
+  });
 });
 
 describe("toTeacherDTO — dangling teacher_subjects row (TASK-029, availability 500 fix)", () => {

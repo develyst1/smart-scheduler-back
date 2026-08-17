@@ -22,6 +22,8 @@ describe("resetSetting — true reset-to-default (TASK-122)", () => {
     expect(r).toEqual({
       key: "checkin_early_minutes",
       label: expect.any(String),
+      type: "number", // TASK-136: numeric rules keep their shape; `options` is null for them
+      options: null,
       unit: "minutes",
       value: 30, // the coded default
       default: 30,

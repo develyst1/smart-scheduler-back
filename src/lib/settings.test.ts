@@ -35,13 +35,23 @@ describe("resolveSetting — override-or-default-with-notice (TASK-101, AC #4)",
 });
 
 describe("registry shape (TASK-101)", () => {
-  test("exactly the two go-live keys, each with default/unit/label/parse", () => {
-    expect(Object.keys(SETTINGS).sort()).toEqual(["checkin_early_minutes", "teacher_change_notice_days"]);
+  // TASK-136 added the first non-numeric rule (`notify_on_leave`), so the shape check now covers both kinds.
+  test("the registered keys, each with type/default/unit/label/parse", () => {
+    expect(Object.keys(SETTINGS).sort()).toEqual([
+      "checkin_early_minutes",
+      "notify_on_leave",
+      "teacher_change_notice_days",
+    ]);
     for (const spec of Object.values(SETTINGS)) {
-      expect(spec.default).toBeInteger();
-      expect(["days", "minutes"]).toContain(spec.unit);
+      expect(["days", "minutes", "option"]).toContain(spec.unit);
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.parse).toBeFunction();
+      if (spec.type === "number") {
+        expect(spec.default).toBeInteger();
+      } else {
+        // an enum's default must be one of its options
+        expect([...(spec.options as readonly string[])]).toContain(String(spec.default));
+      }
     }
   });
 
