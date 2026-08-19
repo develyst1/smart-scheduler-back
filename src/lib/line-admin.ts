@@ -33,6 +33,17 @@ export async function addAdminLineUserId(lineUserId: string, exec: any = db): Pr
  *  worker can enrich the message with date/teacher/program — without it those fields render empty. */
 export async function notifyAdmins(payload: unknown, exec: any = db, bookingId?: string): Promise<void> {
   const ids = await getAdminLineUserIds(exec);
+  // TASK-152 (REQ-049 AC-4, found live on sid): with NO admin configured this loop simply never ran, so a leave
+  // produced **zero** outbox rows — no send, and no trace that a send was even due. That is the silent drop the
+  // AC exists to prevent; the teacher path has always written a visible SKIPPED row when there is no link, and
+  // the admin path now does the same. One row, so a mis-configured environment is loud instead of empty.
+  if (!ids.length) {
+    await enqueueLine(
+      { recipientType: "admin", recipientLineUserId: null, bookingId, payload, skipReason: "no admin recipient configured" },
+      exec,
+    );
+    return;
+  }
   for (const userId of ids) {
     await enqueueLine(
       { recipientType: "admin", recipientLineUserId: userId, bookingId, payload },

@@ -20,6 +20,8 @@ export async function enqueueLine(
     recipientLineUserId?: string | null;
     bookingId?: string;
     payload: unknown;
+    /** TASK-152: why this row was skipped, when the reason isn't simply "this recipient has no LINE link". */
+    skipReason?: string;
   },
   // pass a transaction to keep the outbox write atomic with the state change
   exec: any = db,
@@ -31,7 +33,7 @@ export async function enqueueLine(
       bookingId: opts.bookingId ?? null,
       payload: opts.payload as any,
       status: "SKIPPED",
-      error: "no line userId",
+      error: opts.skipReason ?? "no line userId",
     });
     return { channel: "line", status: "skipped", reason: "ผู้รับยังไม่ผูก LINE userId" };
   }

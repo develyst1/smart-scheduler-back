@@ -19,6 +19,8 @@ import {
 import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
+import { leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
+import { getSetting } from "./settings.service";
 import {
   formatDroppedPostback,
   formatInboundEvent,
@@ -325,6 +327,15 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
   try {
     result = await updateBookingStatus(b.id, "sick-leave", "แจ้งลาผ่าน LINE");
   } catch (e: any) {
+    // AC-7 finish (TASK-146 Q1, Sober's ruling): the service throws its message in Thai because it doesn't know
+    // the caller's language. For the cut-off refusal — the one a parent actually hits — re-render it bot-side in
+    // THEIR language, reusing the exported `leaveNoticeMessage` (no duplicated copy, no service signature
+    // change). Every other refusal still surfaces the server's own message, which beats the old silence.
+    if (e?.code === "LEAVE_NOTICE_TOO_LATE") {
+      const teacherType = b.teacher?.type;
+      const { value: cutoffHours } = await getSetting(leaveCutoffKey(teacherType ?? "FULL_TIME"));
+      return send(replyToken, [textReply(leaveNoticeMessage(cutoffHours, b.startTime, lang), lang)]);
+    }
     return send(replyToken, [textReply(e?.message ?? t("leave_err", lang), lang)]);
   }
   const locked = result.locked ? t("leave_lockline", lang) : "";
