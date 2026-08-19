@@ -18,7 +18,7 @@ import {
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
-import { childrenWithSessions, leaveSessionLabel, needsChildStep } from "../lib/line-leave";
+import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
 import {
   formatDroppedPostback,
   formatInboundEvent,
@@ -63,6 +63,7 @@ const KNOWN_POSTBACK_ACTIONS = new Set([
   "schedule",
   "calendar",
   "checkin",
+  "qr",
   "leave",
   "children",
   "register",
@@ -215,8 +216,7 @@ async function addStudentAndReply(
 }
 
 // ── Shared tap/keyword actions (reused by both the keyword branch and the postback branch) ──
-const bookingLabel = (b: { student: { name: string }; startTime: string }) =>
-  `${b.student.name} ${hhmm(b.startTime)}`;
+// (`bookingLabel` — name + time — retired by TASK-145: check-in, leave and qr now all use `sessionLabel`.)
 
 function parentActionItems(lang: Lang) {
   const mk = (labelKey: string, action: string) => ({
@@ -230,12 +230,51 @@ function doMenu(replyToken: string, lang: Lang) {
   return send(replyToken, [{ type: "text", text: t("menu_body", lang), quickReply: { items: parentActionItems(lang) } }]);
 }
 
+/** TASK-145 (AC-3): the check-in picker names the SESSION, like the leave one. Button labels are clamped to
+ *  LINE's 20 chars, so the full row also goes in the prompt body — otherwise the program is what gets cut. */
+function sessionPicker(
+  prompt: string,
+  action: "checkin" | "leave" | "qr",
+  rows: any[],
+  lang: Lang,
+  // check-in and qr have no "which child?" step (leave does), so their rows must still name the child —
+  // otherwise a two-child parent sees two times and can't tell whose is whose. That is Gap-A's whole point.
+  withChild = false,
+) {
+  const picks = rows.map((b) => ({
+    id: b.id,
+    label: withChild
+      ? `${b.student.nickname || b.student.name} · ${sessionLabel(b, lang)}`
+      : sessionLabel(b, lang),
+  }));
+  const body = [prompt, ...picks.map((p) => `· ${p.label}`)].join("\n");
+  return bookingPicker(body, action, picks, lang);
+}
+
 async function doCheckin(lineUserId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
   if (!today.length) return send(replyToken, [textReply(t("empty_checkin", lang), lang)]);
   if (today.length === 1) return doCheckinBooking(lineUserId, today[0]!.id, replyToken, date, lang);
-  const picks = today.map((b) => ({ id: b.id, label: bookingLabel(b) }));
-  return send(replyToken, [bookingPicker(t("pick_checkin", lang), "checkin", picks, lang)]);
+  return send(replyToken, [sessionPicker(t("pick_checkin", lang), "checkin", today, lang, true)]);
+}
+
+/** TASK-145 Gap-A: `qr` used to hand back `today[0]` — a multi-child parent could only ever reach their FIRST
+ *  child's check-in link. Same id-keyed picker as check-in when more than one is eligible. */
+async function doQr(lineUserId: string, replyToken: string, date: string, lang: Lang, bookingId?: string) {
+  const today = await findTodayBookingsForParent(lineUserId, date);
+  if (!today.length) return send(replyToken, [textReply(t("qr_none", lang), lang)]);
+  const chosen = bookingId ? today.find((x) => x.id === bookingId) : today.length === 1 ? today[0] : undefined;
+  if (!chosen) {
+    if (bookingId) return send(replyToken, [textReply(t("checkin_notfound", lang), lang)]); // not this parent's
+    return send(replyToken, [sessionPicker(t("pick_qr", lang), "qr", today, lang, true)]);
+  }
+  const qr = await getCheckinQr(chosen.id);
+  return send(replyToken, [
+    textReply(
+      t("qr_line", lang, { name: chosen.student.name, time: hhmm(chosen.startTime), url: qr.url, window: qr.window }),
+      lang,
+    ),
+  ]);
 }
 
 async function doCheckinBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
@@ -246,7 +285,14 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
   try {
     const result = await checkinByToken(qr.token);
     const key = result.already ? "checkin_already" : "checkin_ok";
-    return send(replyToken, [textReply(t(key, lang, { name: b.student.name, time: hhmm(b.startTime) }), lang)]);
+    // TASK-145 (AC-3): the confirmation names WHICH session was checked in, not just the child and the time.
+    const body = t(key, lang, {
+      name: b.student.name,
+      time: hhmm(b.startTime),
+      teacher: b.teacher?.nickname ?? "-",
+      program: b.subject?.name ?? "-",
+    });
+    return send(replyToken, [textReply(body, lang)]);
   } catch (e: any) {
     return send(replyToken, [textReply(e?.message ?? t("checkin_err", lang), lang)]);
   }
@@ -265,18 +311,22 @@ async function doLeave(lineUserId: string, replyToken: string, date: string, lan
     return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible), lang)]);
   }
   if (eligible.length === 1) return doLeaveBooking(lineUserId, eligible[0]!.id, replyToken, date, lang);
-  const picks = eligible.map((b) => ({ id: b.id, label: leaveSessionLabel(b, lang) }));
-  // The button label is clamped to LINE's 20 chars, so the full time · teacher · program also goes in the
-  // prompt body — otherwise the program is exactly what gets truncated away.
-  const prompt = [t("pick_leave", lang), ...picks.map((p) => `· ${p.label}`)].join("\n");
-  return send(replyToken, [bookingPicker(prompt, "leave", picks, lang)]);
+  return send(replyToken, [sessionPicker(t("pick_leave", lang), "leave", eligible, lang)]);
 }
 
 async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
   const b = today.find((x) => x.id === bookingId && x.status === "CONFIRMED"); // authorize + eligible
   if (!b) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
-  const result = await updateBookingStatus(b.id, "sick-leave", "แจ้งลาผ่าน LINE");
+  // TASK-146: a refusal (LEAVE_NOTICE_TOO_LATE from the cut-off, LEAVE_LOCKED, …) used to propagate out of
+  // this handler — the outer catch logged it and **the parent got no reply at all**. AC-7 wants them to read
+  // the reason, so the server's message is surfaced instead of silence.
+  let result;
+  try {
+    result = await updateBookingStatus(b.id, "sick-leave", "แจ้งลาผ่าน LINE");
+  } catch (e: any) {
+    return send(replyToken, [textReply(e?.message ?? t("leave_err", lang), lang)]);
+  }
   const locked = result.locked ? t("leave_lockline", lang) : "";
   const extended = result.extended
     ? t("leave_extline", lang, { date: result.extended.date, time: result.extended.startTime })
@@ -372,16 +422,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     return doChildren(lineUserId, replyToken, lang);
   }
 
-  if (["qr", "คิวอาร์"].includes(cmd)) {
-    const today = await findTodayBookingsForParent(lineUserId, date);
-    if (!today.length) return reply(replyToken, t("qr_none", lang));
-    const b = today[0]!;
-    const qr = await getCheckinQr(b.id);
-    return reply(
-      replyToken,
-      t("qr_line", lang, { name: b.student.name, time: hhmm(b.startTime), url: qr.url, window: qr.window }),
-    );
-  }
+  if (["qr", "คิวอาร์"].includes(cmd)) return doQr(lineUserId, replyToken, date, lang);
 
   if (["เช็คอิน", "checkin", "check-in"].includes(cmd)) return doCheckin(lineUserId, replyToken, date, lang);
 
@@ -549,6 +590,8 @@ async function handlePostback(ev: LineWebhookEvent) {
       return params.bookingId
         ? doLeaveBooking(lineUserId, params.bookingId, replyToken, date, lang)
         : doLeave(lineUserId, replyToken, date, lang, params.studentId); // studentId = the AC-3 child step
+    case "qr":
+      return doQr(lineUserId, replyToken, date, lang, params.bookingId);
     case "children":
       return doChildren(lineUserId, replyToken, lang);
     case "register":

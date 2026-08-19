@@ -204,6 +204,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "existing means the back-fill ran too. Whether NOT NULL landed is a deploy observation, not this witness.",
     rerunnable: true,
   },
+  {
+    tag: "0019_planned_at_creation",
+    probe: { kind: "column", table: "bookings", column: "planned_at_creation" },
+    why:
+      "0019 is a single `ADD COLUMN IF NOT EXISTS` — the column IS the migration, so there is no earlier object " +
+      "that could report it finished early, and nothing else creates `bookings.planned_at_creation` " +
+      "(TASK-148 / REQ-045: the flag that makes an absence declared at creation free of leave quota).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

@@ -9,7 +9,10 @@ describe("line-i18n (REQ-015 / TASK-039)", () => {
 
   test("interpolates {vars}", () => {
     expect(t("verify_teacher_notfound", "EN", { nick: "Mark" })).toContain("Mark");
-    expect(t("checkin_ok", "EN", { name: "A", time: "09:00" })).toBe("Checked in ✅\nA 09:00");
+    // TASK-145: the confirmation names the session too — child · time · teacher · program.
+    expect(t("checkin_ok", "EN", { name: "A", time: "09:00", teacher: "Kong", program: "Surfskate" })).toBe(
+      "Checked in ✅\nA · 09:00 · Kong · Surfskate",
+    );
     // nested/empty var slots resolve cleanly (leave line composed of other keys)
     expect(t("leave_ok", "EN", { name: "A", extended: "", locked: "" })).toBe("Leave recorded ✅ (A)");
   });

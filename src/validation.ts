@@ -131,6 +131,9 @@ export const createCoursePackage = z
     startDate: DATE,
     startTime: TIME,
     note: z.string().optional(),
+    // SPEC-049 / TASK-148 — weeks the family already knows they'll miss, declared at creation (1-based).
+    // Each becomes a free `SICK_LEAVE` (no quota) and the engine appends its make-up.
+    absentWeeks: z.array(z.number().int().min(1)).optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -151,6 +154,14 @@ export const createCoursePackage = z
   // for edits).
   .refine((d) => !d.sessions || d.sessions.every((s) => !s.subjectId || s.subjectId === d.subjectId), {
     message: "ทุกคาบในคอร์สต้องเป็นกิจกรรมเดียวกัน",
+  })
+  // TASK-148: an absent week must name a real week of THIS course, and the whole course can't be absent —
+  // that isn't a course, and it would ask the engine to append `size` make-ups past the ceiling.
+  .refine((d) => !d.absentWeeks || d.absentWeeks.every((w) => w <= d.size), {
+    message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส",
+  })
+  .refine((d) => !d.absentWeeks || new Set(d.absentWeeks).size < d.size, {
+    message: "ลาทุกสัปดาห์ไม่ได้ — ต้องมีคาบที่เรียนจริงอย่างน้อย 1 คาบ",
   });
 
 // TASK-095 — generate the editable `size`-row plan without writing (purchase-time preview).
@@ -160,6 +171,8 @@ export const previewCourse = z.object({
   size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
   startDate: DATE,
   startTime: TIME,
+  // TASK-148 — preview the plan WITH the declared absences, so what is shown is what gets saved (AC-2).
+  absentWeeks: z.array(z.number().int().min(1)).optional(),
 });
 
 // TASK-095 — free-teachers-and-clashes for a single slot.

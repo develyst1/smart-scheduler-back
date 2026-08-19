@@ -29,8 +29,8 @@ export const needsChildStep = (sessions: LeaveSession[]): boolean => childrenWit
 
 /** One session as the parent reads it: time · teacher · program. Used for the picker button (clamped by the
  *  reply layer to LINE's 20-char label limit) and, unclamped, in the prompt body. */
-export const leaveSessionLabel = (b: LeaveSession, lang: Lang): string =>
-  t("leave_pick_row", lang, {
+export const sessionLabel = (b: LeaveSession, lang: Lang): string =>
+  t("session_row", lang, {
     time: hhmm(b.startTime),
     teacher: b.teacher?.nickname ?? "-",
     program: b.subject?.name ?? "-",

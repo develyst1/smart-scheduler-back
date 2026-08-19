@@ -24,7 +24,7 @@ const clampLabel = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s);
  */
 export function bookingPicker(
   prompt: string,
-  action: "checkin" | "leave",
+  action: "checkin" | "leave" | "qr",
   bookings: Array<{ id: string; label: string }>,
   lang: Lang,
 ): LineMessage {

@@ -262,3 +262,74 @@ describe("deriveLiveEndDate — displayed end is derived from LIVE sessions (TAS
     expect(deriveLiveEndDate([])).toBeNull();
   });
 });
+
+// TASK-148 (SPEC-049 / REQ-045 B) — a course BORN with declared absences. The create path inserts those weeks
+// as SICK_LEAVE and then hands the course to this same engine, so what it decides here is what the family gets.
+describe("planCourseMoves — absences declared at course creation (TASK-148)", () => {
+  const row = (id: string, date: string, status: string, extendedFromId: string | null = null) => ({
+    id,
+    status,
+    date,
+    extendedFromId,
+    bookingType: "COURSE_PACKAGE" as const,
+  });
+
+  test("6-session course born with week 3 absent → exactly ONE make-up owed, keyed to that week", () => {
+    const plan = planCourseMoves(
+      [
+        row("b1", "2026-09-01", "PENDING"),
+        row("b2", "2026-09-08", "PENDING"),
+        row("b3", "2026-09-15", "SICK_LEAVE"), // declared at creation
+        row("b4", "2026-09-22", "PENDING"),
+        row("b5", "2026-09-29", "PENDING"),
+        row("b6", "2026-10-06", "PENDING"),
+      ],
+      6,
+    );
+    expect(plan.append).toHaveLength(1);
+    expect(plan.append[0]!.extendedFromId).toBe("b3");
+    expect(plan.cancelIds).toEqual([]);
+  });
+
+  test("two consecutive absent weeks → two make-ups (Q2: consecutive is allowed)", () => {
+    const plan = planCourseMoves(
+      [
+        row("b1", "2026-09-01", "PENDING"),
+        row("b2", "2026-09-08", "SICK_LEAVE"),
+        row("b3", "2026-09-15", "SICK_LEAVE"),
+        row("b4", "2026-09-22", "PENDING"),
+      ],
+      4,
+    );
+    expect(plan.append).toHaveLength(2);
+    expect(plan.append.map((a) => a.extendedFromId).sort()).toEqual(["b2", "b3"]);
+  });
+
+  test("once the make-ups exist the plan is settled — a re-run appends nothing (idempotent)", () => {
+    const plan = planCourseMoves(
+      [
+        row("b1", "2026-09-01", "PENDING"),
+        row("b2", "2026-09-08", "SICK_LEAVE"),
+        row("b3", "2026-09-15", "PENDING"),
+        row("b4", "2026-09-22", "PENDING"),
+        row("mk", "2026-09-29", "EXTENDED", "b2"),
+      ],
+      4,
+    );
+    expect(plan.append).toEqual([]);
+    expect(plan.cancelIds).toEqual([]);
+  });
+
+  test("no declared absence → nothing to append (AC-4: today's plan, unchanged)", () => {
+    const plan = planCourseMoves(
+      [
+        row("b1", "2026-09-01", "PENDING"),
+        row("b2", "2026-09-08", "PENDING"),
+        row("b3", "2026-09-15", "PENDING"),
+        row("b4", "2026-09-22", "PENDING"),
+      ],
+      4,
+    );
+    expect(plan).toEqual({ append: [], cancelIds: [] });
+  });
+});

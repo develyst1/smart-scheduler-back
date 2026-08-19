@@ -45,9 +45,9 @@ const TABLE: Record<string, Entry> = {
   pick_checkin: { TH: "เลือกคาบที่จะเช็คอิน 👇", EN: "Pick a class to check in 👇" },
   pick_leave: { TH: "เลือกคาบที่จะแจ้งลา 👇", EN: "Pick a class to report leave 👇" },
   empty_checkin: { TH: "วันนี้ไม่มีคาบที่พร้อมเช็คอิน", EN: "No class to check in today" },
-  // TASK-135 (REQ-046): leave is per SESSION — the picker has to say which one.
+  // TASK-135 (REQ-046) / TASK-145 (REQ-050): leave AND check-in are per SESSION — the pickers say which one.
   pick_leave_child: { TH: "ลาให้ใครคะ 👇", EN: "Which child? 👇" },
-  leave_pick_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
+  session_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
   empty_leave: { TH: "วันนี้ไม่มีคาบที่แจ้งลาได้", EN: "No class eligible for leave today" },
 
   children_title: { TH: "นักเรียนของคุณ", EN: "Your children" },
@@ -86,10 +86,19 @@ const TABLE: Record<string, Entry> = {
   add_generic_err: { TH: "ไม่สามารถเพิ่มนักเรียนได้", EN: "Couldn't add the student" },
   skip_done: { TH: "เรียบร้อยค่ะ ✅", EN: "All set ✅" },
 
-  checkin_ok: { TH: "เช็คอินสำเร็จ ✅\n{name} {time} น.", EN: "Checked in ✅\n{name} {time}" },
-  checkin_already: { TH: "เช็คอินแล้วก่อนหน้านี้\n{name} {time} น.", EN: "Already checked in\n{name} {time}" },
+  // TASK-145 (REQ-050 AC-3): the confirmation names the session — child · time · teacher · program.
+  checkin_ok: {
+    TH: "เช็คอินสำเร็จ ✅\n{name} · {time} น. · ครู{teacher} · {program}",
+    EN: "Checked in ✅\n{name} · {time} · {teacher} · {program}",
+  },
+  checkin_already: {
+    TH: "เช็คอินแล้วก่อนหน้านี้\n{name} · {time} น. · ครู{teacher} · {program}",
+    EN: "Already checked in\n{name} · {time} · {teacher} · {program}",
+  },
   checkin_notfound: { TH: "ไม่พบคาบที่เลือก", EN: "Class not found" },
   checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
+  // TASK-146: fallback when the leave refusal has no server message (mirrors `checkin_err`).
+  leave_err: { TH: "ไม่สามารถแจ้งลาได้ในขณะนี้", EN: "Can't record leave right now" },
 
   leave_ok: { TH: "แจ้งลาสำเร็จ ✅ ({name}){extended}{locked}", EN: "Leave recorded ✅ ({name}){extended}{locked}" },
   // TASK-135 (REQ-046) AC-1/AC-3: name the session that was cancelled, not just the student. Wording is the
@@ -164,6 +173,7 @@ const TABLE: Record<string, Entry> = {
 
   qr_line: { TH: "ลิงก์เช็คอิน {name} {time} น.\n{url}\n{window}", EN: "Check-in link for {name} {time}\n{url}\n{window}" },
   qr_none: { TH: "วันนี้ไม่มีคาบที่ยืนยันแล้ว", EN: "No confirmed class today" },
+  pick_qr: { TH: "รับลิงก์เช็คอินของคาบไหนคะ 👇", EN: "Which class do you want the check-in link for? 👇" },
 
   // Outbox push notifications (to teacher/admin) — formatOutboxMessage.
   ob_confirmed_title: { TH: "📅 ยืนยันตารางสอน", EN: "📅 Schedule confirmed" },

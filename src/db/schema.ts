@@ -326,6 +326,10 @@ export const bookings = pgTable(
     }),
     // For EXTENDED slots: which original sick-leave booking spawned this.
     extendedFromId: uuid("extended_from_id"),
+    // SPEC-049 / TASK-148 (REQ-045, owner decision B): this SICK_LEAVE was declared when the course was
+    // CREATED, so it is free — it must not consume leave quota. A flag, not a new status, so every existing
+    // status path (reconcile, holds, reports) is untouched. `0019`.
+    plannedAtCreation: boolean("planned_at_creation").notNull().default(false),
     // Conflict resolution (B.1). When this booking is overbooked, it goes
     // PENDING_RESCHEDULE: `incomingBookingId` = the new booking now holding this
     // slot (created with `pendingSlot=true`), `rescheduleTo` = where this booking

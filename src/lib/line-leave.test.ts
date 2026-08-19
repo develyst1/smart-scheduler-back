@@ -2,7 +2,7 @@
 // does the parent get a "which child?" step (AC-3/AC-5), and does one option actually identify its session
 // (AC-2). `updateBookingStatus` is untouched by this task, so nothing here asserts quota/extension.
 import { describe, expect, test } from "bun:test";
-import { childrenWithSessions, leaveSessionLabel, needsChildStep, type LeaveSession } from "./line-leave";
+import { childrenWithSessions, sessionLabel, needsChildStep, type LeaveSession } from "./line-leave";
 
 const session = (over: Partial<LeaveSession> & { id: string; studentId: string; startTime: string }): LeaveSession => ({
   student: { name: "น้องเอ" },
@@ -43,17 +43,17 @@ describe("needsChildStep / childrenWithSessions (AC-3, AC-5)", () => {
   });
 });
 
-describe("leaveSessionLabel (AC-2)", () => {
+describe("sessionLabel (AC-2)", () => {
   test("TH names time · teacher · program", () => {
-    expect(leaveSessionLabel(oneChildTwoSessions[0]!, "TH")).toBe("09:00 · ครูก้อง · Surfskate");
+    expect(sessionLabel(oneChildTwoSessions[0]!, "TH")).toBe("09:00 · ครูก้อง · Surfskate");
   });
 
   test("EN drops the ครู prefix, same fields", () => {
-    expect(leaveSessionLabel(oneChildTwoSessions[1]!, "EN")).toBe("11:00 · ก้อง · Bike");
+    expect(sessionLabel(oneChildTwoSessions[1]!, "EN")).toBe("11:00 · ก้อง · Bike");
   });
 
   test("a session with no teacher/subject row still renders (never a raw key or 'undefined')", () => {
     const bare = session({ id: "b9", studentId: "s9", startTime: "15:00:00", teacher: null, subject: null });
-    expect(leaveSessionLabel(bare, "TH")).toBe("15:00 · ครู- · -");
+    expect(sessionLabel(bare, "TH")).toBe("15:00 · ครู- · -");
   });
 });

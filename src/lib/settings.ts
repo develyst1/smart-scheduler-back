@@ -11,7 +11,7 @@ export interface SettingSpec {
    *  segmented control instead of a number input, so staff never see a `0|1` standing in for a decision. */
   type: "number" | "enum";
   default: number | string;
-  unit: "days" | "minutes" | "option";
+  unit: "days" | "minutes" | "hours" | "option";
   options?: readonly string[];
   label: string; // staff-facing (TH) — the Settings screen row
   /** Validate + coerce + bounds-check a raw value (from DB or an API body). `null` = malformed → caller falls back. */
@@ -52,6 +52,24 @@ export const SETTINGS = {
     unit: "minutes",
     label: "เปิดเช็คอินก่อนเริ่มคลาส (นาที)",
     parse: intInRange(0, 240),
+  },
+  // SPEC-048 / REQ-047 — the leave cut-off, per teacher type, editable by staff instead of hard-coded in
+  // `lib/leave-notice.ts` (was 60/60/120 minutes). PART_TIME deliberately shares the full-time rule.
+  leave_cutoff_hours_fulltime: {
+    key: "leave_cutoff_hours_fulltime",
+    type: "number",
+    default: 3,
+    unit: "hours",
+    label: "แจ้งลาล่วงหน้า — ครูประจำ/พาร์ทไทม์ (ชั่วโมง)",
+    parse: intInRange(0, 72),
+  },
+  leave_cutoff_hours_freelance: {
+    key: "leave_cutoff_hours_freelance",
+    type: "number",
+    default: 3,
+    unit: "hours",
+    label: "แจ้งลาล่วงหน้า — ครูฟรีแลนซ์ (ชั่วโมง)",
+    parse: intInRange(0, 72),
   },
   // SPEC-044 / REQ-049. Default `admin_only` = today's behaviour, so enabling the teacher push is a deliberate
   // opt-in and no real coach is messaged by an upgrade.

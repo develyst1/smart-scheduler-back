@@ -39,11 +39,13 @@ describe("registry shape (TASK-101)", () => {
   test("the registered keys, each with type/default/unit/label/parse", () => {
     expect(Object.keys(SETTINGS).sort()).toEqual([
       "checkin_early_minutes",
+      "leave_cutoff_hours_freelance", // TASK-146 (REQ-047) — the leave cut-off stopped being a constant
+      "leave_cutoff_hours_fulltime",
       "notify_on_leave",
       "teacher_change_notice_days",
     ]);
     for (const spec of Object.values(SETTINGS)) {
-      expect(["days", "minutes", "option"]).toContain(spec.unit);
+      expect(["days", "minutes", "hours", "option"]).toContain(spec.unit);
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.parse).toBeFunction();
       if (spec.type === "number") {
@@ -59,5 +61,29 @@ describe("registry shape (TASK-101)", () => {
     expect(isSettingKey("checkin_early_minutes")).toBe(true);
     expect(isSettingKey("leave_quota")).toBe(false); // deliberately deferred — not configurable yet
     expect(isSettingKey("__proto__")).toBe(false); // prototype-pollution safe
+  });
+});
+
+// TASK-146 (SPEC-048 / REQ-047) — the two leave cut-offs. The comparator is tested in `leave-notice.test.ts`;
+// what matters here is that the defaults are the REQ's 3 hours and that a junk override can't disable the rule.
+describe("leave cut-off settings (TASK-146)", () => {
+  test("both default to 3 hours, in hours", () => {
+    expect(resolveSetting("leave_cutoff_hours_fulltime", undefined)).toMatchObject({ value: 3, isDefault: true });
+    expect(resolveSetting("leave_cutoff_hours_freelance", null)).toMatchObject({ value: 3, isDefault: true });
+    expect(SETTINGS.leave_cutoff_hours_fulltime.unit).toBe("hours");
+  });
+
+  test("a staff edit is honoured, including 0 (bounds 0–72)", () => {
+    expect(resolveSetting("leave_cutoff_hours_freelance", 6)).toEqual({ value: 6, isDefault: false });
+    expect(resolveSetting("leave_cutoff_hours_fulltime", 0)).toEqual({ value: 0, isDefault: false });
+    expect(resolveSetting("leave_cutoff_hours_fulltime", 72)).toEqual({ value: 72, isDefault: false });
+  });
+
+  test("out-of-range / malformed → the 3h default with a reason, never 'no rule'", () => {
+    for (const bad of [73, -1, "soon", {}, 1.5]) {
+      const r = resolveSetting("leave_cutoff_hours_fulltime", bad);
+      expect(r.value).toBe(3);
+      expect(r.isDefault).toBe(true);
+    }
   });
 });

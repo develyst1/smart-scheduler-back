@@ -9,12 +9,14 @@ import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
+import { firstFreeWeeklySlot } from "../lib/extension-slot";
+import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
 import {
   COURSE_SUBJECT_LOCKED,
   COURSE_SUBJECT_LOCKED_MESSAGE,
   changesCourseSubject,
 } from "../lib/course-subject-lock";
-import { hasEnoughLeaveNotice, leaveNoticeMessage } from "../lib/leave-notice";
+import { hasEnoughLeaveNotice, leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
 import {
   hasEnoughTeacherChangeNotice,
   teacherChangeNoticeMessage,
@@ -782,7 +784,10 @@ async function insertBooking(
         startTime: input.startTime,
         endTime: addHour(input.startTime),
         bookingType: input.bookingType,
-        status: "PENDING",
+        // TASK-148: a course created with a week already marked absent inserts that row `SICK_LEAVE` +
+        // `plannedAtCreation` straight away. Everything else keeps the PENDING default.
+        status: input.status ?? "PENDING",
+        plannedAtCreation: input.plannedAtCreation ?? false,
         courseId: input.courseId ?? null,
         voucherId: input.voucherId ?? null,
         note: input.note ?? null,
@@ -1054,9 +1059,16 @@ export async function createCoursePackage(input: any) {
       throw badRequest("ทุกคาบในคอร์สต้องเป็นกิจกรรมเดียวกัน");
     }
 
-    for (const s of plannedSessions) {
+    // SPEC-049 / TASK-148 (REQ-045 B): weeks the family already knows they'll miss, declared at creation.
+    // 1-based week numbers against `plannedSessions`; each becomes a `SICK_LEAVE` row flagged
+    // `plannedAtCreation`, and the reconcile engine below appends the make-up so live sessions == size.
+    const absentWeeks = new Set<number>((input.absentWeeks ?? []) as number[]);
+
+    for (const [i, s] of plannedSessions.entries()) {
+      const absent = absentWeeks.has(i + 1);
       try {
         await insertBooking(tx, studentId, {
+          ...(absent ? { status: "SICK_LEAVE" as const, plannedAtCreation: true } : {}),
           teacherId: s.teacherId,
           subjectId: s.subjectId,
           date: s.date,
@@ -1071,6 +1083,13 @@ export async function createCoursePackage(input: any) {
         throw e;
       }
     }
+
+    // TASK-148: ONE behaviour — the same engine the plan editor uses appends the make-ups, so a course born
+    // with absences ends up with `size` live sessions and a later end date. It is also where the MAX_WEEK
+    // ceiling is enforced (`EXTENSION_CEILING`): if the declared absences push the course past its ceiling the
+    // whole create is refused with that reason and this transaction rolls back — nothing is trimmed silently.
+    // `leaveUsed` is deliberately NOT touched: an absence declared at creation is free (owner decision B).
+    if (absentWeeks.size) await reconcileCoursePlan(tx, course.id);
 
     const courseRow = await tx.query.coursePackages.findFirst({
       where: (c, { eq }) => eq(c.id, course.id),
@@ -1317,21 +1336,48 @@ export async function previewCoursePackage(input: {
   size: number;
   startDate: string;
   startTime: string;
+  absentWeeks?: number[];
 }) {
   if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
   const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, input.teacherId) });
   const subject = await db.query.subjects.findFirst({ where: (s, { eq }) => eq(s.id, input.subjectId) });
+  const absent = new Set(input.absentWeeks ?? []);
+  // TASK-148 (AC-1/AC-3): the preview shows the plan the family will actually get — each declared absence is
+  // marked and one make-up week is appended for it, so `n sessions · absent d · ends <date>` is readable
+  // before saving. Weeks are generated for `size + absences` so the live count still equals `size`.
+  const ref = { startTime: input.startTime, teacher: teacherRef(teacher), subject: subjectRef(subject) };
+  // The `size` booked weeks are the weekly chain — the save inserts them at exactly these dates (a clash there
+  // is refused, not shifted), so the preview shows them as-is.
+  const sessions = courseSessionDates(input.startDate, input.size).map((date, i) => ({
+    date,
+    ...ref,
+    absent: absent.has(i + 1),
+    makeup: false,
+  }));
+  // 🔴 TASK-148 rework (Q1(b)): each make-up is placed through the SAME availability-aware logic the save uses
+  // (`findFreeExtensionDate`), sequentially, with the dates placed so far treated as occupied. Placing them at
+  // naive weekly slots made the previewed **end date** wrong whenever the teacher's slot was taken — and the end
+  // date is the preview's headline (AC-1), so a wrong one defeats REQ-045's "create it right the first time".
+  const takenByThisPreview = new Set<string>();
+  let fromDate = sessions[sessions.length - 1]?.date ?? input.startDate;
+  for (let k = 0; k < absent.size; k++) {
+    const date = await findFreeExtensionDate(db, input.teacherId, input.startTime, fromDate, takenByThisPreview);
+    takenByThisPreview.add(date);
+    fromDate = date;
+    sessions.push({ date, ...ref, absent: false, makeup: true });
+  }
+  const live = sessions.filter((s) => !s.absent);
   return {
     size: input.size,
     startDate: input.startDate,
     startTime: input.startTime,
     expiryDate: courseExpiry(input.startDate, input.size), // the MAX_WEEK ceiling
-    sessions: courseSessionDates(input.startDate, input.size).map((date) => ({
-      date,
-      startTime: input.startTime,
-      teacher: teacherRef(teacher),
-      subject: subjectRef(subject),
-    })),
+    absentWeeks: [...absent].sort((a, b) => a - b),
+    liveCount: live.length,
+    endDate: live[live.length - 1]?.date ?? input.startDate,
+    // AC-3: the same ceiling the save enforces — the FE can refuse before the user commits.
+    exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, input.startDate, input.size)),
+    sessions,
   };
 }
 
@@ -1399,17 +1445,18 @@ async function findFreeExtensionDate(
   teacherId: string,
   startTime: string,
   fromDate: string,
+  // TASK-148 rework: dates already claimed by THIS run but not yet in the DB. The save doesn't need it (each
+  // insert is visible to the next query inside the tx); the preview does, because it writes nothing — without
+  // it two absences would both be placed in the same free week and the previewed end date would be too early.
+  alreadyTaken: ReadonlySet<string> = new Set(),
 ) {
-  let d = addDays(fromDate, 7);
-  for (let i = 0; i < 26; i++) {
-    const clash = await exec.query.bookings.findFirst({
+  return firstFreeWeeklySlot(fromDate, async (d) => {
+    if (alreadyTaken.has(d)) return true;
+    return !!(await exec.query.bookings.findFirst({
       where: (b: any, { and, eq, ne }: any) =>
         and(eq(b.teacherId, teacherId), eq(b.date, d), eq(b.startTime, startTime), ne(b.status, "CANCELLED")),
-    });
-    if (!clash) return d;
-    d = addDays(d, 7);
-  }
-  return d;
+    }));
+  });
 }
 
 /**
@@ -1575,8 +1622,13 @@ export async function applyPlanChange(
           const teacher = await tx.query.teachers.findFirst({
             where: (t: any, { eq }: any) => eq(t.id, b.teacherId),
           });
-          if (teacher && !hasEnoughLeaveNotice(b.date, b.startTime, teacher.type))
-            throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(teacher.type));
+          if (teacher) {
+            // SPEC-048 (TASK-146): the cut-off is a setting now — resolved at action time, inside this tx and
+            // inside the `!override` guard, so an admin cancel stays exempt (AC-5).
+            const { value: cutoffHours } = await getSetting(leaveCutoffKey(teacher.type), tx);
+            if (!hasEnoughLeaveNotice(b.date, b.startTime, cutoffHours))
+              throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(cutoffHours, b.startTime));
+          }
         }
         // A plain sick-leave over quota stays LOCKED (needs adminUnlocked / override); a PLANNED absence
         // bypasses the soft lock but is still MAX_WEEK-bound (enforced inside reconcileCoursePlan). SPEC §6.
@@ -1587,10 +1639,14 @@ export async function applyPlanChange(
           .update(bookings)
           .set({ status: "SICK_LEAVE", note: change.reason ?? b.note })
           .where(eq(bookings.id, b.id));
-        await tx
-          .update(coursePackages)
-          .set({ leaveUsed: course.leaveUsed + 1 })
-          .where(eq(coursePackages.id, courseId));
+        // TASK-148 (REQ-045 B): an absence DECLARED AT CREATION is free, so re-marking such a row must not
+        // start charging quota for it. Every other mark-absence — including a later planned one — consumes.
+        if (!b.plannedAtCreation) {
+          await tx
+            .update(coursePackages)
+            .set({ leaveUsed: course.leaveUsed + 1 })
+            .where(eq(coursePackages.id, courseId));
+        }
         const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
         return await finalize({ change: "mark-absence" as const, ...moves });
@@ -1770,6 +1826,24 @@ export async function updateBookingStatus(
         .update(bookings)
         .set({ status: "CANCELLED", note: cancelReason ?? current.note })
         .where(eq(bookings.id, id));
+      // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
+      // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs
+      // in the same transaction as the status change and the freelance reconcile, so the correction is atomic.
+      if (returnsConsumedUnit(current.status)) {
+        if (current.courseId && current.course) {
+          await tx
+            .update(coursePackages)
+            .set({ usedSessions: afterReturn(current.course.usedSessions) })
+            .where(eq(coursePackages.id, current.courseId));
+        }
+        if (current.voucherId && current.voucher) {
+          // A voucher has no make-up to re-owe — without this the family's hour is simply gone.
+          await tx
+            .update(vouchers)
+            .set({ usedHours: afterReturn(current.voucher.usedHours) })
+            .where(eq(vouchers.id, current.voucherId));
+        }
+      }
       // SPEC-028 §11.3 — EVERY course-session cancel is a reschedule, not a forfeit: re-owe a makeup so `current`
       // returns to `size` (only NO_SHOW consumes, and that's the no-show action, not this path). Was NOT wired into
       // cancel before TASK-105. The money hold releases below (CANCELLED is releasing); the makeup draws on its
@@ -1796,17 +1870,18 @@ export async function updateBookingStatus(
       // fixes the pre-existing admin double-notify. The tail reconcile below is idempotent by design.
       notification = { channel: "line", status: "skipped", reason: "คาบนี้แจ้งลาแล้ว" };
     } else if (action === "sick-leave") {
-      // Advance-notice rule (UC-029): leave must be requested early enough for the
-      // teacher's type (FT/PT ≥ 1h, FL ≥ 2h). Admin may override for special cases.
+      // Advance-notice rule (UC-029 + SPEC-048/TASK-146): leave must be requested early enough for the
+      // session's teacher type — now an editable setting (default 3h both), not a hard-coded 60/120 minutes.
+      // Admin may override for special cases, and the setting is not even read on that path (AC-5).
       if (!override) {
         const teacher = await tx.query.teachers.findFirst({
           where: (t, { eq }) => eq(t.id, current.teacherId),
         });
-        if (
-          teacher &&
-          !hasEnoughLeaveNotice(current.date, current.startTime, teacher.type)
-        ) {
-          throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(teacher.type));
+        if (teacher) {
+          const { value: cutoffHours } = await getSetting(leaveCutoffKey(teacher.type), tx);
+          if (!hasEnoughLeaveNotice(current.date, current.startTime, cutoffHours)) {
+            throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(cutoffHours, current.startTime));
+          }
         }
       }
 
@@ -1817,10 +1892,14 @@ export async function updateBookingStatus(
 
       if (current.courseId && current.course) {
         if (canTakeLeave(current.course)) {
-          await tx
-            .update(coursePackages)
-            .set({ leaveUsed: current.course.leaveUsed + 1 })
-            .where(eq(coursePackages.id, current.courseId));
+          // TASK-148 (REQ-045 B): a row born `plannedAtCreation` is a free absence — taking leave on it again
+          // must not start charging quota. A normal sick leave (the overwhelming case) is unaffected.
+          if (!current.plannedAtCreation) {
+            await tx
+              .update(coursePackages)
+              .set({ leaveUsed: current.course.leaveUsed + 1 })
+              .where(eq(coursePackages.id, current.courseId));
+          }
 
           const latest = await tx.query.bookings.findMany({
             where: (b, { and, eq, ne }) =>
