@@ -17,6 +17,7 @@ import { db } from "../db";
 import { boItem, boMovement } from "../db/schema";
 import { pgErrorCode } from "./http";
 import { SALE_SOURCE, isKnownSaleItem } from "./sale-items";
+import { discountMovement } from "./discount-plan";
 
 /**
  * The signed shape of a sale movement. Pure, and exported so the sign rule is tested rather than
@@ -48,7 +49,12 @@ export interface SalePostResult {
 export async function recordSale(
   externalRef: string,
   quantity: number,
-  opts: { refId?: string; idempotencyKey?: string } = {},
+  opts: {
+    refId?: string;
+    idempotencyKey?: string;
+    /** TASK-160: an ALREADY-VALIDATED discount (see `planDiscount`) to post alongside this sale. */
+    discount?: { discountMinor: number; reason: string; actor?: string | null };
+  } = {},
 ): Promise<SalePostResult> {
   const where = `ref=${externalRef} refId=${opts.refId ?? "-"}`;
 
@@ -92,6 +98,25 @@ export async function recordSale(
       refId: opts.refId ?? null,
       idempotencyKey: opts.idempotencyKey ?? null,
     });
+
+    // SPEC-059 / TASK-160 (REQ-063): the discount rides the SAME seam as the sale it reduces — same item, same
+    // refId — which is what makes it net its own sport in the revenue report (TASK-159) with no attribution
+    // special case. It is posted AFTER the list-price movement, which is left exactly as it was (AC-7).
+    //
+    // ⚠️ The amount was already validated and computed by the CALLER, before anything was written: an invalid
+    // discount must refuse the whole sale, and this function's first rule is that it can never fail a sale. So
+    // validation lives at the boundary and only the posting lives here.
+    if (opts.discount && opts.refId) {
+      await db.insert(boMovement).values({
+        itemId: item.id,
+        ...discountMovement({
+          refId: opts.refId,
+          discountMinor: opts.discount.discountMinor,
+          actor: opts.discount.actor ?? null,
+          reason: opts.discount.reason,
+        }),
+      });
+    }
     return { ok: true };
   } catch (e) {
     // Lost the race on the idempotency key → the other writer posted it. That IS the desired

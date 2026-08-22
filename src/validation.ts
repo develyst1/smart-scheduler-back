@@ -2,6 +2,15 @@ import { z } from "zod";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
 
+// TASK-160: declared early so the sale schemas below can reference it.
+export const discountInput = z.object({
+  kind: z.enum(["PERCENT", "BAHT"]),
+  /** PERCENT: 0–100. BAHT: minor units. The real bounds are re-checked against the price by `planDiscount` —
+   *  zod must not hold a second, drifting copy of a money rule. */
+  value: z.number(),
+  reason: z.string().trim().min(1, "ต้องระบุเหตุผลของส่วนลด"),
+});
+
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
 const ID = z.string().uuid();
@@ -92,6 +101,9 @@ export const createBooking = z
     note: z.string().optional(),
     // Optional badge value ids to tag the new booking (≤ 1 per badge type; enforced in service).
     badgeValueIds: z.array(ID).optional(),
+    // TASK-162 (REQ-063) — a discount on a TRIAL / SINGLE session: captured here (an admin is present at
+    // booking), posted by the day-end job (nobody is present then). Refused on any other booking type.
+    discount: discountInput.optional(),
   })
   // การจองแบบ Voucher ต้องผูกวอยเชอร์เสมอ (ไม่งั้นชั่วโมงจะไม่ถูกตัด)
   .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
@@ -134,6 +146,8 @@ export const createCoursePackage = z
     // SPEC-049 / TASK-148 — weeks the family already knows they'll miss, declared at creation (1-based).
     // Each becomes a free `SICK_LEAVE` (no quota) and the engine appends its make-up.
     absentWeeks: z.array(z.number().int().min(1)).optional(),
+    // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
+    discount: discountInput.optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -185,6 +199,8 @@ export const slotAvailabilityQuery = z.object({
 export const createVoucher = z.object({
   student: studentInput,
   totalHours: z.union([z.literal(5), z.literal(10), z.literal(15)]),
+  // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
+  discount: discountInput.optional(),
 });
 
 export const updateStatus = z.object({
@@ -481,12 +497,15 @@ export const extraSession = z.object({
 // SPEC-031 / TASK-108 — record an equipment rental. `code` ∈ the four rental codes; `hours` a positive int; `refId`
 // optional (present = session add-on, absent = standalone). The registry (`isRentalCode`) is the source of validity.
 export const recordRental = z.object({
+  // TASK-160: optional discount; validated against the LINE TOTAL (hours × rate) in the service.
   code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
   hours: z.coerce.number().int().positive("จำนวนชั่วโมงต้องมากกว่า 0").max(24),
   refId: z.string().uuid().optional(),
   // TASK-108 follow-up (owner Q2=both): a STANDALONE rental has no natural key, so the client supplies one per
   // action → a double-submit posts once (AC #4). Ignored when refId is present (that's already idempotent).
   idempotencyKey: z.string().min(1).max(200).optional(),
+  // TASK-160 (REQ-063) — validated against the LINE TOTAL (hours × rate) in the service, never the unit rate.
+  discount: discountInput.optional(),
 });
 
 export const importVoucher = z.object({

@@ -213,6 +213,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "(TASK-148 / REQ-045: the flag that makes an absence declared at creation free of leave quota).",
     rerunnable: true,
   },
+  {
+    tag: "0020_booking_discount",
+    probe: { kind: "constraint", constraint: "bookings_discount_kind_chk" },
+    why:
+      "The LAST object 0020 creates — after all four discount columns. Witnessing the CHECK rather than any one " +
+      "column is what makes a half-applied run detectable: the constraint only exists once every column it " +
+      "depends on has landed (TASK-162 / REQ-063).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

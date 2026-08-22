@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import * as v from "../validation";
+import { assertMayDiscount } from "../lib/discount-plan";
 import * as svc from "../services/scheduler.service";
 import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
@@ -146,15 +147,21 @@ export const api = new Hono()
   .post("/vouchers/import", zValidator("json", v.importVoucher), async (c) =>
     c.json(await svc.importVoucher(c.req.valid("json")), 201),
   )
-  .post("/courses", zValidator("json", v.createCoursePackage), async (c) =>
-    c.json(await svc.createCoursePackage(c.req.valid("json")), 201),
-  )
+  .post("/courses", zValidator("json", v.createCoursePackage), async (c) => {
+    const body = c.req.valid("json");
+    // TASK-160: only an admin may discount, and the actor comes from the TOKEN — never from the body, or
+    // "who authorised this" would be whatever the caller typed.
+    assertMayDiscount(body.discount, c.get("user"));
+    return c.json(await svc.createCoursePackage({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+  })
   .get("/vouchers", zValidator("query", v.vouchersQuery), async (c) =>
     c.json(await svc.listVouchersPaged(c.req.valid("query"))),
   )
-  .post("/vouchers", zValidator("json", v.createVoucher), async (c) =>
-    c.json(await svc.createVoucher(c.req.valid("json")), 201),
-  )
+  .post("/vouchers", zValidator("json", v.createVoucher), async (c) => {
+    const body = c.req.valid("json");
+    assertMayDiscount(body.discount, c.get("user"));
+    return c.json(await svc.createVoucher({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+  })
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
     c.json(await svc.getBookings(c.req.valid("query"))),
   )
@@ -163,9 +170,12 @@ export const api = new Hono()
   )
   // REQ-013: the SOM dashboard in ONE snapshot — no params, "today"/"this month" resolved server-side.
   .get("/reports/som", async (c) => c.json(await som.getSomReport()))
-  .post("/bookings", zValidator("json", v.createBooking), async (c) =>
-    c.json(await svc.createBooking(c.req.valid("json")), 201),
-  )
+  .post("/bookings", zValidator("json", v.createBooking), async (c) => {
+    const body = c.req.valid("json");
+    // TASK-162: same admin-only rule and same token-sourced actor as the at-sale discounts.
+    assertMayDiscount(body.discount, c.get("user"));
+    return c.json(await svc.createBooking({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+  })
   .post("/bookings/bulk-confirm", zValidator("json", v.bulkConfirm), async (c) =>
     c.json(await svc.bulkConfirm(c.req.valid("json").ids)),
   )
@@ -236,7 +246,9 @@ export const api = new Hono()
   )
   // ── Equipment rental as revenue (SPEC-031 / REQ-028) — the post IS the event, so the result is surfaced ──
   .post("/rentals", zValidator("json", v.recordRental), async (c) => {
-    const r = await rental.recordRental(c.req.valid("json"));
+    const body = c.req.valid("json");
+    assertMayDiscount(body.discount, c.get("user"));
+    const r = await rental.recordRental({ ...body, actor: c.get("user")?.sub ?? null });
     return c.json(r, r.status === "recorded" ? 201 : 200);
   })
   // ── Configurable business rules (SPEC-029 / REQ-031) ──

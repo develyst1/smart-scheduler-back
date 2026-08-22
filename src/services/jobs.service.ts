@@ -12,7 +12,8 @@ import { db } from "../db";
 import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
-import { revenueItemRef } from "../lib/sale-items";
+import { listPriceMinor, revenueItemRef } from "../lib/sale-items";
+import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
 
 export async function runEndOfDayJob(date?: string) {
@@ -68,7 +69,17 @@ export async function runEndOfDayJob(date?: string) {
   // here. Best-effort + idempotent (`rev:<bookingId>`): safe to re-run; skips if ops is off or the
   // INCOME item isn't seeded; never fails the job.
   const attended = await db
-    .select({ id: bookings.id, bookingType: bookings.bookingType, subjectId: bookings.subjectId })
+    .select({
+      id: bookings.id,
+      bookingType: bookings.bookingType,
+      subjectId: bookings.subjectId,
+      // TASK-162: the discount an admin authorised when this session was BOOKED. Posting is deferred to here;
+      // the decision and its author are not.
+      discountKind: bookings.discountKind,
+      discountValue: bookings.discountValue,
+      discountReason: bookings.discountReason,
+      discountActor: bookings.discountActor,
+    })
     .from(bookings)
     .where(
       and(
@@ -96,7 +107,18 @@ export async function runEndOfDayJob(date?: string) {
       continue;
     }
     // Amount defaults to quantity × the INCOME item's sale_price_minor (don't hardcode prices).
-    const res = await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}` });
+    // TASK-162 (REQ-063): re-validate the stored discount against the list price at POSTING time — the price
+    // could have changed between booking and day-end, and a stale amount must refuse rather than post a
+    // discount larger than the sale. Same `planDiscount` as the at-sale path; no second rule.
+    const discount = b.discountKind
+      ? safeStoredDiscount(
+          { kind: b.discountKind as "PERCENT" | "BAHT", value: b.discountValue ?? 0, reason: b.discountReason ?? "" },
+          listPriceMinor(ref) ?? 0,
+          b.discountActor,
+          b.id,
+        )
+      : undefined;
+    const res = await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}`, discount });
     if (res.ok) revenuePosted++;
   }
 

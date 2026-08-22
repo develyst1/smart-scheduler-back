@@ -330,6 +330,13 @@ export const bookings = pgTable(
     // CREATED, so it is free — it must not consume leave quota. A flag, not a new status, so every existing
     // status path (reconcile, holds, reports) is untouched. `0019`.
     plannedAtCreation: boolean("planned_at_creation").notNull().default(false),
+    // SPEC-059 / TASK-162 (REQ-063) `0020` — a discount CAPTURED here, POSTED at day-end. Trial/single revenue
+    // posts from the end-of-day job, when no admin is present to authorise anything; the admin is present at
+    // booking, so the decision and its author are recorded here and only the posting is deferred.
+    discountKind: text("discount_kind"),
+    discountValue: integer("discount_value"),
+    discountReason: text("discount_reason"),
+    discountActor: text("discount_actor"),
     // Conflict resolution (B.1). When this booking is overbooked, it goes
     // PENDING_RESCHEDULE: `incomingBookingId` = the new booking now holding this
     // slot (created with `pendingSlot=true`), `rescheduleTo` = where this booking

@@ -38,9 +38,12 @@ import {
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
+import { validateSaleDiscount } from "../lib/discount-plan";
 import {
   PRICES_ARE_VAT_INCLUSIVE,
   courseItemRef,
+  listPriceMinor,
+  revenueItemRef,
   isSellable,
   rentalPriceList,
   sellablePackages,
@@ -837,13 +840,47 @@ async function prepareVoucherBooking(exec: any, voucherId: string, date: string,
   if (!check.ok) throw badRequest(check.reason!);
 }
 
+/**
+ * TASK-162: validate a trial/single session's discount at BOOKING time and return the columns to store.
+ *
+ * The rule is the SAME `planDiscount` the at-sale path uses — one definition of a valid discount, so the two
+ * moments can never disagree. Only FIRST_TRIAL and SINGLE_SESSION reach day-end posting; a discount asked for
+ * on any other booking type is refused rather than silently stored and never applied.
+ */
+async function captureBookingDiscount(input: any) {
+  if (!input?.discount) return undefined;
+  if (input.bookingType !== "FIRST_TRIAL" && input.bookingType !== "SINGLE_SESSION") {
+    throw badRequest("ส่วนลดสำหรับคาบเดี่ยว/ทดลองเท่านั้น — คอร์สและบัตรให้ลดตอนขาย");
+  }
+  const priceGroup = await resolvePriceGroup(input.subjectId);
+  const ref = revenueItemRef(input.bookingType, priceGroup);
+  // No price ⇒ no line total ⇒ nothing a discount could be a percentage OF. Refuse rather than guess.
+  const lineTotalMinor = ref ? listPriceMinor(ref) : undefined;
+  const validated = validateSaleDiscount(input.discount, lineTotalMinor ?? 0, input.actor ?? null);
+  if (!validated) return undefined;
+  return {
+    discountKind: input.discount.kind,
+    discountValue: input.discount.value,
+    discountReason: validated.reason,
+    discountActor: validated.actor,
+  };
+}
+
 export async function createBooking(input: any) {
+  // SPEC-059 / TASK-162 (REQ-063): a trial/single session's revenue posts at DAY-END, when no admin is present.
+  // The admin is present HERE, so the discount is validated and captured now — against this booking's own line
+  // total (one hour at its program's rate) — and the day-end job only posts what was already authorised.
+  // Validated before the booking exists, so an invalid discount refuses the booking rather than storing junk.
+  const discountCapture = await captureBookingDiscount(input);
   return await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     if (input.bookingType === "VOUCHER" && input.voucherId) {
       await prepareVoucherBooking(tx, input.voucherId, input.date, studentId);
     }
     const id = await insertBooking(tx, studentId, input);
+    if (discountCapture) {
+      await tx.update(bookings).set(discountCapture).where(eq(bookings.id, id));
+    }
     if (input.badgeValueIds?.length) {
       await attachBookingBadges(tx, id, input.badgeValueIds);
     }
@@ -1028,6 +1065,15 @@ export async function createCoursePackage(input: any) {
   if (!isSellable(priceGroup, input.size)) {
     throw badRequest(`โปรแกรมนี้ไม่มีแพ็กเกจ ${input.size} ชั่วโมงตามราคาที่กำหนด`);
   }
+  // SPEC-059 / TASK-160 (REQ-063): validate the discount HERE — before the course, its bookings, or any money
+  // exists. An invalid discount must refuse the whole sale (refuse-never-clamp), and the only way to guarantee
+  // that is to fail before the first write, not to unwind afterwards. Validated against the LIST price of the
+  // exact item this sale will post to (AC-14: the line total, which for a course is one unit).
+  const discount = validateSaleDiscount(
+    input.discount,
+    listPriceMinor(courseItemRef(priceGroup, input.size)) ?? 0,
+    input.actor ?? null,
+  );
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
@@ -1119,6 +1165,7 @@ export async function createCoursePackage(input: any) {
   void recordSale(courseItemRef(priceGroup, input.size), 1, {
     refId: result.course.id,
     idempotencyKey: `course-sale:${result.course.id}`,
+    discount, // TASK-160 — validated at the top of this function, BEFORE the course was written
   });
 
   return result;
@@ -1415,6 +1462,12 @@ export async function listVouchersPaged(f: {
 export async function createVoucher(input: any) {
   if (!isVoucherHours(input.totalHours))
     throw badRequest("จำนวนชั่วโมงวอยเชอร์ต้องเป็น 5, 10 หรือ 15");
+  // TASK-160: validated before the voucher row exists — an invalid discount refuses the sale outright.
+  const discount = validateSaleDiscount(
+    input.discount,
+    listPriceMinor(voucherItemRef(input.totalHours)) ?? 0,
+    input.actor ?? null,
+  );
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     // TASK-058: a suspended household may not BUY. Inside the tx and BEFORE the insert, so the blocked sale
@@ -1439,6 +1492,7 @@ export async function createVoucher(input: any) {
   void recordSale(voucherItemRef(input.totalHours), 1, {
     refId: result.voucher.id,
     idempotencyKey: `voucher-sale:${result.voucher.id}`,
+    discount, // TASK-160 — validated before the voucher was written
   });
 
   return result;

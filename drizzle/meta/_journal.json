@@ -141,6 +141,13 @@
       "when": 1783000000015,
       "tag": "0019_planned_at_creation",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783000000016,
+      "tag": "0020_booking_discount",
+      "breakpoints": true
     }
   ]
 }

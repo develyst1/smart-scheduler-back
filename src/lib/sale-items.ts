@@ -213,3 +213,13 @@ export const sellablePackages = (): SellablePackage[] =>
 /** Can this (group, size) be sold at all? Derived from the catalogue — never a second list. */
 export const isSellable = (group: string | null | undefined, size: number): boolean =>
   !!group && sellablePackages().some((p) => p.priceGroup === group && p.size === size);
+
+/**
+ * The catalogue list price for a product code, in minor units — `undefined` for a code we don't sell.
+ *
+ * TASK-160 needs this to validate a discount against the LIST price *before* the sale is written (the stored
+ * `bo.item` price is only read at posting time, inside `recordSale`). Reading it from `SALE_ITEMS` keeps the
+ * catalogue the single source of truth — the same principle `isSellable` already rests on.
+ */
+export const listPriceMinor = (externalRef: string): number | undefined =>
+  SALE_ITEMS.find((i) => i.externalRef === externalRef)?.unitPriceMinor;
