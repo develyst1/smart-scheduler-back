@@ -122,9 +122,11 @@ describe("🔑 the catalogue IS the availability rule — no second list to drif
     for (const i of SALE_ITEMS) expect(i.unitPriceMinor).toBeGreaterThan(0);
   });
 
-  test("🔴 Onewheel has NO 10-hour package — no item, so the sale refuses loudly", () => {
-    expect(isSellable("onewheel", 10)).toBe(false);
-    expect(isKnownSaleItem(courseItemRef("onewheel", 10))).toBe(false);
+  // REQ-061 / TASK-158: the owner's card DOES carry an onewheel 10 h (11,900). This assertion — and the comment
+  // it mirrored in `sale-items.ts` — were wrong about the product, not merely out of date. Both corrected.
+  test("Onewheel 10 h EXISTS at 11,900 (REQ-061 correction)", () => {
+    expect(isSellable("onewheel", 10)).toBe(true);
+    expect(isKnownSaleItem(courseItemRef("onewheel", 10))).toBe(true);
   });
 
   test("🔴 Balance Play (either) has NO 4-hour package", () => {
@@ -161,10 +163,11 @@ describe("the card, transcribed — every figure from the owner's price list", (
     expect(priceOf(courseItemRef("bike-skate", 10))).toBe(THB(9790));
   });
 
-  test("onewheel 1 / 4 / 6 h = 1,690 / 5,790 / 7,990", () => {
+  test("onewheel 1 / 4 / 6 / 10 h = 1,690 / 5,790 / 7,900 / 11,900 (REQ-061: 6 h corrected, 10 h added)", () => {
     expect(priceOf(sessionItemRef("onewheel"))).toBe(THB(1690));
     expect(priceOf(courseItemRef("onewheel", 4))).toBe(THB(5790));
-    expect(priceOf(courseItemRef("onewheel", 6))).toBe(THB(7990));
+    expect(priceOf(courseItemRef("onewheel", 6))).toBe(THB(7900)); // was 7,990 — the card says 7,900
+    expect(priceOf(courseItemRef("onewheel", 10))).toBe(THB(11900));
   });
 
   test("balance-private 1 / 6 / 10 h = 1,390 / 7,490 / 11,390", () => {
@@ -222,15 +225,17 @@ describe("revenueItemRef — the day-end path is now program-priced too", () => 
 });
 
 describe("shape", () => {
-  test("12 program items + 3 vouchers + first trial + 4 rentals", () => {
+  test("13 program items + 3 vouchers + first trial + 4 rentals", () => {
     // 3 single-session rows (onewheel · balance-private · balance-group — bike/skate has no 1h rate)
-    // + 9 course rows (bike-skate 4/6/10 · onewheel 4/6 · balance-private 6/10 · balance-group 6/10).
+    // + 10 course rows (bike-skate 4/6/10 · onewheel 4/6/10 · balance-private 6/10 · balance-group 6/10) —
+    // onewheel 10 h added by REQ-061.
+
     const sessions = sellablePackages().filter((p) => p.size === 1);
     const courses = sellablePackages().filter((p) => p.size !== 1);
     expect(sessions).toHaveLength(3);
-    expect(courses).toHaveLength(9);
+    expect(courses).toHaveLength(10);
     // + TASK-108: the 4 equipment-rental codes.
-    expect(SALE_ITEMS).toHaveLength(12 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
+    expect(SALE_ITEMS).toHaveLength(13 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
   });
 
   test("every course size the DB allows is priced for at least one group", () => {

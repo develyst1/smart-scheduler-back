@@ -8,9 +8,11 @@
 // inherited. The subject → group mapping lives in `subjects.price_group` (data, not code) so the owner can
 // add a program without a deploy.
 //
-// ⚠️ **Availability is the catalogue, not a rule.** Onewheel has no 10 h and Balance Play has no 4 h, so
-// those items simply do not exist and `isKnownSaleItem` refuses them loudly. There is deliberately no
+// ⚠️ **Availability is the catalogue, not a rule.** Balance Play has no 4 h and bike/skate has no 1-hour rate,
+// so those items simply do not exist and `isKnownSaleItem` refuses them loudly. There is deliberately no
 // availability table to drift from this one.
+// (REQ-061 / TASK-158: this comment used to say "Onewheel has no 10 h" — it does, at 11,900. The line was
+// wrong, not just out of date, so it is corrected here rather than left to mislead the next reader.)
 //
 // Pure — no DB, no I/O.
 
@@ -53,13 +55,14 @@ const THB = (baht: number) => baht * 100; // satang
 
 /**
  * The owner's card, transcribed. `undefined` = **not offered** for that group — Onewheel has no 10 h,
- * Balance Play has no 4 h, and bike/skate has no single-hour rate (see the flagged question in the task).
+ * Balance Play has no 4 h, and bike/skate has no single-hour rate — there, a first single hour is 1st Trial.
  *
  * `1` is the single-session (`session-{group}`) row; 4/6/10 are course packages.
  */
 const CARD: Record<PriceGroup, Partial<Record<1 | 4 | 6 | 10, number>>> = {
   "bike-skate": { 4: THB(4790), 6: THB(6490), 10: THB(9790) },
-  onewheel: { 1: THB(1690), 4: THB(5790), 6: THB(7990) },
+  // REQ-061 / TASK-158: 6h corrected 7,990 → 7,900 and the missing 10h added, both from the owner's card.
+  onewheel: { 1: THB(1690), 4: THB(5790), 6: THB(7900), 10: THB(11900) },
   "balance-private": { 1: THB(1390), 6: THB(7490), 10: THB(11390) },
   "balance-group": { 1: THB(1090), 6: THB(5290), 10: THB(7790) },
 };
