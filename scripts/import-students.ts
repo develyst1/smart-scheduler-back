@@ -127,9 +127,10 @@ async function main() {
             name: p.name,
             nickname: p.nickname,
             note: p.note,
-            gender: child.row.gender || null,
+            // TASK-154: normalised on write — `Male`→`male`, `Thai`→`ไทย` — so every existing reader works.
+            gender: p.gender,
             birthDate: p.birthDate,
-            nationality: child.row.nationality || null,
+            nationality: p.nationality,
           },
           tx,
         );

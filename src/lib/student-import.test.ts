@@ -293,3 +293,44 @@ describe("per-batch self-check — an under-matched batch must be LOUD (TASK-150
     expect(checkBatchSize(rows, undefined, [rows[0]!]).ok).toBe(false);
   });
 });
+
+// ── TASK-154 (REQ-060 Part A) ───────────────────────────────────────────────────────────────────────────────
+// Demographics are normalised ON WRITE. The rule that matters most is the LAST one: normalising values must
+// never move a row between import / hold / yellow — the owner's four dry runs have to keep reading 3 · 47 · 55 · 6.
+describe("gender & nationality normalised on write (TASK-154)", () => {
+  test("the sheet's `Male`/`Thai` are stored as the product's `male`/`ไทย`", () => {
+    const c = classifyRow(row({ excelRow: 4, gender: "Male", nationality: "Thai" }), NONE);
+    expect(c.person?.gender).toBe("male");
+    expect(c.person?.nationality).toBe("ไทย");
+    expect(c.reasons).toEqual([]); // a clean row stays clean
+  });
+
+  test("a foreign nationality is kept verbatim", () => {
+    expect(classifyRow(row({ excelRow: 5, nationality: "Japan" }), NONE).person?.nationality).toBe("Japan");
+  });
+
+  test("a BLANK gender stores null and adds NO report line", () => {
+    const c = classifyRow(row({ excelRow: 6, gender: "" }), NONE);
+    expect(c.person?.gender).toBeNull();
+    expect(c.reasons.join()).not.toContain("เพศ");
+  });
+
+  test("an UNREADABLE gender stores null, reports the row, and the child still imports", () => {
+    const c = classifyRow(row({ excelRow: 7, gender: "?" }), NONE);
+    expect(c.state).toBe("import");
+    expect(c.person?.gender).toBeNull();
+    expect(c.reasons.join()).toContain("เพศไม่ชัดเจน");
+  });
+
+  test("🔑 importability is UNCHANGED — normalisation moves no row between states", () => {
+    const rows = [
+      row({ excelRow: 2, gender: "Male", nationality: "Thai" }), // clean
+      row({ excelRow: 3, gender: "?", nationality: "Japan" }), // unreadable gender, still imports
+      row({ excelRow: 4, gender: "", nationality: "" }), // blanks
+      row({ excelRow: 5, phone: "" }), // held for a real reason (no phone)
+      row({ excelRow: 6, name: "คุณแม่สมศรี" }), // held: parent row
+    ];
+    const { counts } = buildReport(rows.map((r) => classifyRow(r, new Set([7]))));
+    expect(counts).toEqual({ total: 5, imported: 3, held: 2, yellow: 0 });
+  });
+});

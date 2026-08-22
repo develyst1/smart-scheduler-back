@@ -7,6 +7,8 @@
 // cannot answer cleanly is HELD BACK with a reason rather than guessed — a wrong phone or a made-up birthday is
 // worse than a row the owner fixes by hand.
 
+import { normalizeGender, normalizeNationality, type Gender } from "./demographics";
+
 /** One sheet row, already split into columns. `excelRow` is the source row number — every report line carries it. */
 export interface RawRow {
   excelRow: number;
@@ -27,7 +29,16 @@ export interface Classified {
   /** Why it is held (or excluded). Empty for a clean importable row. */
   reasons: string[];
   /** Present only when state === "import". */
-  person?: { name: string; nickname: string | null; birthDate: string | null; phone: string; note: string };
+  person?: {
+    name: string;
+    nickname: string | null;
+    birthDate: string | null;
+    phone: string;
+    note: string;
+    // TASK-154: normalised on write, so no reader has to learn the sheet's spellings.
+    gender: Gender | null;
+    nationality: string | null;
+  };
   /** A row that is plainly a parent is never created as a student (AC-11) — it is reported for a human. */
   isParentRow: boolean;
 }
@@ -109,13 +120,27 @@ export function classifyRow(row: RawRow, yellowRows: ReadonlySet<number>): Class
   // still reported, so the owner can fill it in later (AC-10).
   const { birthDate, reason: dobReason } = parseImportDob(row.dob);
   if (dobReason) reasons.push(dobReason);
+  // TASK-154 (REQ-060 Part A): the sheet says `Male`/`Thai`; the product reads `male`/`ไทย`. Normalising HERE —
+  // on write — is why no reader has to change. Like the DOB, an unreadable value never holds the child back: it
+  // stores null and earns a report line. A blank is not reported (it is a legitimate "not recorded").
+  const gender = normalizeGender(row.gender);
+  const nationality = normalizeNationality(row.nationality);
+  if (gender.unreadable) reasons.push(`เพศไม่ชัดเจน (${gender.unreadable}) — บันทึกเป็นค่าว่าง`);
   const { name, nickname } = splitNameAndNickname(row.name);
   return {
     row,
     state: "import",
     reasons,
     isParentRow: false,
-    person: { name, nickname, birthDate, phone, note: buildNote(row) },
+    person: {
+      name,
+      nickname,
+      birthDate,
+      phone,
+      note: buildNote(row),
+      gender: gender.value,
+      nationality: nationality.value,
+    },
   };
 }
 

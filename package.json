@@ -23,7 +23,9 @@
     "db:seed-ledger": "bun run scripts/seed-ledger-from-schema.ts",
     "db:backup": "bun run scripts/backup.ts",
     "import:students": "bun run scripts/import-students.ts",
-    "db:reset": "bun run scripts/db-reset.ts"
+    "db:reset": "bun run scripts/db-reset.ts",
+    "subjects:add": "bun run scripts/add-subject.ts",
+    "teacher-subjects:link-all": "bun run scripts/link-all-teacher-subjects.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",
