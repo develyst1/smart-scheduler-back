@@ -222,6 +222,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "depends on has landed (TASK-162 / REQ-063).",
     rerunnable: true,
   },
+  {
+    tag: "0021_course_prior_sessions",
+    probe: { kind: "column", table: "course_packages", column: "prior_sessions" },
+    why:
+      "0021 is one `ADD COLUMN IF NOT EXISTS` followed by a back-fill UPDATE, both in one transaction — so the " +
+      "column existing means the back-fill ran too, and nothing else creates `course_packages.prior_sessions`. " +
+      "The UPDATE is guarded on `prior_sessions = 0`, so a re-run cannot compound it (TASK-165 / REQ-064).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

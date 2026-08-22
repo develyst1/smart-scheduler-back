@@ -148,6 +148,13 @@
       "when": 1783000000016,
       "tag": "0020_booking_discount",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783000000017,
+      "tag": "0021_course_prior_sessions",
+      "breakpoints": true
     }
   ]
 }

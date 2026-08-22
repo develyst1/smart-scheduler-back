@@ -9,6 +9,8 @@ import {
   isCoursePlanRow,
   isDelivered,
   planCourseMoves,
+  coursePlanSize,
+  withholdImportCancels,
   requiresCancelReason,
   type PlanSession,
 } from "./course-plan";
@@ -331,5 +333,161 @@ describe("planCourseMoves — absences declared at course creation (TASK-148)", 
       4,
     );
     expect(plan).toEqual({ append: [], cancelIds: [] });
+  });
+});
+
+// ═════ SPEC-060 / TASK-165 (REQ-064) — an imported course's plan is only the REMAINING sessions ═════
+//
+// The live defect: a course imported as "bought 10, taught 4 elsewhere" holds only the 6 remaining bookings,
+// and the reconciler measured those 6 against `size = 10`. One leave then produced FIVE sessions — the real
+// make-up plus four phantoms — on `uat`, where 16 of 17 courses are imports and every one is a real family.
+const s = (id: string, status: string, date: string, extendedFromId: string | null = null): PlanSession => ({
+  id,
+  status,
+  date,
+  extendedFromId,
+  bookingType: "COURSE_PACKAGE",
+});
+
+describe("coursePlanSize — the purchase and the schedule are two different numbers", () => {
+  test("an import's plan is size − priorSessions", () => {
+    expect(coursePlanSize({ size: 10, priorSessions: 4 })).toBe(6);
+  });
+
+  test("🔴 a SALE course is unchanged BY CONSTRUCTION — prior 0 ⇒ planSize === size", () => {
+    // This is the whole safety argument for the fix, so it is asserted rather than reasoned about.
+    for (const size of [4, 6, 10]) {
+      expect(coursePlanSize({ size, priorSessions: 0 })).toBe(size);
+      expect(coursePlanSize({ size })).toBe(size); // a row loaded before the migration reads as SALE
+      expect(coursePlanSize({ size, priorSessions: null })).toBe(size);
+    }
+  });
+
+  test("never negative — a nonsense import can't make the plan owe below zero", () => {
+    expect(coursePlanSize({ size: 4, priorSessions: 9 })).toBe(0);
+  });
+});
+
+describe("AC-1/AC-2 — the give-away is closed", () => {
+  test("🔴 imported 10/4, one leave ⇒ exactly ONE appended session, not five", () => {
+    const course = { size: 10, priorSessions: 4 };
+    const rows = [
+      s("b1", "ATTENDED", "2026-08-02"),
+      s("b2", "SICK_LEAVE", "2026-08-09"), // the leave
+      s("b3", "CONFIRMED", "2026-08-16"),
+      s("b4", "CONFIRMED", "2026-08-23"),
+      s("b5", "CONFIRMED", "2026-08-30"),
+      s("b6", "CONFIRMED", "2026-09-06"),
+    ];
+    const plan = planCourseMoves(rows, coursePlanSize(course));
+    expect(plan.append).toHaveLength(1);
+    expect(plan.append[0]!.extendedFromId).toBe("b2"); // linked to the leave it repays
+    expect(plan.cancelIds).toEqual([]);
+    // …and the old behaviour, kept here as the record of what the bug actually was:
+    expect(planCourseMoves(rows, course.size).append).toHaveLength(5);
+  });
+
+  test("AC-2 — that course owes nothing once the make-up is placed (planSize 6, current 6)", () => {
+    const course = { size: 10, priorSessions: 4 };
+    const rows = [
+      s("b1", "ATTENDED", "2026-08-02"),
+      s("b2", "SICK_LEAVE", "2026-08-09"),
+      s("b3", "CONFIRMED", "2026-08-16"),
+      s("b4", "CONFIRMED", "2026-08-23"),
+      s("b5", "CONFIRMED", "2026-08-30"),
+      s("b6", "CONFIRMED", "2026-09-06"),
+      s("b7", "EXTENDED", "2026-09-13", "b2"), // the make-up
+    ];
+    expect(Math.max(0, coursePlanSize(course) - courseCurrent(rows))).toBe(0);
+    expect(planCourseMoves(rows, coursePlanSize(course))).toEqual({ append: [], cancelIds: [] });
+  });
+
+  test("an untouched import is at target — reconciling it is a no-op (idempotent)", () => {
+    const rows = ["b1", "b2", "b3", "b4", "b5", "b6"].map((id, i) =>
+      s(id, "CONFIRMED", `2026-08-0${i + 2}`),
+    );
+    expect(planCourseMoves(rows, coursePlanSize({ size: 10, priorSessions: 4 }))).toEqual({
+      append: [],
+      cancelIds: [],
+    });
+  });
+});
+
+describe("🔴 AC-5 — the regression this fix is most likely to cause, asserted from every angle", () => {
+  // The trap Porter flagged: `size − usedSessions` looks like the same fix and would cancel a paying
+  // family's real future sessions after their third attendance. `priorSessions` is attendance-invariant,
+  // so no amount of attendance can move a SALE course's target.
+  const sale = { size: 10, priorSessions: 0 };
+  const full = [
+    s("b1", "ATTENDED", "2026-08-02"),
+    s("b2", "ATTENDED", "2026-08-09"),
+    s("b3", "ATTENDED", "2026-08-16"),
+    ...["b4", "b5", "b6", "b7", "b8", "b9", "b10"].map((id, i) => s(id, "CONFIRMED", `2026-09-0${i + 1}`)),
+  ];
+
+  test("SALE 10-session, 3 attended ⇒ appends NOTHING and cancels NOTHING", () => {
+    const plan = planCourseMoves(full, coursePlanSize(sale));
+    expect(plan.append).toEqual([]);
+    expect(plan.cancelIds).toEqual([]);
+  });
+
+  test("no number of attended sessions changes a SALE course's target", () => {
+    for (let attended = 0; attended <= 10; attended++) {
+      const rows = full.map((r, i) => (i < attended ? { ...r, status: "ATTENDED" } : r));
+      expect(planCourseMoves(rows, coursePlanSize(sale))).toEqual({ append: [], cancelIds: [] });
+    }
+  });
+
+  test("a SALE course's leave still earns its make-up (AC-6 — normal courses behave as today)", () => {
+    const rows = full.map((r) => (r.id === "b4" ? { ...r, status: "SICK_LEAVE" } : r));
+    const plan = planCourseMoves(rows, coursePlanSize(sale));
+    expect(plan.append).toHaveLength(1);
+    expect(plan.append[0]!.extendedFromId).toBe("b4");
+  });
+});
+
+describe("🔴 §6 cancel guard — a bug fix must not delete a child's lesson", () => {
+  const affected = [
+    ...["b1", "b2", "b3", "b4", "b5"].map((id, i) => s(id, "CONFIRMED", `2026-08-0${i + 2}`)),
+    s("b6", "SICK_LEAVE", "2026-08-09"),
+    // the four phantoms an earlier leave already produced, plus its real make-up
+    ...["p1", "p2", "p3", "p4", "m1"].map((id, i) => s(id, "EXTENDED", `2026-09-1${i}`, "b6")),
+  ];
+
+  test("an already-affected import reads as too long but NOTHING is cancelled", () => {
+    const raw = planCourseMoves(affected, coursePlanSize({ size: 10, priorSessions: 4 }));
+    expect(raw.cancelIds.length).toBeGreaterThan(0); // the planner would happily delete them…
+    const guarded = withholdImportCancels(raw, 4);
+    expect(guarded.cancelIds).toEqual([]); // …and the applier refuses to
+    expect(guarded.withheldCancelIds).toEqual(raw.cancelIds); // reported instead — TASK-166 / the owner
+    expect(guarded.append).toEqual(raw.append); // appends are untouched: the guard is not a kill switch
+  });
+
+  test("a SALE course's normal cancel path is untouched (prior 0 ⇒ pass-through)", () => {
+    const raw = { append: [], cancelIds: ["x1"] };
+    expect(withholdImportCancels(raw, 0)).toEqual({ append: [], cancelIds: ["x1"], withheldCancelIds: [] });
+  });
+
+  test("nothing to withhold is not reported as a withholding", () => {
+    expect(withholdImportCancels({ append: [], cancelIds: [] }, 4).withheldCancelIds).toEqual([]);
+  });
+});
+
+describe("canInsert on an imported course (the DTO and the API must agree)", () => {
+  test("a complete import offers no insert — and the old baseline wrongly did", () => {
+    const rows = ["b1", "b2", "b3", "b4", "b5", "b6"].map((id, i) =>
+      s(id, "CONFIRMED", `2026-08-0${i + 2}`),
+    );
+    expect(canInsert(rows, coursePlanSize({ size: 10, priorSessions: 4 }))).toBe(false);
+    expect(canInsert(rows, 10)).toBe(true); // what both sites did before this task
+  });
+
+  test("an import with an appended EXTENDED still allows the insert that nets it out", () => {
+    const rows = [
+      ...["b1", "b2", "b3", "b4", "b5"].map((id, i) => s(id, "CONFIRMED", `2026-08-0${i + 2}`)),
+      s("b6", "SICK_LEAVE", "2026-08-30"),
+      s("b7", "EXTENDED", "2026-09-06", "b6"),
+    ];
+    expect(canInsert(rows, coursePlanSize({ size: 10, priorSessions: 4 }))).toBe(true);
   });
 });

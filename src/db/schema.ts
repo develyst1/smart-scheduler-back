@@ -262,6 +262,11 @@ export const coursePackages = pgTable(
     // silently re-brand a course. Nullable in `0018` only so the back-fill can run; `0019` sets it NOT NULL.
     subjectId: uuid("subject_id").references(() => subjects.id),
     usedSessions: integer("used_sessions").notNull().default(0),
+    // SPEC-060 / TASK-165 (REQ-064): sessions taught BEFORE this course was imported — immutable, 0 for SALE.
+    // The plan is responsible for `size − priorSessions`; `size` stays the purchased size (quota/label/expiry).
+    // Deliberately NOT derived from `usedSessions`, which is a running count and stops being the import figure
+    // the moment anything is attended — the derivation that would cancel a paying family's future sessions.
+    priorSessions: integer("prior_sessions").notNull().default(0),
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
     startDate: date("start_date").notNull(),

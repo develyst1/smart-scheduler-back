@@ -72,7 +72,9 @@ import {
   exceedsExtensionCeiling,
   isCoursePlanRow,
   isDelivered,
+  coursePlanSize,
   planCourseMoves,
+  withholdImportCancels,
   requiresCancelReason,
   type PlanSession,
 } from "../lib/course-plan";
@@ -990,6 +992,10 @@ export async function importCoursePackage(input: any) {
         size: input.size,
         subjectId: input.subjectId, // TASK-140 — an import records its program too, or it would be the one
         usedSessions: input.usedSessions, // course left deriving it from a booking
+        // 🔴 TASK-165 (REQ-064): the SAME number as `usedSessions` today, but frozen. `usedSessions` will grow
+        // with every session attended from here; `priorSessions` is what the plan's size must always be measured
+        // against, so it is stored once and never touched again.
+        priorSessions: input.usedSessions,
         startDate: input.startDate,
         weekday: weekdayOf(input.startDate),
         startTime: input.startTime,
@@ -1267,14 +1273,16 @@ export async function getEntitlementPlan(id: string) {
       // SPEC-028 §12.1 — the FE disables Insert only when there's genuinely nothing to reschedule (a full course
       // with no appended EXTENDED). `owedCount==0` alone can't tell that from a post-absence course (owed 0 but an
       // EXTENDED present), so the DTO carries the real predicate. The BE still refuses the empty case (NO_OWED_SESSION).
-      insertable: canInsert(planSessions, course.size),
+      // TASK-165 (REQ-064): the PLAN's size, not the purchased size — an imported course only ever holds
+      // `size − priorSessions` sessions here. `summary.size` below stays the purchase, which is what the card shows.
+      insertable: canInsert(planSessions, coursePlanSize(course)),
       summary: {
         kind: "course" as const,
         size: course.size,
         leaveUsed: summary.leaveUsed,
         leaveQuota: summary.leaveQuota,
         maxWeek: summary.maxWeek,
-        owedCount: Math.max(0, course.size - current),
+        owedCount: Math.max(0, coursePlanSize(course) - current), // TASK-165 — plan size, not purchase size
         expiryDate: course.expiryDate, // the MAX_WEEK ceiling, not the live end
       },
     };
@@ -1550,7 +1558,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
     where: (b: any, { and, eq }: any) => and(eq(b.courseId, courseId), eq(b.bookingType, "COURSE_PACKAGE")),
   });
 
-  const plan = planCourseMoves(
+  const rawPlan = planCourseMoves(
     rows.map(
       (r: any): PlanSession => ({
         id: r.id,
@@ -1560,8 +1568,21 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         bookingType: r.bookingType,
       }),
     ),
-    course.size,
+    // 🔴 TASK-165 (REQ-064): `coursePlanSize`, not `course.size`. This one argument IS the defect — an imported
+    // 10/4 course holds 6 rows here, and measuring them against 10 made every leave append 4 phantom sessions
+    // on top of the real make-up. `size` remains the purchase everywhere it belongs (quota, label, expiry).
+    coursePlanSize(course),
   );
+
+  // SPEC-060 §6 — an already-affected import now reads as "too long"; those sessions are reported to the owner
+  // (TASK-166), never auto-cancelled. See `withholdImportCancels` for why this is scoped to imports only.
+  const plan = withholdImportCancels(rawPlan, course.priorSessions ?? 0);
+  if (plan.withheldCancelIds.length) {
+    console.warn(
+      `[course-plan] course ${courseId}: ${plan.withheldCancelIds.length} session(s) above the plan size were NOT ` +
+        `cancelled (imported course — the owner decides, see the TASK-166 audit).`,
+    );
+  }
 
   const cancelled: string[] = [];
   for (const id of plan.cancelIds) {
@@ -1737,7 +1758,10 @@ export async function applyPlanChange(
               extendedFromId: r.extendedFromId,
               bookingType: r.bookingType, // SPEC-033: a soft-linked extra must not read as an owed session
             })),
-            course.size,
+            // TASK-165 (REQ-064): a FOURTH site asking the same question — SPEC-060 names three. This is the
+            // server-side twin of the DTO's `insertable`; if the two disagreed, an imported course would offer
+            // an Insert the API then refuses (or hide one it would have allowed). Same number on both sides.
+            coursePlanSize(course),
           )
         ) {
           throw conflict("NO_OWED_SESSION", "คอร์สนี้ครบจำนวนคาบแล้ว — ไม่มีคาบค้างให้เลื่อน");

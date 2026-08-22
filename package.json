@@ -27,7 +27,8 @@
     "subjects:add": "bun run scripts/add-subject.ts",
     "teacher-subjects:link-all": "bun run scripts/link-all-teacher-subjects.ts",
     "demographics:repair": "bun run scripts/repair-demographics.ts",
-    "sale:reconcile-prices": "bun run scripts/reconcile-sale-prices.ts"
+    "sale:reconcile-prices": "bun run scripts/reconcile-sale-prices.ts",
+    "courses:audit-imports": "bun run scripts/audit-imported-courses.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

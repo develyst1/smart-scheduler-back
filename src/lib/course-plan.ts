@@ -121,3 +121,45 @@ export function planCourseMoves(allSessions: PlanSession[], size: number): Cours
     .map((s) => s.id);
   return { append: [], cancelIds };
 }
+
+/**
+ * SPEC-060 / TASK-165 (REQ-064) — **how many sessions this course's PLAN is responsible for.**
+ *
+ * An imported course was bought elsewhere and partly taught elsewhere: `size` is what the family paid for, but
+ * only `size − priorSessions` sessions were ever scheduled here (import deliberately creates no rows for the
+ * past ones — inventing them would put fictional attendance in the reports). Measuring that plan against `size`
+ * is what made one leave produce five sessions.
+ *
+ * 🔴 **Two different numbers, both correct, and they must not be confused:**
+ * - `size` — the PURCHASE. Leave quota, the card label and the expiry ceiling are all about what was bought,
+ *   and they are already right. This function must never be used for those.
+ * - `planSize` — the SCHEDULE. Only the reconciler, `owedCount` and `insertable` ask this question.
+ *
+ * A SALE course has `priorSessions = 0`, so `planSize === size` and nothing about today's behaviour changes.
+ * That is why the field is immutable and attendance-invariant rather than derived from `usedSessions`.
+ */
+export const coursePlanSize = (course: { size: number; priorSessions?: number | null }): number =>
+  Math.max(0, course.size - (course.priorSessions ?? 0));
+
+/**
+ * 🔴 SPEC-060 §6 — **the reconciler may not cancel an imported course's sessions to shrink it.**
+ *
+ * Some of the courses already live carry phantom sessions from a leave taken before this fix. Once `planSize`
+ * is correct they read as "too long", and `planCourseMoves` would dutifully cancel the excess — silently
+ * deleting sessions that families have been told about, as a side effect of a bug fix they never saw. Whether
+ * a real child's lesson disappears from the calendar is the owner's decision, so the cancels are **withheld
+ * and reported** (TASK-166), never applied.
+ *
+ * Scoped to imports (`priorSessions > 0`) so the normal cancel path — trimming an appended EXTENDED after a
+ * leave is undone — is untouched on every SALE course. An import could not shrink before this fix either (its
+ * baseline was always too big), so nothing that worked today stops working.
+ */
+export function withholdImportCancels(
+  plan: CoursePlan,
+  priorSessions: number,
+): CoursePlan & { withheldCancelIds: string[] } {
+  if (priorSessions <= 0 || plan.cancelIds.length === 0) {
+    return { ...plan, withheldCancelIds: [] };
+  }
+  return { append: plan.append, cancelIds: [], withheldCancelIds: plan.cancelIds };
+}
