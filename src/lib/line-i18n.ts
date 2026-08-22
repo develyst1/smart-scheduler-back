@@ -146,6 +146,11 @@ const TABLE: Record<string, Entry> = {
     TH: "การขายที่ยังไม่ลงบัญชี",
     EN: "Sales not posted to backoffice",
   },
+  // SPEC-059 / TASK-163 — a discount the admin promised that the day-end sale did not apply.
+  att_discount_not_applied: {
+    TH: "ส่วนลดที่ไม่ได้ถูกใช้ (ขายเต็มราคา)",
+    EN: "Discounts not applied (charged full price)",
+  },
   att_orphaned_sessions: {
     TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
     EN: "Future sessions with an unavailable teacher (archived / off that weekday)",

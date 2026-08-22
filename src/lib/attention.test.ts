@@ -10,6 +10,7 @@ import {
   isStudentIncomplete,
   isUnconfirmedSoon,
   isSaleUnposted,
+  isDiscountNotApplied,
   isVoucherExpiringSoon,
   isYesterdayNoShow,
   teacherNeedsLine,
@@ -125,12 +126,13 @@ describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole 
 });
 
 describe("registry — extensibility is one array entry", () => {
-  test("all ten checks are registered, with unique keys", () => {
+  test("all eleven checks are registered, with unique keys", () => {
     // 8th = sales_not_posted (TASK-067), 9th = pending_teacher_links (TASK-075), 10th = orphaned_sessions
-    // (SPEC-028 §7.5 / TASK-096). This count moving by exactly one per task, with nothing else in this
-    // describe block changing, IS the running evidence for SPEC-018's extensibility claim.
-    expect(ATTENTION_CHECKS).toHaveLength(10);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(10);
+    // (SPEC-028 §7.5 / TASK-096), 11th = discount_not_applied (SPEC-059 / TASK-163). This count moving by
+    // exactly one per task, with nothing else in this describe block changing, IS the running evidence for
+    // SPEC-018's extensibility claim.
+    expect(ATTENTION_CHECKS).toHaveLength(11);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(11);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {
@@ -223,5 +225,55 @@ describe("buildDigestMessage — one message, privacy-respecting", () => {
     const en = buildDigestMessage([{ key: "freelance_near_cap", count: null, items: [] }], "EN");
     expect(en).toContain("check failed");
     expect(en).toContain("Freelance budgets near their cap");
+  });
+});
+
+// ───────────── SPEC-059 / TASK-163 — the dropped discount becomes visible (REQ-063) ─────────────
+//
+// `safeStoredDiscount` already refuses to post a discount that no longer holds and shouts about it. These
+// tests are about the half that matters to a customer: that the shout reaches a human. Every case below is
+// stated as "what the admin promised vs what the customer was actually charged".
+describe("discount_not_applied (TASK-163)", () => {
+  const POSTED = new Set(["b-posted", "b-dropped", "b-plain"]);
+  const DISCOUNTED = new Set(["b-posted"]);
+
+  test("🔴 sale posted, discount stored, no DISCOUNT movement ⇒ FLAGGED", () => {
+    // The whole point: the family was promised a discount and paid full price. Nothing else in the system
+    // says so out loud.
+    expect(isDiscountNotApplied({ id: "b-dropped", discountKind: "BAHT" }, POSTED, DISCOUNTED)).toBe(true);
+  });
+
+  test("discount stored AND applied ⇒ not flagged", () => {
+    expect(isDiscountNotApplied({ id: "b-posted", discountKind: "PERCENT" }, POSTED, DISCOUNTED)).toBe(false);
+  });
+
+  test("no discount was ever promised ⇒ not flagged (AC-7 bookings stay silent)", () => {
+    expect(isDiscountNotApplied({ id: "b-plain", discountKind: null }, POSTED, DISCOUNTED)).toBe(false);
+    expect(isDiscountNotApplied({ id: "b-plain" }, POSTED, DISCOUNTED)).toBe(false);
+  });
+
+  test("🔴 sale has NOT posted yet ⇒ NOT flagged, even with a discount stored", () => {
+    // Today's discounted trial, before the day-end job runs, is the common case — flagging it would fire
+    // every single day and train everyone to ignore this line. If the sale itself never posts, that is
+    // `sales_not_posted`'s job, and reporting one fault twice is how a digest becomes noise.
+    expect(isDiscountNotApplied({ id: "b-tonight", discountKind: "PERCENT" }, POSTED, DISCOUNTED)).toBe(false);
+  });
+
+  test("a discount movement without its sale can never flag (both sets are consulted, not one)", () => {
+    // Guards the predicate against being simplified to "stored but not discounted" later.
+    expect(isDiscountNotApplied({ id: "b-odd", discountKind: "BAHT" }, new Set(), new Set(["b-odd"]))).toBe(false);
+  });
+
+  test("a healthy day reports zero — that is what a working detector looks like", () => {
+    const rows = [
+      { id: "b-posted", discountKind: "PERCENT" },
+      { id: "b-plain", discountKind: null },
+    ];
+    expect(rows.filter((b) => isDiscountNotApplied(b, POSTED, DISCOUNTED))).toHaveLength(0);
+  });
+
+  test("counts-only in the digest — it is an ops fault, not a person", () => {
+    const check = ATTENTION_CHECKS.find((c) => c.key === "discount_not_applied")!;
+    expect(check.namesPeopleInDigest).toBeUndefined();
   });
 });

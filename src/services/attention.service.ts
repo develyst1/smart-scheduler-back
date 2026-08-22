@@ -44,6 +44,8 @@ function buildCtx(today: string): AttentionCtx {
   let salesState: Promise<{
     sold: Array<{ id: string; label: string }>;
     postedRefIds: Set<string>;
+    storedDiscounts: Array<{ id: string; label: string; discountKind: string | null }>;
+    discountedRefIds: Set<string>;
   }> | null = null;
   let pendingLinks: Promise<number> | null = null;
   let orphaned: Promise<Array<{ booking: any; teacher: any }>> | null = null;
@@ -114,7 +116,7 @@ function buildCtx(today: string): AttentionCtx {
                 ),
             }),
             db
-              .select({ refId: boMovement.refId })
+              .select({ refId: boMovement.refId, reason: boMovement.reason })
               .from(boMovement)
               .where(eq(boMovement.refType, "SALE")),
           ]);
@@ -127,6 +129,22 @@ function buildCtx(today: string): AttentionCtx {
             ],
             postedRefIds: new Set(
               movements.map((m) => m.refId).filter((r): r is string => r !== null),
+            ),
+            // TASK-163 — same load, two more facts. `bookingRows` already IS the in-window ATTENDED
+            // trial/single set, so the dropped-discount check costs no extra query: filter it to the ones
+            // that stored a discount, and separate the DISCOUNT movements from the SALE ones.
+            storedDiscounts: bookingRows
+              .filter((b) => b.discountKind !== null)
+              .map((b) => ({
+                id: b.id,
+                label: `${b.bookingType} ${b.date}`,
+                discountKind: b.discountKind,
+              })),
+            discountedRefIds: new Set(
+              movements
+                .filter((m) => m.reason === "DISCOUNT")
+                .map((m) => m.refId)
+                .filter((r): r is string => r !== null),
             ),
           };
         })()),

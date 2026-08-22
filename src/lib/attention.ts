@@ -95,6 +95,26 @@ export const isVoucherExpiringSoon = (
 export const isSaleUnposted = (sale: { id: string }, postedRefIds: Set<string>): boolean =>
   !postedRefIds.has(sale.id);
 
+/**
+ * SPEC-059 / TASK-163 (REQ-063) — a **dropped discount**: the day-end sale posted, the booking still carries the
+ * `discount_*` the admin promised, and no DISCOUNT movement ever landed on that refId.
+ *
+ * That is exactly what `safeStoredDiscount` does when the catalogue price moved between the promise and the
+ * posting: it drops the discount and shouts. **A `console.error` is only read by someone already looking**, and
+ * the customer has by then been charged the full price for a session someone told them would be cheaper. This
+ * puts it in front of the person who opens the digest every morning.
+ *
+ * 🔴 **`postedRefIds.has(b.id)` is load-bearing, not a tidy-up.** Without it, every trial booked with a discount
+ * whose day-end has simply not run yet would be flagged — including today's, every day. That is a detector that
+ * cries wolf, and `sales_not_posted` already owns the "sale never posted" case. This check only fires once the
+ * sale is a settled fact and the discount is provably missing from it.
+ */
+export const isDiscountNotApplied = (
+  b: { id: string; discountKind?: string | null },
+  postedRefIds: Set<string>,
+  discountedRefIds: Set<string>,
+): boolean => !!b.discountKind && postedRefIds.has(b.id) && !discountedRefIds.has(b.id);
+
 /** Course still active and expiring soon. */
 export const isCourseExpiringSoon = (
   c: { size: number; usedSessions: number; expiryDate: string },
@@ -150,9 +170,15 @@ export interface AttentionCtx {
     /** Future bookings (date >= today) with their teacher joined — for the orphaned-session check (TASK-096). */
     orphanedCandidates: () => Promise<Array<{ booking: any; teacher: any }>>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
+    /**
+     * TASK-163 — the two extra facts the dropped-discount check needs, from the same load: the in-window
+     * bookings that stored a discount, and the refIds a DISCOUNT movement actually reached.
+     */
     salesPostingState: () => Promise<{
       sold: Array<{ id: string; label: string }>;
       postedRefIds: Set<string>;
+      storedDiscounts: Array<{ id: string; label: string; discountKind: string | null }>;
+      discountedRefIds: Set<string>;
     }>;
   };
 }
@@ -287,6 +313,19 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
       const { sold, postedRefIds } = await ctx.load.salesPostingState();
       const rows = sold.filter((s) => isSaleUnposted(s, postedRefIds));
       return { count: rows.length, items: rows.map((s) => ({ id: s.id, label: s.label })) };
+    },
+  },
+  {
+    // SPEC-059 / TASK-163 (REQ-063) — the visibility half of `safeStoredDiscount`'s drop-and-log. A discount
+    // that was promised, stored, and then silently not applied is a customer charged more than they were told;
+    // the log line that records it is read by nobody. Counts-only in the digest for the same reason as
+    // `sales_not_posted` — it is an ops fault, not a person — and the panel names which bookings, behind login.
+    key: "discount_not_applied",
+    titleKey: "att_discount_not_applied",
+    run: async (ctx) => {
+      const { postedRefIds, storedDiscounts, discountedRefIds } = await ctx.load.salesPostingState();
+      const rows = storedDiscounts.filter((b) => isDiscountNotApplied(b, postedRefIds, discountedRefIds));
+      return { count: rows.length, items: rows.map((b) => ({ id: b.id, label: b.label })) };
     },
   },
   {

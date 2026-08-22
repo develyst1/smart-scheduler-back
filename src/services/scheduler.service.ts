@@ -47,6 +47,8 @@ import {
   isSellable,
   rentalPriceList,
   sellablePackages,
+  voucherPriceList,
+  FIRST_TRIAL_MINOR,
   voucherAllowedGroups,
   voucherAllowsProgram,
   voucherItemRef,
@@ -945,6 +947,11 @@ export async function getSellablePackages() {
     voucherAllowedGroups: voucherAllowedGroups(),
     // SPEC-031 / TASK-123 — rental prices (code + VAT-incl priceMinor) from the one authority; FE owns the labels.
     rentalItems: rentalPriceList(),
+    // SPEC-059 / TASK-164 — the last two prices the discount form needs. Vouchers are hour buckets (not
+    // program-priced), and 1st Trial is one flat price, so neither appears in `packages` above — which is
+    // exactly why the FE could not show "ราคาเต็ม" for them without hardcoding a second copy of the card.
+    voucherItems: voucherPriceList(),
+    firstTrialPriceMinor: FIRST_TRIAL_MINOR,
   };
 }
 

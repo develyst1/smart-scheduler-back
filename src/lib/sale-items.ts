@@ -77,6 +77,12 @@ const VOUCHER_PRICE: Record<(typeof VOUCHER_HOURS)[number], number> = {
   15: THB(13500),
 };
 
+/** SPEC-059 / TASK-164 — the voucher price card for the FE (hours + VAT-incl `priceMinor`), mirroring
+ *  `rentalPriceList`. Derived from the one authority `VOUCHER_PRICE`, so the discount form's "ราคาเต็ม" can
+ *  never become a second copy of the card that drifts from what the sale actually posts. */
+export const voucherPriceList = (): { hours: (typeof VOUCHER_HOURS)[number]; priceMinor: number }[] =>
+  VOUCHER_HOURS.map((hours) => ({ hours, priceMinor: VOUCHER_PRICE[hours] }));
+
 /** One price, all ages, not program-specific (unchanged by TASK-077). */
 export const FIRST_TRIAL_MINOR = THB(1390);
 

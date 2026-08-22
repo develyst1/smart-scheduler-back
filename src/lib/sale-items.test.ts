@@ -21,6 +21,8 @@ import {
   rentalIdBase,
   rentalIdempotencyKey,
   rentalPriceList,
+  voucherPriceList,
+  listPriceMinor,
   revenueItemRef,
   sellablePackages,
   sessionItemRef,
@@ -242,5 +244,36 @@ describe("shape", () => {
     for (const size of COURSE_SIZES) {
       expect(PRICE_GROUPS.some((g) => isSellable(g, size))).toBe(true);
     }
+  });
+});
+
+// ─────────────── SPEC-059 / TASK-164 — the last two prices the discount form needs ───────────────
+//
+// The point of these tests is NOT that the numbers are 6000/10500/13500 — it is that the number the FE shows
+// as "ราคาเต็ม" and the number `recordSale` posts are **the same number**. A voucher price list that agreed
+// with the card on the day it was written and drifted later is precisely the failure TASK-123 exists to
+// prevent, and a discount computed off a stale full price is wrong money, not a wrong label.
+describe("voucher + 1st-Trial price exposure (TASK-164)", () => {
+  test("voucherPriceList covers exactly the three hour buckets, in order", () => {
+    expect(voucherPriceList().map((v) => v.hours)).toEqual([...VOUCHER_HOURS]);
+  });
+
+  test("🔴 every exposed voucher price IS the price its own sale item posts", () => {
+    for (const { hours, priceMinor } of voucherPriceList()) {
+      expect(listPriceMinor(voucherItemRef(hours))).toBe(priceMinor);
+    }
+  });
+
+  test("🔴 the exposed 1st-Trial price IS the price the `first-trial` item posts", () => {
+    // `firstTrialPriceMinor` on the endpoint is this constant; if the seed ever stopped deriving from it,
+    // the form would quote one price while the day-end sale posted another.
+    expect(listPriceMinor("first-trial")).toBe(FIRST_TRIAL_MINOR);
+  });
+
+  test("prices are VAT-inclusive minor units, never zero", () => {
+    // A zero would sail through the discount rule (any discount ≥ full price is refused) as "everything is
+    // refused", which reads as a broken form rather than a missing price. Pin it here instead.
+    for (const { priceMinor } of voucherPriceList()) expect(priceMinor).toBeGreaterThan(0);
+    expect(FIRST_TRIAL_MINOR).toBeGreaterThan(0);
   });
 });
