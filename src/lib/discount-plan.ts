@@ -14,7 +14,16 @@ export type DiscountKind = "PERCENT" | "BAHT";
 
 export interface DiscountInput {
   kind: DiscountKind;
-  /** PERCENT: 0–100. BAHT: **minor units** (satang), like every other money value in this codebase. */
+  /**
+   * 🔴 A **human number**, both kinds — PERCENT: 0–100. BAHT: **whole baht** (not satang), converted to minor
+   * units inside `planDiscount`.
+   *
+   * This comment used to say "minor units (satang), like every other money value in this codebase" — and that
+   * consistency argument is exactly what made the bug survive review (TASK-168 / Tanya's find). Staff type baht
+   * into the field: `391` meant ฿391, arrived as 391 satang, and posted ฿3.91 off with nothing to refuse it.
+   * The value that a person types is the one thing in this file that is NOT in minor units, and the two halves
+   * of one control must not disagree about that: percent already takes a human number, so baht does too.
+   */
   value: number;
   /** 🔴 The LINE TOTAL, not the unit price. A rental posts `qty = hours`, so its line is `hours × rate` — a ฿500
    *  discount on a 3-hour ฿600 rental is valid, and validating it against the ฿200 rate would wrongly refuse. */
@@ -29,6 +38,10 @@ export interface DiscountPlan {
   discountMinor: number;
   problems: string[];
 }
+
+/** Baht → satang. Named rather than inline `* 100` so the one place the human unit meets the money unit is
+ *  greppable (TASK-168: it was missing here, and every layer agreed with the mistake). */
+export const bahtToMinor = (baht: number): number => baht * 100;
 
 /** Round half-up on minor units — stated explicitly so 10% of 7,905 is 791 (not 790) every time, everywhere. */
 export const percentOf = (fullMinor: number, pct: number): number => Math.round((fullMinor * pct) / 100);
@@ -46,8 +59,10 @@ export function planDiscount(input: DiscountInput): DiscountPlan {
     if (!(input.value > 0 && input.value <= 100)) problems.push("ส่วนลดเป็นเปอร์เซ็นต์ต้องอยู่ระหว่าง 0–100");
     else discountMinor = percentOf(input.fullMinor, input.value);
   } else if (input.kind === "BAHT") {
+    // Whole baht — a satang-precision discount is not a thing anyone types, and allowing 391.5 would reintroduce
+    // the rounding question this file answers once.
     if (!Number.isInteger(input.value) || input.value <= 0) problems.push("ส่วนลดเป็นบาทต้องเป็นจำนวนเต็มบวก");
-    else discountMinor = input.value;
+    else discountMinor = bahtToMinor(input.value); // ×100 — the conversion the 100×-wrong defect was missing
   } else {
     problems.push("ชนิดส่วนลดไม่ถูกต้อง");
   }

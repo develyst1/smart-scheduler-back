@@ -339,6 +339,10 @@ export const bookings = pgTable(
     // posts from the end-of-day job, when no admin is present to authorise anything; the admin is present at
     // booking, so the decision and its author are recorded here and only the posting is deferred.
     discountKind: text("discount_kind"),
+    // 🔴 The HUMAN number the admin typed, in the contract's unit: PERCENT = a percentage, BAHT = **whole baht**
+    // (TASK-168 — it was read as satang, so ฿391 posted as ฿3.91). Stored as typed rather than pre-converted
+    // because the day-end re-runs `planDiscount` against the price of the day: the row must hold the promise
+    // ("10% off", "฿391 off"), and the conversion to satang belongs in the one rule that does the arithmetic.
     discountValue: integer("discount_value"),
     discountReason: text("discount_reason"),
     discountActor: text("discount_actor"),

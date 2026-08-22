@@ -5,8 +5,9 @@ import { isRentalCode } from "./lib/sale-items";
 // TASK-160: declared early so the sale schemas below can reference it.
 export const discountInput = z.object({
   kind: z.enum(["PERCENT", "BAHT"]),
-  /** PERCENT: 0–100. BAHT: minor units. The real bounds are re-checked against the price by `planDiscount` —
-   *  zod must not hold a second, drifting copy of a money rule. */
+  /** A HUMAN number — PERCENT: 0–100. BAHT: **whole baht** (TASK-168: this said "minor units", which was the
+   *  100×-wrong contract). The real bounds are re-checked against the price by `planDiscount` — zod must not
+   *  hold a second, drifting copy of a money rule. */
   value: z.number(),
   reason: z.string().trim().min(1, "ต้องระบุเหตุผลของส่วนลด"),
 });

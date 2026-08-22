@@ -2,6 +2,7 @@
 // so most of these tests are about what must be REFUSED: the one behaviour that matters is refuse-never-clamp.
 import { describe, expect, test } from "bun:test";
 import {
+  bahtToMinor,
   DiscountRefused,
   assertMayDiscount,
   discountMovement,
@@ -19,8 +20,12 @@ describe("valid discounts (AC-1/AC-2)", () => {
     expect(ok()).toEqual({ ok: true, discountMinor: 79000, problems: [] });
   });
 
-  test("a baht discount is taken as given, in minor units", () => {
-    expect(ok({ kind: "BAHT", value: 50000 }).discountMinor).toBe(50000);
+  test("🔴 a baht discount is WHOLE BAHT — 500 means ฿500 off, not ฿5 (TASK-168)", () => {
+    // The defect Tanya found: staff type baht, the value travelled as satang, and ฿391 posted as ฿3.91 with
+    // nothing to refuse it. This test is the contract, stated in the unit a person actually types.
+    expect(ok({ kind: "BAHT", value: 500 }).discountMinor).toBe(50000);
+    expect(ok({ kind: "BAHT", value: 391, fullMinor: 139000 }).discountMinor).toBe(39100);
+    expect(bahtToMinor(391)).toBe(39100);
   });
 
   test("100% is allowed — a free place is a real decision, and it is recorded as one", () => {
@@ -29,9 +34,9 @@ describe("valid discounts (AC-1/AC-2)", () => {
 
   test("🔑 the rental trap (AC-14): the LINE TOTAL is what a baht discount is judged against", () => {
     // 3 hours × ฿200 = ฿600 line. ฿500 off is valid…
-    expect(ok({ kind: "BAHT", value: 50000, fullMinor: 60000 }).ok).toBe(true);
+    expect(ok({ kind: "BAHT", value: 500, fullMinor: 60000 }).ok).toBe(true);
     // …and would have been wrongly refused against the ฿200 unit rate.
-    expect(ok({ kind: "BAHT", value: 50000, fullMinor: 20000 }).ok).toBe(false);
+    expect(ok({ kind: "BAHT", value: 500, fullMinor: 20000 }).ok).toBe(false);
   });
 
   test("rounding is half-up on minor units, stated so it cannot drift", () => {
@@ -42,7 +47,7 @@ describe("valid discounts (AC-1/AC-2)", () => {
 
 describe("🔴 refuse, never clamp (AC-4)", () => {
   test("more baht than the price is REFUSED — not capped at the price", () => {
-    const r = ok({ kind: "BAHT", value: 900000 });
+    const r = ok({ kind: "BAHT", value: 9000 });
     expect(r.ok).toBe(false);
     expect(r.discountMinor).toBe(0); // nothing to write, so nothing gets written
     expect(r.problems.join()).toContain("มากกว่าราคาเต็ม");
@@ -79,7 +84,7 @@ describe("🔴 refuse, never clamp (AC-4)", () => {
   });
 
   test("every refusal reports WHY, so the form can say it rather than just failing", () => {
-    const r = ok({ kind: "BAHT", value: 900000, reason: "" });
+    const r = ok({ kind: "BAHT", value: 9000, reason: "" });
     expect(r.problems).toHaveLength(2);
   });
 });
@@ -121,14 +126,14 @@ describe("validateSaleDiscount", () => {
   });
 
   test("🔴 an invalid discount THROWS — the caller gets no amount to write", () => {
-    expect(() => validateSaleDiscount({ kind: "BAHT", value: 900000, reason: "x" }, 790000, null)).toThrow(
+    expect(() => validateSaleDiscount({ kind: "BAHT", value: 9000, reason: "x" }, 790000, null)).toThrow(
       DiscountRefused,
     );
   });
 
   test("the refusal carries every problem, so the form can show them at once", () => {
     try {
-      validateSaleDiscount({ kind: "BAHT", value: 900000, reason: "" }, 790000, null);
+      validateSaleDiscount({ kind: "BAHT", value: 9000, reason: "" }, 790000, null);
       throw new Error("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(DiscountRefused);
@@ -137,14 +142,14 @@ describe("validateSaleDiscount", () => {
   });
 
   test("🔑 AC-14 end to end: a rental's LINE TOTAL is what gets validated", () => {
-    const threeHoursOfSixHundred = 200_00 * 3; // 3h × ฿200 = ฿600
-    expect(validateSaleDiscount({ kind: "BAHT", value: 500_00, reason: "โปร" }, threeHoursOfSixHundred, null)).toEqual({
+    const threeHoursOfSixHundred = 200_00 * 3; // 3h × ฿200 = ฿600 (a LINE TOTAL, so still minor units)
+    expect(validateSaleDiscount({ kind: "BAHT", value: 500, reason: "โปร" }, threeHoursOfSixHundred, null)).toEqual({
       discountMinor: 50000,
       reason: "โปร",
       actor: null,
     });
     // the same discount judged against ONE hour would refuse — which is the bug this parameter prevents
-    expect(() => validateSaleDiscount({ kind: "BAHT", value: 500_00, reason: "โปร" }, 200_00, null)).toThrow();
+    expect(() => validateSaleDiscount({ kind: "BAHT", value: 500, reason: "โปร" }, 200_00, null)).toThrow();
   });
 
   test("an unknown product code (list price 0) refuses rather than discounting an unpriced sale", () => {
@@ -207,8 +212,16 @@ describe("safeStoredDiscount", () => {
     expect(safeStoredDiscount(stored, 100000, null, "b-1")?.discountMinor).toBe(10000);
   });
 
+  test("🔴 a stored BAHT amount is re-read as BAHT at day-end — the two moments share one contract (TASK-168)", () => {
+    // The ripple that would have made the fix half-land: capture stores what was typed, and the day-end runs the
+    // SAME `planDiscount` — so ฿500 stored is ฿500 posted, hours later, with no second conversion anywhere.
+    expect(safeStoredDiscount({ kind: "BAHT", value: 500, reason: "x" }, 139000, null, "b-1")?.discountMinor).toBe(
+      50000,
+    );
+  });
+
   test("🔴 a stored BAHT amount that now exceeds the price is DROPPED, not posted", () => {
-    expect(safeStoredDiscount({ kind: "BAHT", value: 150000, reason: "x" }, 139000, null, "b-1")).toBeUndefined();
+    expect(safeStoredDiscount({ kind: "BAHT", value: 1500, reason: "x" }, 139000, null, "b-1")).toBeUndefined();
   });
 
   test("a booking whose program lost its price (list 0) drops the discount rather than dividing by nothing", () => {
