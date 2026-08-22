@@ -8,6 +8,7 @@
 // worse than a row the owner fixes by hand.
 
 import { normalizeGender, normalizeNationality, type Gender } from "./demographics";
+import { splitPhones } from "./student-update-plan";
 
 /** One sheet row, already split into columns. `excelRow` is the source row number — every report line carries it. */
 export interface RawRow {
@@ -46,14 +47,18 @@ export interface Classified {
 // ── Phone (AC-4 / AC-9) ────────────────────────────────────────────────────────────────────────────────────
 // Excel dropped the leading 0, so the sheet holds 9 digits. Prefix it back; anything that is not exactly a
 // 10-digit `0…` number is NOT stored — a family we cannot phone or pair on LINE is a hold-back, not a guess.
-export function normalizeImportPhone(raw: string): { phone: string | null; reason?: string } {
-  const digits = (raw ?? "").replace(/\D/g, "");
-  if (!digits) return { phone: null, reason: "ไม่มีเบอร์โทร" };
+export function normalizeImportPhone(raw: string): { phone: string | null; reason?: string; others?: string[] } {
+  // TASK-156 (+AC-8): a cell may hold two numbers (`x , y`). The FIRST valid one is the family key; the rest are
+  // echoed in the report so nothing is lost. Having a second contact is not a reason to hold the row.
+  const { primary, others } = splitPhones(raw ?? "");
+  const extra = others.length ? { others } : {};
+  const digits = (primary ?? "").replace(/\D/g, "");
+  if (!digits) return { phone: null, reason: "ไม่มีเบอร์โทร", ...extra };
   const candidate = digits.startsWith("0") ? digits : `0${digits}`;
   if (!/^0\d{9}$/.test(candidate)) {
-    return { phone: null, reason: `เบอร์โทรไม่ครบ 10 หลัก (${candidate.length} หลัก)` };
+    return { phone: null, reason: `เบอร์โทรไม่ครบ 10 หลัก (${candidate.length} หลัก)`, ...extra };
   }
-  return { phone: candidate };
+  return { phone: candidate, ...extra };
 }
 
 // ── Date of birth (AC-10) ──────────────────────────────────────────────────────────────────────────────────
