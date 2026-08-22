@@ -113,6 +113,16 @@ export interface CourseSummary {
 }
 
 /** The universal booking shape — used by calendar cells, the table, and the modal. */
+
+/** A discount as captured on a booking (TASK-171). The `value`'s unit follows `kind`: PERCENT = a percentage,
+ *  BAHT = whole baht — never satang, so the wire carries no second unit conversion (TASK-168). */
+export interface BookingDiscount {
+  kind: "PERCENT" | "BAHT";
+  value: number;
+  reason: string | null;
+  actor: string | null;
+}
+
 export interface BookingDTO {
   id: string;
   date: IsoDate;
@@ -133,6 +143,12 @@ export interface BookingDTO {
   incomingBookingId: string | null;
   /** when status === PENDING_RESCHEDULE: where this booking is proposed to move. */
   rescheduleTo: RescheduleTarget | null;
+  /**
+   * SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount captured when this booking was made, or `null`
+   * when there was none. `value` is the HUMAN number as typed: a percentage, or **whole baht** (TASK-168).
+   * `actor` is carried for the record; the card shows amount + reason only until per-person logins exist.
+   */
+  discount: BookingDiscount | null;
 }
 
 // ═════════════════════════════ READ responses ═════════════════════════════

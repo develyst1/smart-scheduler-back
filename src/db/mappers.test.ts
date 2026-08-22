@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toCourseWithStudent, toTeacherDTO } from "./mappers";
+import { toBookingDTO, toCourseWithStudent, toTeacherDTO } from "./mappers";
 
 describe("toTeacherDTO budget fields (TASK-008)", () => {
   test("carries satang budget fields, defaulting until quotas/override are attached", () => {
@@ -86,5 +86,55 @@ describe("toTeacherDTO — dangling teacher_subjects row (TASK-029, availability
       ],
     });
     expect(dto.subjects).toEqual([{ id: "s1", name: "Balance Bike" }]);
+  });
+});
+
+// ───────── SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount reaches the record ─────────
+//
+// The bug this feature has already produced twice was a value that existed in one layer and never arrived in
+// the next (satang-vs-baht, then a field dropped from the request body). Both were type-clean and
+// screen-plausible. So these assert the DTO's actual shape, including the unit the value travels in.
+const bookingRow = (extra: Record<string, unknown> = {}) => ({
+  id: "b1",
+  date: "2026-08-23",
+  startTime: "10:00:00",
+  endTime: "11:00:00",
+  bookingType: "FIRST_TRIAL",
+  status: "CONFIRMED",
+  student: { id: "s1", name: "เด็กชายเอ", nickname: "เอ" },
+  teacher: { id: "t1", name: "Alice", nickname: "อลิซ", type: "FULL_TIME" },
+  subject: { id: "sub1", name: "Bike" },
+  ...extra,
+});
+
+describe("toBookingDTO discount (TASK-171)", () => {
+  test("a booking with no discount carries `null` — not an empty object", () => {
+    // An absent discount and a discount of nothing must not look alike on screen.
+    expect(toBookingDTO(bookingRow()).discount).toBeNull();
+  });
+
+  test("🔴 a captured discount travels as the HUMAN number, exactly as stored (TASK-168's contract)", () => {
+    const dto = toBookingDTO(
+      bookingRow({
+        discountKind: "BAHT",
+        discountValue: 391, // ฿391 — NOT 39100. A conversion here would be a second unit on the wire.
+        discountReason: "โปรวันแม่",
+        discountActor: "admin",
+      }),
+    );
+    expect(dto.discount).toEqual({ kind: "BAHT", value: 391, reason: "โปรวันแม่", actor: "admin" });
+  });
+
+  test("a percent discount is carried the same way", () => {
+    const dto = toBookingDTO(bookingRow({ discountKind: "PERCENT", discountValue: 10, discountReason: "x" }));
+    expect(dto.discount).toEqual({ kind: "PERCENT", value: 10, reason: "x", actor: null });
+  });
+
+  test("the rest of the DTO is unchanged (regression)", () => {
+    const plain = toBookingDTO(bookingRow());
+    const discounted = toBookingDTO(bookingRow({ discountKind: "PERCENT", discountValue: 10 }));
+    const { discount: _a, ...restPlain } = plain as any;
+    const { discount: _b, ...restDiscounted } = discounted as any;
+    expect(restDiscounted).toEqual(restPlain);
   });
 });

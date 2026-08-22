@@ -103,6 +103,25 @@ export const toBookingDTO = (b: any) => ({
   subject: { id: b.subject.id, name: b.subject.name },
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
+  // SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount captured at booking, so the record can answer
+  // what/why/who. `null` — not a partly-filled object — when there is no discount: an absent discount and a
+  // discount of nothing must not look alike on screen.
+  //
+  // `value` travels as the HUMAN number it was typed as (percent, or whole baht per TASK-168); the FE formats
+  // it. Converting to satang here would put a second unit conversion on the wire, which is the exact shape of
+  // the bug this feature has already produced once.
+  //
+  // ⚠️ `actor` is carried for the record, but per SA it is NOT for the card today: one shared login makes it
+  // the same name for everyone, and a meaningless "who" on screen is worse than none. It becomes displayable
+  // when per-person logins exist; until then "who" stays answerable from the stored column.
+  discount: b.discountKind
+    ? {
+        kind: b.discountKind,
+        value: b.discountValue,
+        reason: b.discountReason ?? null,
+        actor: b.discountActor ?? null,
+      }
+    : null,
   // Conflict resolution (B.1) — null/false for ordinary bookings.
   pendingSlot: b.pendingSlot ?? false,
   incomingBookingId: b.incomingBookingId ?? null,
