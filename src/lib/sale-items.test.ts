@@ -138,10 +138,21 @@ describe("🔑 the catalogue IS the availability rule — no second list to drif
     }
   });
 
-  test("🔴 bike/skate has NO single-hour rate — the card simply has no 1h row for it", () => {
-    // Flagged to Sober: a SINGLE_SESSION on a skate program therefore has no price and refuses.
-    expect(isSellable("bike-skate", 1)).toBe(false);
-    expect(isKnownSaleItem(sessionItemRef("bike-skate"))).toBe(false);
+  test("🔴 REQ-066: bike/skate DOES have a 1-hour rate (฿1,390) — this test used to assert the bug", () => {
+    // It asserted "no 1h row for bike-skate" and passed, while every single-session booking on the busiest
+    // program was refused on `uat`. The card had always charged ฿1,390 — the entry was missing, not absent by
+    // design — and a test written from the code rather than the card kept the mistake looking deliberate.
+    expect(isSellable("bike-skate", 1)).toBe(true);
+    expect(isKnownSaleItem(sessionItemRef("bike-skate"))).toBe(true);
+    expect(listPriceMinor(sessionItemRef("bike-skate"))).toBe(139000);
+  });
+
+  test("🔴 AC-4: a program with NO price group still refuses a single session — dormant, not deleted", () => {
+    // With all four groups priced, REQ-061's SINGLE_SESSION guard stops firing — but it still protects the next
+    // program someone adds without a price, which is the silent-revenue-loss hole it was built for.
+    expect(isSellable(null, 1)).toBe(false);
+    expect(isSellable("", 1)).toBe(false);
+    expect(isSellable("not-a-group", 1)).toBe(false);
   });
 
   test("a subject with NO price group can never be sold — it must not fall back to a default", () => {
@@ -234,10 +245,10 @@ describe("shape", () => {
 
     const sessions = sellablePackages().filter((p) => p.size === 1);
     const courses = sellablePackages().filter((p) => p.size !== 1);
-    expect(sessions).toHaveLength(3);
+    expect(sessions).toHaveLength(4); // REQ-066: bike-skate joined the other three at ฿1,390
     expect(courses).toHaveLength(10);
     // + TASK-108: the 4 equipment-rental codes.
-    expect(SALE_ITEMS).toHaveLength(13 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
+    expect(SALE_ITEMS).toHaveLength(14 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
   });
 
   test("every course size the DB allows is priced for at least one group", () => {

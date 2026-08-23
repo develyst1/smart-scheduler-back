@@ -8,9 +8,12 @@
 // inherited. The subject → group mapping lives in `subjects.price_group` (data, not code) so the owner can
 // add a program without a deploy.
 //
-// ⚠️ **Availability is the catalogue, not a rule.** Balance Play has no 4 h and bike/skate has no 1-hour rate,
-// so those items simply do not exist and `isKnownSaleItem` refuses them loudly. There is deliberately no
-// availability table to drift from this one.
+// ⚠️ **Availability is the catalogue, not a rule.** Balance Play has no 4 h, so that item simply does not exist
+// and `isKnownSaleItem` refuses it loudly. There is deliberately no availability table to drift from this one.
+//
+// 🔴 But read the next line before trusting an absence: **twice now a MISSING entry has been mistaken for a
+// deliberate one** — Onewheel’s 10 h (REQ-061) and bike/skate’s 1 h (REQ-066), the second of which refused every
+// single-session booking on the busiest program. A gap here is only "not offered" if the owner’s card says so.
 // (REQ-061 / TASK-158: this comment used to say "Onewheel has no 10 h" — it does, at 11,900. The line was
 // wrong, not just out of date, so it is corrected here rather than left to mislead the next reader.)
 //
@@ -54,13 +57,17 @@ export const voucherAllowedGroups = (): PriceGroup[] => PRICE_GROUPS.filter(vouc
 const THB = (baht: number) => baht * 100; // satang
 
 /**
- * The owner's card, transcribed. `undefined` = **not offered** for that group — Onewheel has no 10 h,
- * Balance Play has no 4 h, and bike/skate has no single-hour rate — there, a first single hour is 1st Trial.
+ * The owner's card, transcribed. `undefined` = **not offered** for that group — today that is only Balance
+ * Play’s 4 h. (Onewheel’s 10 h and bike/skate’s 1 h were both listed here as "not offered" and both were simply
+ * missing — REQ-061 and REQ-066. Check the card, not this file, before adding a fourth.)
  *
  * `1` is the single-session (`session-{group}`) row; 4/6/10 are course packages.
  */
 const CARD: Record<PriceGroup, Partial<Record<1 | 4 | 6 | 10, number>>> = {
-  "bike-skate": { 4: THB(4790), 6: THB(6490), 10: THB(9790) },
+  // REQ-066 / TASK-174: the 1-hour rate was MISSING, not absent by design. Its absence made
+  // `isSellable("bike-skate", 1)` false, so REQ-061's guard refused every single-session booking on the blue
+  // block — the busiest program — while the owner's card has charged ฿1,390 for it all along.
+  "bike-skate": { 1: THB(1390), 4: THB(4790), 6: THB(6490), 10: THB(9790) },
   // REQ-061 / TASK-158: 6h corrected 7,990 → 7,900 and the missing 10h added, both from the owner's card.
   onewheel: { 1: THB(1690), 4: THB(5790), 6: THB(7900), 10: THB(11900) },
   "balance-private": { 1: THB(1390), 6: THB(7490), 10: THB(11390) },

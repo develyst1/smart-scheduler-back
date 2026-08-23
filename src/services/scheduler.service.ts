@@ -779,10 +779,14 @@ async function insertBooking(
   if (input.bookingType === "VOUCHER" && !voucherAllowsProgram(await resolvePriceGroup(input.subjectId, exec))) {
     throw conflict("VOUCHER_PROGRAM_EXCLUDED", "วอยเชอร์ใช้กับคลาส Onewheel หรือ Balance Play ไม่ได้");
   }
-  // REQ-061 / TASK-158 (AC-6/AC-7): a single paid hour only exists where the card prices one. For bike/skate
-  // there is no 1-hour rate — a first single hour there is **1st Trial** — so booking one would create a session
-  // nobody can price, and the revenue post would have to invent a number. `isSellable(group, 1)` is the
-  // catalogue's own test, deliberately not a second list that could drift from it.
+  // REQ-061 / TASK-158 (AC-6/AC-7): a single paid hour only exists where the card prices one — booking one
+  // where it does not would create a session nobody can price, and the revenue post would have to invent a
+  // number. `isSellable(group, 1)` is the catalogue's own test, deliberately not a second list that can drift.
+  //
+  // 🔴 REQ-066 / TASK-174: this comment used to name bike/skate as the group with no 1-hour rate. That was
+  // wrong — the card charges ฿1,390 — and the guard was refusing every single-session booking on the busiest
+  // program. The guard is deliberately KEPT: with all four groups priced it simply stops firing, and it still
+  // refuses a program whose price group is NULL (AC-4) — the silent-revenue-loss hole it was built for.
   if (input.bookingType === "SINGLE_SESSION" && !isSellable(await resolvePriceGroup(input.subjectId, exec), 1)) {
     throw conflict(
       "SINGLE_SESSION_NOT_PRICED",
