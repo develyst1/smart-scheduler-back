@@ -119,7 +119,6 @@ const TABLE: Record<string, Entry> = {
   tsched_title_today: { TH: "🗓️ ตารางวันนี้", EN: "🗓️ Today's schedule" },
   tsched_title_week: { TH: "🗓️ ตารางสัปดาห์นี้", EN: "🗓️ This week's schedule" },
   tsched_empty: { TH: "ไม่มีคาบสอนในช่วงนี้", EN: "No classes in this range" },
-  tsched_row: { TH: "{when} · {student} · {subject} · {status}", EN: "{when} · {student} · {subject} · {status}" },
   tsched_more: { TH: "…และอีก {count} คาบ", EN: "…and {count} more" },
   btn_week: { TH: "สัปดาห์นี้", EN: "This week" },
   btn_today: { TH: "วันนี้", EN: "Today" },

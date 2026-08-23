@@ -362,7 +362,8 @@ async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
   return send(replyToken, [childrenFlex(title, kids.map((k) => k.name), lang)]);
 }
 
-/** Teacher "my schedule" (REQ-016 / TASK-043) — today or this week (Sun–Sat via `weekRange`), read-only.
+/** Teacher "my schedule" (REQ-016 / TASK-043) — today or this week (**Mon–Sun** via `weekRange`; it was
+ *  Sun–Sat, so teachers were reading the wrong week too — REQ-069 / TASK-175), read-only.
  *  Teacher resolved from `lineUserId` inside the service; every reply keeps a toggle + back-to-menu quick reply. */
 async function doTeacherSchedule(
   lineUserId: string,

@@ -34,10 +34,21 @@ export const addDays = (iso: string, n: number) => {
   return fmtDate(d);
 };
 
-/** Week containing `iso`, Sunday→Saturday (matches the FE calendar). */
+/**
+ * The week containing `iso`, **Monday→Sunday** — the Thai week, and the one the FE calendar has always drawn
+ * (`CalendarContent.tsx:27`).
+ *
+ * 🔴 REQ-069 / TASK-175: this used to be Sunday→Saturday. The grid was drawn for one week and filled with
+ * another, so **the Sunday column was always empty** — on the customer's busiest day — and staff had been
+ * looking at a calendar that hid real bookings. It was fixed here rather than in the calendar because the other
+ * direction would have made the Thai week wrong everywhere else instead.
+ *
+ * On a **Sunday** this returns the week that Sunday *ends* (the Monday before → that Sunday), which is what
+ * someone looking at "this week" on a Sunday evening means.
+ */
 export const weekRange = (iso: string) => {
-  const dow = new Date(`${iso}T00:00:00`).getDay(); // 0 = Sunday
-  const start = addDays(iso, -dow);
+  const dow = new Date(`${iso}T00:00:00`).getDay(); // 0 = Sunday … 6 = Saturday
+  const start = addDays(iso, -((dow + 6) % 7)); // Mon→0, Tue→1, … Sun→6
   return { start, end: addDays(start, 6) };
 };
 
