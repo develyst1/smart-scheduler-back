@@ -138,3 +138,48 @@ describe("toBookingDTO discount (TASK-171)", () => {
     expect(restDiscounted).toEqual(restPlain);
   });
 });
+
+// ───── SPEC-061 / TASK-173 (REQ-065) — `1st Trial` must not be pickable as a program ─────
+//
+// `active = false` means "not something to choose" — enforced once, in the field every picker renders, rather
+// than filtered out of one dropdown and met again on the next screen someone builds. The pair of tests that
+// matters is filter-in-the-picker / no-filter-on-the-read: the row is deactivated precisely so history keeps
+// naming it.
+const teacherRow = (subjects: Array<{ id: string; name: string; active?: boolean }>) => ({
+  id: "t1",
+  name: "Alice",
+  nickname: "อลิซ",
+  type: "FULL_TIME",
+  active: true,
+  teacherSubjects: subjects.map((subject) => ({ subject })),
+});
+
+describe("subjectOptions drops inactive subjects (TASK-173)", () => {
+  test("🔴 an inactive subject is absent from the picker; active ones are untouched", () => {
+    const dto = toTeacherDTO(
+      teacherRow([
+        { id: "s1", name: "Bike", active: true },
+        { id: "trial", name: "1st Trial", active: false },
+        { id: "s2", name: "Onewheel", active: true },
+      ]),
+    );
+    expect(dto.subjects.map((s: { id: string }) => s.id)).toEqual(["s1", "s2"]);
+  });
+
+  test("a subject with no `active` field is kept — absent is not inactive", () => {
+    // Rows loaded by a query that didn't select `active` must not silently vanish from every picker.
+    expect(toTeacherDTO(teacherRow([{ id: "s1", name: "Bike" }])).subjects).toHaveLength(1);
+  });
+
+  test("the dangling-link guard still holds (TASK-029 regression)", () => {
+    const dto = toTeacherDTO({ id: "t1", teacherSubjects: [{ subject: null }, { subject: { id: "s1", name: "Bike", active: true } }] });
+    expect(dto.subjects.map((s: { id: string }) => s.id)).toEqual(["s1"]);
+  });
+
+  test("🔴 AC-3 — a booking on an inactive subject still renders its name", () => {
+    // The whole reason the row is deactivated instead of deleted: last month's `1st Trial` bookings must keep
+    // saying what they were. Nothing on the read path may consult `active`.
+    const dto = toBookingDTO(bookingRow({ subject: { id: "trial", name: "1st Trial", active: false } }));
+    expect(dto.subject).toEqual({ id: "trial", name: "1st Trial" });
+  });
+});

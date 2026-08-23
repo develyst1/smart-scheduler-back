@@ -20,8 +20,14 @@ export const toTeacherDTO = (t: any) => ({
   active: t.active,
   // Guard against a dangling teacher_subjects row (no joined subject) — else `ts.subject.id` throws
   // and crashes the whole endpoint (was the PATCH /api/teachers/availability 500). TASK-029.
+  //
+  // 🔴 SPEC-061 / TASK-173 (REQ-065): **inactive subjects are dropped here, and only here.** Every program
+  // picker in the app (single · course · voucher · trial · plan) renders `teacher.subjectOptions`, which is
+  // this field — so `active = false` means "not something to choose", at the cause, for every screen present
+  // and future. It is deliberately NOT applied on any read path: a booking made on `1st Trial` last month must
+  // still render with that name (AC-3), which is why the row is deactivated and never deleted.
   subjects: (t.teacherSubjects ?? [])
-    .filter((ts: any) => ts.subject)
+    .filter((ts: any) => ts.subject && ts.subject.active !== false)
     .map((ts: any) => ({
       id: ts.subject.id,
       name: ts.subject.name,

@@ -2317,11 +2317,25 @@ export async function updateTeacher(
     if (Object.keys(set).length) await tx.update(teachers).set(set).where(eq(teachers.id, id));
 
     if (input.subjectIds) {
+      // 🔴 SPEC-061 / TASK-173 (REQ-065) — **a client can only change what it can see.** The teacher form seeds
+      // its multi-select from `subjectOptions`, which now hides inactive subjects; so a plain "delete all, insert
+      // what was sent" would silently unlink every teacher from `1st Trial` the first time anyone opened and
+      // saved their record. That is a data change nobody asked for, arriving as a side effect of a display
+      // filter — exactly what AC-5 forbids. Links to subjects the client could not see are therefore kept.
+      const hidden = await tx.query.teacherSubjects.findMany({
+        where: (ts: any, { eq: e }: any) => e(ts.teacherId, id),
+        with: { subject: true },
+      });
+      const keep = hidden
+        .filter((ts: any) => ts.subject && ts.subject.active === false)
+        .map((ts: any) => ts.subjectId);
+      const next = Array.from(new Set([...input.subjectIds, ...keep]));
+
       await tx.delete(teacherSubjects).where(eq(teacherSubjects.teacherId, id));
-      if (input.subjectIds.length)
+      if (next.length)
         await tx
           .insert(teacherSubjects)
-          .values(input.subjectIds.map((subjectId) => ({ teacherId: id, subjectId })));
+          .values(next.map((subjectId) => ({ teacherId: id, subjectId })));
     }
 
     // REQ-009 / TASK-060: leaving FREELANCE closes the monthly ceiling — inside this tx, so the type change

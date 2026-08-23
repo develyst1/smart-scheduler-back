@@ -41,10 +41,12 @@ async function main() {
   await db.execute(
     sql`TRUNCATE bookings, course_packages, vouchers, teacher_subjects, students, parents, teachers, subjects, notification_outbox RESTART IDENTITY CASCADE`,
   );
-
+  // TASK-173 (REQ-065): `1st Trial` is seeded INACTIVE — it is a booking type, not a program, and a fresh dev
+  // database that offers it in every picker is a fresh copy of the bug the owner reported. The row still exists
+  // because historical bookings name it.
   const subjRows = await db
     .insert(subjects)
-    .values(SUBJECT_NAMES.map((name) => ({ name })))
+    .values(SUBJECT_NAMES.map((name) => ({ name, active: name !== "1st Trial" })))
     .returning({ id: subjects.id, name: subjects.name });
   const subjId = new Map(subjRows.map((r) => [r.name, r.id]));
 
@@ -182,7 +184,7 @@ async function main() {
     {
       student: "น้องเบล",
       teacher: "Haris",
-      subject: "1st Trial",
+      subject: "Bike / Scooter / Balance Cruiser", // TASK-173: a trial books a REAL activity, not "1st Trial"
       date: today,
       start: "11:00",
       type: "FIRST_TRIAL",
