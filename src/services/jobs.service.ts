@@ -1,12 +1,17 @@
-// End-of-day auto-cut job (UC-012). Triggered by a Windows Task Scheduler exe
+// End-of-day auto-mark job (UC-012). Triggered by a Windows Task Scheduler exe
 // (see scripts/end-of-day.ts) that POSTs the internal endpoint. All logic lives
 // here — the exe is a thin trigger — so it can also be run by hand or re-run.
 //
-// Cuts no-shows: a CONFIRMED class on the target date whose end time has passed,
-// with no check-in (ATTENDED) and no leave (SICK_LEAVE), becomes NO_SHOW and its
-// course/voucher quota is deducted (the student loses the session). Idempotent:
-// only CONFIRMED rows are touched, so a second run cuts nothing.
-
+// A CONFIRMED class on the target date whose end time has passed, with no check-in and no leave, is marked
+// **ATTENDED** and its course/voucher quota is deducted. Idempotent: only CONFIRMED rows are touched, so a
+// second run marks nothing.
+//
+// 🔴 REQ-070 / TASK-180: this used to write **NO_SHOW**, and that was a false claim about a child. `NO_SHOW`
+// had exactly one writer — this line — no human could set it, and quota already treated `{ATTENDED, NO_SHOW}`
+// identically (`course-plan.ts`), so the label carried no mechanism at all: it only told a family their child
+// had not turned up because nobody pressed a button. On `uat` it did that to 15 real children in one weekend.
+// Good customers are separated by **CRM points at check-in**, and this path awards none — that absence is the
+// signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
@@ -20,7 +25,7 @@ export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
   const runDate = date ?? now.date;
 
-  const cut = await db.transaction(async (tx) => {
+  const marked = await db.transaction(async (tx) => {
     // Which CONFIRMED classes on runDate have already ended?
     //  - past date  → all of them
     //  - today      → only those whose end time is at/behind the Bangkok clock
@@ -41,29 +46,41 @@ export async function runEndOfDayJob(date?: string) {
       .from(bookings)
       .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended));
 
-    let coursesCut = 0;
-    let vouchersCut = 0;
+    let coursesAutoAttended = 0;
+    let vouchersAutoAttended = 0;
     for (const b of due) {
-      await tx.update(bookings).set({ status: "NO_SHOW" }).where(eq(bookings.id, b.id));
+      await tx.update(bookings).set({ status: "ATTENDED" }).where(eq(bookings.id, b.id));
       if (b.courseId) {
         await tx
           .update(coursePackages)
           .set({ usedSessions: sql`${coursePackages.usedSessions} + 1` })
           .where(eq(coursePackages.id, b.courseId));
-        coursesCut++;
+        coursesAutoAttended++;
       }
       if (b.voucherId) {
         await tx
           .update(vouchers)
           .set({ usedHours: sql`${vouchers.usedHours} + 1` })
           .where(eq(vouchers.id, b.voucherId));
-        vouchersCut++;
+        vouchersAutoAttended++;
       }
     }
 
-    return { noShow: due.length, coursesCut, vouchersCut };
+    // Named for what they now are: sessions the job marked attended because nobody marked them. A `job_runs`
+    // reader must not be able to read "noShow" out of a system that can no longer produce one.
+    return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended };
   });
 
+  // 🔴 REQ-070 / TASK-180 — a consequence worth naming, because it is money. This select is
+  // `status = ATTENDED`, and the block above now writes ATTENDED where it used to write NO_SHOW. So a 1st
+  // Trial or single session that **nobody marked** will, from this change on, post its revenue here — where
+  // before it became NO_SHOW and posted nothing.
+  //
+  // That is arguably right (the slot was held and the session ended) and arguably wrong (nobody confirmed the
+  // child came, and the money may never have been collected). It is NOT a decision this task was asked to
+  // make, so it is left as the plain consequence of the owner's design rather than quietly special-cased —
+  // see the task's Q1. Special-casing it would need a "was auto-marked" marker to stay correct across re-runs,
+  // which is a column, not a condition.
   // TASK-007: recognise revenue for attended one-off bookings (FIRST_TRIAL / SINGLE_SESSION) at
   // day-end. Course/voucher already booked revenue at sale (recordSale on creation) → not re-posted
   // here. Best-effort + idempotent (`rev:<bookingId>`): safe to re-run; skips if ops is off or the
@@ -122,9 +139,9 @@ export async function runEndOfDayJob(date?: string) {
     if (res.ok) revenuePosted++;
   }
 
-  // Report is read after the cut so its counts reflect the new NO_SHOW rows.
+  // Report is read after the auto-mark so its counts reflect the newly-ATTENDED rows.
   const report = await getDailyReport(runDate);
-  const summary = { ...cut, revenuePosted, report };
+  const summary = { ...marked, revenuePosted, report };
 
   await db.insert(jobRuns).values({
     job: "end-of-day",

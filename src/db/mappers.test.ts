@@ -183,3 +183,14 @@ describe("subjectOptions drops inactive subjects (TASK-173)", () => {
     expect(dto.subject).toEqual({ id: "trial", name: "1st Trial" });
   });
 });
+
+describe("toBookingDTO attendeeNote (TASK-178)", () => {
+  test("carried when present, `null` when not — and never confused with `note`", () => {
+    // The two columns are different facts with different authors: `note` is what the system did to the
+    // session, `attendeeNote` is what the family told us about it.
+    const dto = toBookingDTO(bookingRow({ attendeeNote: "พาน้องมาด้วย 2 คน", note: "ยกเลิกโดยแอดมิน" }));
+    expect(dto.attendeeNote).toBe("พาน้องมาด้วย 2 คน");
+    expect(dto.note).toBe("ยกเลิกโดยแอดมิน");
+    expect(toBookingDTO(bookingRow()).attendeeNote).toBeNull();
+  });
+});

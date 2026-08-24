@@ -74,10 +74,13 @@ export const isStudentIncomplete = (
   return ownMissing || provinceMissing;
 };
 
-/** NO_SHOW on the given (previous) day. */
-export const isYesterdayNoShow = (b: { status: string; date: string }, yesterday: string): boolean =>
-  b.status === "NO_SHOW" && b.date === yesterday;
-
+// REQ-070 / TASK-180 — `isYesterdayNoShow` and its `yesterday_no_shows` registry entry are GONE. The day-end
+// job was NO_SHOW's only writer and now writes ATTENDED, so the check could only ever report 0 — and a digest
+// line that is structurally always zero teaches everyone to skim past the ones that aren't.
+//
+// Not replaced on spec: "attended but never checked in" is the signal actually worth watching now (it is the
+// same cohort the CRM level is about), but it needs a reliable was-checked-in marker, which is its own piece
+// of grounding. Flagged as a follow-up rather than guessed at here.
 /** Voucher still active and expiring soon. Delegates to `voucherEligible` for "still active". */
 export const isVoucherExpiringSoon = (
   v: { totalHours: number; usedHours: number; expiryDate: string },
@@ -276,19 +279,6 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
       );
       // Counts only in the digest — names stay behind login (privacy).
       return { count: rows.length, items: rows.map(({ student }) => ({ id: student.id, label: student.nickname ?? student.name })) };
-    },
-  },
-  {
-    key: "yesterday_no_shows",
-    titleKey: "att_yesterday_no_shows",
-    run: async (ctx) => {
-      const rows = (await ctx.load.bookings([ctx.yesterday])).filter((b) =>
-        isYesterdayNoShow(b, ctx.yesterday),
-      );
-      return {
-        count: rows.length,
-        items: rows.map((b) => ({ id: b.id, label: `${hhmm(b.startTime)} · ${b.student?.nickname ?? "-"}` })),
-      };
     },
   },
   {

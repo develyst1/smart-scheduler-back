@@ -381,6 +381,7 @@ async function doTeacherSchedule(
     studentName: b.student?.name ?? "",
     subjectName: b.subject?.name ?? "",
     status: b.status,
+    attendeeNote: b.attendeeNote ?? null, // TASK-178 (REQ-068) — shown under the session when present
   }));
   const toggle =
     range === "week"

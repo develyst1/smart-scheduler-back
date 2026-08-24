@@ -231,6 +231,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "The UPDATE is guarded on `prior_sessions = 0`, so a re-run cannot compound it (TASK-165 / REQ-064).",
     rerunnable: true,
   },
+  {
+    tag: "0022_booking_attendee_note",
+    probe: { kind: "column", table: "bookings", column: "attendee_note" },
+    why:
+      "0022 is a single `ADD COLUMN IF NOT EXISTS` — the column IS the migration, and nothing else creates " +
+      "`bookings.attendee_note` (TASK-178 / REQ-068: the attendee note, deliberately separate from `note`, " +
+      "which the status flows own).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

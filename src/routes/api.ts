@@ -186,6 +186,12 @@ export const api = new Hono()
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
   )
+  // SPEC-063 / TASK-178 (REQ-068) — the attendee note, on its own route. Deliberately NOT part of
+  // `PATCH /bookings/:id`: that one re-times a session and tells the teacher; a note is not a status change and
+  // must notify nobody (AC-8).
+  .patch("/bookings/:id/note", zValidator("json", v.setAttendeeNote), async (c) =>
+    c.json(await svc.setAttendeeNote(c.req.param("id"), c.req.valid("json").attendeeNote)),
+  )
   // TASK-100: soft-warning preview — orphan impact of a proposed workDays change, without applying it.
   .get("/teachers/:id/work-days/impact", zValidator("query", v.workDaysImpactQuery), async (c) =>
     c.json(await svc.previewWorkDaysChange(c.req.param("id"), c.req.valid("query").workDays)),

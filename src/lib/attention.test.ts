@@ -12,7 +12,6 @@ import {
   isSaleUnposted,
   isDiscountNotApplied,
   isVoucherExpiringSoon,
-  isYesterdayNoShow,
   teacherNeedsLine,
 } from "./attention";
 import { t } from "./line-i18n";
@@ -98,13 +97,8 @@ describe("check 6 — incomplete_students (LEFT-join semantics)", () => {
   });
 });
 
-describe("check 7 — yesterday_no_shows", () => {
-  test("NO_SHOW on yesterday only", () => {
-    expect(isYesterdayNoShow({ status: "NO_SHOW", date: YESTERDAY }, YESTERDAY)).toBe(true);
-    expect(isYesterdayNoShow({ status: "NO_SHOW", date: TODAY }, YESTERDAY)).toBe(false);
-    expect(isYesterdayNoShow({ status: "ATTENDED", date: YESTERDAY }, YESTERDAY)).toBe(false);
-  });
-});
+// REQ-070 / TASK-180: the `yesterday_no_shows` check and its tests are deleted, not skipped. The day-end job
+// was NO_SHOW's only writer and now writes ATTENDED, so the check could only ever report 0.
 
 describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole signal", () => {
   const posted = new Set(["course-1", "voucher-1"]);
@@ -126,13 +120,14 @@ describe("isSaleUnposted (TASK-067) — absence of a SALE movement is the whole 
 });
 
 describe("registry — extensibility is one array entry", () => {
-  test("all eleven checks are registered, with unique keys", () => {
-    // 8th = sales_not_posted (TASK-067), 9th = pending_teacher_links (TASK-075), 10th = orphaned_sessions
-    // (SPEC-028 §7.5 / TASK-096), 11th = discount_not_applied (SPEC-059 / TASK-163). This count moving by
-    // exactly one per task, with nothing else in this describe block changing, IS the running evidence for
-    // SPEC-018's extensibility claim.
-    expect(ATTENTION_CHECKS).toHaveLength(11);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(11);
+  test("all ten checks are registered, with unique keys", () => {
+    // sales_not_posted (TASK-067) · pending_teacher_links (TASK-075) · orphaned_sessions (SPEC-028 §7.5 /
+    // TASK-096) · discount_not_applied (SPEC-059 / TASK-163) — and `yesterday_no_shows` REMOVED by REQ-070 /
+    // TASK-180, because the state it detected can no longer be created. The count moving by exactly one per
+    // task, with nothing else in this block changing, is the running evidence for SPEC-018's extensibility
+    // claim — and a check leaving is as legitimate a move as one arriving.
+    expect(ATTENTION_CHECKS).toHaveLength(10);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(10);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {

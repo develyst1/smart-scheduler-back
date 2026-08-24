@@ -136,7 +136,8 @@ const TABLE: Record<string, Entry> = {
   att_nearly_finished_courses: { TH: "คอร์สที่ใกล้ใช้ครบ", EN: "Courses nearly finished" },
   att_freelance_near_cap: { TH: "ครูฟรีแลนซ์ที่งบใกล้เต็ม", EN: "Freelance budgets near their cap" },
   att_incomplete_students: { TH: "นักเรียนที่ข้อมูลไม่ครบ", EN: "Students with incomplete details" },
-  att_yesterday_no_shows: { TH: "ไม่มาเรียนเมื่อวาน", EN: "No-shows yesterday" },
+  // REQ-070 / TASK-180: `att_yesterday_no_shows` deleted with its check — the day-end job no longer writes
+  // NO_SHOW, so the line could only ever say "0".
   att_pending_teacher_links: {
     TH: "คำขอผูกบัญชีครูที่รออนุมัติ",
     EN: "Teacher link requests awaiting approval",

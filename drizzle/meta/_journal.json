@@ -155,6 +155,13 @@
       "when": 1783000000017,
       "tag": "0021_course_prior_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783000000018,
+      "tag": "0022_booking_attendee_note",
+      "breakpoints": true
     }
   ]
 }

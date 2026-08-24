@@ -12,6 +12,13 @@ export const discountInput = z.object({
   reason: z.string().trim().min(1, "ต้องระบุเหตุผลของส่วนลด"),
 });
 
+
+/**
+ * SPEC-063 / TASK-178 (REQ-068) — the attendee note. ~200 chars: long enough for "พาน้องมาด้วย 2 คน แพ้ถั่ว",
+ * short enough that nobody files a medical history in a field that is shown on a calendar cell and pushed to a
+ * teacher's phone. The not-for-PII wording on the form is Porter's; this is the structural half of the same rule.
+ */
+export const attendeeNote = z.string().trim().max(200, "โน้ตต้องไม่เกิน 200 ตัวอักษร");
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
 const ID = z.string().uuid();
@@ -100,6 +107,8 @@ export const createBooking = z
     courseId: ID.optional(),
     voucherId: ID.optional(),
     note: z.string().optional(),
+    // TASK-178 (REQ-068) — the attendee note, separate from `note` (which the status flows own).
+    attendeeNote: attendeeNote.optional(),
     // Optional badge value ids to tag the new booking (≤ 1 per badge type; enforced in service).
     badgeValueIds: z.array(ID).optional(),
     // TASK-162 (REQ-063) — a discount on a TRIAL / SINGLE session: captured here (an admin is present at
@@ -144,6 +153,8 @@ export const createCoursePackage = z
     startDate: DATE,
     startTime: TIME,
     note: z.string().optional(),
+    // TASK-178 (REQ-068) — one attendee note, applied to every session the course creates.
+    attendeeNote: attendeeNote.optional(),
     // SPEC-049 / TASK-148 — weeks the family already knows they'll miss, declared at creation (1-based).
     // Each becomes a free `SICK_LEAVE` (no quota) and the engine appends its make-up.
     absentWeeks: z.array(z.number().int().min(1)).optional(),
@@ -521,3 +532,11 @@ export const importVoucher = z.object({
 export const putSetting = z.object({
   value: z.union([z.number(), z.string()]),
 });
+
+/**
+ * SPEC-063 / TASK-178 (REQ-068) — the per-session note edit. Its own body, and its own route, deliberately:
+ * `moveBooking` re-times a session and tells the teacher about it, and a note is **not a status change** (AC-8).
+ * Routing it through the move path would have made "fix a typo in a note" push a LINE message to a teacher.
+ * `null` clears the note; that is a real edit, not a missing field.
+ */
+export const setAttendeeNote = z.object({ attendeeNote: attendeeNote.nullable() });

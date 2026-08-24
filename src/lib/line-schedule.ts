@@ -18,6 +18,8 @@ export interface SchedRow {
   studentName: string;
   subjectName: string;
   status: string;
+  /** TASK-178 (REQ-068) — the attendee note, when the family left one. Absent for almost every session. */
+  attendeeNote?: string | null;
 }
 
 /** Day names, indexed by `Date.getDay()` (0 = Sunday). Short forms — a heading, not prose. */
@@ -59,6 +61,11 @@ export function renderSchedule(rows: SchedRow[], lang: Lang, range: "today" | "w
       `${hhmm(r.startTime)}  ${r.studentName}`,
       `   ${r.subjectName} · ${t(`status_${r.status}`, lang)}`,
     );
+    // TASK-178 (REQ-068): the note, when there is one — indented under the session it belongs to, so a teacher
+    // reads it as part of that class rather than as another line of schedule. A session without a note is
+    // byte-identical to before (AC-5): almost every session has none, and a "note: —" placeholder on all of
+    // them would cost more attention than the feature is worth.
+    if (r.attendeeNote?.trim()) blocks.push(`   📝 ${r.attendeeNote.trim()}`);
   }
 
   const more = rows.length > cap ? `\n\n${t("tsched_more", lang, { count: rows.length - cap })}` : "";

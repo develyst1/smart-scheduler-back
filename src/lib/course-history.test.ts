@@ -120,3 +120,12 @@ describe("buildCourseHistory — an attended/sick/makeup/cancel/extra course (TA
     expect(events.every((e) => e.actor === null)).toBe(true); // limit #1 — who isn't tracked
   });
 });
+
+// REQ-070 / TASK-180: the day-end job no longer writes NO_SHOW, but `uat` and every future export still hold
+// rows that have it. This pins that history keeps rendering — the enum value stays for exactly this reason,
+// and deleting it "because nothing writes it any more" would blank out real sessions in a family's history.
+describe("historical NO_SHOW still renders (REQ-070)", () => {
+  test("a NO_SHOW row from before the change is still a recognised event, not a blank", () => {
+    expect(bookingEventKind({ status: "NO_SHOW", bookingType: "COURSE_PACKAGE" })).toBe("no-show");
+  });
+});

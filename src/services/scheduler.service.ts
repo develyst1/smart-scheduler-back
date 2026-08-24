@@ -698,6 +698,9 @@ export async function getDailyReport(date: string) {
     totalBooked: count((r) => r.status !== "CANCELLED"),
     attended: count((r) => r.status === "ATTENDED"),
     onLeave: count((r) => r.status === "SICK_LEAVE"),
+    // REQ-070 / TASK-180: kept, and it will read 0 for every date from here on — the day-end job no longer
+    // writes NO_SHOW. It still counts correctly for historical dates, which is why it is not removed: a report
+    // for last week must not silently lose sessions.
     noShow: count((r) => r.status === "NO_SHOW"),
     pending: count((r) => r.status === "PENDING"),
     cancelled: count((r) => r.status === "CANCELLED"),
@@ -813,6 +816,9 @@ async function insertBooking(
         courseId: input.courseId ?? null,
         voucherId: input.voucherId ?? null,
         note: input.note ?? null,
+        // TASK-178 (REQ-068) — the attendee note travels with the session it describes, and never touches
+        // `note` above: one is what a parent told us, the other is what the system did.
+        attendeeNote: input.attendeeNote ?? null,
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1021,6 +1027,7 @@ export async function importCoursePackage(input: any) {
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
           note: input.note,
+          attendeeNote: input.attendeeNote, // TASK-178: one note at creation, carried onto every session
         });
       } catch (e: any) {
         if (e?.code === "SLOT_TAKEN")
@@ -1150,6 +1157,7 @@ export async function createCoursePackage(input: any) {
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
           note: input.note,
+          attendeeNote: input.attendeeNote, // TASK-178: one note at creation, carried onto every session
         });
       } catch (e: any) {
         if (e?.code === "SLOT_TAKEN")
@@ -2481,4 +2489,23 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean 
   });
   if (!row) throw notFound("ไม่พบคอร์ส");
   return toCourseWithStudent(row);
+}
+
+/**
+ * SPEC-063 / TASK-178 (REQ-068) — set ONE session's attendee note.
+ *
+ * 🔴 Its own function, and it does exactly one thing. Two rules are load-bearing:
+ *   1. **It writes `attendee_note` and nothing else** — never `note` (the status-reason field), never another
+ *      session of the same course (AC-3). A course note edited here is a note about *that* Tuesday.
+ *   2. **It notifies nobody** (AC-8). A note is not a status change; routing it through the move path would
+ *      have made "fix a typo" push a LINE message to a teacher. There is a test asserting the outbox stays
+ *      empty, because "we didn't call notify" is the kind of claim that quietly stops being true.
+ *
+ * `null` clears the note — a real edit, not a missing field.
+ */
+export async function setAttendeeNote(id: string, attendeeNote: string | null) {
+  const row = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
+  if (!row) throw notFound("ไม่พบคาบเรียน");
+  await db.update(bookings).set({ attendeeNote }).where(eq(bookings.id, id));
+  return loadBookingDTO(db, id);
 }

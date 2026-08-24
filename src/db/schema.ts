@@ -335,6 +335,12 @@ export const bookings = pgTable(
     // CREATED, so it is free — it must not consume leave quota. A flag, not a new status, so every existing
     // status path (reconcile, holds, reports) is untouched. `0019`.
     plannedAtCreation: boolean("planned_at_creation").notNull().default(false),
+    // SPEC-063 / TASK-178 (REQ-068) `0022` — a note about the ATTENDEE ("พาน้องมาด้วย 2 คน", "แพ้ถั่ว").
+    //
+    // 🔴 Deliberately NOT `note` above: that column is the system's status-reason/audit field, written by
+    // cancel, sick leave and the auto-extend. Sharing one column would mean a leave reason erasing a parent's
+    // note and vice versa — silently, both ways. They are different facts with different authors.
+    attendeeNote: text("attendee_note"),
     // SPEC-059 / TASK-162 (REQ-063) `0020` — a discount CAPTURED here, POSTED at day-end. Trial/single revenue
     // posts from the end-of-day job, when no admin is present to authorise anything; the admin is present at
     // booking, so the decision and its author are recorded here and only the posting is deferred.

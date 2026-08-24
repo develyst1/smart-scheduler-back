@@ -104,6 +104,9 @@ export const toBookingDTO = (b: any) => ({
   bookingType: b.bookingType,
   status: b.status,
   note: b.note ?? null,
+  // SPEC-063 / TASK-178 (REQ-068) — what a parent told us about this session ("พาน้องมาด้วย 2 คน"), distinct
+  // from `note` above, which is what the system did to it (cancel reason, auto-extend, leave).
+  attendeeNote: b.attendeeNote ?? null,
   student: studentRef(b.student),
   teacher: toTeacherBase(b.teacher),
   subject: { id: b.subject.id, name: b.subject.name },

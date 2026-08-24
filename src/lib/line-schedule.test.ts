@@ -80,3 +80,40 @@ describe("renderSchedule (REQ-016 / TASK-043 · reshaped by REQ-067 Part B)", ()
     expect(dayHeading("2026-08-02", "EN")).toBe("Sunday 02/08");
   });
 });
+
+// SPEC-063 / TASK-178 (REQ-068) — the note reaches the teacher who needs it.
+describe("attendee note in the teacher's schedule (TASK-178)", () => {
+  test("a note appears indented under its own session", () => {
+    const out = renderSchedule([row({ attendeeNote: "พาน้องมาด้วย 2 คน" })], "TH", "week");
+    const lines = out.split("\n");
+    const i = lines.findIndex((l) => l.includes("พาน้องมาด้วย"));
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i]!.startsWith("   ")).toBe(true); // part of the session, not another schedule line
+    expect(lines[i - 1]).toContain("Surfskate"); // directly under the session it belongs to
+  });
+
+  test("🔴 AC-5: a session with no note is byte-identical to before the feature", () => {
+    // Almost every session has no note; a "note: —" placeholder on all of them would cost more attention than
+    // the feature is worth.
+    const without = renderSchedule([row()], "TH", "week");
+    expect(renderSchedule([row({ attendeeNote: null })], "TH", "week")).toBe(without);
+    expect(renderSchedule([row({ attendeeNote: "   " })], "TH", "week")).toBe(without); // blanks are not notes
+  });
+
+  test("the right note lands on the right session when several days carry one", () => {
+    const out = renderSchedule(
+      [
+        row({ date: "2026-07-30", studentName: "เอ", attendeeNote: "แพ้ถั่ว" }),
+        row({ date: "2026-08-01", studentName: "บี", attendeeNote: "มาสาย 10 นาที" }),
+      ],
+      "EN",
+      "week",
+    );
+    expect(out.indexOf("แพ้ถั่ว")).toBeLessThan(out.indexOf("บี"));
+    expect(out.indexOf("บี")).toBeLessThan(out.indexOf("มาสาย 10 นาที"));
+  });
+
+  test("today's view carries the note too — the teacher reads that one on the day", () => {
+    expect(renderSchedule([row({ attendeeNote: "แพ้ถั่ว" })], "TH", "today")).toContain("แพ้ถั่ว");
+  });
+});
