@@ -138,6 +138,9 @@ export const vouchersQuery = z.object({
 });
 
 export const coursesQuery = z.object({
+  /** SPEC-064 / TASK-188 (REQ-036 B3) — filter by lifecycle status, server-side so the counts and paging are
+   *  true. Omitted = every status. */
+  status: z.enum(["CANCELLED", "COMPLETED", "EXPIRED", "ACTIVE"]).optional(),
   q: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),

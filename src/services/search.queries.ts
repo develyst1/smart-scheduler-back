@@ -59,7 +59,13 @@ export const voucherSearchQuery = (f: { studentId?: string; q?: string } = {}) =
     .orderBy(desc(vouchers.createdAt), asc(vouchers.id));
 };
 
-/** Row counts for the paged endpoints — same joins and same filter, so `total` can't disagree with `items`. */
+/** Row counts for the paged endpoints — same joins and same filter, so `total` can't disagree with `items`.
+ *
+ * ⚠️ TASK-188: `courseCountQuery` is currently UNUSED. `listCoursesPaged` now counts in TypeScript because the
+ * course `status` is derived, and counting it in SQL would mean a second copy of the precedence rule. Kept
+ * rather than deleted because it is the correct shape for any future SQL-side course count — and because
+ * `voucherCountQuery` beside it is still live, so removing one of a matched pair would read as an accident.
+ */
 export const courseCountQuery = (q?: string) =>
   db
     .select({ value: sql<number>`count(*)::int` })

@@ -4,7 +4,8 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings, bookings, boItem, boMovement, coursePackages, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
-import type { BulkConfirmResult, PlanSessionRow, TeacherType } from "../types/contract";
+import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
+import { countByStatus } from "../lib/course-status";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
@@ -90,7 +91,6 @@ import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import {
   bookingsOrderBy,
-  courseCountQuery,
   courseSearchQuery,
   studentSearchQuery,
   voucherCountQuery,
@@ -529,13 +529,52 @@ export async function getCourses() {
   return coursesByIds(await courseIdsOrdered());
 }
 
-/** The `/courses` tab: same rows, same order, plus the shared search rule and paging. */
-export async function listCoursesPaged(f: { q?: string; page: number; limit: number }) {
-  const [ids, [{ value: total }]] = await Promise.all([
-    courseIdsOrdered(f),
-    courseCountQuery(f.q),
-  ]);
-  return { items: await coursesByIds(ids), page: f.page, limit: f.limit, total };
+/**
+ * The `/courses` tab: same rows, same order, plus the shared search rule, the status filter and paging.
+ *
+ * 🔴 The filter and the counts are computed **in TypeScript, over the search-filtered set, before paging** —
+ * deliberately, and the trade is worth naming. `status` is derived (from `ended_at`, `used_sessions >= size`,
+ * and today vs `expiry_date`), so filtering it in SQL would mean writing the precedence a second time in a
+ * second language, where the two copies drift on any Tuesday. That is precisely the bug this task exists to
+ * fix — a badge and a filter with different ideas of "over".
+ *
+ * The cost is that this hydrates every matching course before slicing a page. At this school's scale (tens of
+ * courses; `getCourses()` already loads them all for the attention checks) that is nothing. If the list ever
+ * reaches thousands, the answer is a stored/generated status column — **not** a second hand-written rule.
+ *
+ * Paging in TS is also what makes `total` honest: the FE's own client-side filter could only ever filter the
+ * page it had been given, so the count it showed was a lie about the rest (TASK-186 Q1).
+ */
+export async function listCoursesPaged(f: {
+  q?: string;
+  page: number;
+  limit: number;
+  status?: CourseStatus;
+}) {
+  const today = bangkokNow().date;
+  const all = await coursesByIds(await courseIdsOrdered({ q: f.q }));
+
+  // Counts are over the search-filtered set BEFORE the status filter — the chips must show what switching to
+  // another status would find, not "0" for every status you are not currently looking at.
+  const counts = countByStatus(
+    all.map((c: any) => ({
+      size: c.size,
+      usedSessions: c.usedSessions,
+      expiryDate: c.expiryDate,
+      endedAt: c.endedAt,
+    })),
+    today,
+  );
+
+  const matching = f.status ? all.filter((c: any) => c.status === f.status) : all;
+  const start = (f.page - 1) * f.limit;
+  return {
+    items: matching.slice(start, start + f.limit),
+    page: f.page,
+    limit: f.limit,
+    total: matching.length,
+    counts,
+  };
 }
 
 /**

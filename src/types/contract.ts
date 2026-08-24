@@ -96,6 +96,9 @@ export interface TeacherDTO {
 }
 
 /** Computed course view — the leave/quota math done server-side (authoritative). */
+
+/** SPEC-064 / TASK-188 — the four course lifecycle statuses, in precedence order. */
+export type CourseStatus = "CANCELLED" | "COMPLETED" | "EXPIRED" | "ACTIVE";
 export interface CourseSummary {
   id: string;
   size: PackageSize;
@@ -110,6 +113,11 @@ export interface CourseSummary {
    *  `size` above still reads what the family bought; these say the plan is finished. */
   endedAt: string | null;
   endReason: "PROGRAM_CHANGED" | "CUSTOMER_CANCELLED" | "ADMIN_ERROR" | null;
+  /** SPEC-064 / TASK-188 (REQ-036 B3) — the course's lifecycle status, computed server-side with a fixed
+   *  precedence (CANCELLED → COMPLETED → EXPIRED → ACTIVE) so every course is exactly one. The badge renders
+   *  this and the filter filters on it; neither computes its own, which is what let a cancelled course show a
+   *  green `ปกติ`. */
+  status: CourseStatus;
   expiryDate: IsoDate;
   /** The course's sport program, derived from its bookings (a course ⇔ one subject). null only when the
    *  course's bookings aren't loaded (e.g. post-mutation responses) — the list re-fetches. (REQ-010) */

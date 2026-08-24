@@ -2,6 +2,9 @@
 // frontend's src/lib/scheduler/leave.ts). The FE may mirror these for instant UX,
 // but this server result is the source of truth.
 
+import { courseStatus, type CourseStatus } from "./course-status";
+import { bangkokNow } from "./bangkok-time";
+
 export type PackageSize = 4 | 6 | 10;
 
 /** Leave quota bound to course size: 4→1, 6→2, 10→3. */
@@ -36,11 +39,17 @@ export interface CourseSummary {
   expiryDate: string;
   endedAt: string | null;
   endReason: string | null;
+  /**
+   * SPEC-064 / TASK-188 (REQ-036 B3) — the lifecycle status the badge renders AND the filter filters on.
+   * Computed HERE, in the one builder every course response flows through, so the two cannot diverge — which
+   * is what let a cancelled course wear a green `ปกติ` badge in the first place.
+   */
+  status: CourseStatus;
 }
 
 export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
 
-export function toCourseSummary(c: CourseLike): CourseSummary {
+export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
   const quota = leaveQuota(c.size);
   const maxWeek = MAX_WEEK_BY_SIZE[c.size] ?? 0;
   const leaveRemaining = Math.max(0, quota - c.leaveUsed);
@@ -60,6 +69,9 @@ export function toCourseSummary(c: CourseLike): CourseSummary {
     // family bought; this is the flag that says the plan is finished.
     endedAt: c.endedAt ? (typeof c.endedAt === "string" ? c.endedAt : c.endedAt.toISOString()) : null,
     endReason: c.endReason ?? null,
+    // The clock is resolved once, here, in Bangkok — never inside the pure rule, which takes `today` so it
+    // stays testable and cannot pick up the server's timezone by accident.
+    status: courseStatus(c, today ?? bangkokNow().date),
     expiryDate: c.expiryDate,
   };
 }
