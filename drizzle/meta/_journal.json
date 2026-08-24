@@ -162,6 +162,13 @@
       "when": 1783000000018,
       "tag": "0022_booking_attendee_note",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783000000019,
+      "tag": "0023_course_ended",
+      "breakpoints": true
     }
   ]
 }

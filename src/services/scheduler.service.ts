@@ -73,6 +73,13 @@ import {
   isCoursePlanRow,
   isDelivered,
   coursePlanSize,
+  canInsertIntoCourse,
+  endableSessions,
+  isEndReason,
+  END_REASONS,
+  courseOwedTarget,
+  isCourseEnded,
+  planCourseMovesForCourse,
   planCourseMoves,
   withholdImportCancels,
   requiresCancelReason,
@@ -101,7 +108,7 @@ import { attachBookingBadges } from "./badge.service";
 import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
-import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, weekRange } from "../lib/time";
+import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -1287,14 +1294,15 @@ export async function getEntitlementPlan(id: string) {
       // EXTENDED present), so the DTO carries the real predicate. The BE still refuses the empty case (NO_OWED_SESSION).
       // TASK-165 (REQ-064): the PLAN's size, not the purchased size — an imported course only ever holds
       // `size − priorSessions` sessions here. `summary.size` below stays the purchase, which is what the card shows.
-      insertable: canInsert(planSessions, coursePlanSize(course)),
+      insertable: canInsertIntoCourse(course, planSessions), // TASK-181: an ENDED course offers no insert
       summary: {
         kind: "course" as const,
         size: course.size,
         leaveUsed: summary.leaveUsed,
         leaveQuota: summary.leaveQuota,
         maxWeek: summary.maxWeek,
-        owedCount: Math.max(0, coursePlanSize(course) - current), // TASK-165 — plan size, not purchase size
+        // TASK-165 plan size (not purchase size) · TASK-181 an ended course owes 0, by construction not by luck
+        owedCount: Math.max(0, courseOwedTarget(course) - current),
         expiryDate: course.expiryDate, // the MAX_WEEK ceiling, not the live end
       },
     };
@@ -1348,7 +1356,15 @@ export async function getCourseHistory(courseId: string) {
     : [];
 
   const history = buildCourseHistory(
-    { size: course.size, leaveUsed: course.leaveUsed },
+    {
+      size: course.size,
+      leaveUsed: course.leaveUsed,
+      // TASK-181 (REQ-036) — so the timeline shows WHY a course stopped, not just a run of cancellations.
+      endedAt: course.endedAt,
+      endReason: course.endReason,
+      endNote: course.endNote,
+      endedBy: course.endedBy,
+    },
     rows.map((r) => ({
       id: r.id,
       status: r.status,
@@ -1570,7 +1586,11 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
     where: (b: any, { and, eq }: any) => and(eq(b.courseId, courseId), eq(b.bookingType, "COURSE_PACKAGE")),
   });
 
-  const rawPlan = planCourseMoves(
+  // TASK-181 (REQ-036): an ENDED course has no moves — not "cancel the rest", which the ending already did in
+  // its own transaction. Answered before anything is planned so no later leave or edit can reach back into a
+  // finished course and re-owe a session the family forfeited.
+  const rawPlan = planCourseMovesForCourse(
+    course,
     rows.map(
       (r: any): PlanSession => ({
         id: r.id,
@@ -1580,10 +1600,6 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         bookingType: r.bookingType,
       }),
     ),
-    // 🔴 TASK-165 (REQ-064): `coursePlanSize`, not `course.size`. This one argument IS the defect — an imported
-    // 10/4 course holds 6 rows here, and measuring them against 10 made every leave append 4 phantom sessions
-    // on top of the real make-up. `size` remains the purchase everywhere it belongs (quota, label, expiry).
-    coursePlanSize(course),
   );
 
   // SPEC-060 §6 — an already-affected import now reads as "too long"; those sessions are reported to the owner
@@ -1762,7 +1778,8 @@ export async function applyPlanChange(
           where: (x: any, { eq }: any) => eq(x.courseId, courseId),
         });
         if (
-          !canInsert(
+          !canInsertIntoCourse(
+            course,
             rows.map((r: any) => ({
               id: r.id,
               status: r.status,
@@ -1771,9 +1788,9 @@ export async function applyPlanChange(
               bookingType: r.bookingType, // SPEC-033: a soft-linked extra must not read as an owed session
             })),
             // TASK-165 (REQ-064): a FOURTH site asking the same question — SPEC-060 names three. This is the
-            // server-side twin of the DTO's `insertable`; if the two disagreed, an imported course would offer
-            // an Insert the API then refuses (or hide one it would have allowed). Same number on both sides.
-            coursePlanSize(course),
+            // server-side twin of the DTO's `insertable`; if the two disagreed, a course would offer an Insert
+            // the API then refuses (or hide one it would have allowed). Same answer on both sides — which is
+            // also how TASK-181's ended-course guard reaches this path without a second rule.
           )
         ) {
           throw conflict("NO_OWED_SESSION", "คอร์สนี้ครบจำนวนคาบแล้ว — ไม่มีคาบค้างให้เลื่อน");
@@ -2508,4 +2525,96 @@ export async function setAttendeeNote(id: string, attendeeNote: string | null) {
   if (!row) throw notFound("ไม่พบคาบเรียน");
   await db.update(bookings).set({ attendeeNote }).where(eq(bookings.id, id));
   return loadBookingDTO(db, id);
+}
+
+// ─────────── SPEC-064 / TASK-181 (REQ-036) — end a course early ───────────
+//
+// A forfeit, not a reschedule: the sessions that have not happened yet are soft-cancelled, the course is
+// flagged ended, and the plan owes nothing from then on. Deliberately absent, all of them decisions taken
+// elsewhere by a human: no refund, no `bo.movement`, no revenue reversal, no notification. Recording the
+// reason as an enum is what makes an `ADMIN_ERROR` sale findable when that decision is taken.
+
+async function loadCourseForEnd(exec: any, id: string) {
+  const course = await exec.query.coursePackages.findFirst({
+    where: (c: any, { eq: e }: any) => e(c.id, id),
+  });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+  const rows = await exec.query.bookings.findMany({
+    where: (b: any, { and: a, eq: e }: any) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
+    with: { teacher: true, subject: true, student: true },
+    orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
+  });
+  return { course, rows };
+}
+
+/** What ending this course WOULD remove. Writes nothing — the dialog's numbers come from here, not the client
+ *  (R2), so the count a staff member confirms is the count the server will actually cancel. */
+export async function previewCourseEnd(id: string) {
+  const { course, rows } = await loadCourseForEnd(db, id);
+  const doomed = endableSessions(rows);
+  const student = rows[0]?.student ?? null;
+  return {
+    alreadyEnded: isCourseEnded(course),
+    removedSessions: doomed.length,
+    sessions: doomed.map((b: any) => ({
+      date: b.date,
+      time: hhmm(b.startTime),
+      teacher: b.teacher?.nickname ?? b.teacher?.name ?? null,
+    })),
+    student: student ? { id: student.id, name: student.name, nickname: student.nickname ?? null } : null,
+    program: rows[0]?.subject?.name ?? null,
+  };
+}
+
+/**
+ * End the course. **One transaction: any refusal changes zero rows.**
+ *
+ * The reason enum is validated here rather than trusted from the route — zod is the shape, this is the rule,
+ * and a course ended with a reason nobody can query is an ended course nobody can find.
+ */
+export async function endCourse(
+  id: string,
+  input: { reason: string; note?: string | null },
+  actor?: string | null,
+) {
+  // 400 with a CODE, not the generic VALIDATION envelope: the FE distinguishes "you did not pick a reason"
+  // from "that reason is not one we accept", and only the second is a bug worth reporting.
+  if (!input.reason) throw new ApiException(400, "REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิกคอร์ส");
+  if (!isEndReason(input.reason))
+    throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: END_REASONS });
+
+  return db.transaction(async (tx: any) => {
+    const { course, rows } = await loadCourseForEnd(tx, id);
+
+    // Idempotent by refusal, not by silence: a second click must not look like it cancelled another batch.
+    if (isCourseEnded(course)) {
+      throw conflict("ALREADY_ENDED", "คอร์สนี้ถูกยกเลิกไปแล้ว");
+    }
+
+    const doomed = endableSessions<any>(rows);
+    for (const b of doomed) {
+      await tx
+        .update(bookings)
+        .set({ status: "CANCELLED", note: "ยกเลิกคอร์ส (จบคอร์สก่อนกำหนด)" })
+        .where(eq(bookings.id, b.id));
+    }
+
+    await tx
+      .update(coursePackages)
+      .set({
+        endedAt: new Date(),
+        endReason: input.reason,
+        endNote: input.note?.trim() || null,
+        endedBy: actor ?? null,
+      })
+      .where(eq(coursePackages.id, id));
+
+    // 🔴 `reconcileCoursePlan` is NOT called, and that is the point: reconciling would see a short course and
+    // append make-ups for the very sessions just forfeited. The `endedAt` guards make that permanent — this
+    // function skipping it once is not what makes it safe.
+    const updated = await tx.query.coursePackages.findFirst({
+      where: (c: any, { eq: e }: any) => e(c.id, id),
+    });
+    return { cancelled: true, removedSessions: doomed.length, course: toCourseSummary(updated) };
+  });
 }

@@ -83,6 +83,18 @@ export const api = new Hono()
   // CRM ladder — ระดับ + เกณฑ์แต้ม + สิทธิประโยชน์ (UC-020)
   // SPEC-024 — the (program, size, price) combinations that actually exist, so the FE offers only what is
   // offered instead of hard-coding the price card into a dropdown that will drift from it.
+  // SPEC-064 / TASK-181 (REQ-036) — end a course early. The preview writes nothing and is what powers the
+  // confirm dialog's count (R2): the number a staff member confirms is the number the server will cancel,
+  // never one the client worked out for itself.
+  .post("/courses/:id/cancel/preview", zValidator("json", v.endCoursePreview), async (c) =>
+    c.json(await svc.previewCourseEnd(c.req.param("id"))),
+  )
+  .post("/courses/:id/cancel", zValidator("json", v.endCourse), async (c) => {
+    const body = c.req.valid("json");
+    return c.json(
+      await svc.endCourse(c.req.param("id"), body, c.get("user")?.sub ?? null),
+    );
+  })
   .get("/sellable-packages", async (c) => c.json(await svc.getSellablePackages()))
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>

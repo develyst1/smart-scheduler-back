@@ -17,7 +17,9 @@ export type HistoryKind =
   | "extra-session-added"
   | "scheduled"
   | "freelance-drawn"
-  | "freelance-refunded";
+  | "freelance-refunded"
+  /** SPEC-064 / TASK-181 (REQ-036) — the course was ended early. One event, carrying reason + note + actor. */
+  | "course-ended";
 
 export interface HistoryBookingInput {
   id: string;
@@ -80,6 +82,9 @@ export interface HistoryEvent {
   reason?: string | null;
   makeupOfDate?: string | null;
   valueMinor?: number;
+  /** TASK-181 (REQ-036) — the closed reason a course was ended early, distinct from the free-text `reason`
+   *  above so the FE can label it and a query can count it. */
+  endReason?: string | null;
   actor: null; // SPEC-035 §1 limit #1 — not recorded (shared login)
 }
 
@@ -97,7 +102,15 @@ export interface CourseHistory {
 /** Assemble the ordered timeline + header summary. `at` = when the shown thing happened: for an *added* row
  *  (makeup/extra) that's `createdAt`; for a status the row reached, `updatedAt` (the only per-booking change time). */
 export function buildCourseHistory(
-  course: { size: number; leaveUsed: number },
+  course: {
+    size: number;
+    leaveUsed: number;
+    // TASK-181 (REQ-036): set when the course was ended early — surfaced as its own event (AC-3/AC-6).
+    endedAt?: Date | string | null;
+    endReason?: string | null;
+    endNote?: string | null;
+    endedBy?: string | null;
+  },
   bookings: HistoryBookingInput[],
   movements: HistoryMovementInput[],
 ): CourseHistory {
@@ -128,6 +141,22 @@ export function buildCourseHistory(
       kind,
       sessionDate: m.refId ? dateById.get(m.refId) : undefined,
       valueMinor: m.valueMinor,
+      actor: null,
+    });
+  }
+
+  // TASK-181 (REQ-036): the ending is a fact about the COURSE, not about any one session, so it is pushed
+  // here rather than derived from the cancelled rows — which would read as N separate cancellations with no
+  // reason attached and no way to tell them from an ordinary one.
+  //
+  // `actor` stays null like every other event (SPEC-035 §1 — one shared login makes a name meaningless on
+  // screen). Who ended it IS recorded, in `course_packages.ended_by`, and stays answerable by query.
+  if (course.endedAt) {
+    events.push({
+      at: typeof course.endedAt === "string" ? course.endedAt : course.endedAt.toISOString(),
+      kind: "course-ended",
+      reason: course.endNote ?? null,
+      endReason: course.endReason ?? null,
       actor: null,
     });
   }

@@ -240,6 +240,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "which the status flows own).",
     rerunnable: true,
   },
+  {
+    tag: "0023_course_ended",
+    probe: { kind: "constraint", constraint: "course_packages_end_reason_chk" },
+    why:
+      "The LAST object 0023 creates — after all four `ended_*` columns. Witnessing the CHECK rather than any " +
+      "one column is what makes a half-applied run detectable: the constraint only exists once the column it " +
+      "depends on has landed (TASK-181 / REQ-036: ending a course early).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

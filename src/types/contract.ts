@@ -106,6 +106,10 @@ export interface CourseSummary {
   maxWeek: number; // 4→5, 10→13 (6 TBC with client)
   leaveLocked: boolean; // over quota & not admin-unlocked → no more rescheduling
   adminUnlocked: boolean;
+  /** SPEC-064 / TASK-181 (REQ-036) — when the course was ended early, and why. `null` for a live course.
+   *  `size` above still reads what the family bought; these say the plan is finished. */
+  endedAt: string | null;
+  endReason: "PROGRAM_CHANGED" | "CUSTOMER_CANCELLED" | "ADMIN_ERROR" | null;
   expiryDate: IsoDate;
   /** The course's sport program, derived from its bookings (a course ⇔ one subject). null only when the
    *  course's bookings aren't loaded (e.g. post-mutation responses) — the list re-fetches. (REQ-010) */

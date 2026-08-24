@@ -540,3 +540,15 @@ export const putSetting = z.object({
  * `null` clears the note; that is a real edit, not a missing field.
  */
 export const setAttendeeNote = z.object({ attendeeNote: attendeeNote.nullable() });
+
+/** SPEC-064 / TASK-181 (REQ-036) — ending a course early. The reason is re-checked in the service against the
+ *  enum: zod is the shape, the service is the rule, and a course ended with an unqueryable reason is an ended
+ *  course nobody can find again. `note` is optional free text. */
+export const endCourse = z.object({
+  reason: z.string().trim().min(1, "ต้องระบุเหตุผลในการยกเลิกคอร์ส"),
+  note: z.string().trim().max(500).optional(),
+});
+export const endCoursePreview = z.object({
+  reason: z.string().trim().optional(),
+  note: z.string().trim().max(500).optional(),
+});

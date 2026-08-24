@@ -163,3 +163,73 @@ export function withholdImportCancels(
   }
   return { append: plan.append, cancelIds: [], withheldCancelIds: plan.cancelIds };
 }
+
+// ─────────── SPEC-064 / TASK-181 (REQ-036) — a course ENDED early ───────────
+//
+// 🔴 The guarantee this section exists to make is "**no make-up is ever re-owed**", not "we remembered not to
+// reconcile that once". Soft-cancelling the remaining sessions is not enough on its own: `courseCurrent` then
+// reads 3 against a plan size of 10, so `owedCount` says 7, `insertable` stays true, and the next staff member
+// who clicks Insert has the reconciler dutifully re-owing the sessions the family just forfeited.
+//
+// So `endedAt` is consulted at **the same three plan-responsibility sites** REQ-064 centralised, and the answer
+// is the same at all three: an ended course's plan is finished. `size` is untouched — it is what they bought.
+
+export interface EndableCourse {
+  size: number;
+  priorSessions?: number | null;
+  /** Set when the course was ended early. Its presence — not its value — is what closes the plan. */
+  endedAt?: Date | string | null;
+}
+
+export const isCourseEnded = (c: EndableCourse): boolean => c.endedAt != null;
+
+/** An ended course owes nothing; otherwise the plan size is REQ-064's `size − priorSessions`. */
+export const courseOwedTarget = (c: EndableCourse): number =>
+  isCourseEnded(c) ? 0 : coursePlanSize(c);
+
+/**
+ * May a session be inserted into this course? Never, once it has ended — an insert is a *reschedule* of an
+ * owed session, and an ended course owes none. Guarded ahead of `canInsert` rather than inside it, because the
+ * pure predicate answers a different question ("is anything outstanding?") that stays true of the leftovers.
+ */
+export const canInsertIntoCourse = (c: EndableCourse, sessions: PlanSession[]): boolean =>
+  !isCourseEnded(c) && canInsert(sessions, coursePlanSize(c));
+
+/**
+ * The moves for a course, with the ended case answered first: **none**. Not "cancel the rest" — the ending
+ * already did that in its own transaction, and having the reconciler cancel things afterwards would let a
+ * later leave or edit reach back into a finished course.
+ */
+export function planCourseMovesForCourse(c: EndableCourse, sessions: PlanSession[]): CoursePlan {
+  if (isCourseEnded(c)) return { append: [], cancelIds: [] };
+  return planCourseMoves(sessions, coursePlanSize(c));
+}
+
+/** SPEC-064 / TASK-181 — the closed set of reasons a course may be ended early. Closed so an `ADMIN_ERROR`
+ *  course is findable later with one query; that findability is the entire reason the enum exists, since the
+ *  money follow-up is a human decision taken elsewhere. */
+export const END_REASONS = ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"] as const;
+export type EndReason = (typeof END_REASONS)[number];
+export const isEndReason = (v: unknown): v is EndReason =>
+  typeof v === "string" && (END_REASONS as readonly string[]).includes(v);
+
+/**
+ * Which of a course's sessions an early ending removes: **everything still LIVE**.
+ *
+ * 🔴 The set is `COURSE_LIVE_STATUSES` itself, not a second list — PENDING, CONFIRMED **and EXTENDED**. I first
+ * wrote PENDING+CONFIRMED and Sober caught the gap: an appended `EXTENDED` is a real future make-up booking on
+ * a teacher's calendar, it is not slot-non-blocking, and `getCalendar` hides only CANCELLED — so **every course
+ * that has ever taken a sick leave carries one.** Ending the course while leaving it behind would strand a
+ * ghost session holding a slot: the same bug one label over, on the commonest path there is.
+ *
+ * Reusing `COURSE_LIVE_STATUSES` is the point. "Still live" is already defined for this codebase, and a
+ * hand-written copy here is exactly what would drift the next time a status is added.
+ *
+ * Everything delivered stays byte-identical: `ATTENDED`, `NO_SHOW`, `SICK_LEAVE`, and anything already
+ * `CANCELLED`. Ending a course forfeits what has not happened; it never rewrites what did — including the leave
+ * that earned the make-up we are now cancelling.
+ */
+export const ENDABLE_STATUSES = COURSE_LIVE_STATUSES;
+
+export const endableSessions = <T extends { status: string; bookingType?: string }>(sessions: T[]): T[] =>
+  sessions.filter((s) => isCoursePlanRow(s) && COURSE_LIVE.has(s.status));

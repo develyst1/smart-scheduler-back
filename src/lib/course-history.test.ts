@@ -129,3 +129,56 @@ describe("historical NO_SHOW still renders (REQ-070)", () => {
     expect(bookingEventKind({ status: "NO_SHOW", bookingType: "COURSE_PACKAGE" })).toBe("no-show");
   });
 });
+
+// SPEC-064 / TASK-181 (REQ-036) — AC-3/AC-6: the timeline must say WHY a course stopped.
+describe("course-ended event (TASK-181)", () => {
+  const ended = {
+    size: 10,
+    leaveUsed: 0,
+    endedAt: "2026-08-24T03:00:00.000Z",
+    endReason: "ADMIN_ERROR",
+    endNote: "ลงคอร์สผิดคน",
+    endedBy: "admin",
+  };
+
+  test("🔴 one event for the ending, carrying the reason — not N anonymous cancellations", () => {
+    // Without this the history would show a run of cancelled sessions with no reason attached and no way to
+    // tell them from an ordinary cancel.
+    const { events } = buildCourseHistory(ended, [], []);
+    const e = events.find((x) => x.kind === "course-ended");
+    expect(e).toBeDefined();
+    expect(e!.endReason).toBe("ADMIN_ERROR");
+    expect(e!.reason).toBe("ลงคอร์สผิดคน");
+  });
+
+  test("a course that was never ended has no such event (regression)", () => {
+    expect(buildCourseHistory({ size: 10, leaveUsed: 0 }, [], []).events).toEqual([]);
+  });
+
+  test("the note is optional — the reason alone still records the ending", () => {
+    const e = buildCourseHistory({ ...ended, endNote: null }, [], []).events[0]!;
+    expect(e.kind).toBe("course-ended");
+    expect(e.endReason).toBe("ADMIN_ERROR");
+    expect(e.reason).toBeNull();
+  });
+
+  test("it lands in date order with the sessions, not pinned to the end", () => {
+    const { events } = buildCourseHistory(
+      { ...ended, endedAt: "2026-08-24T03:00:00.000Z" },
+      [
+        {
+          id: "b1",
+          status: "ATTENDED",
+          bookingType: "COURSE_PACKAGE",
+          date: "2026-08-03",
+          extendedFromId: null,
+          createdAt: "2026-08-01T00:00:00.000Z",
+          updatedAt: "2026-08-03T10:00:00.000Z",
+          note: null,
+        } as any,
+      ],
+      [],
+    );
+    expect(events.map((e) => e.kind)).toEqual(["attended", "course-ended"]);
+  });
+});

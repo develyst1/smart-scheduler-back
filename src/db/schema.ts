@@ -267,6 +267,13 @@ export const coursePackages = pgTable(
     // Deliberately NOT derived from `usedSessions`, which is a running count and stops being the import figure
     // the moment anything is attended — the derivation that would cancel a paying family's future sessions.
     priorSessions: integer("prior_sessions").notNull().default(0),
+    // SPEC-064 / TASK-181 (REQ-036) `0023` — the course was ENDED early. `size` stays what the family bought;
+    // this flag is what makes the plan owe nothing, permanently. `endReason` is a closed set (CHECK in `0023`)
+    // so an ADMIN_ERROR course can be found again with one query — the money follow-up is a human decision.
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endReason: text("end_reason"),
+    endNote: text("end_note"),
+    endedBy: text("ended_by"),
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
     startDate: date("start_date").notNull(),

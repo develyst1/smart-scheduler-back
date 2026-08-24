@@ -17,6 +17,10 @@ export interface CourseLike {
   leaveUsed: number;
   adminUnlocked: boolean;
   expiryDate: string;
+  /** TASK-181 (REQ-036) — ended early (null for a live course). Read via `CourseLike` so every screen that
+   *  renders a course summary sees it, rather than only the one that ended it. */
+  endedAt?: Date | string | null;
+  endReason?: string | null;
 }
 
 export interface CourseSummary {
@@ -30,6 +34,8 @@ export interface CourseSummary {
   leaveLocked: boolean;
   adminUnlocked: boolean;
   expiryDate: string;
+  endedAt: string | null;
+  endReason: string | null;
 }
 
 export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
@@ -49,6 +55,11 @@ export function toCourseSummary(c: CourseLike): CourseSummary {
     maxWeek,
     leaveLocked,
     adminUnlocked: c.adminUnlocked,
+    // SPEC-064 / TASK-181 (REQ-036) — an ended course must LOOK ended everywhere it appears, or staff will
+    // keep booking into it from a screen that shows nothing wrong. `size` deliberately still reads what the
+    // family bought; this is the flag that says the plan is finished.
+    endedAt: c.endedAt ? (typeof c.endedAt === "string" ? c.endedAt : c.endedAt.toISOString()) : null,
+    endReason: c.endReason ?? null,
     expiryDate: c.expiryDate,
   };
 }
