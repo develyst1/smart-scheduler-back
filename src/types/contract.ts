@@ -118,6 +118,35 @@ export interface CourseSummary {
 
 /** The universal booking shape — used by calendar cells, the table, and the modal. */
 
+
+/**
+ * SPEC-063 / TASK-184 — one session as the **entitlement plan** view returns it (`GET /entitlements/:id/plan`).
+ *
+ * 🔴 This type exists to make `toSessionRow` unable to drop a field again. That mapper was an untyped
+ * `(b: any) => ({…})` allow-list, so when TASK-178 added `attendeeNote` to the booking it silently never
+ * arrived here — the per-session editor could **save a note it could not show**, which is worse than no
+ * editor: staff overwrite what they cannot see. tsc said nothing, because nothing tied the mapper to a shape.
+ *
+ * That is the fourth compiler-silent allow-list in this feature set (the `createBooking` POST body,
+ * `dtoToBooking`, the FE response mapper, and this). A type is the cheapest guard that cannot rot — a test
+ * would only cover the fields someone thought to assert.
+ *
+ * Named `PlanSessionRow` rather than `PlanSession` because `lib/course-plan.ts` already owns that name for the
+ * pure planner's input, and two different `PlanSession`s in one codebase is its own trap.
+ */
+export interface PlanSessionRow {
+  id: string;
+  date: IsoDate;
+  /** As stored (`HH:mm:ss`) — unchanged by TASK-184; the FE formats. */
+  startTime: string;
+  status: BookingStatus | string;
+  /** SPEC-033 — lets the course view flag a soft-linked SINGLE_SESSION extra distinctly. */
+  bookingType: BookingType | string;
+  teacher: { id: string; name: string; nickname: string | null } | null;
+  subject: { id: string; name: string } | null;
+  /** SPEC-063 / TASK-178 — the attendee note for this session, or `null`. */
+  attendeeNote: string | null;
+}
 /** A discount as captured on a booking (TASK-171). The `value`'s unit follows `kind`: PERCENT = a percentage,
  *  BAHT = whole baht — never satang, so the wire carries no second unit conversion (TASK-168). */
 export interface BookingDiscount {

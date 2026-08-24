@@ -4,7 +4,7 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings, bookings, boItem, boMovement, coursePackages, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
-import type { BulkConfirmResult, TeacherType } from "../types/contract";
+import type { BulkConfirmResult, PlanSessionRow, TeacherType } from "../types/contract";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
@@ -887,7 +887,52 @@ async function captureBookingDiscount(input: any) {
   };
 }
 
+
+// ─────────── SPEC-064 / TASK-185 (REQ-036 Part B) — an ended course is CLOSED to writes ───────────
+//
+// 🔴 TASK-181's `endedAt` guards protect the **plan computation** (owed / insertable / reconcile). They do not
+// protect the **direct write routes**, and the owner broke that in three minutes: `เพิ่มคาบ (คิดเงิน)` on a
+// cancelled course created a billable SINGLE_SESSION. A cancelled course could bill a family.
+//
+// The rule these helpers enforce, stated once so every route asks the same question:
+//   **An ended course accepts no write that (a) adds a session, (b) revives a forfeited one onto the calendar,
+//   or (c) bills money.** Annotation — a note, a badge on a session that really happened — is allowed, and each
+//   allowance is a stated decision in the task, never a default.
+//
+// `COURSE_ENDED` is deliberately a different code from `ALREADY_ENDED`: one means "you tried to write to a dead
+// course", the other "you cancelled a course that was already cancelled". The FE tells the user different
+// things, and collapsing them would make the message wrong in one of the two cases.
+export const COURSE_ENDED_MESSAGE =
+  "คอร์สนี้ถูกยกเลิกแล้ว — เพิ่ม/แก้ไข/คิดเงินคาบในคอร์สนี้ไม่ได้ (This course has been cancelled.)";
+
+/** Refuse any write to an ended course. The single chokepoint — a new route has one obvious thing to call. */
+export async function assertCourseWritable(exec: any, courseId: string | null | undefined) {
+  if (!courseId) return;
+  const course = await exec.query.coursePackages.findFirst({
+    where: (c: any, { eq: e }: any) => e(c.id, courseId),
+  });
+  if (course && isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
+}
+
+/**
+ * The booking-scoped twin: resolve the booking's course first, then apply the same rule.
+ *
+ * 🔴 A `SINGLE_SESSION` soft-linked by `courseId` counts — that IS the billing path the owner found. The seam
+ * that makes an extra invisible to the course *engine* (SPEC-033) must not also make it invisible to this
+ * guard: it is invisible to the plan, not to the money.
+ */
+export async function assertBookingCourseWritable(exec: any, bookingId: string) {
+  const b = await exec.query.bookings.findFirst({
+    where: (x: any, { eq: e }: any) => e(x.id, bookingId),
+  });
+  await assertCourseWritable(exec, b?.courseId ?? null);
+}
 export async function createBooking(input: any) {
+  // TASK-185 (REQ-036 Part B): a booking that names a course may not be created once that course has ended —
+  // this is the chokepoint `addExtraSession` funnels through, and it also catches a direct create-with-courseId
+  // that never touches the extra-session route. A brand-new course is never ended, so course creation is
+  // unaffected (this runs once per request, not once per generated session).
+  await assertCourseWritable(db, input.courseId);
   // SPEC-059 / TASK-162 (REQ-063): a trial/single session's revenue posts at DAY-END, when no admin is present.
   // The admin is present HERE, so the discount is validated and captured now — against this booking's own line
   // total (one hour at its program's rate) — and the day-end job only posts what was already authorised.
@@ -921,6 +966,10 @@ export async function addExtraSession(
   courseId: string,
   input: { teacherId: string; subjectId: string; date: string; startTime: string },
 ) {
+  // 🔴 TASK-185 (REQ-036 Part B): the money path the owner broke in three minutes. Checked BEFORE the
+  // transaction opens, and again inside `createBooking` — a course-linked booking is refused at both the
+  // route that names the course and the chokepoint every booking passes through.
+  await assertCourseWritable(db, courseId);
   const course = await db.query.coursePackages.findFirst({ where: (c, { eq }) => eq(c.id, courseId) });
   if (!course) throw notFound("ไม่พบคอร์ส");
   if (!course.studentId) throw badRequest("คอร์สนี้ไม่มีนักเรียนที่ผูกไว้");
@@ -1244,10 +1293,15 @@ async function vouchersByIds(ids: string[]) {
 // SPEC-028 §7 (TASK-097) — the per-entitlement plan read model: "what does this child have, how do I move
 // it?". ONE DTO shape (discriminated by `kind`) the FE renders for both a course and a voucher, so the view
 // isn't two code paths. The live end date is DERIVED from the sessions each read, never the stored expiryDate.
-const teacherRef = (t: any) => (t ? { id: t.id, name: t.name, nickname: t.nickname } : null);
-const subjectRef = (s: any) => (s ? { id: s.id, name: s.name } : null);
+const teacherRef = (t: any): PlanSessionRow["teacher"] =>
+  t ? { id: t.id, name: t.name, nickname: t.nickname ?? null } : null;
+const subjectRef = (s: any): PlanSessionRow["subject"] => (s ? { id: s.id, name: s.name } : null);
 const studentRef = (s: any) => (s ? { id: s.id, name: s.name, nickname: s.nickname } : null);
-const toSessionRow = (b: any) => ({
+// 🔴 TASK-184: the return type is the guard. This was `(b: any) => ({…})` — an allow-list tied to nothing — so
+// when TASK-178 added `attendeeNote` to a booking it silently never reached the plan, and the per-session
+// editor could save a note it could not show. Annotating it makes the NEXT dropped field a compile error
+// rather than a bug three tasks later; a test would only ever cover the fields someone remembered to assert.
+const toSessionRow = (b: any): PlanSessionRow => ({
   id: b.id,
   date: b.date,
   startTime: b.startTime,
@@ -1255,6 +1309,7 @@ const toSessionRow = (b: any) => ({
   bookingType: b.bookingType, // SPEC-033: lets the course view flag a soft-linked SINGLE_SESSION extra distinctly
   teacher: teacherRef(b.teacher),
   subject: subjectRef(b.subject),
+  attendeeNote: b.attendeeNote ?? null,
 });
 
 export async function getEntitlementPlan(id: string) {
@@ -1726,6 +1781,12 @@ export async function applyPlanChange(
         where: (c: any, { eq }: any) => eq(c.id, courseId),
       });
       if (!course) throw notFound("ไม่พบคอร์ส");
+      // 🔴 TASK-185 (REQ-036 Part B): reject LOUDLY, not silently. `planCourseMovesForCourse` already returns
+      // no moves for an ended course — so without this the route would answer 200 with "nothing changed",
+      // which tells a staff member their leave/insert was accepted when it was not. A silent success on a
+      // dead course is its own lie, and it applies to the dry run too: a preview that says "this would work"
+      // is a promise the real call refuses.
+      if (isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
 
       // In dry-run, capture the applied result + resulting plan, then roll the whole tx back (nothing is written).
       const finalize = async (applied: any) => {
@@ -1899,6 +1960,18 @@ export async function updateBookingStatus(
     let extendedId: string | null = null;
     let locked = false;
     let notification: NotifyResult | null = null;
+
+    // 🔴 TASK-185 (REQ-036 Part B): the REVIVING transitions are refused on an ended course.
+    //
+    // `confirm` and `attend` put a forfeited session back on the calendar and then let it consume quota or
+    // bill at day-end — that is the whole hazard restated as a status change. `cancel` and `sick-leave` are
+    // deliberately NOT refused: they only move a session further away from being delivered, and blocking them
+    // would trap a row in a state nobody can clear.
+    //
+    // Enumerated by ACTION rather than by route, so `bulk-confirm` — which is just `confirm` in a loop — is
+    // covered by construction rather than by my remembering it.
+    const REVIVING = new Set(["confirm", "attend"]);
+    if (REVIVING.has(action)) await assertCourseWritable(tx, current.courseId);
 
     if (action === "confirm") {
       if (current.confirmedAt) {
@@ -2151,6 +2224,10 @@ export async function moveBooking(
   id: string,
   input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string },
 ) {
+  // TASK-185 (REQ-036 Part B): moving an ended course's session relocates a forfeited slot onto a teacher's
+  // calendar — it is the "revive" case wearing a different verb. Refused for course-linked bookings only; a
+  // trial / voucher / standalone single session is unaffected.
+  await assertBookingCourseWritable(db, id);
   const current = await db.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
   // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable.
@@ -2494,6 +2571,11 @@ export async function resetFreelanceBudgets() {
 // reconcile against. `GET /api/teachers/reconcile` was removed with it.
 
 export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {
+  // TASK-185 (REQ-036 Part B): `updateCourse` only sets `adminUnlocked` today — the flag that unlocks further
+  // rescheduling once leave quota is spent. On an ended course that is meaningless at best and a door to the
+  // plan paths at worst, so it is refused rather than narrowly allowed. If a future field here is genuinely
+  // harmless on an ended course, that is a decision to make then, per field.
+  await assertCourseWritable(db, id);
   if (input.adminUnlocked !== undefined) {
     await db
       .update(coursePackages)
