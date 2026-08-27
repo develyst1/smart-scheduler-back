@@ -7,10 +7,11 @@
 // after the person who wrote it moves on. That is the gap Porter named: Part A tested the action, not what can
 // be done to the course afterwards.
 import { describe, expect, test } from "bun:test";
+import { readSrc } from "../lib/read-src";
 
 const stripComments = (s: string) => s.replace(/^\s*\/\/.*$/gm, "");
-const ROUTES = await Bun.file(new URL("../routes/api.ts", import.meta.url)).text();
-const SVC = stripComments(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
+const ROUTES = readSrc(await Bun.file(new URL("../routes/api.ts", import.meta.url)).text());
+const SVC = stripComments(readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text()));
 
 /** Every write route the router declares, as `METHOD path`. */
 // The `\s*` matters: a couple of routes are declared multi-line (`.post(\n  "/path",`), and a regex that

@@ -10,7 +10,15 @@ export type PackageSize = 4 | 6 | 10;
 /** Leave quota bound to course size: 4→1, 6→2, 10→3. */
 export const LEAVE_QUOTA_BY_SIZE: Record<number, number> = { 4: 1, 6: 2, 10: 3 };
 
-/** Max week the schedule may extend to: 4→5, 10→13. (6→8 is an ASSUMPTION — confirm.) */
+/**
+ * Max week the schedule may extend to: **4→5, 6→8, 10→13** — all three CONFIRMED by the owner (FIX-007,
+ * 2026-08-28), which is also where course expiry comes from (`courseExpiry` = start + these weeks).
+ *
+ * The `6→8` entry carried "an ASSUMPTION — confirm" from the first week of this project and has been quoted as
+ * doubtful ever since, including in both repos' CLAUDE.md. It is now the owner's own rule, derived from the
+ * same table as 4 and 10 — so the caveat is deleted rather than softened. A stale warning on a settled number
+ * costs someone a re-investigation every time they meet it.
+ */
 export const MAX_WEEK_BY_SIZE: Record<number, number> = { 4: 5, 6: 8, 10: 13 };
 
 export interface CourseLike {

@@ -5,8 +5,9 @@
 // TASK-178/180: comments are stripped first, so the file can explain the money decision at length without a
 // test passing on prose.
 import { describe, expect, test } from "bun:test";
+import { readSrc } from "../lib/read-src";
 
-const SRC = await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text();
+const SRC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
 const code = (s: string) => s.replace(/^\s*\/\/.*$/gm, "");
 const FN = code(SRC.slice(SRC.indexOf("export async function endCourse")));
 const BODY = FN.slice(0, FN.indexOf("\n}\n") + 2);

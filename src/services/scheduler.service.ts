@@ -26,6 +26,7 @@ import { getSetting } from "./settings.service";
 import {
   courseExpiry,
   courseSessionDates,
+  importedCourseExpiry,
   isCourseSize,
   remainingSessions,
   weekdayOf,
@@ -47,6 +48,7 @@ import {
   revenueItemRef,
   isSellable,
   rentalPriceList,
+  RENTAL_CODES,
   sellablePackages,
   voucherPriceList,
   FIRST_TRIAL_MINOR,
@@ -380,11 +382,41 @@ async function loadBookingDTO(exec: any, id: string) {
     where: (b: any, { eq }: any) => eq(b.id, id),
     with: withBookingRelations,
   });
-  return toBookingDTO(row);
+  // TASK-190: one id, one lookup — the same helper the batch paths use, so a single booking and the calendar
+  // can never disagree about whether it has a rental.
+  const rented = await bookingsWithRentals(row ? [row.id] : [], exec);
+  return toBookingDTO(row, { hasRental: rented.has(row?.id) });
 }
 
 // ───────────────────────────── Reads ─────────────────────────────
 
+
+/**
+ * SPEC-045 / TASK-190 (REQ-052) — which of these bookings have an equipment rental attached.
+ *
+ * 🔴 **One query for the whole set, never one per booking.** `getCalendar` hydrates a full week — a per-booking
+ * lookup would be ~90 round trips to render a grid that already reads in three. The caller hands in every id it
+ * is about to map and gets a set back.
+ *
+ * A rental is identified by its **product code** (`bo.item.external_ref ∈ RENTAL_CODES`), not by the movement's
+ * `reason` — every sale posts `reason = "SALE"`, so reason cannot tell a rental from a course and matching on
+ * it would mark every sold course as rented. The codes come from `sale-items.ts`, so a fifth rental code added
+ * there is picked up here with no second list to update.
+ */
+export async function bookingsWithRentals(ids: string[], exec: any = db): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await exec
+    .select({ refId: boMovement.refId })
+    .from(boMovement)
+    .innerJoin(boItem, eq(boItem.id, boMovement.itemId))
+    .where(
+      and(
+        inArray(boMovement.refId, ids),
+        inArray(boItem.externalRef, RENTAL_CODES as unknown as string[]),
+      ),
+    );
+  return new Set(rows.map((r: any) => r.refId).filter((r: any): r is string => !!r));
+}
 export async function getCalendar(input: { date: string; view: "day" | "week" }) {
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
   const days = datesBetween(range.start, range.end);
@@ -420,9 +452,13 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
     with: withBookingRelations,
   });
 
+  // TASK-190: ONE query for the whole week, resolved BEFORE the loop — a per-booking lookup here would be ~90
+  // round trips to render a grid that otherwise reads in three.
+  const rented = await bookingsWithRentals(bookingRows.map((b) => b.id));
+
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row);
+    const dto = toBookingDTO(row, { hasRental: rented.has(row.id) });
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
@@ -720,9 +756,15 @@ export async function getBookings(f: {
     .from(bookings)
     .where(cond);
 
+  // TASK-190: batched over the page, same as the calendar.
+  const rented = await bookingsWithRentals(rows.map((r) => r.b.id));
+
   return {
     items: rows.map((r) =>
-      toBookingDTO({ ...r.b, student: r.s, teacher: r.t, subject: r.sub, course: r.c }),
+      toBookingDTO(
+        { ...r.b, student: r.s, teacher: r.t, subject: r.sub, course: r.c },
+        { hasRental: rented.has(r.b.id) },
+      ),
     ),
     page: f.page,
     limit: f.limit,
@@ -1077,8 +1119,12 @@ export async function getSellablePackages() {
  * Import a course a family is already part-way through: `size` bought, `usedSessions` already taught,
  * bookings created for the **remainder only**.
  *
- * ⚠️ **`expiryDate` is taken, never computed.** `courseExpiry` counts from the start date, and an imported
- * course started months ago — computing it would silently extend or shorten what the family actually bought.
+ * 🔴 **`expiryDate` is COMPUTED, not taken** (FIX-007 / TASK-195 — the owner's rule, 2026-08-28). This used to
+ * take `input.expiryDate`, arguing that computing would "silently extend or shorten what the family bought".
+ * The owner overruled it, and he is right: a typed-in date is not what the family bought either — it is what
+ * somebody typed — and since the `EXPIRED` status shipped it decides whether a live family reads as expired.
+ * `importedCourseExpiry` reconstructs the real start from the weekly cadence (`priorSessions` weeks before the
+ * first remaining session) so an imported course sits under the same ceiling as a native one. One rule.
  *
  * ⚠️ Pricing and availability (SPEC-024) deliberately do **not** apply: nothing is being sold, and an
  * off-card size is importable **on purpose** — the family already bought it, whatever the card says today.
@@ -1104,7 +1150,9 @@ export async function importCoursePackage(input: any) {
         startDate: input.startDate,
         weekday: weekdayOf(input.startDate),
         startTime: input.startTime,
-        expiryDate: input.expiryDate, // taken, not computed
+        // FIX-007 / TASK-195: computed from the owner's rule — `input.expiryDate` is deliberately IGNORED on
+        // this path now. See the note above the function for why the old "taken, not computed" was overruled.
+        expiryDate: importedCourseExpiry(input.startDate, input.size, input.usedSessions),
         source: "IMPORT",
       })
       .returning({ id: coursePackages.id });
@@ -1277,7 +1325,7 @@ export async function createCoursePackage(input: any) {
       with: withBookingRelations,
       orderBy: (b, { asc }) => asc(b.date),
     });
-    return { course: toCourseWithStudent(courseRow), bookings: created.map(toBookingDTO) };
+    return { course: toCourseWithStudent(courseRow), bookings: created.map((b) => toBookingDTO(b)) };
   });
 
   // Phase 2 (item-centric): a course sale → record revenue on its INCOME item in backoffice.

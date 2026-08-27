@@ -6,9 +6,10 @@
 // move path "for consistency" — and a LINE push to a teacher because a typo was fixed is not something the
 // test suite would otherwise notice.
 import { describe, expect, test } from "bun:test";
+import { readSrc } from "../lib/read-src";
 import { setAttendeeNote as noteSchema } from "../validation";
 
-const SRC = await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text();
+const SRC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
 const fn = SRC.slice(SRC.indexOf("export async function setAttendeeNote"));
 const body = fn.slice(0, fn.indexOf("\n}") + 2);
 

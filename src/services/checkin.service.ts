@@ -6,7 +6,7 @@ import { CRM_POINT_RULES } from "../lib/crm";
 import { awardCrmPoints } from "../lib/line-admin";
 import { getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
-import { updateBookingStatus } from "./scheduler.service";
+import { bookingsWithRentals, updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
 
 const withBookingRelations = {
@@ -21,7 +21,10 @@ async function loadBooking(id: string) {
     where: (b, { eq: e }) => e(b.id, id),
     with: withBookingRelations,
   });
-  return row ? toBookingDTO(row) : null;
+  if (!row) return null;
+  // TASK-190: the check-in screen shows the same cell markers as the calendar, so it resolves the same way.
+  const rented = await bookingsWithRentals([row.id]);
+  return toBookingDTO(row, { hasRental: rented.has(row.id) });
 }
 
 export async function getCheckinQr(bookingId: string) {

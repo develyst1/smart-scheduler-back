@@ -194,3 +194,29 @@ describe("toBookingDTO attendeeNote (TASK-178)", () => {
     expect(toBookingDTO(bookingRow()).attendeeNote).toBeNull();
   });
 });
+
+// ───────── SPEC-045 / TASK-190 (REQ-052) — the calendar cell's rental marker ─────────
+describe("toBookingDTO hasRental (TASK-190)", () => {
+  test("defaults to false — a booking nobody asked about is not marked as rented", () => {
+    expect(toBookingDTO(bookingRow()).hasRental).toBe(false);
+  });
+
+  test("true when the caller's batched lookup says this booking has one", () => {
+    expect(toBookingDTO(bookingRow(), { hasRental: true }).hasRental).toBe(true);
+  });
+
+  test("🔑 a PRESENCE marker, not the rental — the cell shows a glyph, the ledger holds the money", () => {
+    // Putting code/price/hours on a booking would be a second home for data the ledger already owns, and the
+    // two would drift the first time a rental was edited.
+    const dto = toBookingDTO(bookingRow(), { hasRental: true }) as any;
+    for (const leaked of ["rental", "rentalCode", "rentalHours", "rentalMinor"]) {
+      expect(leaked in dto).toBe(false);
+    }
+  });
+
+  test("the rest of the DTO is unchanged either way (regression)", () => {
+    const { hasRental: _a, ...withOut } = toBookingDTO(bookingRow()) as any;
+    const { hasRental: _b, ...withIn } = toBookingDTO(bookingRow(), { hasRental: true }) as any;
+    expect(withIn).toEqual(withOut);
+  });
+});

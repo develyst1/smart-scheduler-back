@@ -96,7 +96,7 @@ export const toBadgeTypeDTO = (t: any) => ({
     .map(toBadgeValueDTO),
 });
 
-export const toBookingDTO = (b: any) => ({
+export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
   startTime: hhmm(b.startTime),
@@ -112,6 +112,13 @@ export const toBookingDTO = (b: any) => ({
   subject: { id: b.subject.id, name: b.subject.name },
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
+  // SPEC-045 / TASK-190 (REQ-052) — does this session have equipment rented against it? A **presence marker**
+  // only: the cell shows a glyph, and the rental's detail lives in the ledger, not on a booking.
+  //
+  // Passed in rather than derived here, because the caller reads it for the whole set in ONE query (a calendar
+  // week is ~90 bookings). Defaults to `false`, which is exactly right for the one caller that cannot have
+  // rentals: the bookings a course creates, which do not exist until their transaction commits.
+  hasRental: opts.hasRental ?? false,
   // SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount captured at booking, so the record can answer
   // what/why/who. `null` — not a partly-filled object — when there is no discount: an absent discount and a
   // discount of nothing must not look alike on screen.

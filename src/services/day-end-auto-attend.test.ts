@@ -5,10 +5,11 @@
 // nobody attended, or change how much quota it consumes. Each of those is a one-word edit away from being
 // wrong again, and none of them would fail any other test in this suite.
 import { describe, expect, test } from "bun:test";
+import { readSrc } from "../lib/read-src";
 import { ATTENTION_CHECKS } from "../lib/attention";
 import { isDueForAutoAttend } from "../lib/auto-cut";
 
-const SRC = await Bun.file(new URL("./jobs.service.ts", import.meta.url)).text();
+const SRC = readSrc(await Bun.file(new URL("./jobs.service.ts", import.meta.url)).text());
 const JOB = SRC.slice(SRC.indexOf("export async function runEndOfDayJob"));
 // Comments are stripped before asserting: this file deliberately DISCUSSES the old NO_SHOW behaviour at
 // length, and a test that reads prose would either fail on the explanation or pass on a comment. Only the

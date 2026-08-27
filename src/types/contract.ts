@@ -175,6 +175,9 @@ export interface BookingDTO {
   /** SPEC-063 / TASK-178 (REQ-068) — the attendee note for this session, or `null`. Separate from `note`, which
    *  carries the system's own status reasons. Max 200 chars, set at booking or edited per session. */
   attendeeNote: string | null;
+  /** SPEC-045 / TASK-190 (REQ-052) — true when equipment is rented against this session. A **presence marker**
+   *  for the calendar cell's fifth toggle item; the rental's detail lives in the ledger, not on a booking. */
+  hasRental: boolean;
   student: StudentRef;
   teacher: Pick<TeacherDTO, "id" | "name" | "nickname" | "type">;
   subject: SubjectRef;
