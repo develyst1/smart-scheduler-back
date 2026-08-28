@@ -16,10 +16,18 @@ export interface CourseStatusInput {
   size: number;
   usedSessions: number;
   expiryDate: string;
-  /** Set when the course was ended early (TASK-181) — terminal. */
-  endedAt?: Date | string | null;
-  /** Set while the course is PAUSED (TASK-198) — reversible; cleared on resume. */
-  droppedAt?: Date | string | null;
+  /**
+   * 🔴 REQUIRED, not optional — both of them (TASK-205, Fern's Q2).
+   *
+   * They were optional, and that is precisely how the DROPPED chip shipped stuck at 0: a caller hand-copied
+   * four fields into `countByStatus`, forgot `droppedAt`, and **nothing complained** — the field was optional,
+   * so a projection that dropped it type-checked perfectly while making the count structurally impossible.
+   *
+   * Required means the next lossy projection is a **compile error** instead of a number the owner reads as
+   * fact. Pass `null` for "not ended / not paused"; that is one keystroke and it is the whole guard.
+   */
+  endedAt: Date | string | null;
+  droppedAt: Date | string | null;
 }
 
 /**

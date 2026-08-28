@@ -92,7 +92,12 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
     dropReason: c.dropReason ?? null,
     // The clock is resolved once, here, in Bangkok — never inside the pure rule, which takes `today` so it
     // stays testable and cannot pick up the server's timezone by accident.
-    status: courseStatus(c, today ?? bangkokNow().date),
+    //
+    // The whole row goes in — the two `?? null`s are only bridging `CourseLike`'s optional fields (fixtures may
+    // omit them; a DB row never does) to `CourseStatusInput`'s now-REQUIRED ones. This is a coalesce at ONE
+    // named seam, not a hand-copied projection: the field list is not restated here, so it cannot go stale
+    // the way `listCoursesPaged`'s did (TASK-205).
+    status: courseStatus({ ...c, endedAt: c.endedAt ?? null, droppedAt: c.droppedAt ?? null }, today ?? bangkokNow().date),
     expiryDate: c.expiryDate,
   };
 }

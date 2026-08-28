@@ -594,15 +594,12 @@ export async function listCoursesPaged(f: {
 
   // Counts are over the search-filtered set BEFORE the status filter — the chips must show what switching to
   // another status would find, not "0" for every status you are not currently looking at.
-  const counts = countByStatus(
-    all.map((c: any) => ({
-      size: c.size,
-      usedSessions: c.usedSessions,
-      expiryDate: c.expiryDate,
-      endedAt: c.endedAt,
-    })),
-    today,
-  );
+  //
+  // 🔴 TASK-205: the whole rows go in, **never a projection**. This used to hand-copy four fields, and when
+  // TASK-198 added `droppedAt` to the status rule it was not added here — so every row's own `status` read
+  // DROPPED while the chip counting them structurally could not, and the compiler said nothing (the field is
+  // optional and the map was `(c: any)`). A projection here buys nothing: `countByStatus` takes whole rows.
+  const counts = countByStatus(all, today);
 
   const matching = f.status ? all.filter((c: any) => c.status === f.status) : all;
   const start = (f.page - 1) * f.limit;

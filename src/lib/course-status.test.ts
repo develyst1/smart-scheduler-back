@@ -10,6 +10,10 @@ const c = (o: Partial<CourseStatusInput> = {}): CourseStatusInput => ({
   size: 10,
   usedSessions: 3,
   expiryDate: "2026-11-01",
+  // Explicit nulls, because TASK-205 made both REQUIRED: a fixture that can omit a lifecycle flag is a fixture
+  // that can silently stop testing the status that flag decides.
+  endedAt: null,
+  droppedAt: null,
   ...o,
 });
 
@@ -147,5 +151,41 @@ describe("DROPPED — a paused course (TASK-198)", () => {
 
   test("the five filter chips come for free — `countByStatus` reports DROPPED at zero too", () => {
     expect(countByStatus([c({})], TODAY).DROPPED).toBe(0);
+  });
+});
+
+// ═══ 🔴 TASK-205 — the COUNT, not the rule ═══
+//
+// The bug this closes: every row's own `status` said DROPPED while the chip counting them said 0, because the
+// caller hand-copied four fields into `countByStatus` and TASK-198's `droppedAt` was never added to the list.
+// The rule was right; the number the owner reads was wrong. So these tests assert the two agreeing — which is
+// the check that was missing, in the review and in the suite.
+describe("🔴 the status and the count can never disagree (TASK-205)", () => {
+  const rows: CourseStatusInput[] = [
+    c({}),
+    c({ droppedAt: new Date() }),
+    c({ droppedAt: new Date(), expiryDate: "2026-01-01" }),
+    c({ endedAt: new Date() }),
+    c({ usedSessions: 10 }),
+  ];
+
+  test("a dropped course is COUNTED as dropped, not merely labelled dropped", () => {
+    expect(countByStatus(rows, TODAY).DROPPED).toBe(2);
+  });
+
+  test("🔑 every bucket equals the rows that claim that status — the invariant, stated once", () => {
+    // If a future caller projects away a lifecycle field again, this fails: the labels and the counts stop
+    // matching. That is the assertion the DROPPED chip needed and did not have.
+    const counts = countByStatus(rows, TODAY);
+    for (const s of COURSE_STATUSES) {
+      expect(counts[s]).toBe(rows.filter((r) => courseStatus(r, TODAY) === s).length);
+    }
+  });
+
+  test("a lifecycle flag cannot be omitted from the input at all — it is required (the structural guard)", () => {
+    // @ts-expect-error — `droppedAt` is REQUIRED; omitting it is a compile error, which is the whole point of
+    // TASK-205. If this line ever stops erroring, the guard has been weakened and the bug can return.
+    const lossy: CourseStatusInput = { size: 10, usedSessions: 3, expiryDate: "2026-11-01", endedAt: null };
+    expect(lossy).toBeDefined();
   });
 });
