@@ -75,9 +75,13 @@ export function canInsert(sessions: PlanSession[], size: number): boolean {
 }
 
 /**
- * Does an appended/extended date exceed the course's HARD ceiling (`startDate + MAX_WEEK_BY_SIZE weeks`, =
- * `courseExpiry`)? The append refuses past it (SPEC-028 §5 #2 — today nothing enforces `MAX_WEEK`, so a leave
- * could extend a course indefinitely). Week-8 for a size-6 is owner-confirmed and load-bearing.
+ * Does an appended/extended date exceed the course's HARD ceiling — **the date of week `MAX_WEEK_BY_SIZE`**,
+ * i.e. `courseExpiry` = start + (that week number − 1) weeks? The append refuses past it (SPEC-028 §5 #2 — a
+ * leave could otherwise extend a course indefinitely). Week 8 for a size-6 is owner-confirmed and load-bearing.
+ *
+ * (TASK-197: this said "startDate + MAX_WEEK_BY_SIZE weeks", which is the off-by-one the owner caught. Week 1
+ * is the start week — the ceiling is a week NUMBER, not a duration, and every course was getting seven days
+ * more than it bought.)
  */
 export function exceedsExtensionCeiling(date: string, startDate: string, size: number): boolean {
   return date > courseExpiry(startDate, size);
@@ -182,6 +186,13 @@ export interface EndableCourse {
 }
 
 export const isCourseEnded = (c: EndableCourse): boolean => c.endedAt != null;
+
+/**
+ * SPEC-065 / TASK-198 — is this course PAUSED? Deliberately a separate predicate from `isCourseEnded`, and it
+ * deliberately does **not** feed `courseOwedTarget`: a paused course still owes its sessions — that is the
+ * whole difference from an ended one. Resume gives them back; ending never does.
+ */
+export const isCourseDropped = (c: { droppedAt?: Date | string | null }): boolean => c.droppedAt != null;
 
 /** An ended course owes nothing; otherwise the plan size is REQ-064's `size − priorSessions`. */
 export const courseOwedTarget = (c: EndableCourse): number =>

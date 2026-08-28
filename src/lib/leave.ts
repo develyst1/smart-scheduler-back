@@ -32,6 +32,9 @@ export interface CourseLike {
    *  renders a course summary sees it, rather than only the one that ended it. */
   endedAt?: Date | string | null;
   endReason?: string | null;
+  /** TASK-198 — set while the course is PAUSED, cleared on resume. Reversible, unlike `endedAt`. */
+  droppedAt?: Date | string | null;
+  dropReason?: string | null;
 }
 
 export interface CourseSummary {
@@ -47,6 +50,9 @@ export interface CourseSummary {
   expiryDate: string;
   endedAt: string | null;
   endReason: string | null;
+  /** SPEC-065 / TASK-198 — when the course was paused, and why. `null` for a course that is not paused. */
+  droppedAt: string | null;
+  dropReason: string | null;
   /**
    * SPEC-064 / TASK-188 (REQ-036 B3) — the lifecycle status the badge renders AND the filter filters on.
    * Computed HERE, in the one builder every course response flows through, so the two cannot diverge — which
@@ -77,6 +83,13 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
     // family bought; this is the flag that says the plan is finished.
     endedAt: c.endedAt ? (typeof c.endedAt === "string" ? c.endedAt : c.endedAt.toISOString()) : null,
     endReason: c.endReason ?? null,
+    // TASK-198: carried like `endedAt` so the FE can say WHEN a course was paused and why, not merely that it is.
+    droppedAt: c.droppedAt
+      ? typeof c.droppedAt === "string"
+        ? c.droppedAt
+        : c.droppedAt.toISOString()
+      : null,
+    dropReason: c.dropReason ?? null,
     // The clock is resolved once, here, in Bangkok — never inside the pure rule, which takes `today` so it
     // stays testable and cannot pick up the server's timezone by accident.
     status: courseStatus(c, today ?? bangkokNow().date),

@@ -249,6 +249,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "depends on has landed (TASK-181 / REQ-036: ending a course early).",
     rerunnable: true,
   },
+  {
+    tag: "0024_course_dropped",
+    probe: { kind: "column", table: "course_packages", column: "drop_reason" },
+    why:
+      "0024 has no CHECK to witness (a pause reason is free text by design), so the probe is its LAST column: " +
+      "`drop_reason` is added after `dropped_at` and `dropped_by`, and the whole migration runs in one " +
+      "transaction, so that column existing means all three landed (TASK-198: pausing a course).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

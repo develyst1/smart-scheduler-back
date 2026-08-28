@@ -95,6 +95,14 @@ export const api = new Hono()
       await svc.endCourse(c.req.param("id"), body, c.get("user")?.sub ?? null),
     );
   })
+  // SPEC-065 / TASK-198 — pause a course (off the calendar, not deleted, still owed) and bring it back on its
+  // own slot. Separate verbs from `/cancel`: reversible and terminal must not share a button or a code.
+  .post("/courses/:id/drop", zValidator("json", v.dropCourse), async (c) =>
+    c.json(await svc.dropCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+  )
+  .post("/courses/:id/resume", zValidator("json", v.resumeCourse), async (c) =>
+    c.json(await svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+  )
   .get("/sellable-packages", async (c) => c.json(await svc.getSellablePackages()))
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>

@@ -35,6 +35,9 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /courses/:id": "guarded", // adminUnlocked on a dead course is meaningless at best
   "POST /bookings/bulk-confirm": "guarded", // it IS `confirm` in a loop — covered by the action-level guard
   "POST /courses/:id/cancel": "guarded", // its own ALREADY_ENDED (the double-cancel case, a different message)
+  "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
+  "POST /courses/:id/resume": "guarded", // …and refuses NOT_DROPPED / an ended course. Exempt from the drop guard
+                                          // by construction: it is the one write whose whole job is clearing it.
 
   // ── stated allowances: annotation only, no session added, nothing billed ──
   "PATCH /bookings/:id/note": "allowed", // what a parent told us about a session that already happened
@@ -142,5 +145,75 @@ describe("the guard is one behaviour, reached from every guarded path", () => {
   test("the allowed paths do NOT call the guard — 'allowed' is a decision, not an oversight", () => {
     expect(fn("setAttendeeNote")).not.toContain("assertCourseWritable");
     expect(fn("previewCourseEnd")).not.toContain("assertCourseWritable");
+  });
+});
+
+// ═══ SPEC-065 / TASK-198 — the same enumeration, against a PAUSED course ═══
+//
+// The task asked for this explicitly, and it is the right ask: a guard added for one state is not a guard for
+// the other. Everything that refuses an ended course must also refuse a paused one — with a DIFFERENT code,
+// because the fix differs ("resume it" vs "you can't").
+describe("a dropped course is refused by the same chokepoint, with its own code", () => {
+  const fn = (name: string) => {
+    const at = SVC.indexOf(`export async function ${name}`);
+    const rest = SVC.slice(at);
+    return rest.slice(0, rest.indexOf("\n}\n") + 2);
+  };
+
+  test("🔴 `assertCourseWritable` checks BOTH states — so every guarded route inherits the pause", () => {
+    const body = fn("assertCourseWritable");
+    expect(body).toContain("isCourseEnded");
+    expect(body).toContain("isCourseDropped");
+    // Ended is checked first: a course that was paused and then ended is ended, and should say so.
+    expect(body.indexOf("isCourseEnded")).toBeLessThan(body.indexOf("isCourseDropped"));
+  });
+
+  test("🔴 COURSE_DROPPED is a DISTINCT code from COURSE_ENDED — different sentence, different fix", () => {
+    expect(SVC).toContain('conflict("COURSE_DROPPED"');
+    expect(SVC).toContain('conflict("COURSE_ENDED"');
+  });
+
+  test("the paused message names the way out; the ended one cannot", () => {
+    // An admin who reads "cancelled" goes hunting for a mistake. One who reads "paused — resume it first"
+    // does the single thing that unblocks them.
+    expect(SVC).toContain("กลับมาเรียน");
+  });
+
+  test("drop refuses a second drop and an ended course, in that order of severity", () => {
+    const body = fn("dropCourse");
+    expect(body).toContain('conflict("ALREADY_DROPPED"');
+    expect(body.indexOf("isCourseEnded")).toBeLessThan(body.indexOf("isCourseDropped"));
+  });
+
+  test("🔑 resume clears the pause BEFORE it inserts — or the guard would refuse its own resume", () => {
+    // `insertBooking` runs through `assertCourseWritable`; a course still flagged dropped cannot be rebuilt.
+    // Both happen in one transaction, so a clash still rolls the whole resume back.
+    const body = fn("resumeCourse");
+    expect(body.indexOf("droppedAt: null")).toBeLessThan(body.indexOf("insertBooking"));
+    expect(body).toContain("db.transaction");
+  });
+
+  test("🔴 resume never moves a family silently — a taken slot surfaces as SLOT_TAKEN", () => {
+    const body = fn("resumeCourse");
+    expect(body).toContain('conflict(\n              "SLOT_TAKEN"');
+    expect(body).toContain("ระบบไม่ย้ายคาบให้เอง");
+  });
+
+  test("resume rebuilds on the course's OWN weekday and time, not on today's", () => {
+    const body = fn("resumeCourse");
+    expect(body).toContain("nextWeekdayOnOrAfter(bangkokNow().date, course.weekday)");
+    expect(body).toContain("startTime: course.startTime");
+  });
+
+  test("🔑 dropping does NOT reconcile — a pause is not a re-owe", () => {
+    // The ending has the same rule for the same reason: reconciling would append make-ups for the very
+    // sessions just taken off the calendar.
+    expect(fn("dropCourse")).not.toContain("reconcileCoursePlan");
+  });
+
+  test("dropping keeps the rows — soft-cancel, never a delete", () => {
+    const body = fn("dropCourse");
+    expect(body).toContain('status: "CANCELLED"');
+    expect(body).not.toContain("tx.delete");
   });
 });

@@ -169,6 +169,13 @@
       "when": 1783000000019,
       "tag": "0023_course_ended",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783000000020,
+      "tag": "0024_course_dropped",
+      "breakpoints": true
     }
   ]
 }

@@ -9,15 +9,17 @@
 // Pure — no DB, no clock. `today` is passed in (Asia/Bangkok, resolved by the caller) so the rule is testable
 // and cannot quietly depend on the server's timezone.
 
-export const COURSE_STATUSES = ["CANCELLED", "COMPLETED", "EXPIRED", "ACTIVE"] as const;
+export const COURSE_STATUSES = ["CANCELLED", "DROPPED", "COMPLETED", "EXPIRED", "ACTIVE"] as const;
 export type CourseStatus = (typeof COURSE_STATUSES)[number];
 
 export interface CourseStatusInput {
   size: number;
   usedSessions: number;
   expiryDate: string;
-  /** Set when the course was ended early (TASK-181). */
+  /** Set when the course was ended early (TASK-181) — terminal. */
   endedAt?: Date | string | null;
+  /** Set while the course is PAUSED (TASK-198) — reversible; cleared on resume. */
+  droppedAt?: Date | string | null;
 }
 
 /**
@@ -34,6 +36,11 @@ export interface CourseStatusInput {
  */
 export function courseStatus(c: CourseStatusInput, today: string): CourseStatus {
   if (c.endedAt != null) return "CANCELLED";
+  // 🔴 DROPPED sits second, above COMPLETED and EXPIRED: a paused course reads **paused** even when its window
+  // lapses mid-pause. The family is away, not finished — and telling the owner "EXPIRED" about a course he
+  // himself paused would send him to fix something working as designed. It sits *below* CANCELLED because
+  // ending is terminal and pausing is not: a course that was paused and then ended is ended.
+  if (c.droppedAt != null) return "DROPPED";
   if (c.usedSessions >= c.size) return "COMPLETED";
   if (c.expiryDate < today) return "EXPIRED";
   return "ACTIVE";

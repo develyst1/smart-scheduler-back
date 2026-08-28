@@ -57,11 +57,12 @@ describe("🔴 the dry-run list is the deliverable", () => {
   });
 
   test("🔑 AC-4: a live session past the corrected expiry is FLAGGED, never moved or hidden", () => {
-    const outlier = c({ id: "out", lastLiveSessionDate: "2026-09-30" }); // correct expiry 2026-04-09
+    const outlier = c({ id: "out", lastLiveSessionDate: "2026-09-30" }); // correct expiry 2026-04-02
     const [row] = planExpiryRepair([outlier], TODAY);
     expect(row!.liveSessionPastExpiry).toBe("2026-09-30");
     // The change still goes in the list — flagging is extra information, not a reason to drop the row.
-    expect(row!.to).toBe("2026-04-09");
+    // (2026-04-02, not 04-09: TASK-197 took the over-granted week off every course, this fixture included.)
+    expect(row!.to).toBe("2026-04-02");
   });
 
   test("a live session inside the corrected window is not flagged", () => {

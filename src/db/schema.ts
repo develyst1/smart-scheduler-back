@@ -274,6 +274,13 @@ export const coursePackages = pgTable(
     endReason: text("end_reason"),
     endNote: text("end_note"),
     endedBy: text("ended_by"),
+    // SPEC-065 / TASK-198 `0024` — PAUSED, not ended: the family is coming back. Deliberately a separate column
+    // from `ended_at` because dropping is **reversible** and ending is not; one column would make "away until
+    // March" and "stopped for good" the same fact, and every guard, badge and filter reading it would have to
+    // guess which. `dropReason` is free text — a pause has no closed set of causes the way an early ending does.
+    droppedAt: timestamp("dropped_at", { withTimezone: true }),
+    droppedBy: text("dropped_by"),
+    dropReason: text("drop_reason"),
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
     startDate: date("start_date").notNull(),

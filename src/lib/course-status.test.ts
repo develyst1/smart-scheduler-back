@@ -49,7 +49,7 @@ describe("courseStatus precedence (TASK-188)", () => {
   });
 });
 
-describe("🔴 AC-B6 — the four counts sum to the total, with nothing in two categories", () => {
+describe("🔴 AC-B6 — the counts sum to the total, with nothing in two categories", () => {
   const mixed: CourseStatusInput[] = [
     c(),
     c({ usedSessions: 0 }),
@@ -70,11 +70,11 @@ describe("🔴 AC-B6 — the four counts sum to the total, with nothing in two c
   test("filtering by each status partitions the set — no overlap, nothing missing", () => {
     const buckets = COURSE_STATUSES.map((s) => mixed.filter((x) => courseStatus(x, TODAY) === s));
     expect(buckets.flat()).toHaveLength(mixed.length); // nothing counted twice, nothing dropped
-    expect(buckets.map((b) => b.length)).toEqual([2, 2, 2, 2]);
+    expect(buckets.map((b) => b.length)).toEqual([2, 0, 2, 2, 2]); // DROPPED is 0 in this fixture — see below
   });
 
   test("every status is reported even at zero — a chip that vanishes reads as a missing feature", () => {
-    expect(countByStatus([], TODAY)).toEqual({ CANCELLED: 0, COMPLETED: 0, EXPIRED: 0, ACTIVE: 0 });
+    expect(countByStatus([], TODAY)).toEqual({ CANCELLED: 0, DROPPED: 0, COMPLETED: 0, EXPIRED: 0, ACTIVE: 0 });
   });
 });
 
@@ -99,5 +99,53 @@ describe("the status reaches the DTO from the one builder", () => {
     const locked = toCourseSummary({ ...base, leaveUsed: 3 }, TODAY);
     expect(locked.leaveLocked).toBe(true);
     expect(locked.status).toBe("ACTIVE");
+  });
+});
+
+// ═══ SPEC-065 / TASK-198 — DROPPED joins the precedence ═══
+describe("DROPPED — a paused course (TASK-198)", () => {
+  test("a paused course reads DROPPED", () => {
+    expect(courseStatus(c({ droppedAt: new Date() }), TODAY)).toBe("DROPPED");
+  });
+
+  test("🔴 dropped BEATS expired — a course paused past its own window is paused, not expired", () => {
+    // This is the case the precedence exists for. Telling the owner "EXPIRED" about a course he paused himself
+    // sends him to fix something that is working exactly as designed.
+    expect(courseStatus(c({ droppedAt: new Date(), expiryDate: "2026-01-01" }), TODAY)).toBe("DROPPED");
+  });
+
+  test("dropped beats completed too — the count says nothing about whether they are coming back", () => {
+    expect(courseStatus(c({ droppedAt: new Date(), usedSessions: 10 }), TODAY)).toBe("DROPPED");
+  });
+
+  test("🔴 CANCELLED still beats DROPPED — ending is terminal, pausing is not", () => {
+    // A course that was paused and then ended is ended. The reverse ordering would show a cancelled course as
+    // merely paused and offer a resume button that cannot work.
+    expect(courseStatus(c({ droppedAt: new Date(), endedAt: new Date() }), TODAY)).toBe("CANCELLED");
+  });
+
+  test("clearing `droppedAt` returns the course to whatever it otherwise is — resume is not a status", () => {
+    expect(courseStatus(c({ droppedAt: null }), TODAY)).toBe("ACTIVE");
+    expect(courseStatus(c({ droppedAt: null, expiryDate: "2026-01-01" }), TODAY)).toBe("EXPIRED");
+  });
+
+  test("🔴 AC-B6 still holds with five statuses — every course lands in exactly one", () => {
+    const five: CourseStatusInput[] = [
+      c({}),
+      c({ endedAt: new Date() }),
+      c({ droppedAt: new Date() }),
+      c({ droppedAt: new Date(), expiryDate: "2026-01-01" }), // ambiguous on purpose
+      c({ usedSessions: 10 }),
+      c({ usedSessions: 2, expiryDate: "2026-01-01" }),
+    ];
+    const counts = countByStatus(five, TODAY);
+    expect(COURSE_STATUSES.reduce((n, s) => n + counts[s], 0)).toBe(five.length);
+    expect(counts.DROPPED).toBe(2);
+    const buckets = COURSE_STATUSES.map((s) => five.filter((x) => courseStatus(x, TODAY) === s));
+    expect(buckets.flat()).toHaveLength(five.length);
+  });
+
+  test("the five filter chips come for free — `countByStatus` reports DROPPED at zero too", () => {
+    expect(countByStatus([c({})], TODAY).DROPPED).toBe(0);
   });
 });

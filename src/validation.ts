@@ -140,7 +140,7 @@ export const vouchersQuery = z.object({
 export const coursesQuery = z.object({
   /** SPEC-064 / TASK-188 (REQ-036 B3) — filter by lifecycle status, server-side so the counts and paging are
    *  true. Omitted = every status. */
-  status: z.enum(["CANCELLED", "COMPLETED", "EXPIRED", "ACTIVE"]).optional(),
+  status: z.enum(["CANCELLED", "DROPPED", "COMPLETED", "EXPIRED", "ACTIVE"]).optional(),
   q: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -554,4 +554,15 @@ export const endCourse = z.object({
 export const endCoursePreview = z.object({
   reason: z.string().trim().optional(),
   note: z.string().trim().max(500).optional(),
+});
+
+// SPEC-065 / TASK-198 — pause / resume a course.
+export const dropCourse = z.object({
+  /** Free text, optional: a pause has no closed set of causes the way an early ending does. */
+  reason: z.string().trim().max(500).optional(),
+});
+export const resumeCourse = z.object({
+  /** 🔴 Required: resuming without a new window would leave the family under the OLD expiry, which the pause
+   *  has by now eaten into — the admin must say when the course now runs to. */
+  expiryDate: DATE,
 });

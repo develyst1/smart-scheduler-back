@@ -28,10 +28,22 @@ export function remainingSessions(size: number, used: number): number {
   return Math.max(0, Math.floor(size) - Math.max(0, Math.floor(used)));
 }
 
-/** Course expiry = startDate + (max-week ceiling) weeks. 4→5wk, 6→8wk, 10→13wk. */
+/**
+ * Course expiry — the last date the schedule may reach.
+ *
+ * 🔴 **`MAX_WEEK_BY_SIZE` is a week NUMBER, not a duration** (TASK-197). Week 1 **is** the start week, so week
+ * `N` falls `N − 1` weeks after the start: a 6-session course starting 4 Sep runs to **week 8 = 23 Oct**, not
+ * 30 Oct. This used to add the full `weeks`, overshooting **every course by exactly seven days** — a week of
+ * schedule nobody bought, on create and on import alike.
+ *
+ * It survived because the tests asserted `weeks * 7` — the same arithmetic as the code. Layers agreeing with
+ * each other is not the same as agreeing with reality; the owner found it by starting one real course. The
+ * tests now pin **his** number (`courseExpiry("2026-09-04", 6) === "2026-10-23"`), which is the only kind of
+ * assertion that could have caught this.
+ */
 export function courseExpiry(startDate: string, size: number): string {
-  const weeks = MAX_WEEK_BY_SIZE[size] ?? size + 1;
-  return addDays(startDate, weeks * 7);
+  const weekNumber = MAX_WEEK_BY_SIZE[size] ?? size + 1;
+  return addDays(startDate, (weekNumber - 1) * 7);
 }
 
 /**
@@ -39,7 +51,7 @@ export function courseExpiry(startDate: string, size: number): string {
  *
  * ```
  * realStart  = firstRemainingSession − (priorSessions × 1 week)
- * expiryDate = realStart + MAX_WEEK_BY_SIZE[size] weeks
+ * expiryDate = courseExpiry(realStart, size)   // = realStart + (MAX_WEEK_BY_SIZE[size] − 1) weeks
  * ```
  *
  * 🔴 The import path used to **take** `expiryDate` from the caller, under a comment arguing that computing it
@@ -52,7 +64,8 @@ export function courseExpiry(startDate: string, size: number): string {
  * does for a native course. One rule, two entry points.
  *
  * Worked example (the owner's): 10-session, 4 already taught, first remaining 2026-02-05
- *   → realStart 2026-01-08 → expiry 2026-01-08 + 13 weeks = **2026-04-09**.
+ *   → realStart 2026-01-08 → week 13 of that course = 2026-01-08 + 12 weeks = **2026-04-02**.
+ *   (This said 04-09 until TASK-197 corrected the off-by-one — the ceiling is a week number, not a duration.)
  *
  * Pure. `priorSessions` is clamped at 0 so a nonsense import cannot push expiry into the future.
  */
@@ -69,4 +82,13 @@ export function importedCourseExpiry(
 /** Weekday 0=Sun … 6=Sat of an ISO date (Asia/Bangkok, server TZ). */
 export function weekdayOf(isoDate: string): number {
   return new Date(`${isoDate}T00:00:00`).getDay();
+}
+
+/**
+ * The first date on or after `from` that falls on `weekday` (0 = Sunday). Used when a paused course resumes:
+ * it comes back on its OWN weekday, not on whatever day the admin happened to click resume.
+ */
+export function nextWeekdayOnOrAfter(from: string, weekday: number): string {
+  const diff = (((weekday - weekdayOf(from)) % 7) + 7) % 7;
+  return addDays(from, diff);
 }

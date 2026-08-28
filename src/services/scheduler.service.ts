@@ -28,6 +28,7 @@ import {
   courseSessionDates,
   importedCourseExpiry,
   isCourseSize,
+  nextWeekdayOnOrAfter,
   remainingSessions,
   weekdayOf,
 } from "../lib/recurring";
@@ -81,6 +82,7 @@ import {
   isEndReason,
   END_REASONS,
   courseOwedTarget,
+  isCourseDropped,
   isCourseEnded,
   planCourseMovesForCourse,
   planCourseMoves,
@@ -986,6 +988,14 @@ async function captureBookingDiscount(input: any) {
 export const COURSE_ENDED_MESSAGE =
   "คอร์สนี้ถูกยกเลิกแล้ว — เพิ่ม/แก้ไข/คิดเงินคาบในคอร์สนี้ไม่ได้ (This course has been cancelled.)";
 
+/**
+ * SPEC-065 / TASK-198 — the paused twin. **The message names the way out**, which is the entire reason it is a
+ * different string from the ended one: an admin who reads "cancelled" goes looking for a mistake, while an
+ * admin who reads "paused — resume it first" does the one thing that unblocks them.
+ */
+export const COURSE_DROPPED_MESSAGE =
+  "คอร์สนี้พักอยู่ — กด “กลับมาเรียน” ก่อนจึงจะเพิ่ม/แก้ไข/คิดเงินคาบได้ (This course is paused — resume it first.)";
+
 /** Refuse any write to an ended course. The single chokepoint — a new route has one obvious thing to call. */
 export async function assertCourseWritable(exec: any, courseId: string | null | undefined) {
   if (!courseId) return;
@@ -993,6 +1003,11 @@ export async function assertCourseWritable(exec: any, courseId: string | null | 
     where: (c: any, { eq: e }: any) => e(c.id, courseId),
   });
   if (course && isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
+  // 🔴 TASK-198: a PAUSED course refuses the same add/bill paths, but with its own code and its own sentence.
+  // Collapsing the two into `COURSE_ENDED` would tell an admin their course was cancelled when it is merely
+  // paused — and the fix for one ("resume it") is nothing like the fix for the other. Ended is checked first
+  // because it is terminal: a course that was paused and then ended is ended.
+  if (course && isCourseDropped(course)) throw conflict("COURSE_DROPPED", COURSE_DROPPED_MESSAGE);
 }
 
 /**
@@ -2741,6 +2756,128 @@ export async function previewCourseEnd(id: string) {
  * The reason enum is validated here rather than trusted from the route — zod is the shape, this is the rule,
  * and a course ended with a reason nobody can query is an ended course nobody can find.
  */
+
+// ─────────── SPEC-065 / TASK-198 — pause a course, and bring it back ───────────
+//
+// 🔴 A pause is **not** a small cancellation, and the difference is the whole feature:
+//   · the sessions are soft-cancelled, never deleted — "not deleted" is the promise made to the family, and the
+//     history of who was booked when is exactly what someone asks for when they come back;
+//   · **`reconcileCoursePlan` is NOT called** — on a cancel that would re-owe make-ups for the sessions just
+//     removed, and here it would fight the pause every time. A pause changes nothing about what is owed;
+//   · `size`, `usedSessions` and `priorSessions` are untouched: the family still owns what they bought.
+
+/** Pause a course: off the calendar, still owed, reversible. */
+export async function dropCourse(id: string, input: { reason?: string | null }, actor?: string | null) {
+  return db.transaction(async (tx: any) => {
+    const { course, rows } = await loadCourseForEnd(tx, id);
+
+    // Ended beats dropped, and says so: pausing a cancelled course is a different mistake with a different fix.
+    if (isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
+    // Idempotent by refusal, not by silence — a second click must not look like it paused another batch.
+    if (isCourseDropped(course)) throw conflict("ALREADY_DROPPED", "คอร์สนี้พักอยู่แล้ว");
+
+    // The same `endableSessions` the ending uses — one definition of "still live", so a pause and an ending can
+    // never disagree about which sessions are still ahead of the family.
+    const paused = endableSessions<any>(rows);
+    for (const b of paused) {
+      await tx
+        .update(bookings)
+        .set({ status: "CANCELLED", note: "พักคอร์สชั่วคราว" })
+        .where(eq(bookings.id, b.id));
+    }
+
+    await tx
+      .update(coursePackages)
+      .set({ droppedAt: new Date(), droppedBy: actor ?? null, dropReason: input.reason?.trim() || null })
+      .where(eq(coursePackages.id, id));
+
+    const updated = await tx.query.coursePackages.findFirst({
+      where: (c: any, { eq: e }: any) => e(c.id, id),
+    });
+    return { dropped: true, removedSessions: paused.length, course: toCourseSummary(updated) };
+  });
+}
+
+/**
+ * Bring a paused course back: clear the pause, take the admin's new expiry, and regenerate the sessions the
+ * course still owes on **its own weekday and time**.
+ *
+ * 🔴 The family keeps their slot **by construction** — the course row already stores `weekday`/`startTime`, so
+ * resume rebuilds from those rather than asking anyone to re-pick. And a slot taken in the meantime **clashes
+ * loudly** (`SLOT_TAKEN`): silently moving a child to another time, months after the parent was told when their
+ * lesson is, is the one outcome this must never produce.
+ */
+export async function resumeCourse(id: string, input: { expiryDate: string }, _actor?: string | null) {
+  if (!input.expiryDate) throw new ApiException(400, "EXPIRY_REQUIRED", "ต้องระบุวันหมดอายุใหม่");
+
+  return db.transaction(async (tx: any) => {
+    const { course, rows } = await loadCourseForEnd(tx, id);
+    if (isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
+    if (!isCourseDropped(course)) throw conflict("NOT_DROPPED", "คอร์สนี้ไม่ได้พักอยู่ — ไม่ต้องกดกลับมาเรียน");
+
+    // What the plan still owes, from the SAME counter the rest of the engine uses (`courseOwedTarget` already
+    // knows about `priorSessions`). Sessions that were delivered before the pause still count as delivered.
+    const owed = Math.max(
+      0,
+      courseOwedTarget(course) -
+        courseCurrent(
+          rows.map((r: any) => ({
+            id: r.id,
+            status: r.status,
+            date: r.date,
+            extendedFromId: r.extendedFromId,
+            bookingType: r.bookingType,
+          })),
+        ),
+    );
+
+    // Clear the pause FIRST: `insertBooking` runs through `assertCourseWritable`, and a course still marked
+    // dropped would refuse its own resume. Doing it inside the same transaction means a clash below still
+    // rolls the whole thing back — the course does not come back half-resumed.
+    await tx
+      .update(coursePackages)
+      .set({ droppedAt: null, droppedBy: null, dropReason: null, expiryDate: input.expiryDate })
+      .where(eq(coursePackages.id, id));
+
+    const studentId = course.studentId;
+    const teacherId = rows[0]?.teacherId ?? null;
+    const subjectId = course.subjectId ?? rows[0]?.subjectId ?? null;
+    if (owed > 0 && (!studentId || !teacherId || !subjectId)) {
+      throw badRequest("คอร์สนี้ไม่มีข้อมูลครู/วิชา/นักเรียนพอที่จะสร้างคาบใหม่");
+    }
+
+    // Forward from today on the course's own weekday — the first slot on or after today, then weekly.
+    const created: string[] = [];
+    if (owed > 0) {
+      const start = nextWeekdayOnOrAfter(bangkokNow().date, course.weekday);
+      for (const date of courseSessionDates(start, owed)) {
+        try {
+          await insertBooking(tx, studentId, {
+            teacherId,
+            subjectId,
+            date,
+            startTime: course.startTime,
+            bookingType: "COURSE_PACKAGE",
+            courseId: id,
+          });
+          created.push(date);
+        } catch (e: any) {
+          if (e?.code === "SLOT_TAKEN")
+            throw conflict(
+              "SLOT_TAKEN",
+              `มีคาบชนในวันที่ ${date} — ต้องแก้ตารางก่อนจึงจะกลับมาเรียนได้ (ระบบไม่ย้ายคาบให้เอง)`,
+            );
+          throw e;
+        }
+      }
+    }
+
+    const updated = await tx.query.coursePackages.findFirst({
+      where: (c: any, { eq: e }: any) => e(c.id, id),
+    });
+    return { resumed: true, createdSessions: created.length, dates: created, course: toCourseSummary(updated) };
+  });
+}
 export async function endCourse(
   id: string,
   input: { reason: string; note?: string | null },
