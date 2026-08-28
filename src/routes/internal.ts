@@ -46,6 +46,14 @@ export const internalJobs = new Hono()
     if (err) return err;
     return c.json(await attention.runDailyDigestJob(c.req.valid("json").date));
   })
+  // SPEC-066 / TASK-208 (REQ-072 3B): 08:15 "class today" push — one message per PERSON (teacher + parent),
+  // idempotent per business date, and it ALWAYS writes a job_runs row so a job that was never registered on
+  // the box stays visible instead of failing silently for weeks.
+  .post("/jobs/daily-reminder", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await jobs.runDailyReminderJob(c.req.valid("json").date));
+  })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {
     const err = internalSecretError(c);

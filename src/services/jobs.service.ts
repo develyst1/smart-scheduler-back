@@ -20,6 +20,8 @@ import { recordSale } from "../lib/sale-post";
 import { listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
+import { enqueueLine } from "../lib/line";
+import { groupReminders, reminderReach } from "../lib/daily-reminder";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -152,4 +154,90 @@ export async function runEndOfDayJob(date?: string) {
   });
 
   return { date: runDate, ranAt: now.time, ...summary };
+}
+
+// ─────── SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push ───────
+
+export const REMINDER_JOB = "daily-reminder";
+
+/** Has the reminder already gone out for this business date? Read before sending, like the digest. */
+async function reminderAlreadySent(runDate: string): Promise<boolean> {
+  const rows = await db
+    .select()
+    .from(jobRuns)
+    .where(and(eq(jobRuns.job, REMINDER_JOB), eq(jobRuns.runDate, runDate)));
+  return rows.some((r) => (r.summary as any)?.sent === true);
+}
+
+/**
+ * The 08:15 daily reminder. **One message per person** — every teacher who teaches today, every parent whose
+ * child has a class today — and a `job_runs` row either way.
+ *
+ * 🔴 The `job_runs` row is not bookkeeping. Two scheduled jobs on this project were **never registered on the
+ * server and nobody noticed for weeks**; the day-end job turned out not to have run on `uat` at all. That row
+ * is the only thing that makes *"did it fire this morning?"* answerable without guessing, and it is written
+ * even when there is nothing to send.
+ *
+ * Idempotent per business date: a second run — a retry, or both boxes firing — sends nothing.
+ */
+export async function runDailyReminderJob(date?: string) {
+  const runDate = date ?? bangkokNow().date;
+  if (await reminderAlreadySent(runDate)) return { date: runDate, skipped: "already-sent" as const };
+
+  const rows = await db.query.bookings.findMany({
+    where: (b: any, { eq: e }: any) => e(b.date, runDate),
+    with: { teacher: true, student: true, subject: true },
+  });
+
+  // Parents in one query, not one per student — a Saturday is ~60 sessions.
+  const parentIds = [...new Set(rows.map((r: any) => r.student?.parentId).filter(Boolean))] as string[];
+  const parents = parentIds.length
+    ? await db.query.parents.findMany({ where: (p: any, { inArray: inA }: any) => inA(p.id, parentIds) })
+    : [];
+  const parentById = new Map(parents.map((p: any) => [p.id, p]));
+
+  const groups = groupReminders(
+    rows.map((r: any) => ({
+      id: r.id,
+      date: r.date,
+      startTime: r.startTime,
+      status: r.status,
+      teacherId: r.teacherId ?? null,
+      teacherLineUserId: r.teacher?.lineUserId ?? null,
+      studentId: r.studentId ?? null,
+      studentName: r.student?.nickname ?? r.student?.name ?? "-",
+      parentId: r.student?.parentId ?? null,
+      parentLineUserId: r.student?.parentId
+        ? (parentById.get(r.student.parentId)?.lineUserId ?? null)
+        : null,
+      subjectName: r.subject?.name ?? "-",
+    })),
+  );
+
+  // 🔴 Counted BEFORE sending, and returned. On `uat` most parents were imported and have never linked LINE —
+  // a reminder feature that reaches nobody looks identical to one that works, for as long as nobody checks.
+  const reach = reminderReach(groups);
+
+  for (const g of groups) {
+    await enqueueLine({
+      recipientType: g.recipientType,
+      recipientLineUserId: g.lineUserId,
+      // The rows travel in the payload so the worker renders them with the owner-verified `ตารางวันนี้`
+      // composer in each recipient's own language — no second format, no per-booking enrichment.
+      payload: { kind: "daily_reminder", rows: g.rows },
+      skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
+    });
+  }
+
+  await db.insert(jobRuns).values({
+    job: REMINDER_JOB,
+    runDate,
+    status: "success",
+    // `sent` is true even when every recipient was unlinked: the JOB ran. Conflating "ran" with "reached
+    // somebody" is what would let a silent registration failure hide behind an empty school day.
+    summary: { sent: true, ...reach },
+    finishedAt: new Date(),
+  });
+
+  return { date: runDate, sent: true, ...reach };
 }

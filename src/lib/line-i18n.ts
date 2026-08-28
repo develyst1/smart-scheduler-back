@@ -190,7 +190,8 @@ const TABLE: Record<string, Entry> = {
   ob_l_start: { TH: "เริ่ม", EN: "Starts" },
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },
   ob_l_sessions: { TH: "จำนวนคาบที่ยืนยัน", EN: "Sessions confirmed" },
-  ob_l_planned_leave: { TH: "แจ้งลาล่วงหน้าไว้", EN: "Leave already booked" },
+  // TASK-206: the label names DAYS, because the value is now a list of dates rather than a tally.
+  ob_l_planned_leave: { TH: "แจ้งลาล่วงหน้าไว้ (วันที่)", EN: "Leave already booked (dates)" },
   ob_l_note: { TH: "หมายเหตุ", EN: "Note" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },

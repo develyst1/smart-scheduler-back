@@ -55,3 +55,35 @@ describe("the note's shape (zod)", () => {
     expect(parsed.attendeeNote).toBe("พาน้องมาด้วย");
   });
 });
+
+// ═══ SPEC-066 / TASK-207 (REQ-072 part 3A) — the parent hears about a single-session confirm too ═══
+describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
+  const confirmBranch = (() => {
+    const at = SRC.indexOf('if (action === "confirm")');
+    return SRC.slice(at, SRC.indexOf('} else if (action === "attend")', at));
+  })();
+
+  test("🔴 the parent is enqueued alongside the teacher, not instead of them", () => {
+    expect(confirmBranch).toContain('recipientType: "teacher"');
+    expect(confirmBranch).toContain('recipientType: "parent"');
+  });
+
+  test("the parent's LINE id is resolved through the student, and null is allowed", () => {
+    // `enqueueLine` writes SKIPPED for a null recipient — the common case for uat's imported parents, and it
+    // must not be an error.
+    expect(confirmBranch).toContain("parentLineUserId(tx, current.studentId)");
+  });
+
+  test("🔑 both rows are inside the confirm branch — a cancel or a leave must not message a parent", () => {
+    // The owner asked for confirm. Notifying on other transitions would be a different feature, decided by me.
+    const attendBranch = SRC.slice(SRC.indexOf('} else if (action === "attend")'));
+    expect(attendBranch.slice(0, attendBranch.indexOf("} else if"))).not.toContain('recipientType: "parent"');
+  });
+
+  test("⚠️ the bulk-confirm fan-out is documented at the site, not left to be discovered", () => {
+    // bulkConfirm loops this path, so it now enqueues a parent row per session as well as the teacher row it
+    // already did. Pre-existing shape, doubled — flagged in TASK-207's notes for an SA decision rather than
+    // silently accepted or unilaterally "fixed".
+    expect(confirmBranch).toContain("bulkConfirm");
+  });
+});

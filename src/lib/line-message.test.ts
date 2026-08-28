@@ -73,7 +73,7 @@ describe("course_confirmed (TASK-201)", () => {
     weekday: 0,
     startTime: "10:00",
     confirmed: 10,
-    plannedLeaves: 2,
+    plannedLeaveDates: ["2026-09-14", "2026-09-28"],
     note: "แพ้ถั่ว",
   };
 
@@ -91,13 +91,31 @@ describe("course_confirmed (TASK-201)", () => {
     expect(out).toContain("Sunday 10:00");
   });
 
-  test("🔑 planned leaves are shown when there are any — the schedule is wrong without them", () => {
-    expect(formatOutboxMessage(payload, {}, "TH")).toContain("แจ้งลาล่วงหน้าไว้");
+  test("🔴 TASK-206: the planned leaves are DATES, not a count — the owner asked WHICH DAYS", () => {
+    // "2 planned leaves" tells a teacher the schedule they just confirmed is wrong somewhere, and not where.
+    // This asserts the RENDERED STRING, because a `plannedLeaves: 2` field compiled perfectly and was useless.
+    const out = formatOutboxMessage(payload, {}, "TH");
+    expect(out).toContain("แจ้งลาล่วงหน้าไว้");
+    expect(out).toContain("2026-09-14");
+    expect(out).toContain("2026-09-28");
+    // …and the leave line is never a bare tally: what follows the label is a date, not "2".
+    const leaveLine = out.split("\n").find((l) => l.includes("ลาล่วงหน้า"))!;
+    expect(leaveLine).toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(leaveLine.trim().endsWith(": 2")).toBe(false);
   });
 
-  test("…and the line is ABSENT at zero — a '0' reads as a problem to a teacher scanning it", () => {
-    const none = { ...payload, plannedLeaves: 0 };
+  test("dates render in order, comma-separated — a teacher reads it as a list of days", () => {
+    const scrambled = { ...payload, plannedLeaveDates: ["2026-09-14", "2026-09-28"] };
+    const out = formatOutboxMessage(scrambled, {}, "EN");
+    expect(out).toContain("2026-09-14, 2026-09-28");
+  });
+
+  test("…and the line is ABSENT when there are none — an empty leave line reads as a problem", () => {
+    const none = { ...payload, plannedLeaveDates: [] };
     expect(formatOutboxMessage(none, {}, "TH")).not.toContain("แจ้งลาล่วงหน้าไว้");
+    // A payload that never carried the field at all must behave the same, not crash.
+    const { plannedLeaveDates: _d, ...missing } = payload;
+    expect(formatOutboxMessage(missing, {}, "TH")).not.toContain("แจ้งลาล่วงหน้าไว้");
   });
 
   test("everything it needs is in the PAYLOAD — it renders with no booking context at all", () => {
@@ -111,5 +129,34 @@ describe("course_confirmed (TASK-201)", () => {
   test("a missing note simply does not appear (no empty label)", () => {
     const { note: _n, ...withoutNote } = payload;
     expect(formatOutboxMessage(withoutNote, {}, "TH")).not.toContain("หมายเหตุ");
+  });
+});
+
+// ═══ SPEC-066 / TASK-208 (REQ-072 3B) — the reminder reuses the verified composer ═══
+describe("daily_reminder (TASK-208)", () => {
+  const rows = [
+    { date: "2026-09-05", startTime: "09:00:00", studentName: "น้องเอ", subjectName: "Surfskate", status: "CONFIRMED" },
+    { date: "2026-09-05", startTime: "11:00:00", studentName: "น้องบี", subjectName: "Bike", status: "PENDING" },
+  ];
+
+  test("🔴 it renders as ตารางวันนี้ — the layout the owner has already read on a phone", () => {
+    const out = formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "TH");
+    expect(out).toContain("🗓️ ตารางวันนี้");
+    expect(out).toContain("09:00  น้องเอ");
+    expect(out).toContain("11:00  น้องบี");
+  });
+
+  test("one message lists every session that person has today — not one message each", () => {
+    const out = formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "TH");
+    expect(out.split("\n").filter((l) => /^\d{2}:\d{2} /.test(l))).toHaveLength(2);
+  });
+
+  test("EN renders the same list", () => {
+    expect(formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "EN")).toContain("Today's schedule");
+  });
+
+  test("a malformed payload degrades to the empty-state, never a crash in the worker", () => {
+    // The worker renders whatever is in the outbox, including rows queued by an older deploy.
+    expect(formatOutboxMessage({ kind: "daily_reminder" }, {}, "TH")).toContain("ไม่มีคาบสอนในช่วงนี้");
   });
 });

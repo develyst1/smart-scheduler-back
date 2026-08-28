@@ -4,6 +4,7 @@
 
 import { t, type Lang } from "./line-i18n";
 import { buildDigestMessage } from "./attention";
+import { renderSchedule, type SchedRow } from "./line-schedule";
 
 export interface OutboxPayload {
   kind?: string;
@@ -34,6 +35,13 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         line(t("ob_l_time", lang), when)
       ).trimEnd();
     }
+    // SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push.
+    //
+    // 🔴 It calls `renderSchedule` — **the owner-verified `ตารางวันนี้` composer** — rather than formatting a
+    // second version of the same list here. The owner has already read that layout on a phone; a second format
+    // would be a second thing to get wrong and a second thing to re-verify.
+    case "daily_reminder":
+      return renderSchedule((payload.rows as SchedRow[]) ?? [], lang, "today");
     // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
     //
     // 🔴 Everything it needs is IN THE PAYLOAD, not enriched from a booking. A course summary is not a fact
@@ -43,7 +51,12 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
     case "course_confirmed": {
       const dow = payload.weekday != null ? t(`ob_dow_${payload.weekday}`, lang) : undefined;
       const schedule = dow && payload.startTime ? `${dow} ${payload.startTime}` : (dow ?? undefined);
-      const planned = Number(payload.plannedLeaves ?? 0);
+      // 🔴 TASK-206 — the DAYS, not a tally. The owner asked "ลาล่วงหน้าวันไหนบ้าง"; a teacher who reads
+      // "2 planned leaves" knows the schedule they just confirmed is wrong somewhere and not where. Rendered
+      // as a comma-joined dated list, in order.
+      const plannedDates = Array.isArray(payload.plannedLeaveDates)
+        ? (payload.plannedLeaveDates as string[])
+        : [];
       return (
         t("ob_course_title", lang) + "\n" +
         line(t("ob_l_student", lang), payload.studentName as string) +
@@ -51,8 +64,8 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         line(t("ob_l_start", lang), payload.startDate as string) +
         line(t("ob_l_schedule", lang), schedule) +
         line(t("ob_l_sessions", lang), String(payload.confirmed ?? 0)) +
-        // Only when there IS one — a "0" here reads as a problem to a teacher scanning the message.
-        (planned > 0 ? line(t("ob_l_planned_leave", lang), String(planned)) : "") +
+        // Only when there IS one — an empty "leave" line reads as a problem to a teacher scanning the message.
+        (plannedDates.length ? line(t("ob_l_planned_leave", lang), plannedDates.join(", ")) : "") +
         line(t("ob_l_note", lang), (payload.note as string) || undefined)
       ).trimEnd();
     }

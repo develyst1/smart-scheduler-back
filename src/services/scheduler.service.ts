@@ -2093,6 +2093,22 @@ export async function updateBookingStatus(
           tx,
         );
         await issueCheckinToken(id, tx);
+        // TASK-207 (3A) — the parent hears about their own child's session too, not only the teacher. One
+        // extra row for this one booking; an unlinked parent gets a SKIPPED row exactly like an unlinked
+        // teacher, never an error.
+        //
+        // ⚠️ This path is also what `bulkConfirm` loops over, so a bulk confirm now enqueues a parent row per
+        // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
+        // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
+        await enqueueLine(
+          {
+            recipientType: "parent",
+            recipientLineUserId: await parentLineUserId(tx, current.studentId),
+            bookingId: id,
+            payload: { kind: "booking_confirmed", bookingId: id },
+          },
+          tx,
+        );
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -2782,6 +2798,25 @@ export async function previewCourseEnd(id: string) {
  * and consumes quota** (REQ-070 — the owner's own design). Confirming a whole course arms that for every
  * session in it. The owner has confirmed he wants this.
  */
+
+/**
+ * SPEC-066 / TASK-207 (REQ-072 part 3A) — the parent's LINE id for a student, or `null`.
+ *
+ * 🔴 `null` is a first-class answer here, not an error. Many `uat` parents were imported and have **never
+ * linked LINE**, so an unlinked parent must write a SKIPPED outbox row exactly like a teacher without a link —
+ * a notification feature that throws on the common case is a notification feature nobody turns on.
+ */
+async function parentLineUserId(exec: any, studentId: string | null | undefined): Promise<string | null> {
+  if (!studentId) return null;
+  const student = await exec.query.students.findFirst({
+    where: (s: any, { eq: e }: any) => e(s.id, studentId),
+  });
+  if (!student?.parentId) return null;
+  const parent = await exec.query.parents.findFirst({
+    where: (p: any, { eq: e }: any) => e(p.id, student.parentId),
+  });
+  return parent?.lineUserId ?? null;
+}
 export async function confirmCourse(id: string) {
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
@@ -2818,9 +2853,25 @@ export async function confirmCourse(id: string) {
     // Already-CONFIRMED sessions are the idempotent case: a second click confirms 0 and says so.
     const already = rows.filter((r: any) => r.status === "CONFIRMED" && !pending.includes(r)).length;
 
-    // 🔴 EXACTLY ONE outbox row for the whole course. The count is the assertion in the DoD, not the send.
+    // 🔴 EXACTLY ONE outbox row PER PERSON for the whole course — one teacher, one parent. Never per booking:
+    // a 10-session course would otherwise be ten messages each for one decision (TASK-207).
     const teacher = rows[0]?.teacher ?? null;
     const student = rows[0]?.student ?? null;
+    const coursePayload = {
+      kind: "course_confirmed",
+      courseId: id,
+      studentName: student?.nickname ?? student?.name ?? null,
+      subject: rows[0]?.subject?.name ?? null,
+      startDate: course.startDate,
+      weekday: course.weekday,
+      startTime: hhmm(course.startTime),
+      confirmed,
+      plannedLeaveDates: rows
+        .filter((r: any) => r.status === "SICK_LEAVE")
+        .map((r: any) => r.date)
+        .sort(),
+      note: rows[0]?.attendeeNote ?? null,
+    };
     const notification = confirmed
       ? await enqueueLine(
           {
@@ -2828,24 +2879,11 @@ export async function confirmCourse(id: string) {
             recipientLineUserId: teacher?.lineUserId ?? null,
             // No bookingId: this message is about the COURSE. Pointing it at one arbitrary session would make
             // the worker enrich it with that session's details and quietly contradict the summary.
-            payload: {
-              kind: "course_confirmed",
-              courseId: id,
-              studentName: student?.nickname ?? student?.name ?? null,
-              subject: rows[0]?.subject?.name ?? null,
-              startDate: course.startDate,
-              weekday: course.weekday,
-              startTime: hhmm(course.startTime),
-              confirmed,
-              // Sessions the family has ALREADY told us they will miss — the teacher needs that in the same
-              // message, or the schedule they just confirmed is wrong on the days it matters most.
-              plannedLeaves: rows.filter((r: any) => r.status === "SICK_LEAVE").length,
-              // 🔴 There is no `course.note` column — I checked rather than assuming one from the REQ wording.
-              // The course-level note staff actually write is TASK-178's `attendeeNote`, set once at creation
-              // and carried onto every session, so the first session carries it. Reading `course.note` would
-              // have compiled (the row is `any`) and silently sent an empty line forever.
-              note: rows[0]?.attendeeNote ?? null,
-            },
+            //
+            // The payload is built ONCE above and sent to both people. Two copies of this object would be two
+            // places to update the next time the message changes — and one of them would be missed, which is
+            // how the parent ends up reading a different schedule from the teacher.
+            payload: coursePayload,
           },
           tx,
         )
@@ -2853,12 +2891,27 @@ export async function confirmCourse(id: string) {
         // ignore the message that matters.
         null;
 
+    // TASK-207 (3A) — the parent gets the same schedule, as one message. `enqueueLine` writes a SKIPPED row
+    // when they have no LINE link, which is the common case on `uat` (imported, never linked) and must not be
+    // an error: a feature that throws on its commonest input is a feature nobody enables.
+    const parentLine = confirmed ? await parentLineUserId(tx, student?.id ?? course.studentId) : null;
+    const parentNotification = confirmed
+      ? await enqueueLine(
+          { recipientType: "parent", recipientLineUserId: parentLine, payload: coursePayload },
+          tx,
+        )
+      : null;
+
     const updated = await tx.query.coursePackages.findFirst({
       where: (c: any, { eq: e }: any) => e(c.id, id),
     });
     return {
       confirmed,
       skipped: results.filter((r) => r.outcome === "skipped").length,
+      // TASK-207: the reach is REPORTED, not assumed. An admin who confirms a course should be able to see
+      // that the parent was told — or was not, because they have never linked LINE.
+      parentNotified: parentNotification?.status === "queued",
+      parentLinked: !!parentLine,
       alreadyConfirmed: already,
       results,
       notification,

@@ -55,3 +55,56 @@ describe("the day-end auto-mark (TASK-180)", () => {
     expect(ATTENTION_CHECKS.some((c) => c.key === "yesterday_no_shows")).toBe(false);
   });
 });
+
+// ═══ SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 reminder, at the source ═══
+//
+// The DoD is an outcome on a live box (one message per person at 08:15, a job_runs row, a silent second run).
+// What a source test can prove is the shape that makes those inevitable — and the two ways this job could be
+// quietly useless: sending per booking, or looking like it ran when it never registered.
+describe("runDailyReminderJob (TASK-208)", () => {
+  const body = (() => {
+    const at = SRC.indexOf("export async function runDailyReminderJob");
+    const rest = SRC.slice(at);
+    return rest.slice(0, rest.indexOf("\n}\n") + 2);
+  })();
+
+  test("🔴 it enqueues per GROUP, never per booking", () => {
+    // `groupReminders` is what collapses ~60 Saturday sessions into one message per person; enqueuing from
+    // `rows` instead would put eight pushes on a teacher's phone before 08:20.
+    expect(body).toContain("for (const g of groups)");
+    expect(body).toContain("groupReminders(");
+    expect(body).not.toMatch(/for \(const [a-z]+ of rows\)/);
+  });
+
+  test("🔴 idempotent per business date — a retry or a second box sends nothing", () => {
+    expect(body).toContain("reminderAlreadySent(runDate)");
+    expect(body.indexOf("reminderAlreadySent")).toBeLessThan(body.indexOf("enqueueLine"));
+  });
+
+  test("🔴 a `job_runs` row is always written — 'never registered' must stay visible", () => {
+    // Two scheduled jobs on this project were never registered on the server and nobody noticed for weeks.
+    expect(body).toContain("insert(jobRuns)");
+    expect(body).toContain("REMINDER_JOB");
+  });
+
+  test("the reach is counted BEFORE sending and returned", () => {
+    expect(body.indexOf("reminderReach(groups)")).toBeLessThan(body.indexOf("for (const g of groups)"));
+    expect(body).toContain("...reach");
+  });
+
+  test("🔑 'sent' means the JOB ran, not that anyone was reached", () => {
+    // Conflating the two would let a silent registration failure hide behind a school day where every parent
+    // happened to be unlinked.
+    expect(body).toContain("summary: { sent: true, ...reach }");
+  });
+
+  test("parents are loaded in ONE query, not one per student", () => {
+    expect(body).toContain("inArray: inA");
+    expect(body).not.toMatch(/for \(.*\) \{[\s\S]*parents\.findFirst/);
+  });
+
+  test("the message reuses the owner-verified composer rather than formatting a second one", () => {
+    expect(body).toContain('kind: "daily_reminder"');
+    expect(body).toContain("rows: g.rows");
+  });
+});
