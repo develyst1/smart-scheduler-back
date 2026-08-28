@@ -35,6 +35,7 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /courses/:id": "guarded", // adminUnlocked on a dead course is meaningless at best
   "POST /bookings/bulk-confirm": "guarded", // it IS `confirm` in a loop — covered by the action-level guard
   "POST /courses/:id/cancel": "guarded", // its own ALREADY_ENDED (the double-cancel case, a different message)
+  "POST /courses/:id/confirm": "guarded", // TASK-201: confirming is a reviving write — same chokepoint
   "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
   "POST /courses/:id/resume": "guarded", // …and refuses NOT_DROPPED / an ended course. Exempt from the drop guard
                                           // by construction: it is the one write whose whole job is clearing it.
@@ -215,5 +216,62 @@ describe("a dropped course is refused by the same chokepoint, with its own code"
     const body = fn("dropCourse");
     expect(body).toContain('status: "CANCELLED"');
     expect(body).not.toContain("tx.delete");
+  });
+});
+
+// ═══ SPEC-066 / TASK-201 (REQ-072) — one course, one message ═══
+//
+// The DoD asks for an OUTCOME (a count that changed, an outbox of exactly 1) and I cannot run a database. What
+// a source-level test CAN prove is the shape that makes the outcome inevitable: the enqueue is outside the
+// per-session loop, the money is inside it, and single-confirm was not touched. Those are the three ways this
+// could be wrong.
+describe("confirmCourse sends ONE message, not N (TASK-201)", () => {
+  const fn = (name: string) => {
+    const at = SVC.indexOf(`export async function ${name}`);
+    const rest = SVC.slice(at);
+    return rest.slice(0, rest.indexOf("\n}\n") + 2);
+  };
+  const body = fn("confirmCourse");
+
+  test("🔴 exactly one enqueue, and it is OUTSIDE the per-session loop", () => {
+    expect(body.match(/enqueueLine\(/g)).toHaveLength(1);
+    expect(body.indexOf("for (const b of pending)")).toBeLessThan(body.indexOf("enqueueLine("));
+  });
+
+  test("🔴 the money side effect stays INSIDE the loop — only the notification is collapsed", () => {
+    // A course confirm must draw exactly what ten single confirms would draw. Collapsing the ledger the way
+    // the message is collapsed would silently under-charge a freelance teacher's budget.
+    const loop = body.slice(body.indexOf("for (const b of pending)"), body.indexOf("enqueueLine("));
+    expect(loop).toContain("reconcileBookingHolds");
+    expect(loop).toContain("issueCheckinToken");
+  });
+
+  test("🔑 `updateBookingStatus` is NOT called here — single-confirm behaviour is untouched", () => {
+    // The alternative was a `notify:false` flag threaded through the app's most-used write path. This feature
+    // does not justify putting every single-session confirm at risk.
+    expect(body).not.toContain("updateBookingStatus");
+  });
+
+  test("nothing confirmed ⇒ nothing announced", () => {
+    // "Confirmed 0 sessions" trains a teacher to ignore the message that matters.
+    expect(body).toContain("confirmed\n      ? await enqueueLine");
+  });
+
+  test("a session that cannot confirm is REPORTED, not dropped", () => {
+    expect(body).toContain('outcome: "skipped"');
+    expect(body).toContain("ApiException");
+  });
+
+  test("🔑 a non-ApiException is rethrown — a half-written course confirm is worse than none", () => {
+    expect(body).toContain("if (!(err instanceof ApiException)) throw err;");
+  });
+
+  test("it runs through the same write guard as every other add/revive path", () => {
+    expect(body).toContain("assertCourseWritable");
+  });
+
+  test("the acknowledged REQ-070 consequence is recorded at the site, not left to be rediscovered", () => {
+    const doc = SVC.slice(SVC.indexOf("SPEC-066 / TASK-201"), SVC.indexOf("export async function confirmCourse"));
+    expect(doc).toContain("auto-attends at day-end");
   });
 });

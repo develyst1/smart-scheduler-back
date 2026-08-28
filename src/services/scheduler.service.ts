@@ -2767,6 +2767,108 @@ export async function previewCourseEnd(id: string) {
 //   · `size`, `usedSessions` and `priorSessions` are untouched: the family still owns what they bought.
 
 /** Pause a course: off the calendar, still owed, reversible. */
+
+/**
+ * SPEC-066 / TASK-201 (REQ-072) — confirm a WHOLE course in one action, with **one** LINE summary.
+ *
+ * 🔴 Why this is not `bulkConfirm(sessionIds)`: that loops `updateBookingStatus(id,"confirm")`, and every
+ * confirm enqueues **its own** teacher LINE. Handing it a 10-session course would send a teacher ten messages
+ * for one decision — which is how a notification channel gets muted, and a muted channel is worse than none.
+ *
+ * So this reuses the *pieces* of a confirm — the status write, `issueCheckinToken`, `reconcileBookingHolds` —
+ * rather than the orchestrator, and deliberately does **not** add a `notify: false` flag to
+ * `updateBookingStatus`. That function is the single most-used write path in the app; threading a transaction
+ * and a suppression flag through it to serve one caller would put every single-session confirm at risk for a
+ * feature that does not touch them. **Single-confirm behaviour is byte-identical after this task.**
+ *
+ * ⚠️ **Acknowledged consequence, do not "fix" it:** a CONFIRMED session nobody marks **auto-attends at day-end
+ * and consumes quota** (REQ-070 — the owner's own design). Confirming a whole course arms that for every
+ * session in it. The owner has confirmed he wants this.
+ */
+export async function confirmCourse(id: string) {
+  return db.transaction(async (tx: any) => {
+    const { course, rows } = await loadCourseForEnd(tx, id);
+    // An ended or paused course must not be confirmed back onto the calendar — the same guard every other
+    // add/revive path uses, so this route cannot become the one door left open.
+    await assertCourseWritable(tx, id);
+
+    const pending = rows.filter((r: any) => r.status === "PENDING");
+    const results: BulkConfirmResult[] = [];
+    let confirmed = 0;
+
+    for (const b of pending) {
+      try {
+        await tx
+          .update(bookings)
+          .set({ status: "CONFIRMED", confirmedAt: new Date() })
+          .where(eq(bookings.id, b.id));
+        await issueCheckinToken(b.id, tx);
+        // The money side effect still happens per session — a course confirm draws exactly what ten single
+        // confirms would draw. Only the NOTIFICATION is collapsed, never the ledger.
+        await reconcileBookingHolds(tx, b.id, b.teacherId, "CONFIRMED", false);
+        confirmed++;
+        results.push({ id: b.id, outcome: "confirmed" });
+      } catch (err) {
+        // INSUFFICIENT_BUDGET and friends are ApiExceptions thrown BEFORE any write, so the transaction is
+        // still usable and the rest of the course can proceed. A session that could not confirm is REPORTED,
+        // never silently dropped — an admin who is told "10 confirmed" when 9 were is worse off than one who
+        // is told which failed. A non-ApiException is rethrown: a half-written course confirm is worse than none.
+        if (!(err instanceof ApiException)) throw err;
+        results.push({ id: b.id, outcome: "skipped", reason: err.message });
+      }
+    }
+
+    // Already-CONFIRMED sessions are the idempotent case: a second click confirms 0 and says so.
+    const already = rows.filter((r: any) => r.status === "CONFIRMED" && !pending.includes(r)).length;
+
+    // 🔴 EXACTLY ONE outbox row for the whole course. The count is the assertion in the DoD, not the send.
+    const teacher = rows[0]?.teacher ?? null;
+    const student = rows[0]?.student ?? null;
+    const notification = confirmed
+      ? await enqueueLine(
+          {
+            recipientType: "teacher",
+            recipientLineUserId: teacher?.lineUserId ?? null,
+            // No bookingId: this message is about the COURSE. Pointing it at one arbitrary session would make
+            // the worker enrich it with that session's details and quietly contradict the summary.
+            payload: {
+              kind: "course_confirmed",
+              courseId: id,
+              studentName: student?.nickname ?? student?.name ?? null,
+              subject: rows[0]?.subject?.name ?? null,
+              startDate: course.startDate,
+              weekday: course.weekday,
+              startTime: hhmm(course.startTime),
+              confirmed,
+              // Sessions the family has ALREADY told us they will miss — the teacher needs that in the same
+              // message, or the schedule they just confirmed is wrong on the days it matters most.
+              plannedLeaves: rows.filter((r: any) => r.status === "SICK_LEAVE").length,
+              // 🔴 There is no `course.note` column — I checked rather than assuming one from the REQ wording.
+              // The course-level note staff actually write is TASK-178's `attendeeNote`, set once at creation
+              // and carried onto every session, so the first session carries it. Reading `course.note` would
+              // have compiled (the row is `any`) and silently sent an empty line forever.
+              note: rows[0]?.attendeeNote ?? null,
+            },
+          },
+          tx,
+        )
+      : // Nothing changed ⇒ nothing to announce. Sending "confirmed 0 sessions" would train a teacher to
+        // ignore the message that matters.
+        null;
+
+    const updated = await tx.query.coursePackages.findFirst({
+      where: (c: any, { eq: e }: any) => e(c.id, id),
+    });
+    return {
+      confirmed,
+      skipped: results.filter((r) => r.outcome === "skipped").length,
+      alreadyConfirmed: already,
+      results,
+      notification,
+      course: toCourseSummary(updated),
+    };
+  });
+}
 export async function dropCourse(id: string, input: { reason?: string | null }, actor?: string | null) {
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);

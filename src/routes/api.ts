@@ -95,6 +95,9 @@ export const api = new Hono()
       await svc.endCourse(c.req.param("id"), body, c.get("user")?.sub ?? null),
     );
   })
+  // SPEC-066 / TASK-201 (REQ-072) — confirm every PENDING session of a course in one action, with exactly ONE
+  // teacher LINE. Distinct from `/bookings/bulk-confirm`, which is per-session and sends one message each.
+  .post("/courses/:id/confirm", async (c) => c.json(await svc.confirmCourse(c.req.param("id"))))
   // SPEC-065 / TASK-198 — pause a course (off the calendar, not deleted, still owed) and bring it back on its
   // own slot. Separate verbs from `/cancel`: reversible and terminal must not share a button or a code.
   .post("/courses/:id/drop", zValidator("json", v.dropCourse), async (c) =>

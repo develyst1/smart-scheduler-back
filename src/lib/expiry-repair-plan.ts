@@ -41,8 +41,23 @@ export function correctExpiry(c: RepairCourse): string {
     : courseExpiry(c.startDate, c.size);
 }
 
+/**
+ * 🔴 TASK-200 — **imported courses are excluded from the repair entirely.** The owner's ruling is *"ข้ามการแก้
+ * วันexpire คอร์สนำเข้าไปก่อน"*: an imported expiry is a date a **human typed**, and it may encode an agreement
+ * with that family that no rule of ours can see. Recomputing it would silently overwrite the agreement with
+ * arithmetic.
+ *
+ * The exclusion is here, **before the map**, and not inside `correctExpiry` — a course that never enters the
+ * list cannot appear in the changes, the counts, or the flip list by any later edit. Filtering afterwards, or
+ * relying on the branch inside `correctExpiry`, is what made this wrong the first time: the branch existed, so
+ * the code *looked* source-aware while still rewriting every import.
+ *
+ * `importedCourseExpiry` stays in the codebase on purpose — it is correct, and it is what **future** imports
+ * should compute once the import form is fixed. What is banned is retro-rewriting rows a human already filled.
+ */
 export function planExpiryRepair(courses: RepairCourse[], today: string): RepairChange[] {
   return courses
+    .filter((c) => c.source !== "IMPORT")
     .map((c) => {
       const to = correctExpiry(c);
       return {

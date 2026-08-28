@@ -34,6 +34,28 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         line(t("ob_l_time", lang), when)
       ).trimEnd();
     }
+    // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
+    //
+    // 🔴 Everything it needs is IN THE PAYLOAD, not enriched from a booking. A course summary is not a fact
+    // about any one session, and asking the worker to re-derive "the schedule" from a booking it happens to
+    // reference would make the message depend on which session was picked. `sick_leave` already carries its own
+    // fields for the same reason.
+    case "course_confirmed": {
+      const dow = payload.weekday != null ? t(`ob_dow_${payload.weekday}`, lang) : undefined;
+      const schedule = dow && payload.startTime ? `${dow} ${payload.startTime}` : (dow ?? undefined);
+      const planned = Number(payload.plannedLeaves ?? 0);
+      return (
+        t("ob_course_title", lang) + "\n" +
+        line(t("ob_l_student", lang), payload.studentName as string) +
+        line(t("ob_l_subject", lang), payload.subject as string) +
+        line(t("ob_l_start", lang), payload.startDate as string) +
+        line(t("ob_l_schedule", lang), schedule) +
+        line(t("ob_l_sessions", lang), String(payload.confirmed ?? 0)) +
+        // Only when there IS one — a "0" here reads as a problem to a teacher scanning the message.
+        (planned > 0 ? line(t("ob_l_planned_leave", lang), String(planned)) : "") +
+        line(t("ob_l_note", lang), (payload.note as string) || undefined)
+      ).trimEnd();
+    }
     case "reschedule_requested": {
       const target =
         payload.to?.date && payload.to?.startTime

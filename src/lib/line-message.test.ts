@@ -57,3 +57,59 @@ describe("LINE outbox message formatting (B.3)", () => {
     expect(formatOutboxMessage({})).toContain("แจ้งเตือนจากระบบ");
   });
 });
+
+// ═══ SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course ═══
+//
+// The point of this feature is that a teacher gets **one** message for one decision. These tests are about
+// what that message has to say to be worth reading at all: which family, which slot, and what they have
+// already told us they will miss.
+describe("course_confirmed (TASK-201)", () => {
+  const payload = {
+    kind: "course_confirmed",
+    courseId: "c1",
+    studentName: "น้องเอ",
+    subject: "Surfskate",
+    startDate: "2026-09-06",
+    weekday: 0,
+    startTime: "10:00",
+    confirmed: 10,
+    plannedLeaves: 2,
+    note: "แพ้ถั่ว",
+  };
+
+  test("TH: the slot is named in words, not a weekday number", () => {
+    const out = formatOutboxMessage(payload, {}, "TH");
+    expect(out).toContain("📅 ยืนยันคอร์สแล้ว");
+    expect(out).toContain("น้องเอ");
+    expect(out).toContain("อาทิตย์ 10:00"); // a teacher reads "Sunday", never "0"
+    expect(out).toContain("10");
+  });
+
+  test("EN renders the same facts", () => {
+    const out = formatOutboxMessage(payload, {}, "EN");
+    expect(out).toContain("Course schedule confirmed");
+    expect(out).toContain("Sunday 10:00");
+  });
+
+  test("🔑 planned leaves are shown when there are any — the schedule is wrong without them", () => {
+    expect(formatOutboxMessage(payload, {}, "TH")).toContain("แจ้งลาล่วงหน้าไว้");
+  });
+
+  test("…and the line is ABSENT at zero — a '0' reads as a problem to a teacher scanning it", () => {
+    const none = { ...payload, plannedLeaves: 0 };
+    expect(formatOutboxMessage(none, {}, "TH")).not.toContain("แจ้งลาล่วงหน้าไว้");
+  });
+
+  test("everything it needs is in the PAYLOAD — it renders with no booking context at all", () => {
+    // A course summary is not a fact about any one session; enriching it from a booking would make the
+    // message depend on which session happened to be referenced.
+    const out = formatOutboxMessage(payload, {}, "TH");
+    expect(out).toContain("2026-09-06");
+    expect(out).toContain("Surfskate");
+  });
+
+  test("a missing note simply does not appear (no empty label)", () => {
+    const { note: _n, ...withoutNote } = payload;
+    expect(formatOutboxMessage(withoutNote, {}, "TH")).not.toContain("หมายเหตุ");
+  });
+});

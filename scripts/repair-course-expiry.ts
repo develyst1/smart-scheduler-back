@@ -70,14 +70,19 @@ async function main() {
 
       const changes = planExpiryRepair(input, today);
       const sum = repairSummary(changes);
+      // 🔴 TASK-200: the skipped count is printed, not implied. The owner asked for imports to be left alone —
+      // he should be able to SEE that they were, on the line above the numbers he is about to commit, rather
+      // than trust that a filter he cannot see is doing its job.
+      const skippedImports = input.filter((c) => c.source === "IMPORT").length;
       console.log(`  คอร์สทั้งหมด: ${courses.length}`);
+      console.log(`  ข้ามคอร์สนำเข้า (IMPORT) ไม่แตะเลย: ${skippedImports}`);
       console.log(`  ต้องแก้วันหมดอายุ: ${sum.changed}  (เร็วขึ้น ${sum.earlier} · ช้าลง ${sum.later})`);
       console.log(`  🔴 จะกลายเป็นหมดอายุทันที: ${sum.newlyExpired}`);
       console.log(`  ⚠️ มีคาบที่ยังไม่เรียนอยู่หลังวันหมดอายุใหม่: ${sum.liveSessionPastExpiry}`);
 
       lines = [
         `รายงานแก้วันหมดอายุคอร์ส (FIX-007) - ${commit ? "หลังแก้จริง" : "ตรวจก่อนแก้"} - ${today}`,
-        `คอร์สทั้งหมด ${courses.length} · แก้ ${sum.changed} · หมดอายุทันที ${sum.newlyExpired} · มีคาบเลยวันหมดอายุ ${sum.liveSessionPastExpiry}`,
+        `คอร์สทั้งหมด ${courses.length} · ข้าม IMPORT ${skippedImports} · แก้ ${sum.changed} · หมดอายุทันที ${sum.newlyExpired} · มีคาบเลยวันหมดอายุ ${sum.liveSessionPastExpiry}`,
         "",
         "== จะกลายเป็นหมดอายุทันที (อ่านส่วนนี้ก่อน) ==",
         ...changes
