@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, boItem, boMovement, coursePackages, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { appSettings, bookings, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
@@ -2666,6 +2666,9 @@ export async function topUpFreelanceBudget(teacherId: string, amountMinor: numbe
 }
 
 /** Monthly reset: every freelance ceiling's `remaining` back to its `ceiling` (the month-reset job). */
+/** SPEC-005 / TASK-019 — the monthly freelance reset's `job_runs` key (TASK-209 made it record its runs). */
+export const MONTH_RESET_JOB = "month-reset";
+
 export async function resetFreelanceBudgets() {
   const rows = await db
     .update(boItem)
@@ -2678,6 +2681,19 @@ export async function resetFreelanceBudgets() {
       ),
     )
     .returning({ id: boItem.id });
+
+  // TASK-209 — this scheduled job wrote NO `job_runs` row at all, so "the month-start reset never ran" was
+  // invisible in exactly the way the day-end job's absence was. One row per run, same as the digest and the
+  // reminder. `runDate` is the date it fired on: the reset is monthly, but the question being answered is
+  // still "did it happen, and when".
+  await db.insert(jobRuns).values({
+    job: MONTH_RESET_JOB,
+    runDate: bangkokNow().date,
+    status: "success",
+    summary: { reset: rows.length },
+    finishedAt: new Date(),
+  });
+
   return { reset: rows.length };
 }
 

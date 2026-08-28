@@ -166,7 +166,10 @@ async function reminderAlreadySent(runDate: string): Promise<boolean> {
     .select()
     .from(jobRuns)
     .where(and(eq(jobRuns.job, REMINDER_JOB), eq(jobRuns.runDate, runDate)));
-  return rows.some((r) => (r.summary as any)?.sent === true);
+  // 🔴 TASK-209: keyed on `attempted`, NOT on `sent`. `sent` is now a delivered COUNT, and a day where every
+  // recipient was unlinked delivers 0 — reading "already sent" off that number would make the job re-run all
+  // morning on exactly the days it reached nobody.
+  return rows.some((r) => (r.summary as any)?.attempted === true);
 }
 
 /**
@@ -182,7 +185,22 @@ async function reminderAlreadySent(runDate: string): Promise<boolean> {
  */
 export async function runDailyReminderJob(date?: string) {
   const runDate = date ?? bangkokNow().date;
-  if (await reminderAlreadySent(runDate)) return { date: runDate, skipped: "already-sent" as const };
+
+  // 🔴 TASK-209 — the guard gates the SEND, never the RECORD.
+  //
+  // This used to `return` here, so a second run sent nothing **and wrote nothing** — leaving "ran, nothing to
+  // do" and "never ran" indistinguishable, which is the one property these job rows exist to preserve. The row
+  // is now written on **every** invocation; a re-run records `attempted: false, sent: 0`.
+  if (await reminderAlreadySent(runDate)) {
+    await db.insert(jobRuns).values({
+      job: REMINDER_JOB,
+      runDate,
+      status: "success",
+      summary: { attempted: false, sent: 0, reason: "already-sent" },
+      finishedAt: new Date(),
+    });
+    return { date: runDate, skipped: "already-sent" as const, sent: 0 };
+  }
 
   const rows = await db.query.bookings.findMany({
     where: (b: any, { eq: e }: any) => e(b.date, runDate),
@@ -218,8 +236,16 @@ export async function runDailyReminderJob(date?: string) {
   // a reminder feature that reaches nobody looks identical to one that works, for as long as nobody checks.
   const reach = reminderReach(groups);
 
+  // 🔴 TASK-209 — `sent` is the number ACTUALLY queued for delivery, not a boolean.
+  //
+  // The first version recorded `sent: true` on a run that reached **zero** people (every recipient unlinked on
+  // `sid`). Anyone reading `job_runs` to answer *"who did we notify this morning?"* got the wrong answer — the
+  // same class as counting a replayed sale as revenue. `attempted` is the separate fact that the job ran, so
+  // "it fired and reached nobody" and "it never fired" stay distinguishable in both directions.
+  let sent = 0;
+  let skipped = 0;
   for (const g of groups) {
-    await enqueueLine({
+    const result = await enqueueLine({
       recipientType: g.recipientType,
       recipientLineUserId: g.lineUserId,
       // The rows travel in the payload so the worker renders them with the owner-verified `ตารางวันนี้`
@@ -227,17 +253,17 @@ export async function runDailyReminderJob(date?: string) {
       payload: { kind: "daily_reminder", rows: g.rows },
       skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
     });
+    if (result.status === "skipped") skipped++;
+    else sent++;
   }
 
   await db.insert(jobRuns).values({
     job: REMINDER_JOB,
     runDate,
     status: "success",
-    // `sent` is true even when every recipient was unlinked: the JOB ran. Conflating "ran" with "reached
-    // somebody" is what would let a silent registration failure hide behind an empty school day.
-    summary: { sent: true, ...reach },
+    summary: { attempted: true, sent, skipped, ...reach },
     finishedAt: new Date(),
   });
 
-  return { date: runDate, sent: true, ...reach };
+  return { date: runDate, attempted: true, sent, skipped, ...reach };
 }
