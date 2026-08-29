@@ -6,6 +6,8 @@ import { db } from "../db";
 import { appSettings, bookings, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
+import { decideImportSize } from "../lib/import-size";
+import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
@@ -1141,7 +1143,46 @@ export async function getSellablePackages() {
  * ⚠️ Pricing and availability (SPEC-024) deliberately do **not** apply: nothing is being sold, and an
  * off-card size is importable **on purpose** — the family already bought it, whatever the card says today.
  */
+
+/**
+ * SPEC-068 / TASK-213 — what an import WOULD be, before anything is written.
+ *
+ * The form needs the computed expiry to show as an **editable default**; without this the FE would have to
+ * compute it, which puts a second copy of the expiry rule in a second language — the exact drift TASK-195 and
+ * TASK-197 were both spent on. Pure read: it writes nothing and refuses nothing that the real import allows.
+ */
+export function previewCourseImport(input: {
+  size: number;
+  usedSessions: number;
+  startDate: string;
+  leaveQuota?: number | null;
+}) {
+  const decision = decideImportSize(input.size, input.leaveQuota);
+  if (!decision.ok) throw badRequest(decision.problem!);
+  const quota = courseLeaveQuota({ size: input.size, leaveQuota: decision.leaveQuota });
+  return {
+    remaining: remainingSessions(input.size, input.usedSessions),
+    leaveQuota: quota,
+    maxWeek: maxWeekFor(input.size, quota),
+    // The DEFAULT, not a verdict — the admin may type a different one and the import will honour it.
+    expiryDate: importedCourseExpiry(
+      input.startDate,
+      input.size,
+      input.usedSessions,
+      decision.leaveQuota,
+    ),
+  };
+}
 export async function importCoursePackage(input: any) {
+  // 🔴 TASK-213 — refuse an unrunnable size with a SENTENCE, before anything is written.
+  //
+  // This used to accept any size 1–100 and then crash on it (`เกิดข้อผิดพลาดภายในระบบ`) — a 500 on the one door
+  // the customer's existing families walk through. A 500 tells staff nothing they can act on; the message
+  // below tells them exactly what is missing.
+  const sizeDecision = decideImportSize(input.size, input.leaveQuota);
+  if (!sizeDecision.ok) throw badRequest(sizeDecision.problem!);
+  const leaveQuota = sizeDecision.leaveQuota;
+
   const remaining = remainingSessions(input.size, input.usedSessions);
   return await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
@@ -1162,9 +1203,20 @@ export async function importCoursePackage(input: any) {
         startDate: input.startDate,
         weekday: weekdayOf(input.startDate),
         startTime: input.startTime,
-        // FIX-007 / TASK-195: computed from the owner's rule — `input.expiryDate` is deliberately IGNORED on
-        // this path now. See the note above the function for why the old "taken, not computed" was overruled.
-        expiryDate: importedCourseExpiry(input.startDate, input.size, input.usedSessions),
+        // FIX-007 / TASK-195 computed this and **ignored** whatever the caller sent. 🔴 TASK-213 narrows that:
+        // the computed value is the **default**, and a date the admin actually typed is honoured.
+        //
+        // That is not a reversal of TASK-195, it is the later half of the same ruling: the owner's reason for
+        // keeping 164 imported expiries out of the FIX-007 repair was that **a human's typed import expiry is
+        // meaningful** — it may encode an agreement no rule of ours can see. What TASK-195 removed was the
+        // form's silent `today + 2 months` default, which was a number from no rule at all. So: compute the
+        // default (one rule, server-side), let a person override it deliberately.
+        expiryDate:
+          input.expiryDate ??
+          importedCourseExpiry(input.startDate, input.size, input.usedSessions, leaveQuota),
+        // TASK-213: `null` for a card size — the quota stays derived. Only an off-card (or deliberately
+        // different) allowance is stored, so nothing existing changes meaning.
+        leaveQuota,
         source: "IMPORT",
       })
       .returning({ id: coursePackages.id });
@@ -2048,6 +2100,11 @@ export async function updateBookingStatus(
   action: string,
   reason?: string,
   override = false,
+  /**
+   * SPEC-067 / TASK-211 (REQ-074) — the cancel reason as a **closed-set code**, alongside `reason`'s free text.
+   * A fifth optional argument rather than a signature change, so every existing caller is untouched.
+   */
+  reasonCode?: string,
 ) {
   const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
@@ -2135,9 +2192,37 @@ export async function updateBookingStatus(
       if (requiresCancelReason(current.status) && !cancelReason) {
         throw conflict("REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิกคาบที่เรียนไปแล้ว");
       }
+
+      // 🔴 SPEC-067 / TASK-211 (REQ-074) — a 1HR or voucher cancel needs a reason **from the enum**, not just
+      // words. It is the same three values as REQ-036's course ending, deliberately: a second vocabulary would
+      // split *"find every cancellation someone made by mistake"* into two queries that drift apart, which is
+      // the one question the enum exists to answer.
+      //
+      // Required only for these two booking types — a COURSE_PACKAGE session's cancel is a reschedule that
+      // re-owes a make-up (SPEC-028 §11.3), a different act with its own rules, and forcing an enum onto it
+      // here would change a path REQ-074 never asked about.
+      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER"]);
+      const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType) ? reasonCode : undefined;
+      if (REASON_ENUM_REQUIRED.has(current.bookingType)) {
+        if (!enumReason) {
+          throw new ApiException(400, "REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิก", {
+            allowed: END_REASONS,
+          });
+        }
+        if (!isEndReason(enumReason)) {
+          throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: END_REASONS });
+        }
+      }
+
       await tx
         .update(bookings)
-        .set({ status: "CANCELLED", note: cancelReason ?? current.note })
+        .set({
+          status: "CANCELLED",
+          note: cancelReason ?? current.note,
+          // `note` keeps the human sentence; this keeps the machine one. Written only when the enum applies,
+          // so a course-session cancel is byte-identical to before this task.
+          ...(enumReason ? { cancelReason: enumReason } : {}),
+        })
         .where(eq(bookings.id, id));
       // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
       // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs

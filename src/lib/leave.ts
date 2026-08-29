@@ -19,7 +19,27 @@ export const LEAVE_QUOTA_BY_SIZE: Record<number, number> = { 4: 1, 6: 2, 10: 3 }
  * same table as 4 and 10 — so the caveat is deleted rather than softened. A stale warning on a settled number
  * costs someone a re-investigation every time they meet it.
  */
-export const MAX_WEEK_BY_SIZE: Record<number, number> = { 4: 5, 6: 8, 10: 13 };
+export const MAX_WEEK_BY_SIZE: Record<number, number> = Object.fromEntries(
+  Object.entries(LEAVE_QUOTA_BY_SIZE).map(([size, quota]) => [size, Number(size) + quota]),
+);
+
+/**
+ * 🔴 TASK-213 — **`maxWeek = size + leaveQuota`**, at every size. That IS the owner's rule (4+1=5 · 6+2=8 ·
+ * 10+3=13), and `MAX_WEEK_BY_SIZE` above is now *derived* from it rather than being a second table typed by
+ * hand — two tables that must agree are two tables that eventually don't.
+ *
+ * It also answers for a size the card has never heard of, which is the whole point: an off-card import used to
+ * fall through both tables to `quota = 0, maxWeek = 0` — a course with **no leave allowance and an expiry in
+ * its own first week** — and nothing said so.
+ */
+export const maxWeekFor = (size: number, quota: number): number => size + quota;
+
+/**
+ * The leave quota this course actually has: the **stored** one when it was imported off-card, otherwise the
+ * card's. Stored wins because an off-card course's quota is a fact somebody entered, not something derivable.
+ */
+export const courseLeaveQuota = (c: { size: number; leaveQuota?: number | null }): number =>
+  c.leaveQuota ?? LEAVE_QUOTA_BY_SIZE[c.size] ?? 0;
 
 export interface CourseLike {
   id: string;
@@ -28,6 +48,8 @@ export interface CourseLike {
   leaveUsed: number;
   adminUnlocked: boolean;
   expiryDate: string;
+  /** TASK-213 — an off-card import stores its own leave quota; `null` means "use the card's". */
+  leaveQuota?: number | null;
   /** TASK-181 (REQ-036) — ended early (null for a live course). Read via `CourseLike` so every screen that
    *  renders a course summary sees it, rather than only the one that ended it. */
   endedAt?: Date | string | null;
@@ -64,8 +86,11 @@ export interface CourseSummary {
 export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
 
 export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
-  const quota = leaveQuota(c.size);
-  const maxWeek = MAX_WEEK_BY_SIZE[c.size] ?? 0;
+  // TASK-213: the STORED quota wins (an off-card import carries its own), and `maxWeek` is derived from it —
+  // so an off-card course no longer reports "0 leaves, expiry in week 0" by falling through two tables that
+  // had never heard of its size.
+  const quota = courseLeaveQuota(c);
+  const maxWeek = maxWeekFor(c.size, quota);
   const leaveRemaining = Math.max(0, quota - c.leaveUsed);
   const leaveLocked = c.leaveUsed >= quota && !c.adminUnlocked;
   return {

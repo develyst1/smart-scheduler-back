@@ -221,6 +221,10 @@ export const createVoucher = z.object({
 export const updateStatus = z.object({
   action: z.enum(["confirm", "attend", "sick-leave", "cancel"]),
   reason: z.string().optional(),
+  /** SPEC-067 / TASK-211 (REQ-074) — the closed-set cancel reason, beside `reason`'s free text. Optional here
+   *  and REQUIRED by the service for 1HR / voucher cancels: the rule lives in one place, and zod holding a
+   *  second copy of a domain rule is how the two drift. */
+  reasonCode: z.enum(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"]).optional(),
   // Admin override for the advance-notice leave rule (UC-029).
   override: z.boolean().optional(),
 });
@@ -493,11 +497,24 @@ export const importCoursePackage = z.object({
   student: studentInput,
   teacherId: ID,
   subjectId: ID,
-  size: z.coerce.number().int().min(1).max(100), // NOT restricted to 4/6/10 — an off-card size is
-  usedSessions: z.coerce.number().int().min(0), //  importable on purpose: they already bought it
+  // Shape only: any plausible size. The RULE — 4/6/10, or any size WITH an explicit `leaveQuota` — lives in
+  // the service (`decideImportSize`, TASK-213), because a domain rule copied into zod is a rule that drifts.
+  size: z.coerce.number().int().min(1).max(100),
+  /**
+   * 🔴 TASK-215 — the field that makes an off-card import possible, and the one that was MISSING here.
+   *
+   * TASK-213 added it to the *preview* schema and not to this one, so zod stripped it from every save: the
+   * form asked for the quota, the admin filled it in, and the server refused the import as if they had left it
+   * blank. Nothing errored — a field that is not in the schema simply ceases to exist, which is the quietest
+   * possible failure and the reason the DoD for this fix is a ROUND TRIP, not a schema unit test.
+   */
+  leaveQuota: z.coerce.number().int().min(0).max(20).optional(),
+  usedSessions: z.coerce.number().int().min(0), // importable on purpose: they already bought it
   startDate: DATE, // when the REMAINING sessions resume
   startTime: TIME,
-  expiryDate: DATE,
+  /** TASK-213 — OPTIONAL: omitted ⇒ the server computes it from `size (+ leaveQuota)`. A date the admin
+   *  actually typed is still honoured (the ruling that kept 164 imported expiries out of the FIX-007 repair). */
+  expiryDate: DATE.optional(),
   note: z.string().optional(),
 });
 
@@ -565,4 +582,12 @@ export const resumeCourse = z.object({
   /** 🔴 Required: resuming without a new window would leave the family under the OLD expiry, which the pause
    *  has by now eaten into — the admin must say when the course now runs to. */
   expiryDate: DATE,
+});
+
+/** SPEC-068 / TASK-213 — the import form's live preview (expiry default + quota + max week). Read-only. */
+export const importCoursePreview = z.object({
+  size: z.coerce.number().int().min(1).max(100),
+  leaveQuota: z.coerce.number().int().min(0).max(20).optional(),
+  usedSessions: z.coerce.number().int().min(0),
+  startDate: DATE,
 });

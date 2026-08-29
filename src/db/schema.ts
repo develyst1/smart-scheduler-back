@@ -267,6 +267,10 @@ export const coursePackages = pgTable(
     // Deliberately NOT derived from `usedSessions`, which is a running count and stops being the import figure
     // the moment anything is attended — the derivation that would cancel a paying family's future sessions.
     priorSessions: integer("prior_sessions").notNull().default(0),
+    // SPEC-068 / TASK-213 `0026` — an OFF-CARD imported course stores its own leave quota; `null` = use the
+    // card's (4→1, 6→2, 10→3). Stored because for an off-card size it is a fact somebody entered, not
+    // something the card can answer. `maxWeek` stays DERIVED (`size + quota`) — never a second column.
+    leaveQuota: smallint("leave_quota"),
     // SPEC-064 / TASK-181 (REQ-036) `0023` — the course was ENDED early. `size` stays what the family bought;
     // this flag is what makes the plan owe nothing, permanently. `endReason` is a closed set (CHECK in `0023`)
     // so an ADMIN_ERROR course can be found again with one query — the money follow-up is a human decision.
@@ -355,6 +359,11 @@ export const bookings = pgTable(
     // cancel, sick leave and the auto-extend. Sharing one column would mean a leave reason erasing a parent's
     // note and vice versa — silently, both ways. They are different facts with different authors.
     attendeeNote: text("attendee_note"),
+    // SPEC-067 / TASK-211 (REQ-074) `0025` — WHY this booking was cancelled, from the SAME closed set as
+    // `course_packages.end_reason`. Separate from `note` on purpose: `note` holds the human sentence, this
+    // holds the machine one, and only a column makes "find every cancellation made by mistake" a `WHERE`
+    // rather than a `LIKE` over free text that a rephrasing breaks.
+    cancelReason: text("cancel_reason"),
     // SPEC-059 / TASK-162 (REQ-063) `0020` — a discount CAPTURED here, POSTED at day-end. Trial/single revenue
     // posts from the end-of-day job, when no admin is present to authorise anything; the admin is present at
     // booking, so the decision and its author are recorded here and only the posting is deferred.

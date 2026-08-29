@@ -258,6 +258,24 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "transaction, so that column existing means all three landed (TASK-198: pausing a course).",
     rerunnable: true,
   },
+  {
+    tag: "0025_booking_cancel_reason",
+    probe: { kind: "constraint", constraint: "bookings_cancel_reason_chk" },
+    why:
+      "The LAST object 0025 creates — after the column it constrains. Witnessing the CHECK rather than the " +
+      "column makes a half-applied run detectable, and the constraint is also the thing that keeps the reason " +
+      "a closed set (TASK-211 / REQ-074: cancelling a 1HR or voucher booking with an auditable reason).",
+    rerunnable: true,
+  },
+  {
+    tag: "0026_course_leave_quota",
+    probe: { kind: "constraint", constraint: "course_packages_leave_quota_chk" },
+    why:
+      "The LAST object 0026 creates — after the column it constrains — so a half-applied run is detectable. " +
+      "The CHECK is also what keeps an off-card import from storing a negative quota, which would be a course " +
+      "that can never take leave and expires before it starts (TASK-213).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

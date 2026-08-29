@@ -70,6 +70,7 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /teachers/:id/limit-override": "unrelated",
   "POST /courses/preview": "unrelated", // computes a proposed schedule; writes nothing, no existing course
   "POST /courses/import": "unrelated", // creates a new course — never an ended one
+  "POST /courses/import/preview": "unrelated", // TASK-213: read-only preview, writes nothing at all
   "POST /vouchers/import": "unrelated",
   "POST /courses": "unrelated", // creates a new course
   "POST /vouchers": "unrelated",

@@ -4,7 +4,7 @@
 // the leave/extension rule allows).
 
 import { addDays } from "./time";
-import { MAX_WEEK_BY_SIZE } from "./leave";
+import { LEAVE_QUOTA_BY_SIZE, maxWeekFor } from "./leave";
 
 export const COURSE_SIZES = [4, 6, 10] as const;
 export type PackageSize = (typeof COURSE_SIZES)[number];
@@ -41,8 +41,11 @@ export function remainingSessions(size: number, used: number): number {
  * tests now pin **his** number (`courseExpiry("2026-09-04", 6) === "2026-10-23"`), which is the only kind of
  * assertion that could have caught this.
  */
-export function courseExpiry(startDate: string, size: number): string {
-  const weekNumber = MAX_WEEK_BY_SIZE[size] ?? size + 1;
+export function courseExpiry(startDate: string, size: number, quota?: number | null): string {
+  // TASK-213: the ceiling is `size + leaveQuota` — the owner's rule, and the only form that answers for an
+  // OFF-CARD size. The old `?? size + 1` fallback was a guess for sizes the table had never heard of, which is
+  // how an imported 8-session course would have expired in week 9 while its leave quota said 0.
+  const weekNumber = maxWeekFor(size, quota ?? LEAVE_QUOTA_BY_SIZE[size] ?? 0);
   return addDays(startDate, (weekNumber - 1) * 7);
 }
 
@@ -73,10 +76,12 @@ export function importedCourseExpiry(
   firstRemainingSession: string,
   size: number,
   priorSessions: number,
+  /** TASK-213 — an off-card import carries its own leave quota; omitted ⇒ the card's. */
+  quota?: number | null,
 ): string {
   const prior = Math.max(0, Math.floor(priorSessions));
   const realStart = addDays(firstRemainingSession, -prior * 7);
-  return courseExpiry(realStart, size);
+  return courseExpiry(realStart, size, quota);
 }
 
 /** Weekday 0=Sun … 6=Sat of an ISO date (Asia/Bangkok, server TZ). */

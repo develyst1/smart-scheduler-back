@@ -89,6 +89,12 @@ export const openApiDocument = {
         properties: {
           action: { type: "string", enum: ["confirm", "attend", "sick-leave", "cancel"] },
           reason: { type: "string" },
+          // TASK-211 (REQ-074): required by the server for a 1HR / voucher cancel — same closed set as a
+          // course ending, so one query finds every cancellation made by mistake.
+          reasonCode: {
+            type: "string",
+            enum: ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"],
+          },
         },
       },
       CheckinRequest: {

@@ -164,6 +164,11 @@ export const api = new Hono()
   .post("/courses/preview", zValidator("json", v.previewCourse), async (c) =>
     c.json(await svc.previewCoursePackage(c.req.valid("json"))),
   )
+  // SPEC-068 / TASK-213 — what an import WOULD be (expiry default, quota, max week). Read-only: the form shows
+  // the computed expiry as an EDITABLE default instead of the old hard-coded "today + 2 months".
+  .post("/courses/import/preview", zValidator("json", v.importCoursePreview), async (c) =>
+    c.json(svc.previewCourseImport(c.req.valid("json"))),
+  )
   .post("/courses/import", zValidator("json", v.importCoursePackage), async (c) =>
     c.json(await svc.importCoursePackage(c.req.valid("json")), 201),
   )
@@ -203,8 +208,10 @@ export const api = new Hono()
     c.json(await svc.bulkConfirm(c.req.valid("json").ids)),
   )
   .patch("/bookings/:id/status", zValidator("json", v.updateStatus), async (c) => {
-    const { action, reason, override } = c.req.valid("json");
-    return c.json(await svc.updateBookingStatus(c.req.param("id"), action, reason, override));
+    const { action, reason, override, reasonCode } = c.req.valid("json");
+    return c.json(
+      await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode),
+    );
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),

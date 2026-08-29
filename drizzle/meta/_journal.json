@@ -176,6 +176,20 @@
       "when": 1783000000020,
       "tag": "0024_course_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783000000021,
+      "tag": "0025_booking_cancel_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783000000022,
+      "tag": "0026_course_leave_quota",
+      "breakpoints": true
     }
   ]
 }
