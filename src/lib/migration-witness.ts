@@ -276,6 +276,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "that can never take leave and expires before it starts (TASK-213).",
     rerunnable: true,
   },
+  {
+    tag: "0027_course_size_sanity",
+    probe: { kind: "constraint", constraint: "course_size_sanity_chk" },
+    why:
+      "0027 replaces the card-list CHECK with a sanity bound, and the new constraint is deliberately given a " +
+      "NEW NAME: keeping `course_size_chk` would make the migration unwitnessable (the name exists before and " +
+      "after), so an un-migrated box would look identical to a migrated one. `course_size_sanity_chk` exists " +
+      "only after this ran (TASK-217 — the off-card import 500).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

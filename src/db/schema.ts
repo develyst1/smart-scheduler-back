@@ -302,7 +302,10 @@ export const coursePackages = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    check("course_size_chk", sql`${t.size} in (4, 6, 10)`),
+    // TASK-217 (`0027`): the DB keeps a SANITY bound; the APP owns which sizes may be sold or imported
+    // (`decideImportSize` for imports, `isCourseSize` for sales). The old `size in (4,6,10)` here is what made
+    // every off-card import 500 — the price card lived in the one place that needs a migration to change it.
+    check("course_size_sanity_chk", sql`${t.size} >= 1 and ${t.size} <= 100`),
     index("course_student_idx").on(t.studentId),
   ],
 );
