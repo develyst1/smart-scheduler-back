@@ -2205,10 +2205,18 @@ export async function updateBookingStatus(
       // split *"find every cancellation someone made by mistake"* into two queries that drift apart, which is
       // the one question the enum exists to answer.
       //
-      // Required only for these two booking types — a COURSE_PACKAGE session's cancel is a reschedule that
-      // re-owes a make-up (SPEC-028 §11.3), a different act with its own rules, and forcing an enum onto it
-      // here would change a path REQ-074 never asked about.
-      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER"]);
+      // Required for the three NON-COURSE types (TASK-220 adds `FIRST_TRIAL`). A COURSE_PACKAGE session's
+      // cancel is deliberately excluded: it is a **reschedule that re-owes a make-up** (SPEC-028 §11.3), a
+      // different act with its own rules and its own door (the plan editor, TASK-105).
+      //
+      // 🔴 `FIRST_TRIAL` belongs here for the same reason 1HR does: it is a **standalone session that bills**
+      // at day-end when ATTENDED, so cancelling one is exactly the act the audit question is about. Leaving it
+      // out would have made *"find every cancellation someone made by mistake"* silently incomplete — the
+      // worst kind of wrong for a query whose entire purpose is completeness.
+      //
+      // ⛔ This set is coupled to the FE's `canCancelWithReason` (TASK-220): the two must list the same types,
+      // or the dialog asks for a reason nobody stores — or the API refuses a cancel the UI offers.
+      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL"]);
       const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType) ? reasonCode : undefined;
       if (REASON_ENUM_REQUIRED.has(current.bookingType)) {
         if (!enumReason) {

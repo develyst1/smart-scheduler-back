@@ -34,10 +34,20 @@ describe("the reason is the SAME enum as a course ending (TASK-211)", () => {
   });
 });
 
-describe("required for 1HR and voucher — and ONLY those", () => {
-  test("the enum is demanded for SINGLE_SESSION and VOUCHER", () => {
-    expect(CANCEL).toContain('REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER"])');
+describe("required for the three NON-COURSE types — and ONLY those", () => {
+  test("🔴 SINGLE_SESSION, VOUCHER and FIRST_TRIAL (TASK-220 added the trial)", () => {
+    // A first trial belongs with the other two: it is a **standalone session that bills** at day-end when
+    // attended, so cancelling one is exactly the act the audit question is about. Leaving it out made "find
+    // every cancellation someone made by mistake" silently incomplete — the worst kind of wrong for a query
+    // whose whole purpose is completeness.
+    expect(CANCEL).toContain('REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL"])');
     expect(CANCEL).toContain('throw new ApiException(400, "REASON_REQUIRED"');
+  });
+
+  test("⛔ the coupling to the FE's `canCancelWithReason` is written at the site, not just in a task file", () => {
+    // If the two lists ever diverge, the dialog asks for a reason nobody stores — or the API refuses a cancel
+    // the UI offers. Fern put the same warning on her half.
+    expect(CANCEL).toContain("canCancelWithReason");
   });
 
   test("🔑 a COURSE_PACKAGE cancel is byte-identical to before — it is a reschedule, not a forfeit", () => {
