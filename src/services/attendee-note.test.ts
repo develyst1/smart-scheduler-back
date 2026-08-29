@@ -87,3 +87,22 @@ describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
     expect(confirmBranch).toContain("bulkConfirm");
   });
 });
+
+// ═══ TASK-219 — the note is put ON the confirm payload, once, for both recipients ═══
+describe("the confirm enqueue carries the note (TASK-219)", () => {
+  const confirmBranch = (() => {
+    const at = SRC.indexOf('if (action === "confirm")');
+    return SRC.slice(at, SRC.indexOf('} else if (action === "attend")', at));
+  })();
+
+  test("🔴 the payload reads the booking's own note", () => {
+    expect(confirmBranch).toContain("attendeeNote: current.attendeeNote ?? null");
+  });
+
+  test("🔑 ONE payload object, sent to teacher and parent — not two literals", () => {
+    // Two literals would be two places to update, and one of them would be missed — which is how a parent
+    // ends up reading a different confirmation from the teacher.
+    expect(confirmBranch.match(/payload: confirmPayload/g)).toHaveLength(2);
+    expect(confirmBranch).not.toMatch(/payload: \{ kind: "booking_confirmed"/);
+  });
+});

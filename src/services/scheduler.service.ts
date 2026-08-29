@@ -2140,12 +2140,19 @@ export async function updateBookingStatus(
         const teacher = await tx.query.teachers.findFirst({
           where: (t, { eq }) => eq(t.id, current.teacherId),
         });
+        // TASK-219: the note travels IN THE PAYLOAD, built once and sent to both people below — so the teacher
+        // and the parent can never read different versions of the same confirmation.
+        const confirmPayload = {
+          kind: "booking_confirmed",
+          bookingId: id,
+          attendeeNote: current.attendeeNote ?? null,
+        };
         notification = await enqueueLine(
           {
             recipientType: "teacher",
             recipientLineUserId: teacher?.lineUserId ?? null,
             bookingId: id,
-            payload: { kind: "booking_confirmed", bookingId: id },
+            payload: confirmPayload,
           },
           tx,
         );
@@ -2162,7 +2169,7 @@ export async function updateBookingStatus(
             recipientType: "parent",
             recipientLineUserId: await parentLineUserId(tx, current.studentId),
             bookingId: id,
-            payload: { kind: "booking_confirmed", bookingId: id },
+            payload: confirmPayload,
           },
           tx,
         );

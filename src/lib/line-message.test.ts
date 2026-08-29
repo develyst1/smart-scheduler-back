@@ -160,3 +160,50 @@ describe("daily_reminder (TASK-208)", () => {
     expect(formatOutboxMessage({ kind: "daily_reminder" }, {}, "TH")).toContain("ไม่มีคาบสอนในช่วงนี้");
   });
 });
+
+// ═══ TASK-219 (REQ-007's missing half) — the note reaches the teacher on the booking they read ═══
+//
+// The owner proved the gap by typing a note and getting a confirmation without it. `course_confirmed` has
+// carried the note since TASK-201; `booking_confirmed` — the message a teacher actually reads on the day —
+// did not. These assert the RENDERED STRING both ways, because a payload field that is present and unrendered
+// looks identical to one that was never sent.
+describe("booking_confirmed carries the attendee note (TASK-219)", () => {
+  const ctx = { studentName: "น้องเอ", subject: "Surfskate", date: "2026-09-05", startTime: "10:00" };
+
+  test("🔴 the note is rendered when there is one", () => {
+    const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "แพ้ถั่ว" }, ctx, "TH");
+    expect(out).toContain("หมายเหตุ");
+    expect(out).toContain("แพ้ถั่ว");
+  });
+
+  test("EN renders it too", () => {
+    const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "peanut allergy" }, ctx, "EN");
+    expect(out).toContain("peanut allergy");
+  });
+
+  test("🔴 the line is ABSENT when there is no note — an empty label reads as a note that went missing", () => {
+    for (const payload of [
+      { kind: "booking_confirmed" },
+      { kind: "booking_confirmed", attendeeNote: null },
+      { kind: "booking_confirmed", attendeeNote: "" },
+    ]) {
+      const out = formatOutboxMessage(payload, ctx, "TH");
+      expect(out).not.toContain("หมายเหตุ");
+      expect(out).not.toContain("undefined");
+    }
+  });
+
+  test("🔑 the note comes from the PAYLOAD, not the enriched booking context", () => {
+    // The worker builds `ctx` from the row the outbox references; the note must survive a row that was since
+    // edited or deleted — the same reason `sick_leave` carries its own student name.
+    const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "จากpayload" }, {}, "TH");
+    expect(out).toContain("จากpayload");
+  });
+
+  test("the fields the message already had are unchanged (regression)", () => {
+    const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "x" }, ctx, "TH");
+    expect(out).toContain("ยืนยันตารางสอน");
+    expect(out).toContain("น้องเอ");
+    expect(out).toContain("2026-09-05 10:00");
+  });
+});

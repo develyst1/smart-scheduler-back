@@ -32,7 +32,18 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         t("ob_confirmed_title", lang) + "\n" +
         line(t("ob_l_student", lang), ctx.studentName) +
         line(t("ob_l_subject", lang), ctx.subject) +
-        line(t("ob_l_time", lang), when)
+        line(t("ob_l_time", lang), when) +
+        // 🔴 TASK-219 (REQ-007's missing half) — the note reaches the teacher on the day's own booking.
+        // `course_confirmed` has carried it since TASK-201; this template did not, so a note typed at booking
+        // ("แพ้ถั่ว", "มาสาย 10 นาที") went to the one message the teacher actually reads and vanished.
+        //
+        // It comes from the PAYLOAD, not `ctx`: the worker enriches `ctx` from the booking row it references,
+        // and the note must survive even for a row that has since been edited or deleted — the same reason
+        // `sick_leave` carries its own student name.
+        //
+        // Omitted when there is none. An empty "note:" line is a defect, not a blank: it reads as a note the
+        // teacher failed to receive.
+        line(t("ob_l_note", lang), (payload.attendeeNote as string) || undefined)
       ).trimEnd();
     }
     // SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push.
