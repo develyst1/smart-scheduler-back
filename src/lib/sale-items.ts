@@ -167,9 +167,39 @@ export const rentalIdBase = (
   clientKey: string | null | undefined,
 ): string | undefined => refId ?? clientKey ?? undefined;
 
+/**
+ * SPEC-070 / TASK-225 (REQ-078 AC-5) — the bucket a **typed-amount** อื่นๆ booking posts to.
+ *
+ * 🔴 **`unitPriceMinor` on this entry is a placeholder and is NEVER read.** An อื่นๆ charge has no card price:
+ * the amount is whatever the staff member typed on the booking, and `postBookingSale` passes it explicitly. It
+ * is `0` rather than some plausible number precisely so a reader who does trust it gets an obviously-wrong ฿0
+ * instead of a believable invented figure — and `sale:ensure-items` needs *a* value to seed.
+ *
+ * ⚠️ This is the ONE code in this file whose own price means nothing. Every other entry is the owner's card,
+ * and `listPriceMinor` reads those for real.
+ *
+ * An อื่นๆ booking charged from the **backoffice catalogue** does not use this code at all — it posts on that
+ * item's own id, so a report can break it down (AC-6).
+ */
+export const OTHER_BOOKING_REF = "other-booking";
+
 /** Every INCOME item a sale can post to — exactly the combinations the card offers. */
 export const SALE_ITEMS: SaleItemSeed[] = [
   { externalRef: "first-trial", name: "First Trial (1h)", unitPriceMinor: FIRST_TRIAL_MINOR },
+  // TASK-225 — the typed-amount อื่นๆ bucket. The price is a placeholder; see `OTHER_BOOKING_REF` above.
+  //
+  // The metadata override is not decoration: `ensure-sale-items.ts` stamps every seeded row with
+  // `priceSource: "owner price card …"`, which would be a lie on this one. Anyone reading `bo.item` — a report,
+  // a future engineer, the owner — sees on the ROW itself that its price is never the price of anything.
+  {
+    externalRef: OTHER_BOOKING_REF,
+    name: "Other booking (amount typed per booking)",
+    unitPriceMinor: 0,
+    metadata: {
+      priceSource: "NOT A PRICE — the amount is typed on each booking (SPEC-070 / TASK-225)",
+      amountPerBooking: true,
+    },
+  },
   ...VOUCHER_HOURS.map((hours) => ({
     externalRef: voucherItemRef(hours),
     name: `Voucher (${hours}h)`,

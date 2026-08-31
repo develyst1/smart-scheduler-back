@@ -131,6 +131,88 @@ export async function recordSale(
   }
 }
 
+// ─────── SPEC-070 / TASK-225 (REQ-078) — posting a sale BY ITEM ID, with an explicit amount ───────
+//
+// ⚠️ Why this is a sibling and not a flag on `recordSale`. That function resolves the item from a **product
+// code** in `SALE_ITEMS` (`external_source = 'smart-scheduler'` + `external_ref`) and takes the amount from the
+// item's `unit_price_minor`. An อื่นๆ charge has neither: a **typed amount** has no product code, and a
+// **backoffice catalogue item** has no `external_source = 'smart-scheduler'`. Bending `recordSale` to accept
+// "sometimes an id, sometimes a code, sometimes a price, sometimes not" would put four combinations through the
+// one function that must never fail a booking. So: same rules, same idempotency shape, different entry point.
+//
+// The two rules of this file are unchanged and apply here identically:
+//   1. It must NEVER fail the booking it describes.
+//   2. It must NEVER fail silently — every non-post is `console.error` with the ref.
+
+/**
+ * Post one sale to an explicit `bo.item`, for an explicit amount.
+ *
+ * 🔴 **Sign:** `qty = -1` (an OUT), `value_minor = +amountMinor`. Positive, exactly as `saleMovement` produces
+ * for a coded sale, so `SUM(value_minor)` nets sales against reversals the same way (`bo-money.ts:17`). A
+ * flipped sign here is invisible until a month-end number does not add up, so it is pinned in a test.
+ *
+ * Idempotent on `idempotencyKey` with the **same** up-front-read + unique-index shape `recordSale` uses — one
+ * idempotency pattern in this codebase, not two.
+ */
+export async function postBookingSale(opts: {
+  itemId: string;
+  amountMinor: number;
+  refId: string;
+  idempotencyKey: string;
+}): Promise<SalePostResult> {
+  const where = `item=${opts.itemId} refId=${opts.refId}`;
+
+  // A charge of nothing is not a charge. The caller (`jobs.service.ts`) already declines to call for an
+  // uncharged booking — AC-4 is "no movement at all", never a ฿0 row — so reaching here with 0 or less is a
+  // bug upstream, and it says so rather than writing a row that reads as a sale that happened.
+  if (!Number.isInteger(opts.amountMinor) || opts.amountMinor <= 0) {
+    console.error(
+      `[sale] NOT POSTED — amount must be a positive integer in satang, got ${opts.amountMinor} (${where}). ` +
+        `Revenue for this booking is NOT in the books.`,
+    );
+    return { ok: false, skipped: "error" };
+  }
+
+  try {
+    const item = await db.query.boItem.findFirst({ where: (i, { eq: e }) => e(i.id, opts.itemId) });
+    // TASK-066's lesson, in the shape this task needs it: a chosen catalogue item that has been deleted or
+    // deactivated since the booking was made must post NOTHING and say so. 🚫 Never fall back to a default
+    // price — an invented number in the books is worse than a missing one, because nobody goes looking for it.
+    if (!item || !item.active) {
+      console.error(
+        `[sale] NOT POSTED — the chosen catalogue item is ${item ? "INACTIVE" : "missing"} (${where}). ` +
+          `Revenue for this booking is NOT in the books; no fallback price was invented.`,
+      );
+      return { ok: false, skipped: "item-missing" };
+    }
+
+    const already = await db.query.boMovement.findFirst({
+      where: (m, { eq: e }) => e(m.idempotencyKey, opts.idempotencyKey),
+    });
+    if (already) return { ok: true, skipped: "duplicate" }; // replay — not an error, not a second row
+
+    await db.insert(boMovement).values({
+      itemId: item.id,
+      qty: -1, // OUT — one booking sold
+      valueMinor: opts.amountMinor, // positive; the amount is the caller's, never the item's price
+      reason: "SALE",
+      refType: "SALE",
+      refId: opts.refId,
+      idempotencyKey: opts.idempotencyKey,
+    });
+    return { ok: true };
+  } catch (e) {
+    // Lost the race on the key → the other writer posted it. That IS the desired outcome, so it must not be
+    // reported as a failure (the same reasoning as `recordSale`'s catch).
+    if (pgErrorCode(e) === "23505") return { ok: true, skipped: "duplicate" };
+    console.error(
+      `[sale] NOT POSTED — write failed (${where}). Revenue for this booking is NOT in the books:`,
+      e,
+    );
+    return { ok: false, skipped: "error" };
+  }
+}
+
 // ─────── SPEC-069 / TASK-221 — the READ side: was this booking's revenue already posted? ───────
 //
 // Cancelling an ATTENDED `FIRST_TRIAL` / `SINGLE_SESSION` fixes the schedule, releases the freelance hold and

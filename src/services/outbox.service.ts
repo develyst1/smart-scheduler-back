@@ -25,9 +25,14 @@ async function bookingContext(bookingId: string | null): Promise<MessageContext>
   });
   if (!b) return {};
   return {
+    // TASK-224 made both nullable for an อื่นๆ booking. `?.` already yields `undefined`, and `line()` omits a
+    // field with no value — so a studentless / programless booking renders with no empty labels, and the four
+    // lesson types are untouched.
     studentName: b.student?.name,
     teacherNickname: b.teacher?.nickname,
     subject: b.subject?.name,
+    // TASK-228 (AC-16) — what names an อื่นๆ booking in every message the teacher reads.
+    title: b.otherTitle ?? undefined,
     date: b.date,
     startTime: hhmm(b.startTime),
     endTime: hhmm(b.endTime),

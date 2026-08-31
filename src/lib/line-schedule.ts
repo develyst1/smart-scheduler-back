@@ -15,8 +15,10 @@ import { hhmm } from "./time";
 export interface SchedRow {
   date: string;
   startTime: string;
+  /** What NAMES the session — a student's nickname, or an อื่นๆ booking's typed title (TASK-228 / AC-16). */
   studentName: string;
-  subjectName: string;
+  /** `null` for an อื่นๆ booking, which has no program. The segment is omitted, never printed blank. */
+  subjectName: string | null;
   status: string;
   /** TASK-178 (REQ-068) — the attendee note, when the family left one. Absent for almost every session. */
   attendeeNote?: string | null;
@@ -59,7 +61,12 @@ export function renderSchedule(rows: SchedRow[], lang: Lang, range: "today" | "w
       // fact; program and status indented under it so a long program name wraps into its own space, not into
       // the next session's.
       `${hhmm(r.startTime)}  ${r.studentName}`,
-      `   ${r.subjectName} · ${t(`status_${r.status}`, lang)}`,
+      // TASK-228 (AC-16): an อื่นๆ booking has NO program, so the segment is dropped rather than rendered as
+      // a leading " · " with nothing before it. Same rule as the note below and as TASK-219's: an empty field
+      // reads as information that went missing, not as information that does not exist.
+      r.subjectName
+        ? `   ${r.subjectName} · ${t(`status_${r.status}`, lang)}`
+        : `   ${t(`status_${r.status}`, lang)}`,
     );
     // TASK-178 (REQ-068): the note, when there is one — indented under the session it belongs to, so a teacher
     // reads it as part of that class rather than as another line of schedule. A session without a note is

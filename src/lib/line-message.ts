@@ -19,6 +19,11 @@ export interface MessageContext {
   date?: string;
   startTime?: string;
   endTime?: string;
+  /**
+   * SPEC-070 / TASK-228 (REQ-078 AC-16) — the admin's typed title for an อื่นๆ booking. Absent for the four
+   * lesson types, which is exactly why nothing about their messages changes.
+   */
+  title?: string;
 }
 
 const line = (label: string, value?: string) => (value ? `${label}: ${value}\n` : "");
@@ -30,6 +35,16 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
         ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
       return (
         t("ob_confirmed_title", lang) + "\n" +
+        // 🔴 SPEC-070 / TASK-228 (AC-16) — an อื่นๆ booking is named by the title the admin typed, and the
+        // title stands on its OWN LINE with no label. It is not a student, so putting it behind
+        // `ob_l_student` would state something false; and it is never the words "อื่นๆ" / "Other" — being
+        // asked to type a real name is the entire point of the field (REQ-078 📌).
+        //
+        // Absent for the four lesson types, so their messages are byte-identical: this line renders to "".
+        (ctx.title ? `${ctx.title}\n` : "") +
+        // `line()` already omits a field with no value, which is what makes a studentless / programless
+        // booking come out with no empty labels — TASK-219's lesson: a blank label reads as information that
+        // went missing, not as information that does not exist.
         line(t("ob_l_student", lang), ctx.studentName) +
         line(t("ob_l_subject", lang), ctx.subject) +
         line(t("ob_l_time", lang), when) +

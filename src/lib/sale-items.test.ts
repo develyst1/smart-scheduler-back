@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   COURSE_SIZES,
+  OTHER_BOOKING_REF,
   FIRST_TRIAL_MINOR,
   PRICES_ARE_VAT_INCLUSIVE,
   PRICE_GROUPS,
@@ -116,12 +117,24 @@ describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
 });
 
 describe("🔑 the catalogue IS the availability rule — no second list to drift", () => {
-  test("every sellable combination has an item, and every item has a price", () => {
+  test("every sellable combination has an item, and every PRICED item has a price", () => {
     for (const p of sellablePackages()) {
       expect(isKnownSaleItem(p.externalRef)).toBe(true);
       expect(p.priceMinor).toBeGreaterThan(0);
     }
-    for (const i of SALE_ITEMS) expect(i.unitPriceMinor).toBeGreaterThan(0);
+    // 🔴 TASK-225 carved out exactly ONE exception, and it is carved out by NAME rather than by loosening the
+    // rule to `>= 0`. `other-booking` is a bucket whose amount is typed per booking (`postBookingSale` passes
+    // it explicitly), so its `unitPriceMinor` is a placeholder that is never read — the entry says so, and so
+    // does the seeded row's `priceSource` metadata. Relaxing the assertion instead would let a REAL card price
+    // silently become 0 one day, which is the failure this test exists to catch.
+    for (const i of SALE_ITEMS) {
+      if (i.externalRef === OTHER_BOOKING_REF) {
+        expect(i.unitPriceMinor).toBe(0);
+        expect(String(i.metadata?.priceSource)).toContain("NOT A PRICE");
+        continue;
+      }
+      expect(i.unitPriceMinor).toBeGreaterThan(0);
+    }
   });
 
   // REQ-061 / TASK-158: the owner's card DOES carry an onewheel 10 h (11,900). This assertion — and the comment
@@ -238,7 +251,7 @@ describe("revenueItemRef — the day-end path is now program-priced too", () => 
 });
 
 describe("shape", () => {
-  test("13 program items + 3 vouchers + first trial + 4 rentals", () => {
+  test("14 program items + 3 vouchers + first trial + 4 rentals + the อื่นๆ bucket", () => {
     // 3 single-session rows (onewheel · balance-private · balance-group — bike/skate has no 1h rate)
     // + 10 course rows (bike-skate 4/6/10 · onewheel 4/6/10 · balance-private 6/10 · balance-group 6/10) —
     // onewheel 10 h added by REQ-061.
@@ -248,7 +261,10 @@ describe("shape", () => {
     expect(sessions).toHaveLength(4); // REQ-066: bike-skate joined the other three at ฿1,390
     expect(courses).toHaveLength(10);
     // + TASK-108: the 4 equipment-rental codes.
-    expect(SALE_ITEMS).toHaveLength(14 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length);
+    // + TASK-225: `other-booking`, the typed-amount อื่นๆ bucket — the `+ 1` at the end. Counted explicitly so
+    // that adding a code is always a deliberate edit here, which is the only reason this assertion is worth
+    // having (it is how REQ-061's and REQ-066's missing card rows would have been noticed).
+    expect(SALE_ITEMS).toHaveLength(14 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length + 1);
   });
 
   test("every course size the DB allows is priced for at least one group", () => {

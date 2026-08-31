@@ -20,11 +20,22 @@ export interface ReminderSession {
   status: string;
   teacherId: string | null;
   teacherLineUserId: string | null;
+  /**
+   * SPEC-070 / TASK-228 (AC-16) — the ADDITIONAL teachers of an อื่นๆ booking. Empty (or absent) for the four
+   * lesson types, which can never have any. Each one gets the booking on their own schedule: a teacher who is
+   * assigned but never told is worse than one who was never assigned.
+   */
+  additionalTeachers?: { id: string; lineUserId: string | null }[];
   studentId: string | null;
+  /**
+   * What NAMES this session on the schedule — `displayName` for a booking, so an อื่นๆ session reads as the
+   * title the admin typed and every other type reads as the student's nickname, exactly as before.
+   */
   studentName: string;
   parentId: string | null;
   parentLineUserId: string | null;
-  subjectName: string;
+  /** `null` for an อื่นๆ booking, which has no program. `renderSchedule` omits the segment rather than printing a blank. */
+  subjectName: string | null;
 }
 
 export interface ReminderGroup {
@@ -60,15 +71,22 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       subjectName: s.subjectName,
       status: s.status,
     };
-    if (s.teacherId) {
-      const g = byTeacher.get(s.teacherId) ?? {
+    // TASK-228 (AC-16): EVERY assigned teacher, not just the first. Built as one list so the grouping below
+    // is a single loop — a second `if` block for the extras is how one of the two ends up missing a rule the
+    // other got (the day the note, or the sort, or the dedupe changes).
+    const assigned = [
+      ...(s.teacherId ? [{ id: s.teacherId, lineUserId: s.teacherLineUserId }] : []),
+      ...(s.additionalTeachers ?? []),
+    ];
+    for (const teacher of assigned) {
+      const g = byTeacher.get(teacher.id) ?? {
         recipientType: "teacher" as const,
-        personId: s.teacherId,
-        lineUserId: s.teacherLineUserId,
+        personId: teacher.id,
+        lineUserId: teacher.lineUserId,
         rows: [],
       };
       g.rows.push(row);
-      byTeacher.set(s.teacherId, g);
+      byTeacher.set(teacher.id, g);
     }
     if (s.parentId) {
       const g = byParent.get(s.parentId) ?? {

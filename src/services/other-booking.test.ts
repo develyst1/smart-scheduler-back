@@ -227,10 +227,23 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
   });
 
   test("🔴 nothing outside the accessor READS the join table — two readers is how two answers appear", () => {
-    // The table may be touched only where rows are WRITTEN. Every read goes through the mapper, which is why
-    // the relation lives in the shared `withBookingRelations` rather than being opted into per query.
-    expect(SVC).toContain("insert(bookingTeachers)");
-    expect(SVC.split("bookingTeachers").length - 1).toBe(2); // the import, and that single insert
+    // The rule is ONE reader per context, not zero. TASK-228 added the id-level accessor `assignedTeacherIds`
+    // — the LINE paths hold a bare booking row inside a transaction, with no relation loaded — so the readers
+    // are now `bookingTeachers()` in `db/mappers.ts` (for rows that have the relation) and that one. Both
+    // encode the same "primary first, then extras" order. A THIRD reader is what makes two answers possible,
+    // so this counts every mention and requires each to be inside one of the two named functions.
+    const code = SVC.replace(/^\s*\/\/.*$/gm, "").replace(/^\s*\*.*$/gm, "");
+    const body = (decl: string) => {
+      const rest = code.slice(code.indexOf(decl));
+      return rest.slice(0, rest.indexOf("\n}\n") + 2);
+    };
+    const writer = body("async function attachAdditionalTeachers");
+    const reader = body("async function assignedTeacherIds");
+    expect(writer).toContain("insert(bookingTeachers)");
+    expect(reader).toContain("from(bookingTeachers)");
+    const count = (s: string) => s.split("bookingTeachers").length - 1;
+    // Every mention in the file is the import (1), or inside one of those two functions.
+    expect(count(code)).toBe(1 + count(writer) + count(reader));
   });
 
   test("the relation is loaded in the SHARED relation set, not opted into per query", () => {

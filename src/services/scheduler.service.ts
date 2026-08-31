@@ -46,6 +46,7 @@ import { recordSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
 import {
   PRICES_ARE_VAT_INCLUSIVE,
+  SALE_SOURCE,
   courseItemRef,
   listPriceMinor,
   revenueItemRef,
@@ -888,6 +889,31 @@ async function assertTeacherBookable(exec: any, teacherId: string, date: string)
  * case where several teachers legitimately share one hour. Making the extras clash-checked would forbid the
  * feature the owner asked for.
  */
+/**
+ * SPEC-070 / TASK-228 (AC-16) — **the one place in this service that READS `booking_teachers`.**
+ *
+ * Returns every teacher assigned to a booking, **primary first**, then the additional ones. Same order and
+ * same rule as `bookingTeachers()` in `db/mappers.ts`, which is that rule's projection for a row that already
+ * has the relation loaded; this one is for the id-level paths (a transaction that holds a bare booking row).
+ * They are the only two readers, deliberately — and a test asserts this service contains no third.
+ *
+ * The four lesson types can never have extras (validation refuses the field, and nothing else writes the
+ * table), so this returns exactly one for them — by construction, not by filtering.
+ */
+async function assignedTeacherIds(
+  exec: any,
+  bookingId: string,
+  primaryTeacherId: string,
+): Promise<string[]> {
+  const extra = await exec
+    .select({ teacherId: bookingTeachers.teacherId })
+    .from(bookingTeachers)
+    .where(eq(bookingTeachers.bookingId, bookingId));
+  // Defensive dedupe: validation refuses an extra that repeats the first, but this is the function every
+  // "tell each teacher" loop trusts, and one duplicate here is one duplicate LINE message on a phone.
+  return [primaryTeacherId, ...extra.map((r: any) => r.teacherId).filter((t: string) => t !== primaryTeacherId)];
+}
+
 async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[]) {
   const booking = await exec.query.bookings.findFirst({
     columns: { date: true },
@@ -1153,6 +1179,45 @@ export async function resolvePriceGroup(subjectId: string, exec: any = db): Prom
     where: (s: any, { eq: e }: any) => e(s.id, subjectId),
   });
   return row?.priceGroup ?? null;
+}
+
+/**
+ * SPEC-070 / TASK-225 (REQ-078 AC-6) — the **backoffice catalogue**, for the อื่นๆ charge picker.
+ *
+ * Active **INCOME** `bo.item` rows only. Read directly on the shared DB, like every other `bo` read in this
+ * repo (`lib/sale-post.ts`) — no HTTP hop, no new client.
+ *
+ * 🔴 This is deliberately **NOT** `sellablePackages()` / `SALE_ITEMS`. Selling "a course-6" as an อื่นๆ booking
+ * would post **course revenue with no course behind it** — the SA's ruling on SPEC-070 Q2. The two catalogues
+ * answer different questions and must not be offered from one picker.
+ *
+ * EXPENSE items are excluded because posting a sale to one would put revenue on the wrong side of the P&L; the
+ * freelance ceilings live there too, and a staff member must not be able to charge a customer against a
+ * teacher's budget item.
+ */
+export async function getCatalogItems() {
+  const rows = await db
+    .select({ id: boItem.id, name: boItem.name, unitPriceMinor: boItem.unitPriceMinor })
+    .from(boItem)
+    .where(
+      and(
+        eq(boItem.direction, "INCOME"),
+        eq(boItem.active, true),
+        // 🔴 TASK-229 — exclude the rows THIS repo seeds from `sale-items.ts` (`first-trial`, `course-*`,
+        // `voucher-*`, the rentals, and `other-booking`). They are `bo.item`s like any other, so without this
+        // predicate "Course 6h (onewheel)" appears in the staff picker — and charging an อื่นๆ booking to it
+        // posts **course revenue with no course behind it**, which is the outcome SPEC-070 Q2 forbade, reached
+        // through a different door.
+        //
+        // ⚠️ `IS DISTINCT FROM`, **not** `<>`. A backoffice-created item has `external_source IS NULL`, and
+        // `NULL <> 'smart-scheduler'` evaluates to NULL — not true — so a plain `ne()` would filter out
+        // exactly the items this endpoint exists to show and return an empty list that looks like a broken
+        // endpoint rather than a wrong predicate.
+        sql`${boItem.externalSource} is distinct from ${SALE_SOURCE}`,
+      ),
+    )
+    .orderBy(asc(boItem.name));
+  return { items: rows };
 }
 
 /** The combinations that exist, for `GET /api/sellable-packages` — with each program that sells on them. */
@@ -2202,25 +2267,48 @@ export async function updateBookingStatus(
           .update(bookings)
           .set({ status: "CONFIRMED", confirmedAt: new Date() })
           .where(eq(bookings.id, id));
-        const teacher = await tx.query.teachers.findFirst({
-          where: (t, { eq }) => eq(t.id, current.teacherId),
+        // 🔴 SPEC-070 / TASK-228 (AC-16 revised) — **EVERY** assigned teacher is told, not just the first.
+        // An อื่นๆ booking may carry several (TASK-224's `booking_teachers`), and a teacher who is on a
+        // booking but never hears about it is worse than one who was never assigned.
+        //
+        // One message PER teacher, never one naming them all: the confirmation is addressed to its recipient
+        // and rendered in that person's own language, so a shared body would change what the other four types
+        // read too.
+        //
+        // 🚫 The id list comes from the ONE accessor (`confirmTeacherIds`), never from reading `teacher_id`
+        // and the join table separately here — that second reader is how the two get to disagree.
+        const teacherIds = await assignedTeacherIds(tx, id, current.teacherId);
+        const teacherRows = await tx.query.teachers.findMany({
+          where: (t, { inArray: inA }) => inA(t.id, teacherIds),
         });
-        // TASK-219: the note travels IN THE PAYLOAD, built once and sent to both people below — so the teacher
+        // Ordered by `teacherIds`, so the row's own `teacher_id` is always first and `notification` below
+        // keeps describing exactly the recipient it always described.
+        const teachers = teacherIds
+          .map((tid) => teacherRows.find((t: any) => t.id === tid))
+          .filter(Boolean) as { id: string; lineUserId: string | null }[];
+        // TASK-219: the note travels IN THE PAYLOAD, built once and sent to everyone below — so the teachers
         // and the parent can never read different versions of the same confirmation.
         const confirmPayload = {
           kind: "booking_confirmed",
           bookingId: id,
           attendeeNote: current.attendeeNote ?? null,
         };
-        notification = await enqueueLine(
-          {
-            recipientType: "teacher",
-            recipientLineUserId: teacher?.lineUserId ?? null,
-            bookingId: id,
-            payload: confirmPayload,
-          },
-          tx,
-        );
+        for (const t of teachers) {
+          const res = await enqueueLine(
+            {
+              recipientType: "teacher",
+              recipientLineUserId: t.lineUserId ?? null,
+              bookingId: id,
+              payload: confirmPayload,
+            },
+            tx,
+          );
+          // The FIRST teacher is the booking's own `teacher_id`, so the returned `notification` — which the
+          // FE renders as "ส่ง LINE แล้ว / ยังไม่ผูก LINE" — means what it has always meant. The extra
+          // teachers get their own outbox rows either way; a SKIPPED row for an unlinked one is still the
+          // record that we tried.
+          if (t.id === current.teacherId) notification = res;
+        }
         await issueCheckinToken(id, tx);
         // TASK-207 (3A) — the parent hears about their own child's session too, not only the teacher. One
         // extra row for this one booking; an unlinked parent gets a SKIPPED row exactly like an unlinked
