@@ -14,6 +14,9 @@ const withBookingRelations = {
   teacher: true,
   subject: true,
   course: true,
+  // TASK-224 (AC-18) — same shape as the scheduler's loader: the check-in screen renders the same cell as the
+  // calendar, so it must resolve a booking's teachers the same way rather than showing only the first.
+  additionalTeachers: { with: { teacher: true } },
 } as const;
 
 async function loadBooking(id: string) {

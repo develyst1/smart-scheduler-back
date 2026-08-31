@@ -42,6 +42,9 @@ export const bookingType = pgEnum("booking_type", [
   "SINGLE_SESSION",
   "COURSE_PACKAGE",
   "VOUCHER",
+  // SPEC-070 / TASK-224 (REQ-078) `0029` — a booking that is not a lesson: a meeting, a maintenance slot, a
+  // school visit. No student and no program required, its own typed title, and possibly several teachers.
+  "OTHER",
 ]);
 
 export const bookingStatus = pgEnum("booking_status", [
@@ -237,9 +240,9 @@ export const teacherSubjects = pgTable(
     teacherId: uuid("teacher_id")
       .notNull()
       .references(() => teachers.id, { onDelete: "cascade" }),
-    subjectId: uuid("subject_id")
-      .notNull()
-      .references(() => subjects.id, { onDelete: "restrict" }),
+    // NULLABLE for `OTHER` (`0029`). 🚫 Never a placeholder `อื่นๆ` row in `subjects` — REQ-065 exists because
+    // `1st Trial` sitting in that table leaked into the program picker. A booking with no program has none.
+    subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "restrict" }),
   },
   (t) => [primaryKey({ columns: [t.teacherId, t.subjectId] })],
 );
@@ -253,9 +256,10 @@ export const coursePackages = pgTable(
   "course_packages",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    studentId: uuid("student_id")
-      .notNull()
-      .references(() => students.id, { onDelete: "restrict" }),
+    // SPEC-070 / TASK-224 `0029` — NULLABLE for `OTHER`: a maintenance slot has no student. Every other
+    // booking type still refuses a missing student, in `validation.ts` — the column stopped enforcing it, the
+    // contract did not.
+    studentId: uuid("student_id").references(() => students.id, { onDelete: "restrict" }),
     size: smallint("size").notNull(), // 4 | 6 | 10
     // SPEC-045 / TASK-140 (REQ-054): the course's program, canonical at last. It used to be DERIVED from
     // `bookings[0].subject` — order-dependent, which is exactly why a per-session edit or a mixed create could
@@ -391,6 +395,20 @@ export const bookings = pgTable(
       startTime: string;
       endTime: string;
     }>(),
+    // ── SPEC-070 / TASK-224 (REQ-078) `0029` — the อื่นๆ booking ──
+    //
+    // The typed name of a booking that is not a lesson. It is what `displayName` renders, which is how AC-10
+    // ("never blank, never the word อื่นๆ") stays a property of ONE computed field instead of a promise
+    // repeated across 31 FE call sites.
+    otherTitle: text("other_title"),
+    // The charge: EITHER a typed amount OR a catalogue item, never both (`booking_other_price_chk`). The
+    // fields live here; posting the sale is TASK-225.
+    //
+    // `otherPriceItemId` is a `bo.item` id and is deliberately NOT declared as an FK: the `bo` schema is owned
+    // and migrated by backoffice-back, and a cross-schema constraint written from here would make this repo's
+    // migrations depend on the order of theirs.
+    otherPriceMinor: integer("other_price_minor"),
+    otherPriceItemId: uuid("other_price_item_id"),
     note: text("note"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }), // idempotent confirm/notify
     /** C.1: one-time token for QR / link check-in; issued on confirm */
@@ -417,7 +435,39 @@ export const bookings = pgTable(
     uniqueIndex("bookings_checkin_token_uq")
       .on(t.checkinToken)
       .where(sql`${t.checkinToken} is not null`),
+    // AC-12 (`0029`): a charge is EITHER a typed amount OR a catalogue item, never both. The app refuses it
+    // first; this makes the rule true of the DATA rather than only of the path that happens to write it.
+    check(
+      "booking_other_price_chk",
+      sql`${t.otherPriceMinor} is null or ${t.otherPriceItemId} is null`,
+    ),
   ],
+);
+
+// SPEC-070 / TASK-224 (REQ-078) `0029` — the ADDITIONAL teachers on an อื่นๆ booking.
+//
+// Owner, 2026-08-31: *"ทุกการจองต้องมีครู แค่การจองนั้น อาจจะครูหลายคนได้"*.
+//
+// 🔴 `bookings.teacher_id` STAYS NOT NULL and is the FIRST teacher; this table holds only the extra ones. That
+// is what keeps this additive: every existing reader, index, freelance hold and report is untouched, and AC-20
+// (the other four types take exactly one teacher) is true **by construction** rather than by a rule someone has
+// to remember. `teachers[0]` is always `teacher_id`, so the order is stable.
+//
+// ⚠️ Read it through the ONE accessor in `db/mappers.ts` (`bookingTeachers`). Two call sites reading
+// `teacher_id` and this table separately is how the two get to disagree.
+export const bookingTeachers = pgTable(
+  "booking_teachers",
+  {
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "restrict" }),
+  },
+  // CASCADE + this composite PK are what make AC-18 ("cancelling removes it from all three columns") free:
+  // there is still exactly ONE booking row, so a cancel stays one status change.
+  (t) => [primaryKey({ columns: [t.bookingId, t.teacherId] })],
 );
 
 // ───────────────────── LINE OA link sessions (C.4) ─────────────────────
@@ -434,19 +484,31 @@ export const lineLinkSessions = pgTable("line_link_sessions", {
 
 // ─────────────────────── Notification outbox (LINE) ───────────────────────
 // Reliable push: write a row, a worker delivers + retries. Audit trail included.
-export const notificationOutbox = pgTable("notification_outbox", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  channel: text("channel").notNull().default("line"),
-  recipientType: text("recipient_type").notNull(), // 'teacher' | 'parent' | 'student'
-  recipientLineUserId: text("recipient_line_user_id"),
-  bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "set null" }),
-  payload: jsonb("payload").notNull(),
-  status: notifyStatus("status").notNull().default("PENDING"),
-  attempts: integer("attempts").notNull().default(0),
-  error: text("error"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  sentAt: timestamp("sent_at", { withTimezone: true }),
-});
+export const notificationOutbox = pgTable(
+  "notification_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channel: text("channel").notNull().default("line"),
+    recipientType: text("recipient_type").notNull(), // 'teacher' | 'parent' | 'student'
+    recipientLineUserId: text("recipient_line_user_id"),
+    bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "set null" }),
+    payload: jsonb("payload").notNull(),
+    status: notifyStatus("status").notNull().default("PENDING"),
+    attempts: integer("attempts").notNull().default(0),
+    error: text("error"),
+    // TASK-218 (`0028`) — per-RECIPIENT send-once key, mirroring the day-end sale's `rev:<bookingId>`.
+    // NULL for every writer that has its own natural non-repeat (confirms, leave, digests); NULLs are
+    // distinct in Postgres, so the unique index below constrains only the keyed rows.
+    idempotencyKey: text("idempotency_key"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [
+    // The thing that makes a double-send impossible rather than merely unlikely: the up-front read in
+    // `runDailyReminderJob` is the fast path, this index is what holds when two boxes fire at once.
+    uniqueIndex("notification_outbox_idempotency_uq").on(t.idempotencyKey),
+  ],
+);
 
 // ─────────────────────────── App settings (KV) ───────────────────────────
 // Small global settings persisted server-side (single source of truth across
@@ -625,6 +687,15 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   }),
   voucher: one(vouchers, { fields: [bookings.voucherId], references: [vouchers.id] }),
   badges: many(bookingBadges),
+  // TASK-224 — the ADDITIONAL teachers only (`teacher` above is the first). Loaded by
+  // `withBookingRelations` so every booking read has the same shape; never read directly — see
+  // `bookingTeachers` in `db/mappers.ts`.
+  additionalTeachers: many(bookingTeachers),
+}));
+
+export const bookingTeachersRelations = relations(bookingTeachers, ({ one }) => ({
+  booking: one(bookings, { fields: [bookingTeachers.bookingId], references: [bookings.id] }),
+  teacher: one(teachers, { fields: [bookingTeachers.teacherId], references: [teachers.id] }),
 }));
 
 export const badgeTypesRelations = relations(badgeTypes, ({ many }) => ({

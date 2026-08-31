@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { appSettings, bookings, bookingTeachers, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -235,6 +235,25 @@ async function reconcileBookingHolds(
   status: string,
   override: boolean,
 ) {
+  // 🔴 SPEC-070 / TASK-224 — AC-21: an อื่นๆ booking draws NO freelance budget, from any of its teachers.
+  //
+  // `heldTarget(status)` is **status-only** and has never had a booking-type opinion, so as things stood an
+  // อื่นๆ booking on a FREELANCE teacher would have silently drawn an hour off their ceiling the moment it was
+  // confirmed. The owner ruled it must not: a meeting is not a taught lesson.
+  //
+  // The guard is HERE, in the one function, rather than at the six call sites (`:1988 · :2065 · :2402 ·
+  // :2486 · :2960` + the move path) — guarding six is how five stay right and one drifts.
+  //
+  // 🚫 `heldTarget` is deliberately untouched: it answers *"what does this STATUS hold"*, which is still
+  // exactly right. "Does this booking hold at all" is a different question and belongs where the booking is
+  // known. Returning before the movement read also means an อื่นๆ booking never writes a `fl:` movement at
+  // all — the DoD asserts the absence of the row, not merely a number that did not change.
+  const booking = await tx.query.bookings.findFirst({
+    columns: { bookingType: true },
+    where: (b: any, { eq }: any) => eq(b.id, bookingId),
+  });
+  if (booking?.bookingType === "OTHER") return;
+
   // Every freelance item holding this booking — including teachers it was moved away from.
   const movements = await tx.query.boMovement.findMany({
     where: (m: any, { and, eq, inArray }: any) =>
@@ -379,6 +398,10 @@ const withBookingRelations = {
   subject: true,
   course: true,
   badges: { with: { value: true, type: true } },
+  // TASK-224 (AC-18) — the ADDITIONAL teachers of an อื่นๆ booking. Loaded HERE, in the one shared relation
+  // set, rather than opted into per query: every booking read then produces the same `teachers[]`, and no
+  // caller can accidentally render a multi-teacher booking as though it had one.
+  additionalTeachers: { with: { teacher: true } },
 } as const;
 
 async function loadBookingDTO(exec: any, id: string) {
@@ -853,16 +876,45 @@ async function assertTeacherBookable(exec: any, teacherId: string, date: string)
   return teacher;
 }
 
+/**
+ * SPEC-070 / TASK-224 (AC-18/19) — attach the ADDITIONAL teachers of an อื่นๆ booking.
+ *
+ * Insert-only and `onConflictDoNothing`, so a retried request cannot create a second row for the same pair —
+ * the composite PK is what makes that true, not carefulness here.
+ *
+ * `assertTeacherBookable` is applied to each one for the same reason `insertBooking` applies it to the first:
+ * an archived teacher must not acquire new work through a side door. What is deliberately NOT applied is the
+ * slot-clash rule — `bookings_teacher_slot_uq` covers `teacher_id` only, and an อื่นๆ booking is exactly the
+ * case where several teachers legitimately share one hour. Making the extras clash-checked would forbid the
+ * feature the owner asked for.
+ */
+async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[]) {
+  const booking = await exec.query.bookings.findFirst({
+    columns: { date: true },
+    where: (b: any, { eq: e }: any) => e(b.id, bookingId),
+  });
+  for (const teacherId of teacherIds) {
+    await assertTeacherBookable(exec, teacherId, booking!.date);
+  }
+  await exec
+    .insert(bookingTeachers)
+    .values(teacherIds.map((teacherId) => ({ bookingId, teacherId })))
+    .onConflictDoNothing();
+}
+
 async function insertBooking(
   exec: any,
-  studentId: string,
+  studentId: string | null,
   input: any,
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
   await assertTeacherBookable(exec, input.teacherId, input.date);
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
-  if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
+  // TASK-224: no student ⇒ no household ⇒ nothing to be suspended. The check is skipped rather than made
+  // null-tolerant inside `findParentOfStudent`, so the suspension rule keeps exactly the meaning it had for
+  // every booking that names a student.
+  if (studentId && blockedBySuspension(await findParentOfStudent(studentId, exec))) {
     throw badRequest(`${SUSPENDED_MESSAGE}จอง`);
   }
   // SPEC-030 / TASK-106: a voucher can't book Onewheel or Balance Play (course-only programs). Enforced here —
@@ -908,6 +960,11 @@ async function insertBooking(
         // TASK-178 (REQ-068) — the attendee note travels with the session it describes, and never touches
         // `note` above: one is what a parent told us, the other is what the system did.
         attendeeNote: input.attendeeNote ?? null,
+        // SPEC-070 / TASK-224 (REQ-078) — the อื่นๆ fields. Validation has already refused all three on the
+        // four lesson types, so `?? null` here is the whole story: nothing to branch on, nothing to forget.
+        otherTitle: input.otherTitle ?? null,
+        otherPriceMinor: input.otherPriceMinor ?? null,
+        otherPriceItemId: input.otherPriceItemId ?? null,
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1034,13 +1091,21 @@ export async function createBooking(input: any) {
   // Validated before the booking exists, so an invalid discount refuses the booking rather than storing junk.
   const discountCapture = await captureBookingDiscount(input);
   return await db.transaction(async (tx) => {
-    const studentId = await resolveStudentId(tx, input.student);
+    // TASK-224: `null` for an อื่นๆ booking with no student. Validation has already refused a missing student
+    // on the four lesson types, so this is only ever null where the schema now allows it.
+    const studentId = input.student ? await resolveStudentId(tx, input.student) : null;
     if (input.bookingType === "VOUCHER" && input.voucherId) {
-      await prepareVoucherBooking(tx, input.voucherId, input.date, studentId);
+      await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);
     }
     const id = await insertBooking(tx, studentId, input);
     if (discountCapture) {
       await tx.update(bookings).set(discountCapture).where(eq(bookings.id, id));
+    }
+    // TASK-224 (AC-18) — the ADDITIONAL teachers. Inside the same transaction as the booking: a booking that
+    // exists with only some of its teachers is a booking that renders wrongly in a teacher's column, and no
+    // later request would know to repair it.
+    if (input.additionalTeacherIds?.length) {
+      await attachAdditionalTeachers(tx, id, input.additionalTeacherIds);
     }
     if (input.badgeValueIds?.length) {
       await attachBookingBadges(tx, id, input.badgeValueIds);
@@ -2216,7 +2281,10 @@ export async function updateBookingStatus(
       //
       // ⛔ This set is coupled to the FE's `canCancelWithReason` (TASK-220): the two must list the same types,
       // or the dialog asks for a reason nobody stores — or the API refuses a cancel the UI offers.
-      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL"]);
+      // TASK-224 (AC-13) adds `OTHER` — one line, no migration: `0025`'s `cancel_reason` column and its CHECK
+      // already carry the three values. Exactly the TASK-220 shape, and it means an อื่นๆ cancel is found by
+      // the same `WHERE cancel_reason = 'ADMIN_ERROR'` as every other type, on day one.
+      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER"]);
       const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType) ? reasonCode : undefined;
       if (REASON_ENUM_REQUIRED.has(current.bookingType)) {
         if (!enumReason) {

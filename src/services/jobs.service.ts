@@ -14,14 +14,14 @@
 // signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookings, coursePackages, jobRuns, vouchers } from "../db/schema";
+import { bookings, coursePackages, jobRuns, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
 import { enqueueLine } from "../lib/line";
-import { groupReminders, reminderReach } from "../lib/daily-reminder";
+import { dueReminders, groupReminders, reminderKey, reminderReach } from "../lib/daily-reminder";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -160,15 +160,26 @@ export async function runEndOfDayJob(date?: string) {
 
 export const REMINDER_JOB = "daily-reminder";
 
-/** Has the reminder already gone out for this business date? Read before sending, like the digest. */
-async function reminderAlreadySent(runDate: string): Promise<boolean> {
+/**
+ * Had this business date already fired at least once before this invocation? **Observability only.**
+ *
+ * 🔴 TASK-218 — this function used to be the suppression gate (`reminderAlreadySent`), and that was the bug:
+ * a manual trigger at 07:00 wrote `attempted: true`, so the real 08:15 scheduled run skipped and **the day's
+ * reminders were silently eaten**. Suppression now lives per-recipient (`reminderKey`), where re-running is
+ * harmless. This survives only because *"was 08:15 the first firing today, or did something beat it?"* is the
+ * question an operator asks when a morning looks wrong — and it is now recorded, never acted on.
+ *
+ * ⚠️ **Never re-wire this into an `if` around the send.** Both job-level flags are wrong: `sent` re-runs all
+ * morning on a day that reached nobody, `attempted` eats the day.
+ */
+async function reminderRanToday(runDate: string): Promise<boolean> {
   const rows = await db
     .select()
     .from(jobRuns)
     .where(and(eq(jobRuns.job, REMINDER_JOB), eq(jobRuns.runDate, runDate)));
-  // 🔴 TASK-209: keyed on `attempted`, NOT on `sent`. `sent` is now a delivered COUNT, and a day where every
-  // recipient was unlinked delivers 0 — reading "already sent" off that number would make the job re-run all
-  // morning on exactly the days it reached nobody.
+  // 🔴 TASK-209: keyed on `attempted`, NOT on `sent`. `sent` is a delivered COUNT, and a day where every
+  // recipient was unlinked delivers 0 — reading this off that number would misreport a day that reached
+  // nobody as one that never fired.
   return rows.some((r) => (r.summary as any)?.attempted === true);
 }
 
@@ -181,26 +192,16 @@ async function reminderAlreadySent(runDate: string): Promise<boolean> {
  * is the only thing that makes *"did it fire this morning?"* answerable without guessing, and it is written
  * even when there is nothing to send.
  *
- * Idempotent per business date: a second run — a retry, or both boxes firing — sends nothing.
+ * 🔴 TASK-218 — idempotent **per recipient per business date**, not per job. The job may run any number of
+ * times a day: each run sends only to people not already reminded today, so a 07:00 ops trigger reminds whoever
+ * is due, the 08:15 run reminds the rest, and nobody is sent to twice.
  */
 export async function runDailyReminderJob(date?: string) {
   const runDate = date ?? bangkokNow().date;
 
-  // 🔴 TASK-209 — the guard gates the SEND, never the RECORD.
-  //
-  // This used to `return` here, so a second run sent nothing **and wrote nothing** — leaving "ran, nothing to
-  // do" and "never ran" indistinguishable, which is the one property these job rows exist to preserve. The row
-  // is now written on **every** invocation; a re-run records `attempted: false, sent: 0`.
-  if (await reminderAlreadySent(runDate)) {
-    await db.insert(jobRuns).values({
-      job: REMINDER_JOB,
-      runDate,
-      status: "success",
-      summary: { attempted: false, sent: 0, reason: "already-sent" },
-      finishedAt: new Date(),
-    });
-    return { date: runDate, skipped: "already-sent" as const, sent: 0 };
-  }
+  // Recorded, not acted on — see `reminderRanToday`. Read BEFORE this run writes its own row, or it would
+  // always report itself.
+  const priorRunToday = await reminderRanToday(runDate);
 
   const rows = await db.query.bookings.findMany({
     where: (b: any, { eq: e }: any) => e(b.date, runDate),
@@ -236,6 +237,24 @@ export async function runDailyReminderJob(date?: string) {
   // a reminder feature that reaches nobody looks identical to one that works, for as long as nobody checks.
   const reach = reminderReach(groups);
 
+  // 🔴 TASK-218 — who has ALREADY been reminded today, read in ONE query keyed on the outbox.
+  //
+  // This is the fast path only. The `notification_outbox_idempotency_uq` index is what actually makes a
+  // double-send impossible when two boxes fire at the same moment — read-then-write alone is a race, and
+  // `enqueueLine` reports that collision back as `duplicate` rather than throwing.
+  const keys = groups.map((g) => reminderKey(g.recipientType, g.personId, runDate));
+  const alreadyKeyed = new Set(
+    keys.length
+      ? (
+          await db
+            .select({ key: notificationOutbox.idempotencyKey })
+            .from(notificationOutbox)
+            .where(inArray(notificationOutbox.idempotencyKey, keys))
+        ).map((r) => r.key as string)
+      : [],
+  );
+  const due = dueReminders(groups, runDate, alreadyKeyed);
+
   // 🔴 TASK-209 — `sent` is the number ACTUALLY queued for delivery, not a boolean.
   //
   // The first version recorded `sent: true` on a run that reached **zero** people (every recipient unlinked on
@@ -244,7 +263,11 @@ export async function runDailyReminderJob(date?: string) {
   // "it fired and reached nobody" and "it never fired" stay distinguishable in both directions.
   let sent = 0;
   let skipped = 0;
-  for (const g of groups) {
+  // TASK-218: people this run deliberately did not send to because they already had today's reminder. It is a
+  // separate count from `skipped` (= unreachable, no LINE link) on purpose — "already done" and "cannot reach"
+  // are the two answers an operator is choosing between when a morning looks short.
+  let alreadyReminded = groups.length - due.length;
+  for (const g of due) {
     const result = await enqueueLine({
       recipientType: g.recipientType,
       recipientLineUserId: g.lineUserId,
@@ -252,8 +275,12 @@ export async function runDailyReminderJob(date?: string) {
       // composer in each recipient's own language — no second format, no per-booking enrichment.
       payload: { kind: "daily_reminder", rows: g.rows },
       skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
+      // 🔴 The send-once key. A SKIPPED row never stores it (`lib/line.ts`), so someone who was unlinked at
+      // 07:00 and links LINE by 08:15 is still reached — an unreachable person was not reminded.
+      idempotencyKey: reminderKey(g.recipientType, g.personId, runDate),
     });
-    if (result.status === "skipped") skipped++;
+    if (result.status === "duplicate") alreadyReminded++;
+    else if (result.status === "skipped") skipped++;
     else sent++;
   }
 
@@ -261,9 +288,9 @@ export async function runDailyReminderJob(date?: string) {
     job: REMINDER_JOB,
     runDate,
     status: "success",
-    summary: { attempted: true, sent, skipped, ...reach },
+    summary: { attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach },
     finishedAt: new Date(),
   });
 
-  return { date: runDate, attempted: true, sent, skipped, ...reach };
+  return { date: runDate, attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach };
 }

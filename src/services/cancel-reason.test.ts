@@ -34,13 +34,19 @@ describe("the reason is the SAME enum as a course ending (TASK-211)", () => {
   });
 });
 
-describe("required for the three NON-COURSE types — and ONLY those", () => {
-  test("🔴 SINGLE_SESSION, VOUCHER and FIRST_TRIAL (TASK-220 added the trial)", () => {
+describe("required for the NON-COURSE types — and ONLY those", () => {
+  test("🔴 SINGLE_SESSION, VOUCHER, FIRST_TRIAL (TASK-220) and OTHER (TASK-224)", () => {
     // A first trial belongs with the other two: it is a **standalone session that bills** at day-end when
     // attended, so cancelling one is exactly the act the audit question is about. Leaving it out made "find
     // every cancellation someone made by mistake" silently incomplete — the worst kind of wrong for a query
     // whose whole purpose is completeness.
-    expect(CANCEL).toContain('REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL"])');
+    //
+    // TASK-224 (AC-13) adds `OTHER` for the same reason: an อื่นๆ booking is standalone and can bill, so its
+    // cancel is found by the same `WHERE cancel_reason = 'ADMIN_ERROR'` as every other standalone type — on
+    // day one, rather than after someone notices the gap.
+    expect(CANCEL).toContain(
+      'REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER"])',
+    );
     expect(CANCEL).toContain('throw new ApiException(400, "REASON_REQUIRED"');
   });
 

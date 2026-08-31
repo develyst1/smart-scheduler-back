@@ -96,6 +96,27 @@ export const toBadgeTypeDTO = (t: any) => ({
     .map(toBadgeValueDTO),
 });
 
+/**
+ * SPEC-070 / TASK-224 (REQ-078 AC-18) — **the one accessor for a booking's teachers.**
+ *
+ * `bookings.teacher_id` is the first teacher; `booking_teachers` holds the additional ones. 🔴 Nothing outside
+ * this function may read either source: two call sites reading two sources is how the two get to disagree, and
+ * a booking that shows two teachers on the calendar and one in a report is worse than either answer alone.
+ *
+ * `teachers[0]` is ALWAYS the row's `teacher_id`, so the order is stable and the existing single-teacher
+ * meaning survives everywhere. The four lesson types can never have extras (validation refuses the field, and
+ * nothing else writes the table), so this returns exactly one for them — by construction, not by filtering.
+ */
+export const bookingTeachers = (b: any) => [
+  toTeacherBase(b.teacher),
+  // `additionalTeachers` is absent when a caller did not load the relation — which is correct for the lesson
+  // types and, for `OTHER`, is why the relation lives in the shared `withBookingRelations` rather than being
+  // opted into per query.
+  ...(b.additionalTeachers ?? [])
+    .filter((a: any) => a?.teacher)
+    .map((a: any) => toTeacherBase(a.teacher)),
+];
+
 export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
@@ -107,9 +128,22 @@ export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
   // SPEC-063 / TASK-178 (REQ-068) — what a parent told us about this session ("พาน้องมาด้วย 2 คน"), distinct
   // from `note` above, which is what the system did to it (cancel reason, auto-extend, leave).
   attendeeNote: b.attendeeNote ?? null,
-  student: studentRef(b.student),
+  // TASK-224 (REQ-078): `null` for an อื่นๆ booking with no student / no program. 🚫 Never a placeholder —
+  // REQ-065 exists because `1st Trial` sitting in `subjects` leaked into the program picker and had to be
+  // filtered back out. A booking with no program has none, and says so.
+  student: b.student ? studentRef(b.student) : null,
   teacher: toTeacherBase(b.teacher),
-  subject: { id: b.subject.id, name: b.subject.name },
+  subject: b.subject ? { id: b.subject.id, name: b.subject.name } : null,
+  // TASK-224 — the typed name of an อื่นๆ booking; `null` on the four lesson types.
+  title: b.otherTitle ?? null,
+  // 🔴 TASK-224 / AC-10 — the ONE field every surface renders a booking by. Computed for **every** booking
+  // type (a 1HR's is its student's nickname, unchanged), so "never blank, never the word อื่นๆ" is a property
+  // of this function instead of a fallback re-invented at 31 FE call sites, each free to get it wrong
+  // differently. Validation guarantees the inputs: an อื่นๆ booking with no student must carry a title.
+  displayName: b.otherTitle ?? b.student?.nickname ?? b.student?.name ?? "",
+  // 🔴 TASK-224 / AC-18 — EVERY assigned teacher, from the ONE accessor. Present on every booking type
+  // (length 1 for the four lesson types), so the FE has one shape rather than two.
+  teachers: bookingTeachers(b),
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
   // SPEC-045 / TASK-190 (REQ-052) — does this session have equipment rented against it? A **presence marker**

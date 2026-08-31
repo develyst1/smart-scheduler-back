@@ -74,15 +74,38 @@ describe("runDailyReminderJob (TASK-208)", () => {
 
   test("🔴 it enqueues per GROUP, never per booking", () => {
     // `groupReminders` is what collapses ~60 Saturday sessions into one message per person; enqueuing from
-    // `rows` instead would put eight pushes on a teacher's phone before 08:20.
-    expect(body).toContain("for (const g of groups)");
+    // `rows` instead would put eight pushes on a teacher's phone before 08:20. TASK-218 narrowed the loop from
+    // `groups` to `due` (the not-yet-reminded subset) — still one entry per PERSON, never per booking.
+    expect(body).toContain("for (const g of due)");
     expect(body).toContain("groupReminders(");
+    expect(body).toContain("dueReminders(groups, runDate, alreadyKeyed)");
     expect(body).not.toMatch(/for \(const [a-z]+ of rows\)/);
   });
 
-  test("🔴 idempotent per business date — a retry or a second box sends nothing", () => {
-    expect(body).toContain("reminderAlreadySent(runDate)");
-    expect(body.indexOf("reminderAlreadySent")).toBeLessThan(body.indexOf("enqueueLine"));
+  test("🔴 TASK-218: idempotency is per RECIPIENT per day, and it is what gates the send", () => {
+    // The gate must sit between "who is due" and "send", and it must be the per-person key — not a job flag.
+    expect(body).toContain("reminderKey(g.recipientType, g.personId, runDate)");
+    expect(body).toContain("idempotencyKey: reminderKey(");
+    expect(body.indexOf("dueReminders(")).toBeLessThan(body.indexOf("await enqueueLine("));
+  });
+
+  test("🔴 TASK-218: NO job-level flag may suppress the send — that is what ate the day", () => {
+    // A manual trigger at 07:00 set `attempted: true`, so the real 08:15 run skipped and nobody was reminded.
+    // `reminderRanToday` survives ONLY as an observability field; the moment it appears in an `if` around the
+    // send, or the early return comes back, the bug is back.
+    expect(body).not.toContain("reminderAlreadySent");
+    expect(body).not.toMatch(/if \(\s*(await )?reminderRanToday/);
+    expect(body).not.toContain('reason: "already-sent"');
+    expect(body).toContain("summary: { attempted: true, sent, skipped, alreadyReminded, priorRunToday");
+    // Exactly one `return` — the final one. An early return is how the previous two versions went wrong.
+    expect(body.match(/^\s{2}return /gm)).toHaveLength(1);
+  });
+
+  test("🔴 TASK-218: the up-front read is the fast path — the UNIQUE INDEX is what makes it safe", () => {
+    // Read-then-write is a race when both boxes fire at 08:15. `enqueueLine` turns the index collision into a
+    // `duplicate` result, and it must be counted as already-reminded, never as a send.
+    expect(body).toContain("notificationOutbox.idempotencyKey");
+    expect(body).toContain('if (result.status === "duplicate") alreadyReminded++');
   });
 
   test("🔴 a `job_runs` row is always written — 'never registered' must stay visible", () => {
@@ -92,29 +115,31 @@ describe("runDailyReminderJob (TASK-208)", () => {
   });
 
   test("the reach is counted BEFORE sending and returned", () => {
-    expect(body.indexOf("reminderReach(groups)")).toBeLessThan(body.indexOf("for (const g of groups)"));
+    expect(body.indexOf("reminderReach(groups)")).toBeLessThan(body.indexOf("for (const g of due)"));
     expect(body).toContain("...reach");
   });
 
   test("🔴 TASK-209: `sent` is a DELIVERED COUNT and `attempted` is the separate fact that it ran", () => {
     // This test asserted `sent: true` and passed — while a run that reached ZERO people recorded itself as
     // sent. "Did it fire?" and "did it reach anyone?" are two questions, and one boolean cannot answer both.
-    expect(body).toContain("summary: { attempted: true, sent, skipped, ...reach }");
+    expect(body).toContain("attempted: true, sent, skipped");
     expect(body).not.toContain("sent: true, ...reach");
   });
 
-  test("🔴 TASK-209: EVERY invocation writes a row — the re-run records `sent: 0`, it does not return early", () => {
-    // The early return made "ran, nothing to do" and "never ran" indistinguishable, which is the one property
-    // these rows exist to preserve.
-    const guard = body.slice(body.indexOf("reminderAlreadySent(runDate)"), body.indexOf("bookings.findMany"));
-    expect(guard).toContain("insert(jobRuns)");
-    expect(guard).toContain('reason: "already-sent"');
+  test("🔴 TASK-218: `alreadyReminded` and `skipped` stay SEPARATE counts", () => {
+    // "already had it" and "cannot be reached at all" are the two answers an operator is choosing between when
+    // a morning looks short. Folding them into one number loses exactly the distinction they are read for.
+    expect(body).toContain('else if (result.status === "skipped") skipped++');
+    expect(body).toContain("alreadyReminded = groups.length - due.length");
   });
 
-  test("the already-sent check keys on `attempted`, never on the delivered count", () => {
-    // Keying on `sent` would make the job re-run all morning on exactly the days it reached nobody.
-    const predicate = SRC.slice(SRC.indexOf("async function reminderAlreadySent"));
+  test("`reminderRanToday` is recorded, never acted on — and still keys on `attempted`", () => {
+    // Keying on `sent` would make it misreport a day that reached nobody as "never fired".
+    const predicate = SRC.slice(SRC.indexOf("async function reminderRanToday"));
     expect(predicate.slice(0, predicate.indexOf("\n}\n"))).toContain("attempted === true");
+    // Its only consumer is the summary/return payload.
+    expect(body).toContain("const priorRunToday = await reminderRanToday(runDate)");
+    expect(body.match(/priorRunToday/g)).toHaveLength(3);
   });
 
   test("parents are loaded in ONE query, not one per student", () => {

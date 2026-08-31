@@ -76,3 +76,58 @@ describe("operator evidence (AC-10)", () => {
     expect(out).not.toContain("เก่า"); // the archived teacher isn't even listed
   });
 });
+
+// ═══ TASK-223 — the header must not document a policy the owner revoked ═══
+//
+// 🔴 A comment asserting a revoked policy is worse than no comment: it is the reason someone runs the command
+// confidently. This header said `link-all` was for both boxes, and that open-by-default was a trade-off the
+// owner had accepted. On 2026-08-29 he said **"ตั้งใจจำกัด"** — DC and Pop are deliberately restricted — and a
+// `--commit` on `uat` would have given DC 16 programs he is not meant to teach, with **no way to unlink**.
+// Prose rots silently, so the claims that matter are pinned here (the TASK-191 lesson, applied to comments).
+//
+// ⚠️ Asserted on the SOURCE TEXT, never by importing the script: importing it would construct the DB client.
+const SCRIPT = await Bun.file(new URL("../../scripts/link-all-teacher-subjects.ts", import.meta.url)).text();
+const PLAN_SRC = await Bun.file(new URL("./bulk-link-plan.ts", import.meta.url)).text();
+
+describe("TASK-223 — what the header is allowed to claim", () => {
+  test("🔴 neither file says the tool is for `uat`, or that open-by-default is current policy", () => {
+    // Not even as a quotation: a grep that finds the revoked wording hands the reader the old policy out of
+    // context, which is exactly the failure mode being fixed.
+    expect(SCRIPT).not.toContain("on BOTH `sid` and `uat`");
+    expect(SCRIPT).not.toContain("อย่าลืมรันทั้ง sid และ uat");
+    expect(SCRIPT).not.toContain("the trade-off the owner accepted when he chose open-by-default");
+    expect(SCRIPT).not.toContain("Usage (run on sid, then uat)");
+  });
+
+  test("🔴 it names all three: `sid`-only · `uat` = a named list · it can NEVER unlink", () => {
+    expect(SCRIPT).toContain("sid`-ONLY");
+    expect(SCRIPT).toContain("NAMED LIST");
+    expect(SCRIPT).toContain("can NEVER unlink");
+  });
+
+  test("the revoked premise in the pure planner points at the script's danger paragraph", () => {
+    // `bulk-link-plan.ts` repeated "every teacher can teach every program" as if it were still the roster.
+    expect(PLAN_SRC).toContain("revoked for `uat`");
+    expect(PLAN_SRC).toContain("link-all-teacher-subjects.ts");
+  });
+
+  test("🔴 item 3: the warning prints above the plan on BOTH paths, dry run AND --commit", () => {
+    // SA correction at review: the person typing `--commit` is who it is for. A warning that vanishes at the
+    // moment of danger fires only when it cannot matter.
+    expect(SCRIPT).toContain("${UAT_WARNING}");
+    expect(SCRIPT.indexOf("${UAT_WARNING}")).toBeLessThan(SCRIPT.indexOf("console.log(formatBulkLinkPlan(plan))"));
+    expect(SCRIPT).toContain("this tool is sid-only");
+    // Not gated on the dry-run flag — that gate is what the review struck.
+    expect(SCRIPT).not.toContain("if (!commit) console.log(");
+  });
+
+  test("🔴 behaviour is UNCHANGED — dry run still rolls back, --commit still inserts on-conflict-do-nothing", () => {
+    // The task is a comment fix. A safety guard nobody ordered (box detection, an env check) would be a
+    // behaviour change, and getting "which box am I on" wrong in a guard is worse than a stale comment.
+    expect(SCRIPT).toContain("if (!commit) throw new Error(DRY_RUN_ROLLBACK);");
+    expect(SCRIPT).toContain(".onConflictDoNothing()");
+    for (const guard of ["process.env.NODE_ENV", "DATABASE_URL", "isUat", "--force"]) {
+      expect(SCRIPT).not.toContain(guard);
+    }
+  });
+});

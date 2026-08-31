@@ -90,6 +90,37 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
 }
 
 /**
+ * TASK-218 — the send-once key for **one person on one business date**, mirroring the day-end sale's
+ * `rev:<bookingId>`.
+ *
+ * 🔴 Why the key is per-RECIPIENT and not per-job: the job used to suppress itself on a `job_runs` flag, so a
+ * manual trigger at 07:00 made the real 08:15 run skip and **the day's reminders were silently eaten**. Neither
+ * job-level flag can be right — `sent` re-runs all morning on a zero-reach day, `attempted` eats the day. Keyed
+ * here, the job may run any number of times: each run sends only to whoever is not already keyed today.
+ *
+ * The date is the **business date** (Asia/Bangkok), not a timestamp — "one per day" is a calendar statement.
+ */
+export const reminderKey = (
+  recipientType: ReminderGroup["recipientType"],
+  personId: string,
+  date: string,
+) => `reminder:${recipientType}:${personId}:${date}`;
+
+/**
+ * Who still needs today's reminder — the groups whose key is **not** already in `alreadyKeyed`.
+ *
+ * Pure, so the property the DoD is written in ("a 07:00 trigger then the 08:15 run: every due person gets
+ * exactly one reminder") is a test rather than a live-box hope.
+ */
+export function dueReminders(
+  groups: ReminderGroup[],
+  date: string,
+  alreadyKeyed: ReadonlySet<string>,
+): ReminderGroup[] {
+  return groups.filter((g) => !alreadyKeyed.has(reminderKey(g.recipientType, g.personId, date)));
+}
+
+/**
  * The reach, counted **before** anything is sent — the number that says whether this feature does anything at
  * all today. `unlinkedParents` is the one to watch: it is large on `uat` by construction.
  */

@@ -286,6 +286,27 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "only after this ran (TASK-217 — the off-card import 500).",
     rerunnable: true,
   },
+  {
+    tag: "0028_outbox_idempotency",
+    probe: { kind: "index", index: "notification_outbox_idempotency_uq" },
+    why:
+      "The LAST object 0028 creates — after the column it indexes — so a half-applied run is detectable, and " +
+      "nothing else creates this index. It is also the object that carries the behaviour: without the unique " +
+      "index the per-recipient key is advisory and two boxes firing at 08:15 can both send (TASK-218 — a " +
+      "manual pre-08:15 trigger used to eat the whole day's reminders).",
+    rerunnable: true,
+  },
+  {
+    tag: "0029_other_booking_type",
+    probe: { kind: "constraint", constraint: "booking_other_price_chk" },
+    why:
+      "🔴 0029's headline effects are UNWITNESSABLE BY EXISTENCE: `student_id` and `subject_id` both exist " +
+      "before and after their `DROP NOT NULL`, so probing a column would make an un-migrated box look " +
+      "identical to a migrated one — exactly how 0022 hid and took the calendar down. " +
+      "`booking_other_price_chk` is the LAST object 0029 creates, after the columns it constrains, and " +
+      "nothing else creates it (TASK-224 — the อื่นๆ booking type).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

@@ -15,6 +15,7 @@ import * as rental from "../services/rental.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { crmLevelLadder } from "../lib/crm";
 import { isSettingKey } from "../lib/settings";
+import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
@@ -256,6 +257,15 @@ export const api = new Hono()
   )
   .get("/bookings/:id/checkin", async (c) =>
     c.json(await checkin.getCheckinQr(c.req.param("id"))),
+  )
+  // SPEC-069 / TASK-221 — read-only: was this booking's revenue already posted, and how much?
+  //
+  // 🔴 Deliberately NOT wrapped in a try/catch. Everywhere else here a sale read is best-effort so it can never
+  // fail the booking it describes; this read IS the warning the cancel dialog shows, and an error swallowed
+  // into `{ posted: null }` renders as "no money posted" — the whole defect. A 500 costs nothing (the cancel
+  // path is untouched) and the FE turns it into a visible "could not verify".
+  .get("/bookings/:id/posted-sale", async (c) =>
+    c.json({ posted: await postedSaleForBooking(c.req.param("id")) }),
   )
   // ── Badges (admin-defined tags on bookings) ──
   .get("/badges", zValidator("query", v.badgesQuery), async (c) =>

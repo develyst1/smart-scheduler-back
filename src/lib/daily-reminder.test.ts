@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { groupReminders, reminderReach, type ReminderSession } from "./daily-reminder";
+import {
+  dueReminders,
+  groupReminders,
+  reminderKey,
+  reminderReach,
+  type ReminderSession,
+} from "./daily-reminder";
 
 // SPEC-066 / TASK-208 (REQ-072 3B). The rule this feature lives or dies by is ONE MESSAGE PER PERSON: a
 // Saturday is ~60 sessions, and a per-booking push would send one teacher eight notifications before 08:20.
@@ -96,5 +102,64 @@ describe("🔴 the reach is COUNTED before anything is sent", () => {
       unlinkedParents: 1,
       sessions: 2,
     });
+  });
+});
+
+// ═══ TASK-218 — a manual pre-08:15 trigger must not eat the day ═══
+//
+// The old guard asked "did this JOB already run today?" (`job_runs.summary.attempted`). An ops trigger at 07:00
+// answered yes, so the real 08:15 run skipped and **nobody was reminded**. The DoD is written per-person, so the
+// deciding rule is pure and lives here: given who was already keyed, who is still due?
+describe("🔴 TASK-218 — idempotency is per RECIPIENT per day, not per job", () => {
+  const DAY = "2026-09-05";
+  const key = (t: "teacher" | "parent", id: string) => reminderKey(t, id, DAY);
+
+  test("the key is person + business date — 'one per day' is a calendar statement", () => {
+    expect(key("teacher", "t1")).toBe("reminder:teacher:t1:2026-09-05");
+    expect(key("parent", "t1")).not.toBe(key("teacher", "t1")); // a person is never both by accident
+    expect(reminderKey("teacher", "t1", "2026-09-06")).not.toBe(key("teacher", "t1")); // tomorrow is a new send
+  });
+
+  test("🔑 07:00 trigger then the 08:15 run: everyone due gets exactly one — none twice, none missed", () => {
+    const day = [
+      s({ id: "a", teacherId: "t1", parentId: "p1" }),
+      s({ id: "b", teacherId: "t2", parentId: "p2", startTime: "13:00:00" }),
+    ];
+    const groups = groupReminders(day);
+    expect(groups).toHaveLength(4); // t1, t2, p1, p2
+
+    // 07:00 — an ops trigger reaches whoever it reaches. Say it got the two teachers.
+    const at0700 = dueReminders(groups, DAY, new Set());
+    expect(at0700).toHaveLength(4);
+    const keyedAfter0700 = new Set([key("teacher", "t1"), key("teacher", "t2")]);
+
+    // 08:15 — the scheduled run. It must NOT be suppressed, and must send only to the two parents.
+    const at0815 = dueReminders(groups, DAY, keyedAfter0700);
+    expect(at0815.map((g) => `${g.recipientType}:${g.personId}`)).toEqual(["parent:p1", "parent:p2"]);
+
+    // Union across both runs = every person exactly once.
+    const all = [...at0700.slice(0, 2), ...at0815].map((g) => `${g.recipientType}:${g.personId}`);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  test("two runs with no gap still send each person once (double-run safe)", () => {
+    const groups = groupReminders([s({ id: "a" })]);
+    const keyed = new Set(groups.map((g) => reminderKey(g.recipientType, g.personId, DAY)));
+    expect(dueReminders(groups, DAY, keyed)).toEqual([]);
+  });
+
+  test("🔴 yesterday's keys never suppress today — the date is part of the key", () => {
+    const groups = groupReminders([s({ id: "a" })]);
+    const yesterday = new Set(groups.map((g) => reminderKey(g.recipientType, g.personId, "2026-09-04")));
+    expect(dueReminders(groups, DAY, yesterday)).toHaveLength(groups.length);
+  });
+
+  test("an UNLINKED person stays due — they were not reminded, they were unreachable", () => {
+    // `enqueueLine` deliberately stores no key on a SKIPPED row, so a parent who links LINE between the 07:00
+    // trigger and 08:15 is still reached. Suppressing on "we tried" would silently never send to them.
+    const groups = groupReminders([s({ id: "a", parentLineUserId: null })]);
+    const parent = groups.find((g) => g.recipientType === "parent")!;
+    expect(parent.lineUserId).toBeNull();
+    expect(dueReminders(groups, DAY, new Set()).map((g) => g.personId)).toContain(parent.personId);
   });
 });

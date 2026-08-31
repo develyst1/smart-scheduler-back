@@ -28,7 +28,20 @@ const BOOKING_TYPE = z.enum([
   "SINGLE_SESSION",
   "COURSE_PACKAGE",
   "VOUCHER",
+  // SPEC-070 / TASK-224 (REQ-078) — a booking that is not a lesson.
+  "OTHER",
 ]);
+
+/**
+ * The four LESSON types. TASK-224 relaxed `student` / `subjectId` to optional **in the schema** so `OTHER` can
+ * omit them — this set is what keeps them mandatory **in practice** for everything that was already shipping.
+ *
+ * 🔴 AC-14: the four existing types must behave byte-identically. Optional-in-the-object plus a refine that
+ * refuses the absence is the same contract as `.notNull()`, with one type carved out — and a test per type
+ * pins it, because "we relaxed a field for one case" is exactly how the other four quietly lose a guard.
+ */
+const LESSON_TYPES = ["FIRST_TRIAL", "SINGLE_SESSION", "COURSE_PACKAGE", "VOUCHER"] as const;
+const isLessonType = (t: string) => (LESSON_TYPES as readonly string[]).includes(t);
 const BOOKING_STATUS = z.enum([
   "PENDING",
   "CONFIRMED",
@@ -98,9 +111,11 @@ const studentInput = z.union([
 
 export const createBooking = z
   .object({
-    student: studentInput,
+    // TASK-224: optional in the OBJECT so `OTHER` may omit them; the four lesson types still refuse the
+    // absence in the refinements below (`isLessonType`). Relaxing the shape must not relax the contract.
+    student: studentInput.optional(),
     teacherId: ID,
-    subjectId: ID,
+    subjectId: ID.optional(),
     date: DATE,
     startTime: TIME,
     bookingType: BOOKING_TYPE,
@@ -114,6 +129,15 @@ export const createBooking = z
     // TASK-162 (REQ-063) — a discount on a TRIAL / SINGLE session: captured here (an admin is present at
     // booking), posted by the day-end job (nobody is present then). Refused on any other booking type.
     discount: discountInput.optional(),
+    // ── SPEC-070 / TASK-224 (REQ-078) — `OTHER` only; refused outright on the four lesson types below ──
+    /** The typed name of an อื่นๆ booking ("ประชุมทีม", "ปิดปรับปรุงลาน"). Required when there is no student. */
+    otherTitle: z.string().trim().min(1).optional(),
+    /** A typed charge in satang. EITHER this OR `otherPriceItemId` — never both (AC-12). */
+    otherPriceMinor: z.number().int().min(1).optional(),
+    /** A `bo.item` id to charge instead of a typed amount. */
+    otherPriceItemId: ID.optional(),
+    /** AC-18/19/20 — the teachers BEYOND `teacherId`. `OTHER` only; `teacherId` is always the first. */
+    additionalTeacherIds: z.array(ID).optional(),
   })
   // การจองแบบ Voucher ต้องผูกวอยเชอร์เสมอ (ไม่งั้นชั่วโมงจะไม่ถูกตัด)
   .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
@@ -125,7 +149,62 @@ export const createBooking = z
   .refine((d) => d.bookingType !== "COURSE_PACKAGE" || !!d.courseId, {
     message: "การจองแบบคอร์สต้องเลือกคอร์ส (courseId)",
     path: ["courseId"],
-  });
+  })
+  // ── TASK-224 — AC-14: the four LESSON types keep every guard they had ──
+  //
+  // 🔴 These two exist because the columns stopped enforcing it (`0029` dropped both NOT NULLs so `OTHER` can
+  // omit them). Without them, relaxing the schema for one type would silently let a 1HR be booked with no
+  // student and a course session with no program — the change nobody asked for, arriving for free.
+  .refine((d) => !isLessonType(d.bookingType) || !!d.student, {
+    message: "การจองประเภทนี้ต้องระบุนักเรียน",
+    path: ["student"],
+  })
+  .refine((d) => !isLessonType(d.bookingType) || !!d.subjectId, {
+    message: "การจองประเภทนี้ต้องเลือกโปรแกรม",
+    path: ["subjectId"],
+  })
+  // ── TASK-224 — `OTHER`'s own rules ──
+  //
+  // AC-10: an อื่นๆ booking with no student MUST carry a title, because the title is the only thing left to
+  // name it with. `displayName` then never falls through to "" — that is the property, and it is enforced
+  // here rather than papered over with a placeholder at render time.
+  .refine((d) => d.bookingType !== "OTHER" || !!d.student || !!d.otherTitle, {
+    message: "กรุณาระบุชื่อรายการ",
+    path: ["otherTitle"],
+  })
+  // AC-12: EITHER a typed amount OR a catalogue item. 🔴 Refuse — never clamp, never pick one for the user
+  // (REQ-063's line). `booking_other_price_chk` is the same rule in the database.
+  .refine((d) => d.otherPriceMinor === undefined || d.otherPriceItemId === undefined, {
+    message: "เลือกได้อย่างเดียว: ระบุจำนวนเงินเอง หรือเลือกรายการจากแคตตาล็อก",
+    path: ["otherPriceMinor"],
+  })
+  // At least one teacher is ALWAYS required (AC-19) — `teacherId` is `ID`, so that is already true. What this
+  // adds is that the EXTRA ones are a closed, sane list: no duplicates, and never a repeat of the first.
+  .refine((d) => !d.additionalTeacherIds || new Set(d.additionalTeacherIds).size === d.additionalTeacherIds.length, {
+    message: "ครูซ้ำกัน",
+    path: ["additionalTeacherIds"],
+  })
+  .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), {
+    message: "ครูซ้ำกับครูคนแรก",
+    path: ["additionalTeacherIds"],
+  })
+  // ── TASK-224 — the four LESSON types must REFUSE every `OTHER` field ──
+  //
+  // 🔴 Refused outright, not ignored. A silently-dropped field is how `other_title` ends up on a course
+  // session that nothing renders it for, and how AC-20 ("the other four take exactly one teacher") stops
+  // being true of the DATA while still being true of the screen.
+  .refine(
+    (d) =>
+      d.bookingType === "OTHER" ||
+      (d.otherTitle === undefined &&
+        d.otherPriceMinor === undefined &&
+        d.otherPriceItemId === undefined &&
+        d.additionalTeacherIds === undefined),
+    {
+      message: "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”",
+      path: ["bookingType"],
+    },
+  );
 
 // รายการวอยเชอร์ (GET /api/vouchers) — กรองตามนักเรียน/ค้นหาชื่อได้
 // Courses/vouchers tabs (TASK-070) — same q/page/limit shape as `bookingsQuery`, so the FE ends up with one

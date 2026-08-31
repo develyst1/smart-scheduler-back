@@ -4,6 +4,11 @@
 // owner chose "every teacher can teach every program", which is 24 × 19 = 456 links — far too many to do one
 // command at a time without a half-finished pass leaving a roster that *looks* configured.
 //
+// 🔴 **That choice was revoked for `uat` on 2026-08-29** (owner: *"ตั้งใจจำกัด"* — TASK-223). Open-by-default is
+// no longer current policy there, so this file describes what `link-all` **computes**, not what any roster is
+// meant to be. Where it is safe to apply is the caller's question, and the answer is in the danger paragraph of
+// `scripts/link-all-teacher-subjects.ts`: `sid`-only, and the tool can never unlink.
+//
 // Two exclusions, and they are not the same idea:
 //   · **archived** = offboarded. The teacher is hidden from bookings entirely, so a link would be dead config.
 //   · **active:false** = paused — an availability state, not a capability one. A paused teacher still teaches
