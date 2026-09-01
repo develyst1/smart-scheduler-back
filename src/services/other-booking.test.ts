@@ -226,12 +226,16 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
     expect(bookingTeachers(row({ additionalTeachers: [{ teacher: null }, {}] }))).toHaveLength(1);
   });
 
-  test("🔴 nothing outside the accessor READS the join table — two readers is how two answers appear", () => {
-    // The rule is ONE reader per context, not zero. TASK-228 added the id-level accessor `assignedTeacherIds`
-    // — the LINE paths hold a bare booking row inside a transaction, with no relation loaded — so the readers
-    // are now `bookingTeachers()` in `db/mappers.ts` (for rows that have the relation) and that one. Both
-    // encode the same "primary first, then extras" order. A THIRD reader is what makes two answers possible,
-    // so this counts every mention and requires each to be inside one of the two named functions.
+  test("🔴 nothing outside the named functions touches the join table — a stray reader is a second answer", () => {
+    // The rule is not "one touch point"; it is **one place that COMPUTES the teacher list**. Three functions
+    // touch the table, and they are different kinds of thing:
+    //   · `attachAdditionalTeachers`  — writes.
+    //   · `assignedTeacherIds`        — the id-level ACCESSOR (LINE paths hold a bare row in a transaction).
+    //   · `additionalTeachersByBooking` — a LOADER (TASK-236): it batches the relation for a hand-built row
+    //     so `toBookingDTO` cannot tell that source from the relational reader's. It must NOT prepend the
+    //     primary teacher — the moment it did, it would be a second answer to "who teaches this booking",
+    //     which is the whole failure mode this test exists for.
+    // A FOURTH touch point, or a loader that starts composing the list itself, fails here.
     const code = SVC.replace(/^\s*\/\/.*$/gm, "").replace(/^\s*\*.*$/gm, "");
     const body = (decl: string) => {
       const rest = code.slice(code.indexOf(decl));
@@ -239,11 +243,18 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
     };
     const writer = body("async function attachAdditionalTeachers");
     const reader = body("async function assignedTeacherIds");
+    const loader = body("async function additionalTeachersByBooking");
     expect(writer).toContain("insert(bookingTeachers)");
     expect(reader).toContain("from(bookingTeachers)");
+    expect(loader).toContain("from(bookingTeachers)");
+    // 🔴 The loader hands back ONLY the extras, shaped like the relation. It never composes the full list —
+    // so it never looks at the booking's own `teacher_id`, which is the primary the accessor puts first.
+    expect(loader).not.toContain("bookings.teacherId");
+    expect(loader).not.toContain("from(bookings)");
+    expect(loader).not.toContain("primary");
     const count = (s: string) => s.split("bookingTeachers").length - 1;
-    // Every mention in the file is the import (1), or inside one of those two functions.
-    expect(count(code)).toBe(1 + count(writer) + count(reader));
+    // Every mention in the file is the import (1), or inside one of those three functions.
+    expect(count(code)).toBe(1 + count(writer) + count(reader) + count(loader));
   });
 
   test("the relation is loaded in the SHARED relation set, not opted into per query", () => {

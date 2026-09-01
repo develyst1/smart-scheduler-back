@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { appSettings, bookings, bookingTeachers, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -44,6 +44,7 @@ import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
+import { GENERIC_SLOT_TAKEN, slotClashMessage } from "../lib/slot-clash";
 import {
   PRICES_ARE_VAT_INCLUSIVE,
   SALE_SOURCE,
@@ -758,6 +759,13 @@ export async function getBookings(f: {
     const ors: any[] = [];
     if (studentIds?.length) ors.push(inArray(bookings.studentId, studentIds));
     if (subjectIds?.length) ors.push(inArray(bookings.subjectId, subjectIds));
+    // TASK-236: an อื่นๆ booking has neither a student nor a program, so without this it matches NOTHING —
+    // and "searched and found nothing" is indistinguishable from "cannot be searched" to the person typing.
+    // Its typed title is the only name it has, and it is the name shown in the row they are looking for.
+    //
+    // One extra OR on a column already in the table — no second query, no new index, and the four existing
+    // types are unaffected (`other_title` is null for all of them, so the clause never matches one).
+    ors.push(ilike(bookings.otherTitle, `%${f.q}%`));
     conds.push(ors.length ? or(...ors) : sql`false`);
   }
   const cond = conds.length ? and(...conds) : sql`true`;
@@ -765,13 +773,31 @@ export async function getBookings(f: {
   const rows = await db
     .select({ b: bookings, s: students, t: teachers, sub: subjects, c: coursePackages })
     .from(bookings)
-    .innerJoin(students, eq(students.id, bookings.studentId))
+    // 🔴 TASK-236 (REQ-078 DEF-3) — these two were `innerJoin` and that silently hid every อื่นๆ booking.
+    //
+    // `0029` made `student_id` and `subject_id` NULLABLE, which turned two joins that had been pure lookups
+    // into a FILTER: an อื่นๆ booking has neither, so every one of them was dropped here — while the `total`
+    // query below (which has no joins at all) still counted them. The page said "2 found" and rendered zero
+    // rows. **A join is a filter the moment its column can be null**, and that is the shape to look for
+    // anywhere a nullable column is joined; the relational reader (`withBookingRelations`) was never affected,
+    // which is exactly why the feature looked correct everywhere else.
+    .leftJoin(students, eq(students.id, bookings.studentId))
+    // `teachers` stays INNER on purpose: `teacher_id` is still NOT NULL, so this one is a real integrity
+    // assertion — a booking with no resolvable teacher is a broken row and should not quietly render.
     .innerJoin(teachers, eq(teachers.id, bookings.teacherId))
-    .innerJoin(subjects, eq(subjects.id, bookings.subjectId))
+    .leftJoin(subjects, eq(subjects.id, bookings.subjectId))
     .leftJoin(coursePackages, eq(coursePackages.id, bookings.courseId))
     .where(cond)
     // TASK-073: default `upcoming` — today/future soonest-first, then the past most-recent-first.
-    // Pure sort: nothing is filtered out, so `total` still matches the filtered set in every direction.
+    // 🔴 The line that used to sit here claimed nothing was filtered out, so `total` always matched the row
+    // set. It was true when written and **`0029` made it false** — the two joins above had become filters, and
+    // this comment is what made that easy to miss. (The old wording is deliberately NOT reproduced: a grep for
+    // it must find nothing, or the next reader meets the retired claim out of context — TASK-223's lesson.)
+    // Corrected rather than deleted, because the invariant it asserted is the one this function must hold:
+    //
+    // ⚖️ **`total` and the row set must answer the same question.** The count query has no joins, so the row
+    // query must not filter either — only `cond`, which both share, may narrow the set. Any join added here in
+    // future must be a LEFT join, or `total` becomes a number the page cannot show.
     .orderBy(...bookingsOrderBy(f.sort ?? "upcoming", bangkokNow().date))
     .limit(f.limit)
     .offset((f.page - 1) * f.limit);
@@ -783,11 +809,27 @@ export async function getBookings(f: {
 
   // TASK-190: batched over the page, same as the calendar.
   const rented = await bookingsWithRentals(rows.map((r) => r.b.id));
+  // 🔴 TASK-236 — the SECOND thing the sweep turned up, same root cause as DEF-3.
+  //
+  // This row is hand-built, so it carries only what is listed here — and `additionalTeachers` was not. The
+  // relational reader loads it via `withBookingRelations`, so the calendar and the check-in screen show every
+  // teacher of an อื่นๆ booking while this list silently showed **one**. Not an inner join, but the identical
+  // failure: a hand-written `select()` that has drifted from what the DTO now expects.
+  //
+  // Batched over the page for the same reason the rentals are (one query, not one per row).
+  const extraTeachers = await additionalTeachersByBooking(rows.map((r) => r.b.id));
 
   return {
     items: rows.map((r) =>
       toBookingDTO(
-        { ...r.b, student: r.s, teacher: r.t, subject: r.sub, course: r.c },
+        {
+          ...r.b,
+          student: r.s,
+          teacher: r.t,
+          subject: r.sub,
+          course: r.c,
+          additionalTeachers: extraTeachers.get(r.b.id) ?? [],
+        },
         { hasRental: rented.has(r.b.id) },
       ),
     ),
@@ -900,6 +942,78 @@ async function assertTeacherBookable(exec: any, teacherId: string, date: string)
  * The four lesson types can never have extras (validation refuses the field, and nothing else writes the
  * table), so this returns exactly one for them — by construction, not by filtering.
  */
+/**
+ * REQ-078 AC-24 (revised) / TASK-238 — turn a slot collision into a sentence that names the teacher and the
+ * booking already there.
+ *
+ * 🔴 **It reads on `db`, deliberately NOT on the transaction that just failed.** A statement that raises
+ * `23505` inside a Postgres transaction leaves that transaction **aborted** — every later query in it fails
+ * with `25P02`. Passing `tx` here would turn a clean 409 into a confusing 500, on the one path whose whole job
+ * is to explain itself. The occupant is committed data outside our transaction, so a fresh read is both safe
+ * and correct.
+ *
+ * The predicate mirrors `bookings_teacher_slot_uq`'s own `WHERE` — the same statuses the index counts as
+ * live — so this describes exactly the row that caused the refusal, not a different one.
+ *
+ * ⚠️ Falls back to the generic sentence when nothing is found (the occupant may have been cancelled between
+ * the failed insert and this read). **Refusing with less detail is right; inventing a name would not be.**
+ */
+async function describeSlotClash(teacherId: string, date: string, startTime: string): Promise<string> {
+  try {
+    const row = await db.query.bookings.findFirst({
+      where: (b: any, { and: a, eq: e, notInArray: nin }: any) =>
+        a(
+          e(b.teacherId, teacherId),
+          e(b.date, date),
+          e(b.startTime, startTime),
+          // TASK-239: the SAME list `bookings_teacher_slot_uq`'s `WHERE` is built from — not a second copy.
+          // This used to restate the three statuses inline; two definitions of "live" is how the refusal and
+          // the index it describes start disagreeing about which row caused the conflict.
+          nin(b.status, [...SLOT_INACTIVE_STATUSES]),
+        ),
+      with: { teacher: true, student: true },
+    });
+    if (!row?.teacher) return GENERIC_SLOT_TAKEN;
+    // `displayName` by the same rule the DTO computes — an อื่นๆ booking names its typed title, never "อื่นๆ".
+    const bookingName = row.otherTitle ?? row.student?.nickname ?? row.student?.name ?? "";
+    if (!bookingName) return GENERIC_SLOT_TAKEN;
+    return slotClashMessage({
+      teacherName: row.teacher.nickname ?? row.teacher.name,
+      bookingName,
+      time: `${hhmm(row.startTime)}-${hhmm(row.endTime)}`,
+    });
+  } catch {
+    // A refusal must still refuse. If the lookup itself fails, the staff member gets the generic sentence
+    // rather than a 500 on top of a conflict.
+    return GENERIC_SLOT_TAKEN;
+  }
+}
+
+/**
+ * TASK-236 — the additional teachers for a PAGE of bookings, in one query, shaped like the relation the
+ * relational reader produces so `toBookingDTO` cannot tell the two sources apart.
+ *
+ * A hand-built row is only as complete as its author remembered; this is what stops the bookings list from
+ * disagreeing with the calendar about how many teachers an อื่นๆ booking has.
+ */
+async function additionalTeachersByBooking(
+  bookingIds: string[],
+): Promise<Map<string, { teacher: any }[]>> {
+  const out = new Map<string, { teacher: any }[]>();
+  if (!bookingIds.length) return out;
+  const rows = await db
+    .select({ bookingId: bookingTeachers.bookingId, teacher: teachers })
+    .from(bookingTeachers)
+    .innerJoin(teachers, eq(teachers.id, bookingTeachers.teacherId))
+    .where(inArray(bookingTeachers.bookingId, bookingIds));
+  for (const r of rows) {
+    const list = out.get(r.bookingId) ?? [];
+    list.push({ teacher: r.teacher });
+    out.set(r.bookingId, list);
+  }
+  return out;
+}
+
 async function assignedTeacherIds(
   exec: any,
   bookingId: string,
@@ -916,16 +1030,75 @@ async function assignedTeacherIds(
 
 async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[]) {
   const booking = await exec.query.bookings.findFirst({
-    columns: { date: true },
+    columns: { date: true, startTime: true },
     where: (b: any, { eq: e }: any) => e(b.id, bookingId),
   });
   for (const teacherId of teacherIds) {
     await assertTeacherBookable(exec, teacherId, booking!.date);
+    // 🔴 TASK-239 — one teacher may not be in two places at once.
+    //
+    // `bookings_teacher_slot_uq` guards `bookings.teacher_id` ONLY; these teachers live in `booking_teachers`,
+    // which the database does not constrain. Without this, teacher B could be an additional teacher on a 10:00
+    // อื่นๆ booking *and* teach their own 10:00 lesson — and since TASK-227 draws a booking in every assigned
+    // teacher's column, B's 10:00 cell would then hold two bookings and silently render one. That is DEF-4's
+    // exact shape: a session that exists and is not on the calendar.
+    //
+    // ⚠️ **This is an APPLICATION check, not an index — it is genuinely weaker than the guarantee beside it.**
+    // Two requests racing can both pass it. The database is NOT holding this one; do not assume it is.
+    //
+    // 🚫 It does not constrain teachers sharing an hour — three teachers on one meeting is the feature. What is
+    // refused is the same thing the index has always refused for the primary: one person, two places.
+    await assertAdditionalTeacherFree(exec, bookingId, teacherId, booking!.date, booking!.startTime);
   }
   await exec
     .insert(bookingTeachers)
     .values(teacherIds.map((teacherId) => ({ bookingId, teacherId })))
     .onConflictDoNothing();
+}
+
+/**
+ * TASK-239 — refuse an additional teacher who already has a **live** booking in this slot.
+ *
+ * "Live" is `SLOT_INACTIVE_STATUSES` from `db/schema.ts` — **the same list `bookings_teacher_slot_uq`'s own
+ * `WHERE` is built from**, not a second copy. Restating it here is how the refusal and the index it mirrors
+ * start disagreeing about what a free slot is.
+ *
+ * The message is `slotClashMessage` — AC-24's sentence, identical to the primary teacher's refusal. The same
+ * situation must not have two wordings.
+ */
+async function assertAdditionalTeacherFree(
+  exec: any,
+  bookingId: string,
+  teacherId: string,
+  date: string,
+  startTime: string,
+) {
+  const clash = await exec.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, ne: n, notInArray: nin }: any) =>
+      a(
+        e(b.teacherId, teacherId),
+        e(b.date, date),
+        e(b.startTime, startTime),
+        nin(b.status, [...SLOT_INACTIVE_STATUSES]),
+        // Never the booking being created — it cannot clash with itself. Validation already refuses an extra
+        // that repeats the primary, so this is belt-and-braces on the one row we know is in flight.
+        n(b.id, bookingId),
+      ),
+    with: { teacher: true, student: true },
+  });
+  if (!clash) return;
+  const teacherName = clash.teacher?.nickname ?? clash.teacher?.name ?? "";
+  const bookingName = clash.otherTitle ?? clash.student?.nickname ?? clash.student?.name ?? "";
+  // Same fallback rule as `describeSlotClash`: refuse either way, but never invent a name.
+  if (!teacherName || !bookingName) throw conflict("SLOT_TAKEN", GENERIC_SLOT_TAKEN);
+  throw conflict(
+    "SLOT_TAKEN",
+    slotClashMessage({
+      teacherName,
+      bookingName,
+      time: `${hhmm(clash.startTime)}-${hhmm(clash.endTime)}`,
+    }),
+  );
 }
 
 async function insertBooking(
@@ -997,7 +1170,11 @@ async function insertBooking(
     return row.id;
   } catch (e: any) {
     const code = pgErrorCode(e);
-    if (code === "23505") throw conflict("SLOT_TAKEN", "ครูมีคาบในช่วงเวลานี้แล้ว");
+    // REQ-078 AC-24 (revised) / TASK-238 — name the teacher and what is already in the slot, so the staff
+    // member can pick another time without going to look. AC-25: this only ever runs on a real clash.
+    if (code === "23505") {
+      throw conflict("SLOT_TAKEN", await describeSlotClash(input.teacherId, input.date, input.startTime));
+    }
     if (code === "23503") throw badRequest("teacher / subject / course อ้างอิงไม่ถูกต้อง");
     throw e;
   }

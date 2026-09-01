@@ -65,6 +65,25 @@ export const notifyStatus = pgEnum("notify_status", [
   "SKIPPED",
 ]);
 
+/**
+ * 🔴 The statuses that do **not** hold a teacher's slot — the single definition of "live" for slot clashes.
+ *
+ * `bookings_teacher_slot_uq`'s `WHERE` is built from this list, and so is every application check that has to
+ * agree with it (`describeSlotClash`, and TASK-239's additional-teacher guard). **Two definitions of "live" is
+ * how a refusal and the index it mirrors drift apart** — one starts refusing what the other allows, and the
+ * disagreement only shows up as a 500 or a phantom booking.
+ *
+ * Why each is excluded:
+ *   · `CANCELLED` — the slot is free.
+ *   · `SICK_LEAVE` — UC-004: the student is not attending and is already auto-extended, so staff may overbook
+ *     a replacement into the freed slot. This one is a deliberate feature, not an oversight.
+ *   · `PENDING_RESCHEDULE` — legacy rows from the old B.1 flow.
+ */
+export const SLOT_INACTIVE_STATUSES = ["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE"] as const;
+
+/** The same list as SQL literals, for the index predicate. Inlined verbatim — see the index's own comment. */
+const SLOT_INACTIVE_SQL = SLOT_INACTIVE_STATUSES.map((s) => `'${s}'`).join(", ");
+
 // ───────────────────────────── Core people ─────────────────────────────
 
 // A parent/guardian, keyed by phone. One parent (one phone, one LINE account) owns
@@ -427,7 +446,11 @@ export const bookings = pgTable(
     // (PENDING_RESCHEDULE stays excluded for any legacy rows from the old B.1 flow.)
     uniqueIndex("bookings_teacher_slot_uq")
       .on(t.teacherId, t.date, t.startTime)
-      .where(sql`${t.status} not in ('CANCELLED', 'PENDING_RESCHEDULE', 'SICK_LEAVE')`),
+      // 🔴 TASK-239 — the predicate is built FROM `SLOT_INACTIVE_STATUSES`, so the index and the application
+      // checks that must agree with it share one literal definition instead of two that drift.
+      // `sql.raw` inlines the same text this line has always produced, so the emitted SQL is unchanged and no
+      // migration is implied — only the source of the list moved.
+      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)})`),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
     index("bookings_student_idx").on(t.studentId),
