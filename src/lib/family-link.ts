@@ -14,7 +14,7 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { familyLineLinks } from "../db/schema";
+import { familyLineLinks, parents } from "../db/schema";
 
 /**
  * Every LINE account that may act for this family, **primary first**.
@@ -92,4 +92,59 @@ export async function bindFamilyLine(
     .values({ parentId, lineUserId })
     .onConflictDoNothing();
   return { ok: true, alreadyBound: current === parentId };
+}
+
+/**
+ * SPEC-071 / TASK-243 — **an admin clears one family's LINE binding.**
+ *
+ * 🔴 Why this must exist: entry is by phone alone, so the phone lookup binds the chat and
+ * `family_line_links_user_uq` makes that binding **permanent from the bot's side** — correctly, because a bot
+ * that could unbind itself would make the guarantee protecting every family worth nothing. But the refusal a
+ * parent reads says *"this LINE account belongs to another family — contact an admin"*, and until now there was
+ * no admin who could do anything about it. The ordinary cases are ordinary: a family changes phone number, a
+ * parent typed the wrong one once, a second-hand phone, a guardian leaves the household.
+ *
+ * 🔴 **This is a deliberate, audited act by staff — not a cleanup.** It is the ONLY way a LINE account can move
+ * between families, which is precisely what the unique index exists to stop happening silently. So it takes an
+ * `actor` and says so in the log.
+ *
+ * ⚠️ **Clearing does NOT delete history.** No student, booking, note or message row is touched — the family
+ * keeps everything, and the parent can link again from LINE. The tempting mistake is to read "unlink" as
+ * "remove the family", and the confirm copy on the screen exists to stop staff making it.
+ *
+ * 🚫 **No LINE path may reach this.** The bot must not be able to call it — asserted by a grep-guard, the AC-20
+ * shape.
+ */
+export async function clearFamilyLine(
+  parentId: string,
+  actor: string | null,
+  exec?: any,
+): Promise<{ cleared: string[] }> {
+  const run = async (tx: any): Promise<{ cleared: string[] }> => {
+    // Read through the ONE accessor, so "which accounts belong to this family" has a single definition here
+    // too — the same rule the binding side uses, rather than a second query that could disagree with it.
+    const cleared = await familyLineUserIds(parentId, tx);
+    await tx.delete(familyLineLinks).where(eq(familyLineLinks.parentId, parentId));
+    // The first link lives on the parent row (TASK-230 kept it there deliberately, so every existing reader is
+    // untouched). Clearing one source and not the other is exactly the two-writer disagreement the accessor
+    // was built to prevent — so both go, together.
+    await tx.update(parents).set({ lineUserId: null }).where(eq(parents.id, parentId));
+    return { cleared };
+  };
+
+  // 🔴 ATOMIC. The two writes are two halves of one fact, and a failure between them leaves a **half-cleared
+  // family** — unbound to the accessor, still holding a stale `line_user_id`. That is precisely the state this
+  // function exists to make impossible, so leaving it reachable would have defeated the function's own argument.
+  //
+  // `exec ? run(exec) : db.transaction(run)` keeps both properties at once: **composable** when a caller already
+  // has a transaction (the shape every other writer in this file uses, so a future caller can still fold this
+  // into theirs), and **atomic** when nobody supplies one — which is every caller today.
+  const result = exec ? await run(exec) : await db.transaction(run);
+  // Logged AFTER the write commits, so the trail can never claim something the database refused. (TASK-244 makes
+  // this durable; until then it is a log line, and its limits are recorded in TASK-243 §Questions.)
+  console.info(
+    `[family-link] CLEARED parent=${parentId} accounts=${result.cleared.length} by=${actor ?? "unknown"} ` +
+      `— history untouched; the family may link again from LINE.`,
+  );
+  return result;
 }

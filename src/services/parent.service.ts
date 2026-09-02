@@ -7,6 +7,7 @@ import { db } from "../db";
 import { parents, students } from "../db/schema";
 import { badRequest, notFound } from "../lib/http";
 import { isSuspended } from "../lib/suspend";
+import { clearFamilyLine, familyLineUserIds } from "../lib/family-link";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
 export const MAX_STUDENTS_PER_PARENT = 5;
@@ -79,6 +80,24 @@ export async function listStudentsOfParent(
     .orderBy(asc(students.createdAt));
 }
 
+/**
+ * SPEC-071 / TASK-233 — the 5-per-parent cap, **extracted so it can be asked BEFORE a flow starts**.
+ *
+ * The LINE registration wizard walks a parent through name → birthdate → province → confirm. Discovering the
+ * cap only at the write would mean three questions and then a refusal, which reads as the system being broken.
+ *
+ * 🔴 Extracted rather than re-implemented at the call site: a second copy of "how many is too many" is exactly
+ * the kind of duplicated rule that drifts. `createStudentForParent` calls this too, so there is one definition
+ * and one message.
+ */
+export async function assertCanAddStudent(parentId: string, exec: any = db): Promise<number> {
+  const current = await listStudentsOfParent(parentId, exec);
+  if (current.length >= MAX_STUDENTS_PER_PARENT) {
+    throw badRequest(`เพิ่มนักเรียนได้สูงสุด ${MAX_STUDENTS_PER_PARENT} คนต่อเบอร์`);
+  }
+  return current.length; // the caller needs the count it already paid for — no second query
+}
+
 /** Create a student under a parent, enforcing the 5-per-parent cap. */
 export async function createStudentForParent(
   parentId: string,
@@ -97,10 +116,7 @@ export async function createStudentForParent(
   const name = input.name?.trim();
   if (!name) throw badRequest("กรุณาระบุชื่อนักเรียน");
 
-  const current = await listStudentsOfParent(parentId, exec);
-  if (current.length >= MAX_STUDENTS_PER_PARENT) {
-    throw badRequest(`เพิ่มนักเรียนได้สูงสุด ${MAX_STUDENTS_PER_PARENT} คนต่อเบอร์`);
-  }
+  const existingCount = await assertCanAddStudent(parentId, exec);
 
   const [student] = await exec
     .insert(students)
@@ -115,7 +131,7 @@ export async function createStudentForParent(
     })
     .returning();
 
-  return { student, count: current.length + 1 };
+  return { student, count: existingCount + 1 };
 }
 
 /**
@@ -223,7 +239,25 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
 export async function getParent(id: string) {
   const row = await loadParentWithStudents(id);
   if (!row) throw notFound("ไม่พบผู้ปกครอง");
-  return row;
+  // SPEC-071 / TASK-243 — whether this family has a LINE account bound, and how many.
+  //
+  // 🔴 Read through the ONE accessor, not off `parents.line_user_id`: since TASK-230 a family can hold more
+  // than one account, and the People screen must show what is actually bound BEFORE an admin clears it. That
+  // screen said nothing at all until now — which is why "contact an admin" pointed at someone with no
+  // information as well as no button.
+  const lineAccounts = await familyLineUserIds(id);
+  return { ...row, lineAccounts: lineAccounts.length, lineLinked: lineAccounts.length > 0 };
+}
+
+/**
+ * SPEC-071 / TASK-243 — the staff act. Thin on purpose: the rule lives in `lib/family-link.ts`, beside the
+ * binding it undoes, so the two can never drift into different ideas of what a family's accounts are.
+ */
+export async function clearParentLineLink(id: string, actor: string | null) {
+  const parent = await db.query.parents.findFirst({ where: (p: any, { eq: e }: any) => e(p.id, id) });
+  if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  const { cleared } = await clearFamilyLine(id, actor);
+  return { cleared: cleared.length };
 }
 
 export async function createParent(input: {

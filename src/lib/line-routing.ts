@@ -20,6 +20,8 @@
 // Those are recognised COMMANDS, not stray text; what AC-16 removes is the unconditional fallback that
 // answered everything else. The enumeration is in `line-webhook.service.ts` at each site.
 
+import { isAddStudentStep } from "./line-add-student";
+
 export type MessageRoute = "muted" | "add-student" | "linking" | "linked" | "silence";
 
 export function decideMessageRoute(
@@ -30,7 +32,9 @@ export function decideMessageRoute(
   // AC-17 — a muted chat delivers NOTHING, whatever it contains. Checked first, because a human is talking in
   // it and every rule below would put the bot on top of them.
   if (isMuted(opts.mutedUntil, opts.now)) return "muted";
-  if (sessionStep === "AWAIT_STUDENT_NAME") return "add-student";
+  // TASK-233: the registration wizard owns several steps now, listed in ONE place (`ADD_STUDENT_STEPS`) so
+  // the router and the handler cannot disagree about what "in this flow" means.
+  if (isAddStudentStep(sessionStep)) return "add-student";
   // TASK-232: `AWAIT_2FA` is the verification step between the phone and the children. It is a linking step
   // like the two beside it — listed here rather than defaulting to silence, because a parent who is mid-
   // verification is the clearest case of "an in-progress conversation owns this message".

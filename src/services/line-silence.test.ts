@@ -158,10 +158,13 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     //
     // 🔑 That the 2FA step reuses THIS rule is the point: a wrong code is an unrecognised in-flow reply like
     // any other, so it did not get a bespoke lockout. One handover rule, not two that drift.
-    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(4); // the declaration + three call sites
+    // TASK-233 added the fourth: an unrecognised answer at the summary/confirm step. Same reasoning again —
+    // it is an unrecognised in-flow reply, so it gets the one handover rule rather than a bespoke retry loop.
+    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(5); // the declaration + four call sites
     expect(SVC).toContain("t(\"role_prompt\", lang), lang)");
     expect(SVC).toContain("res.message, lang)");
     expect(SVC).toContain('t("twofa_bad", lang), lang)');
+    expect(SVC).toContain('t("add_summary_confirm", lang), lang)');
   });
 
   test("🔴 the counter it uses is `unexpected_count`, and the CODE lockout is not resurrected", () => {

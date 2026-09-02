@@ -1,0 +1,18 @@
+-- SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — the in-progress student registration, held until CONFIRM.
+--
+-- 🔴 Numbering counted at the moment of writing, per the board rule: `drizzle/*.sql` = 31 (0000–0030) and
+-- journal tags = 31 before this ⇒ `0031`. Hand-authored + journal-registered; do NOT run `db:generate`.
+--
+-- 📌 WHY A COLUMN AND NOT ANOTHER OVERLOAD. TASK-232 parked the 2FA code in `pending_role` because no migration
+-- was open and the branch ships OFF. Doing that a SECOND time — for a three-field wizard — is how a column
+-- called `pending_role` quietly becomes a general-purpose blob that nobody can reason about. One overload is a
+-- documented compromise; two is a pattern.
+--
+-- AC-12 is the reason this exists at all: **nothing may be written to the roster until the parent confirms.**
+-- The draft therefore lives on the SESSION, which already expires after 30 minutes of silence (TASK-231) and is
+-- deleted outright when the flow ends. Abandon halfway and there is no student row, because there was never
+-- going to be one until confirm.
+--
+-- `jsonb` rather than three columns: these fields belong to one in-flight form, they are read and written
+-- together, and a fourth question tomorrow must not be a migration.
+ALTER TABLE "line_link_sessions" ADD COLUMN IF NOT EXISTS "draft" jsonb;

@@ -80,6 +80,11 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /badges/values/:id": "unrelated",
   "PUT /settings/:key": "unrelated",
   "DELETE /settings/:key": "unrelated",
+  // SPEC-071 / TASK-243 — clears a family's LINE binding. Touches `family_line_links` and
+  // `parents.line_user_id` and NOTHING else: no student, booking, note or message row, so an ended course is
+  // not reachable from it at all. Classified deliberately rather than by default — this guard exists precisely
+  // so a new write route cannot slip past because nobody thought about it, and it caught mine.
+  "POST /parents/:id/clear-line-link": "unrelated",
 };
 
 describe("every write route is classified against the ended-course rule (TASK-185)", () => {

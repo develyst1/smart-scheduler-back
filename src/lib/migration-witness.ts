@@ -318,6 +318,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "that keeps one LINE account in one family (TASK-230 — REQ-079 invites).",
     rerunnable: true,
   },
+  {
+    tag: "0031_line_session_draft",
+    probe: { kind: "column", table: "line_link_sessions", column: "draft" },
+    why:
+      "0031 adds exactly this one column and nothing else creates it, so presence is an exact witness and a " +
+      "single statement leaves no partial state to miss. ⚠️ A column probe is normally the weaker kind (the " +
+      "0022 lesson), but that risk is about columns which already existed — `draft` did not, so it can only " +
+      "be here because 0031 ran (TASK-233 — the registration wizard's in-flight form).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

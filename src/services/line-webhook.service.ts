@@ -5,7 +5,7 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { lineLinkSessions, parents, teachers } from "../db/schema";
+import { coursePackages, lineLinkSessions, parents, teachers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { getProfileLang, replyMessage, type LineMessage } from "../lib/line-client";
 import {
@@ -16,7 +16,7 @@ import {
   parseRoleChoice,
   type LineWebhookEvent,
 } from "../lib/line-webhook";
-import { addAdminLineUserId, getAdminLineUserIds } from "../lib/line-admin";
+import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
 import { leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
@@ -26,7 +26,7 @@ import {
   formatInboundEvent,
   formatUnknownAction,
 } from "../lib/line-log";
-import { linkRoleRichMenu } from "../lib/line-rich-menu";
+import { linkKnownRichMenu, linkRoleRichMenu } from "../lib/line-rich-menu";
 import { t, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
 import {
@@ -38,6 +38,15 @@ import {
 import { moveRosterLink } from "../lib/roster-link";
 import { parentChildrenNames, parentChildrenNote } from "../lib/line-pairing";
 import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa";
+import {
+  decideDuplicate,
+  isCancel,
+  isConfirm,
+  isSkip,
+  parseBirthDate,
+  summaryLines,
+  type StudentDraft,
+} from "../lib/line-add-student";
 import { bindFamilyLine } from "../lib/family-link";
 import { claimReplyKey } from "../lib/teacher-link";
 import { requestTeacherLink } from "./teacher-link.service";
@@ -46,6 +55,7 @@ import { isSuspended } from "../lib/suspend";
 import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
   MAX_STUDENTS_PER_PARENT,
+  assertCanAddStudent,
   createStudentForParent,
   findOrCreateParentByPhone,
   findParentByLineUserId,
@@ -56,6 +66,8 @@ import {
 } from "./parent.service";
 import { hhmm, weekRange } from "../lib/time";
 import { renderSchedule } from "../lib/line-schedule";
+import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
+import { toCourseSummary } from "../lib/leave";
 import {
   checkinByToken,
   findBookingsForTeacher,
@@ -78,6 +90,10 @@ const KNOWN_POSTBACK_ACTIONS = new Set([
   "register",
   "menu",
   "help",
+  // TASK-234 — the known menu's course view, plus the two buttons the unknown menu carries.
+  "mycourses",
+  "admin",
+  "enter",
 ]);
 
 type LinkRole = "customer" | "teacher" | "admin";
@@ -192,13 +208,26 @@ async function twoFaEnabled(): Promise<boolean> {
 }
 
 /**
- * TASK-232 — park the 2FA challenge on the session. It rides in `pending_role` because that column already
- * carries "what this step is waiting on", and the alternative is a migration for a branch that ships OFF.
- * ⚠️ Named so a reader is not surprised by a code in a column called `pending_role`.
+ * TASK-232 — park the 2FA challenge on the session.
+ *
+ * 🔴 **Moved from `pending_role` to `draft` by TASK-233, while `0031` was still unrun.** It originally rode in
+ * `pending_role` because no migration was open; the moment one was, leaving it there would have made a column
+ * named *"what this step is waiting on"* permanently hold a 2FA code **and** a three-field wizard — a blob with
+ * a misleading name that the next reader inherits with no way to know what is inside.
+ *
+ * That was the SA's stated condition on TASK-232 (*"a proper column the next time a migration is open anyway"*),
+ * and this is the moment it named. Cost today: nothing. Cost if skipped: permanent by habit.
  */
 async function setTwoFaChallenge(lineUserId: string, code: string) {
-  await setStep(lineUserId, "AWAIT_2FA", code);
+  await db
+    .update(lineLinkSessions)
+    .set({ step: "AWAIT_2FA", draft: { twoFaCode: code }, updatedAt: new Date() })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
 }
+
+/** The parked challenge, read back through one accessor so `draft`'s shape has a single reader. */
+const twoFaCodeOf = (session: { draft?: Record<string, unknown> | null }): string | null =>
+  typeof session.draft?.twoFaCode === "string" ? session.draft.twoFaCode : null;
 
 /** AC-19 — a valid answer clears the strikes. Cheap, and it is what keeps the counter about THIS confusion. */
 async function resetStrikes(lineUserId: string) {
@@ -319,6 +348,132 @@ async function verifyAndLink(
 }
 
 /** Create one student under the linked parent and craft the right reply. */
+/** TASK-233 — park the wizard's draft on the session. Nothing here touches the roster. */
+async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
+  await db
+    .update(lineLinkSessions)
+    .set({ step, draft: draft as Record<string, unknown>, updatedAt: new Date() })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
+}
+
+/**
+ * SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — name → (duplicate? more detail) → birthdate → province →
+ * **summary → confirm** → saved + admin notified.
+ *
+ * 🔴 **The row is created at CONFIRM and nowhere else.** Every step before it writes only to the session draft,
+ * so abandoning at any point leaves nothing behind — which matters because this roster has **no delete for
+ * anything with history**. The confirm step is not politeness; it is the only review a record nobody can remove
+ * will ever get.
+ */
+async function handleAddStudentStep(
+  lineUserId: string,
+  session: { step: string; draft?: Record<string, unknown> | null },
+  text: string,
+  replyToken: string,
+  lang: Lang,
+) {
+  const parent = await findParentByLineUserId(lineUserId);
+  if (!parent) {
+    await clearSession(lineUserId);
+    return reply(replyToken, t("add_no_parent", lang));
+  }
+  const draft: StudentDraft = (session.draft as StudentDraft) ?? {};
+
+  if (session.step === "AWAIT_STUDENT_NAME" || session.step === "AWAIT_STUDENT_DETAIL") {
+    const name = text.trim();
+    if (!name) return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
+    // 🔴 The cap, asked at the FIRST step instead of at the write (SA instruction). Walking a parent through
+    // three questions and refusing them at the end reads as the system being broken.
+    //
+    // It calls the SAME precondition `createStudentForParent` calls — extracted, not copied. A second
+    // "how many is too many" here is the duplicated rule that drifts, and the write still enforces it, so this
+    // is a courtesy check in front of the real one rather than a replacement for it.
+    try {
+      await assertCanAddStudent(parent.id);
+    } catch (e: any) {
+      await clearSession(lineUserId);
+      return reply(replyToken, `${e?.message ?? t("add_generic_err", lang)}\n\n${t("menu_body", lang)}`);
+    }
+    // 🔴 AC-9 — a duplicate asks for MORE DETAIL. It never demands a rename: two real children can share a
+    // name, and a rename demand would also confirm to whoever typed the phone that such a child exists.
+    // Only checked on the first pass; the detail step is the answer to it, not a second question.
+    if (session.step === "AWAIT_STUDENT_NAME") {
+      const siblings = await listStudentsOfParent(parent.id);
+      if (decideDuplicate(siblings.map((s: any) => s.name), name) === "more-detail") {
+        await setDraft(lineUserId, "AWAIT_STUDENT_DETAIL", { ...draft, name });
+        return reply(replyToken, t("add_dup_detail", lang));
+      }
+    }
+    await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", { ...draft, name });
+    return reply(replyToken, t("add_birthdate_prompt", lang));
+  }
+
+  if (session.step === "AWAIT_STUDENT_BIRTHDATE") {
+    const parsed = parseBirthDate(text);
+    // Strict on purpose: a birthdate that silently becomes the wrong date is worse than one nobody entered,
+    // and there is no delete to undo it with. A bad format re-asks rather than guessing.
+    if (!parsed.ok) return reply(replyToken, t("add_birthdate_bad", lang));
+    await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
+    return reply(replyToken, t("add_province_prompt", lang));
+  }
+
+  if (session.step === "AWAIT_STUDENT_PROVINCE") {
+    const province = isSkip(text) ? null : text.trim() || null;
+    const next = { ...draft, province };
+    await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", next);
+    const lines = summaryLines(next, {
+      name: t("add_l_name", lang),
+      birthDate: t("add_l_birthdate", lang),
+      province: t("add_l_province", lang),
+      none: t("add_l_none", lang),
+    });
+    return reply(
+      replyToken,
+      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${t("add_summary_confirm", lang)}`,
+    );
+  }
+
+  if (session.step === "AWAIT_STUDENT_CONFIRM") {
+    // AC-12 — cancelling here writes nothing, and says so plainly. The parent has just read a summary; the
+    // one thing they must not wonder is whether some of it was saved anyway.
+    if (isCancel(text)) {
+      await clearSession(lineUserId);
+      return reply(replyToken, `${t("add_cancelled", lang)}\n\n${t("menu_body", lang)}`);
+    }
+    if (!isConfirm(text)) {
+      // An unrecognised answer at the last step is an unrecognised in-flow reply like any other — same
+      // two-strikes rule as everywhere else, rather than a bespoke retry loop (TASK-231).
+      return strikeOrPrompt(lineUserId, session as any, replyToken, t("add_summary_confirm", lang), lang);
+    }
+    try {
+      const { student, count } = await createStudentForParent(parent.id, {
+        name: draft.name!,
+        birthDate: draft.birthDate ?? null,
+      });
+      // The province is a HOUSEHOLD field (`parents.province`), not a per-student one — see §Questions.
+      if (draft.province) {
+        await db.update(parents).set({ province: draft.province }).where(eq(parents.id, parent.id));
+      }
+      // 🔴 AC-11 — the admin is told. Reuses `notifyAdmins`, which writes a loud SKIPPED row when no admin is
+      // configured, so a mis-configured environment is visible instead of silent (TASK-152's lesson). Without
+      // this, the hand-off depends on somebody remembering to look.
+      await notifyAdmins({ kind: "student_registered", studentName: student.name, parentPhone: parent.phone });
+      await clearSession(lineUserId);
+      const atMax = count >= MAX_STUDENTS_PER_PARENT;
+      const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
+      return reply(replyToken, `${t("added_done", lang, { name: student.name, note })}\n\n${t("menu_body", lang)}`);
+    } catch (e: any) {
+      const msg = e?.message ?? t("add_generic_err", lang);
+      await clearSession(lineUserId);
+      return reply(replyToken, `${msg}\n\n${t("menu_body", lang)}`);
+    }
+  }
+
+  // Unknown step inside this flow — treat as the start rather than answering unpredictably.
+  await setDraft(lineUserId, "AWAIT_STUDENT_NAME", {});
+  return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
+}
+
 async function addStudentAndReply(
   lineUserId: string,
   name: string,
@@ -497,6 +652,68 @@ async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
   return send(replyToken, [childrenFlex(title, kids.map((k) => k.name), lang)]);
 }
 
+/**
+ * SPEC-071 / TASK-234 (REQ-079 Flow 6, AC-15) — คอร์สของฉัน, the PARENT's view of what they paid for.
+ *
+ * 🔴 The five numbers come from `toCourseSummary` — **the same builder every staff screen uses** — and are not
+ * re-derived here. A second derivation of "sessions remaining" is how a parent and an admin end up quoting
+ * different figures at each other, which is the one failure this view must never cause.
+ *
+ * Only ACTIVE courses: an ended, cancelled or expired course is not something a family is still owed, and
+ * listing it invites "why does it say I have sessions left?".
+ */
+async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
+  const parent = await findParentByLineUserId(lineUserId);
+  const kids = parent ? await listStudentsOfParent(parent.id) : [];
+  if (!kids.length) return send(replyToken, [textReply(t("course_none", lang), lang)]);
+  const rows = await db.query.coursePackages.findMany({
+    where: (c: any, { inArray: inA }: any) => inA(c.studentId, kids.map((k: any) => k.id)),
+    // ⚠️ A course has NO teacher column — the teacher is a fact about its sessions (TASK-140 moved the PROGRAM
+    // onto the course but deliberately left the teacher on the bookings, because a course can be re-teachered).
+    // So it is read from the sessions, and a course whose teacher changed shows the one actually teaching it.
+    with: { subject: true, bookings: { with: { teacher: true } } },
+  });
+  const view = rows
+    // 🔴 `toCourseSummary` is called on the ROW — `leaveUsed` and `adminUnlocked` are real columns, so nothing
+    // is coalesced or re-derived on the way in. Same builder, same numbers as every staff screen.
+    .map((c: any) => ({ c, s: toCourseSummary(c) }))
+    .filter(({ s }: any) => s.status === "ACTIVE")
+    .map(({ c, s }: any) => ({
+      subjectName: c.subject?.name ?? null,
+      // 🔴 The NEXT upcoming session's teacher, not the first ever (SA fix). A course is re-teacherable by
+      // design, so a split course is the NORMAL result of one — and a parent is asking "who is teaching my
+      // child", present tense. The rule is pure and lives in `line-course-view.ts`.
+      teacherNickname: nextSessionTeacher(c.bookings ?? [], bangkokNow().date),
+      size: s.size,
+      usedSessions: s.usedSessions,
+      leaveRemaining: s.leaveRemaining,
+      expiryDate: s.expiryDate,
+    }));
+  return send(replyToken, [textReply(renderMyCourses(view, lang), lang)]);
+}
+
+/**
+ * SPEC-071 / TASK-234 (Flow 7) — คุยกับแอดมิน: the button on BOTH menus that reaches a person.
+ *
+ * 🔴 This is the second of TASK-231's two inbound mute triggers (the other is the two-strikes handover), and
+ * the reason both menus carry it: **a lockout or a handover must never be a dead end.** Pressing it tells the
+ * admins and gets the bot out of the way, so a human can talk without being answered over.
+ *
+ * It works whether or not the chat is bound — someone who cannot get in is exactly who needs it most.
+ */
+async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang) {
+  await notifyAdmins({ kind: "parent_asked_for_admin", lineUserId });
+  // Mute with the SAME helper the handover uses — one definition of "how long the bot stays out of a chat".
+  await db
+    .insert(lineLinkSessions)
+    .values({ lineUserId, step: "MUTED", mutedUntil: muteUntilFrom() })
+    .onConflictDoUpdate({
+      target: lineLinkSessions.lineUserId,
+      set: { mutedUntil: muteUntilFrom(), updatedAt: new Date() },
+    });
+  return send(replyToken, [textReply(t("admin_called", lang), lang)]);
+}
+
 /** Teacher "my schedule" (REQ-016 / TASK-043) — today or this week (**Mon–Sun** via `weekRange`; it was
  *  Sun–Sat, so teachers were reading the wrong week too — REQ-069 / TASK-175), read-only.
  *  Teacher resolved from `lineUserId` inside the service; every reply keeps a toggle + back-to-menu quick reply. */
@@ -566,6 +783,13 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
   }
 
+  // TASK-234 / AC-19 — every choice has a typed twin, because LINE on PC cannot tap a rich menu at all.
+  if (["คอร์ส", "คอร์สของฉัน", "courses", "mycourses"].includes(cmd)) {
+    return doMyCourses(lineUserId, replyToken, lang);
+  }
+  if (["แอดมิน", "คุยกับแอดมิน", "admin"].includes(cmd)) {
+    return doCallAdmin(lineUserId, replyToken, lang);
+  }
   if (["นักเรียน", "ลูก", "รายชื่อ", "children", "students"].includes(cmd)) {
     return doChildren(lineUserId, replyToken, lang);
   }
@@ -635,11 +859,13 @@ async function handleMessage(ev: LineWebhookEvent) {
 
   // Multi-turn: adding students (right after linking, or via "เพิ่มนักเรียน").
   if (route === "add-student") {
-    if (SKIP_WORDS.includes(lower)) {
+    // Leaving the flow entirely, at any step. AC-12: the draft dies with the session and **no student row was
+    // ever created**, because the row is written at confirm and nowhere else.
+    if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME") {
       await clearSession(lineUserId);
       return reply(replyToken, `${t("skip_done", lang)}\n\n${t("menu_body", lang)}`);
     }
-    return addStudentAndReply(lineUserId, text.trim(), replyToken, { continueSession: true }, lang);
+    return handleAddStudentStep(lineUserId, session!, text.trim(), replyToken, lang);
   }
 
   // Already-linked routing (only when no conversation is in progress).
@@ -689,7 +915,7 @@ async function handleMessage(ev: LineWebhookEvent) {
   // 🔀 TASK-232 — the 2FA step. Unreachable while `line_parent_2fa` is `off`, because nothing sets this step;
   // it exists from day one so switching the setting on is a setting change and not a rebuild.
   if (session.step === "AWAIT_2FA") {
-    if (!matches2faCode(session.pendingRole, text)) {
+    if (!matches2faCode(twoFaCodeOf(session), text)) {
       // A wrong code is an unrecognised reply INSIDE a flow, so it is on the same two-strikes rule as every
       // other step — rather than a second, bespoke lockout. 🚫 The deleted designs' attempt counts are NOT
       // inherited; if the owner wants a different one here, it is his call on switch-on (`lib/line-2fa.ts`).
@@ -722,6 +948,9 @@ async function handleMessage(ev: LineWebhookEvent) {
       ]).catch((e) => console.error("[line-webhook] seed lang failed:", e));
       try {
         await linkRoleRichMenu(lineUserId, role, seed);
+        // TASK-234 — a bound family chat also gets the รู้จักแล้ว menu. There is deliberately no unlink:
+        // ยังไม่รู้จัก is the DEFAULT, so an unbound chat lands on it with no code running.
+        if (role === "customer") await linkKnownRichMenu(lineUserId, seed);
       } catch (e) {
         console.error("[line-webhook] linkRoleRichMenu failed:", e);
       }
@@ -762,6 +991,14 @@ async function handlePostback(ev: LineWebhookEvent) {
   if (!KNOWN_POSTBACK_ACTIONS.has(action)) console.warn(formatUnknownAction(action, lineUserId));
   const { date } = bangkokNow();
   const lang = await resolveLang(lineUserId);
+
+  // 🔴 TASK-234 (Flow 7) — `คุยกับแอดมิน` is handled BEFORE every role check, deliberately. It is on both menus
+  // precisely so someone who is NOT recognised can still reach a person; gating it behind `detectLinkedRole`
+  // would make the one button that must never fail available only to people who do not need it.
+  if (action === "admin") return doCallAdmin(lineUserId, replyToken, lang);
+  // `เข้าใช้ระบบ` on the unknown menu. Flow 2 is deleted (§15), so this points at the phone — and at a person
+  // if they have never registered — rather than at the retired code prompt.
+  if (action === "enter") return send(replyToken, [textReply(t("enter_ask_admin", lang), lang)]);
 
   // Language toggle — flip, re-link the matching-language menu, confirm in the NEW language.
   if (action === "lang") {
@@ -804,6 +1041,9 @@ async function handlePostback(ev: LineWebhookEvent) {
       return doQr(lineUserId, replyToken, date, lang, params.bookingId);
     case "children":
       return doChildren(lineUserId, replyToken, lang);
+    // TASK-234 (AC-15) — คอร์สของฉัน on the known menu.
+    case "mycourses":
+      return doMyCourses(lineUserId, replyToken, lang);
     case "register":
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
       return send(replyToken, [textReply(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang)]);

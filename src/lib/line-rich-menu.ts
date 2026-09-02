@@ -59,6 +59,54 @@ export const TEACHER_RICH_MENU: RichMenuDef = {
   ],
 };
 
+// ─────────── SPEC-071 / TASK-234 (REQ-079) — the two menu SETS: ยังไม่รู้จัก and รู้จักแล้ว ───────────
+//
+// 📌 The cheapest shape, from SPEC-071 §Overview: **ยังไม่รู้จัก is the DEFAULT menu** and **รู้จักแล้ว is the
+// per-user link.** A brand-new follower then gets the right menu with **no code running at all**, and
+// "unknown" is the state you fall back to rather than one somebody must remember to set. Same publish/link
+// mechanism as REQ-042 — zero new machinery, only new data.
+//
+// 🔴 **`คุยกับแอดมิน` is on BOTH menus, always, and no flow may remove it.** It is the promise that a person is
+// reachable, and it is the only thing that makes a bot acceptable to a parent — **a lockout or a handover must
+// never be a dead end.** `menuHasAdminButton` below asserts it for every menu in this file.
+//
+// ⚠️ `เข้าใช้ระบบ` now leads to "ask an admin", NOT to a code prompt: Flow 2 was deleted in §15.
+
+/** Unknown chat: two big cells on the compact bar. */
+export const UNKNOWN_RICH_MENU: RichMenuDef = {
+  size: { width: W, height: 843 },
+  selected: true, // the DEFAULT — see the note above
+  name: "smart-scheduler-unknown-th",
+  chatBarText: "เมนู",
+  areas: [
+    cell(0, 0, W / 2, 843, "action=enter"),
+    cell(W / 2, 0, W / 2, 843, "action=admin"),
+  ],
+};
+
+/** Known (bound) chat: the four things a family does, plus the way to a human. */
+const KW = Math.floor(W / 3);
+export const KNOWN_RICH_MENU: RichMenuDef = {
+  size: { width: W, height: H },
+  selected: false,
+  name: "smart-scheduler-known-th",
+  chatBarText: "เมนู",
+  areas: [
+    cell(0, 0, KW, CH, "action=leave"),
+    cell(KW, 0, KW, CH, "action=checkin"),
+    cell(KW * 2, 0, W - KW * 2, CH, "action=mycourses"),
+    cell(0, CH, KW, CH, "action=register"),
+    cell(KW, CH, W - KW, CH, "action=admin"),
+  ],
+};
+
+export const UNKNOWN_RICH_MENU_EN: RichMenuDef = { ...UNKNOWN_RICH_MENU, name: "smart-scheduler-unknown-en", chatBarText: "Menu", selected: false };
+export const KNOWN_RICH_MENU_EN: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-scheduler-known-en", chatBarText: "Menu" };
+
+/** 🔴 The invariant, as a function so it can be asserted rather than remembered. */
+export const menuHasAdminButton = (m: RichMenuDef): boolean =>
+  m.areas.some((a) => a.action.data === "action=admin");
+
 // English variants — same tap areas/actions (postback keys are language-neutral); only the image + labels
 // differ. The EN menu image carries the English text (supplied at publish time).
 export const PARENT_RICH_MENU_EN: RichMenuDef = {
@@ -124,7 +172,18 @@ export async function linkRichMenuToUser(userId: string, richMenuId: string): Pr
   if (!res.ok) throw new Error(`linkRichMenuToUser ${res.status}`);
 }
 
-export type MenuIds = { parentTH?: string; parentEN?: string; teacherTH?: string; teacherEN?: string };
+export type MenuIds = {
+  parentTH?: string;
+  parentEN?: string;
+  teacherTH?: string;
+  teacherEN?: string;
+  // TASK-234 — REQ-079's two sets. Stored beside the others in the SAME app_settings row, so publishing
+  // and adopting stay one mechanism (REQ-042 / TASK-130), not two that can disagree about which ids exist.
+  unknownTH?: string;
+  unknownEN?: string;
+  knownTH?: string;
+  knownEN?: string;
+};
 
 export async function getMenuIds(): Promise<MenuIds> {
   const row = await db.query.appSettings.findFirst({
@@ -203,6 +262,22 @@ export async function getUserRichMenuId(userId: string): Promise<string | null> 
 }
 
 /** Best-effort: link the menu matching the user's role + language (called on account-link and on toggle). */
+/**
+ * SPEC-071 / TASK-234 — give a BOUND chat the รู้จักแล้ว menu.
+ *
+ * 🔴 There is no matching "unlink" call, on purpose: **ยังไม่รู้จัก is the DEFAULT menu**, so a chat that was
+ * never linked — or whose per-user link is ever removed — falls back to it with no code running. "Unknown" is
+ * the state you land in, not one anybody has to remember to set.
+ *
+ * Best-effort, like : a menu that has not been published yet leaves the chat on the default,
+ * which is the correct menu for a chat we cannot yet serve.
+ */
+export async function linkKnownRichMenu(userId: string, lang: Lang = "TH"): Promise<void> {
+  const ids = await getMenuIds();
+  const target = lang === "EN" ? ids.knownEN : ids.knownTH;
+  if (target) await linkRichMenuToUser(userId, target);
+}
+
 export async function linkRoleRichMenu(
   userId: string,
   role: "customer" | "teacher",

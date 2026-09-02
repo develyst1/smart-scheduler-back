@@ -510,6 +510,12 @@ export const lineLinkSessions = pgTable("line_link_sessions", {
   // It resets on success and dies with the session row: a counter that only ever increments would hand someone
   // a locked chat in June for a typo in March.
   unexpectedCount: integer("unexpected_count").notNull().default(0),
+  // SPEC-071 / TASK-233 (`0031`) — the in-progress student registration, held until CONFIRM (AC-12).
+  // 🔴 A COLUMN and not a second overload of `pending_role`: one documented compromise (TASK-232's 2FA code)
+  // is a compromise; two is how that column quietly becomes a blob nobody can reason about.
+  // It lives on the SESSION, which already expires after 30 minutes of silence, so abandoning the flow leaves
+  // no student row — because there was never going to be one until confirm.
+  draft: jsonb("draft").$type<Record<string, unknown>>(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull()

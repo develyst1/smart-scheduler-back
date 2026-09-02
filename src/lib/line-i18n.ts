@@ -56,6 +56,23 @@ const TABLE: Record<string, Entry> = {
   session_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
   empty_leave: { TH: "วันนี้ไม่มีคาบที่แจ้งลาได้", EN: "No class eligible for leave today" },
 
+  // SPEC-071 / TASK-234 (AC-15) — the parent-facing course view. Five fields, in the customer template.
+  course_title: { TH: "คอร์สของคุณ", EN: "Your courses" },
+  course_none: { TH: "ยังไม่มีคอร์สที่ใช้งานอยู่ค่ะ", EN: "No active courses." },
+  course_row: {
+    TH: "· {course} · ครู{teacher} · เหลือ {remaining}/{total} · สิทธิ์ลาเหลือ {leave} · หมดอายุ {expiry}",
+    EN: "· {course} · {teacher} · {remaining}/{total} left · {leave} leave left · expires {expiry}",
+  },
+  // Flow 7 — the way to a human. On BOTH menus, and never removed by any flow.
+  admin_called: {
+    TH: "แจ้งแอดมินให้แล้วนะคะ รอสักครู่ เดี๋ยวมีเจ้าหน้าที่มาคุยด้วยค่ะ 🙏",
+    EN: "I have told an admin — someone will reply here shortly. 🙏",
+  },
+  // เข้าใช้ระบบ on the unknown menu. Flow 2 is deleted (§15), so this points at a person, not a code prompt.
+  enter_ask_admin: {
+    TH: "กรุณาพิมพ์เบอร์โทรที่ลงทะเบียนไว้ค่ะ หากยังไม่เคยลงทะเบียน กรุณาติดต่อแอดมิน",
+    EN: "Please type your registered phone number. If you have never registered, please contact an admin.",
+  },
   children_title: { TH: "นักเรียนของคุณ", EN: "Your children" },
   children_none: { TH: 'ยังไม่มีนักเรียน — แตะ "เพิ่มนักเรียน" เพื่อเพิ่ม', EN: 'No children yet — tap "Add child" to add' },
 
@@ -98,6 +115,28 @@ const TABLE: Record<string, Entry> = {
   },
   // TASK-232 — the 2FA step, shipped OFF. The copy lives here from day one so switching the setting on needs
   // no copy work either: turning it on must be a setting, never a rebuild.
+  // SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — the registration wizard. The summary step is not decoration:
+  // this roster has no delete for anything with history, so the parent reads back what will be written.
+  add_dup_detail: {
+    TH: "มีน้องชื่อนี้อยู่แล้ว รบกวนใส่นามสกุลหรือชื่อเล่นเพิ่ม เพื่อไม่ให้สลับกันนะคะ",
+    EN: "There is already a child with that name. Please add a surname or nickname so they are not mixed up.",
+  },
+  add_birthdate_prompt: {
+    TH: "วันเกิดของน้อง (ปปปป-ดด-วว) หรือพิมพ์ ข้าม ค่ะ",
+    EN: "Child's date of birth (YYYY-MM-DD), or type skip.",
+  },
+  add_birthdate_bad: {
+    TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น ปปปป-ดด-วว หรือพิมพ์ ข้าม",
+    EN: "That date format is not valid. Please use YYYY-MM-DD, or type skip.",
+  },
+  add_province_prompt: { TH: "จังหวัดที่อยู่ หรือพิมพ์ ข้าม ค่ะ", EN: "Province, or type skip." },
+  add_summary_head: { TH: "ตรวจสอบข้อมูลก่อนบันทึกนะคะ", EN: "Please check before we save:" },
+  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก หรือ ยกเลิก", EN: "Correct? Type confirm to save, or cancel." },
+  add_l_name: { TH: "ชื่อ", EN: "Name" },
+  add_l_birthdate: { TH: "วันเกิด", EN: "Date of birth" },
+  add_l_province: { TH: "จังหวัด", EN: "Province" },
+  add_l_none: { TH: "ไม่ระบุ", EN: "not given" },
+  add_cancelled: { TH: "ยกเลิกแล้วค่ะ ยังไม่ได้บันทึกข้อมูลใดๆ", EN: "Cancelled. Nothing was saved." },
   twofa_prompt: {
     TH: "กรุณาพิมพ์รหัส 6 หลักเพื่อยืนยันตัวตนค่ะ",
     EN: "Please type the 6-digit code to verify your identity.",

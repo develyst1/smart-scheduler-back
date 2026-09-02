@@ -57,6 +57,15 @@ export const api = new Hono()
   .post("/parents/:id/suspend", async (c) =>
     c.json(await parent.setParentSuspended(c.req.param("id"), true)),
   )
+  // SPEC-071 / TASK-243 — an admin clears a family's LINE binding.
+  //
+  // 🔴 Staff-only and deliberate: this is the ONLY way a LINE account can move between families, which is
+  // exactly what `family_line_links_user_uq` exists to stop happening silently. The actor comes from the
+  // TOKEN, never the body — the rule TASK-160 set for discounts, for the same reason.
+  // ⚠️ It removes the LINK ONLY. No student, booking, note or message row is touched.
+  .post("/parents/:id/clear-line-link", async (c) =>
+    c.json(await parent.clearParentLineLink(c.req.param("id"), c.get("user")?.sub ?? null)),
+  )
   .post("/parents/:id/unsuspend", async (c) =>
     c.json(await parent.setParentSuspended(c.req.param("id"), false)),
   )
