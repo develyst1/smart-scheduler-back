@@ -22,9 +22,13 @@ describe("decideMessageRoute — conversation beats already-linked routing (TASK
     expect(decideMessageRoute("AWAIT_STUDENT_NAME", null)).toBe("add-student");
   });
 
-  test("an unlinked user with no session gets the welcome", () => {
-    expect(decideMessageRoute(undefined, null)).toBe("welcome");
-    expect(decideMessageRoute(null, undefined)).toBe("welcome");
+  test("🔴 TASK-231: an unlinked user with no session now gets SILENCE (this line read `welcome`)", () => {
+    // 🔑 THE REGRESSION, and it is deliberately left in place rather than moved to a new file: this assertion
+    // read `"welcome"` and PASSED, which is exactly the shipped behaviour REQ-079 §16 is about — the bot
+    // replying to stray text in an idle chat while a human was about to. Editing this line is the proof that
+    // behaviour changed; a new test beside an untouched old one would have proved nothing.
+    expect(decideMessageRoute(undefined, null)).toBe("silence");
+    expect(decideMessageRoute(null, undefined)).toBe("silence");
   });
 
   test("an unlinked user mid-linking still routes to linking", () => {

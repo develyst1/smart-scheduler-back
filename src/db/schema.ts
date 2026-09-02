@@ -499,10 +499,61 @@ export const lineLinkSessions = pgTable("line_link_sessions", {
   lineUserId: text("line_user_id").primaryKey(),
   step: text("step").notNull(), // CHOOSE_ROLE | AWAIT_CODE | AWAIT_STUDENT_NAME
   pendingRole: text("pending_role"), // customer | teacher | admin
+  // SPEC-071 / TASK-230 (`0030`) — AC-17: the bot is silent in this chat until then, so a human can talk to
+  // the family without the bot answering over them.
+  mutedUntil: timestamp("muted_until", { withTimezone: true }),
+  // ⚠️ SPEC-071 AC-18's TWO-STRIKES counter — **not** the code lockout. `code_attempts` / `code_locked_until`
+  // died with the family code (§15); this one survives, because Rule 5 still requires "two unexpected replies
+  // and the bot hands over", which needs a per-conversation count. The two were nearly deleted together on one
+  // sentence, so the distinction is written here as well as in the spec and the migration.
+  //
+  // It resets on success and dies with the session row: a counter that only ever increments would hand someone
+  // a locked chat in June for a typo in March.
+  unexpectedCount: integer("unexpected_count").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
+});
+
+// ───────────── SPEC-071 / TASK-230 (REQ-079) — a family is a SET of LINE accounts ─────────────
+//
+// 📌 Why these tables are the data model and not a convenience: a LINE chat cannot be addressed until it
+// speaks, so the door has to be something a parent TYPES. The family code died with §15, which leaves the
+// **invite as the only way anyone ever joins a family** — mother, father, grandmother, a new phone.
+//
+// `parents.line_user_id` STAYS and remains the FIRST link — additive, exactly like `booking_teachers` in
+// TASK-224 — so every existing reader, index and LINE flow is untouched.
+// 🔴 Read both through the ONE accessor in `lib/family-link.ts`. Two readers is how the two disagree.
+export const familyLineLinks = pgTable(
+  "family_line_links",
+  {
+    parentId: uuid("parent_id")
+      .notNull()
+      .references(() => parents.id, { onDelete: "cascade" }),
+    lineUserId: text("line_user_id").notNull(),
+    linkedAt: timestamp("linked_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.parentId, t.lineUserId] }),
+    // 🔴 THE LOAD-BEARING LINE. One LINE account belongs to exactly ONE family. Without it a second family's
+    // invite silently re-points an account and that parent sees **another family's children** — TASK-047's PII
+    // failure by a different route. The app decides who may join; the database decides they may only join once.
+    uniqueIndex("family_line_links_user_uq").on(t.lineUserId),
+  ],
+);
+
+// A one-shot, expiring token an admin hands to a family. `used_at` / `used_by` are kept rather than the row
+// being deleted: "who joined this family, and when" is the question this table exists to answer after the
+// fact, and a deleted row answers nothing.
+export const familyInvites = pgTable("family_invites", {
+  code: text("code").primaryKey(),
+  parentId: uuid("parent_id")
+    .notNull()
+    .references(() => parents.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  usedBy: text("used_by"),
 });
 
 // ─────────────────────── Notification outbox (LINE) ───────────────────────

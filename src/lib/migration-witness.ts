@@ -307,6 +307,17 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "nothing else creates it (TASK-224 — the อื่นๆ booking type).",
     rerunnable: true,
   },
+  {
+    tag: "0030_family_line_links",
+    probe: { kind: "index", index: "family_line_links_user_uq" },
+    why:
+      "The LOAD-BEARING object of 0030 and the last one it creates on that table, so a half-applied run reads " +
+      "as not-applied. Deliberately NOT the two ADD COLUMNs on `line_link_sessions`: a column on a " +
+      "pre-existing table is the weaker probe, and 0022 is the incident where a probe true before AND after " +
+      "hid a migration that had never run. This index exists only because 0030 ran, and it is also the rule " +
+      "that keeps one LINE account in one family (TASK-230 — REQ-079 invites).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

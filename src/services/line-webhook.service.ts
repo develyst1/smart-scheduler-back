@@ -29,9 +29,16 @@ import {
 import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import { t, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
-import { decideMessageRoute } from "../lib/line-routing";
+import {
+  decideMessageRoute,
+  isSessionExpired,
+  muteUntilFrom,
+  shouldHandOver,
+} from "../lib/line-routing";
 import { moveRosterLink } from "../lib/roster-link";
-import { parentChildrenNote } from "../lib/line-pairing";
+import { parentChildrenNames, parentChildrenNote } from "../lib/line-pairing";
+import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa";
+import { bindFamilyLine } from "../lib/family-link";
 import { claimReplyKey } from "../lib/teacher-link";
 import { requestTeacherLink } from "./teacher-link.service";
 import { calendarUrls } from "../lib/calendar-link";
@@ -74,7 +81,11 @@ const KNOWN_POSTBACK_ACTIONS = new Set([
 ]);
 
 type LinkRole = "customer" | "teacher" | "admin";
-type VerifyResult = { ok: boolean; message: string };
+/**
+ * TASK-232: `needs2fa` + `code` are set ONLY when the 2FA setting is on. The caller turns them into an
+ * `AWAIT_2FA` session step — the branch, not a second flow.
+ */
+type VerifyResult = { ok: boolean; message: string; needs2fa?: boolean; code?: string };
 
 async function reply(replyToken: string, text: string) {
   await replyMessage(replyToken, [{ type: "text", text }]);
@@ -84,10 +95,40 @@ async function send(replyToken: string, messages: LineMessage[]) {
   await replyMessage(replyToken, messages);
 }
 
+/**
+ * 🔴 TASK-231 (reopened) — the TTL lives HERE, at the source, not in the router.
+ *
+ * The router is one caller; a rule at the source gives **every** reader the same answer, which is why a stale
+ * row simply stops being found rather than being special-cased downstream. An expired session is not deleted —
+ * it stays for the record — it just stops owning the chat, and silence then follows from the rules already
+ * built rather than from a second mechanism.
+ *
+ * This is the fix for what §16 actually reported: an abandoned `สมัคร` used to leave a chat treating every
+ * message it ever sent as a code attempt, forever. `สมัคร` still restarts from any state, so the cost of
+ * expiring is one word retyped.
+ */
 async function getSession(lineUserId: string) {
-  return db.query.lineLinkSessions.findFirst({
+  const row = await db.query.lineLinkSessions.findFirst({
     where: (s, { eq: e }) => e(s.lineUserId, lineUserId),
   });
+  if (!row) return undefined;
+  return isSessionExpired(row.updatedAt) ? undefined : row;
+}
+
+/**
+ * ⚠️ The trap that makes the TTL safe rather than dangerous: **only `setStep` used to write this row.** A
+ * parent retrying inside one step — a wrong code twice — would not have touched it, so a 30-minute window
+ * would have run against someone who *is* actively replying and dropped them mid-registration.
+ *
+ * So every inbound message a session HANDLES refreshes it. `updated_at` carries `$onUpdate`, so this is a
+ * no-op write whose only purpose is the timestamp — which is exactly what makes the window mean *inactivity*
+ * instead of *age*.
+ */
+async function touchSession(lineUserId: string) {
+  await db
+    .update(lineLinkSessions)
+    .set({ updatedAt: new Date() })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
 }
 
 async function setStep(lineUserId: string, step: string, pendingRole: string | null = null) {
@@ -102,6 +143,69 @@ async function setStep(lineUserId: string, step: string, pendingRole: string | n
 
 async function clearSession(lineUserId: string) {
   await db.delete(lineLinkSessions).where(eq(lineLinkSessions.lineUserId, lineUserId));
+}
+
+/**
+ * SPEC-071 / TASK-231 — AC-18's two-strikes handover.
+ *
+ * An unrecognised reply **inside a flow**: first one re-prompts exactly as before, second one stops trying and
+ * hands the chat to a person, muting the bot so it does not talk over them.
+ *
+ * 🔴 The counter is `unexpected_count` — the TWO-STRIKES counter, **not** the invite/code attempt counter that
+ * was cut with the invite. TASK-230 shipped the column; this is its only writer.
+ *
+ * ⚠️ It **resets on success** (`resetStrikes`, called on every valid answer) and dies with the session row. A
+ * counter that only ever increments would hand someone a locked chat in June for a typo in March.
+ */
+async function strikeOrPrompt(
+  lineUserId: string,
+  session: { unexpectedCount?: number | null },
+  replyToken: string,
+  promptOnFirstStrike: string,
+  lang: Lang,
+) {
+  const next = (session.unexpectedCount ?? 0) + 1;
+  if (shouldHandOver(next)) {
+    // Hand over, and get out of the way. The session is deliberately KEPT: a person is about to read the
+    // whole conversation, and deleting the step would erase what the parent was in the middle of.
+    await db
+      .update(lineLinkSessions)
+      .set({ unexpectedCount: 0, mutedUntil: muteUntilFrom() })
+      .where(eq(lineLinkSessions.lineUserId, lineUserId));
+    return reply(replyToken, t("handover_to_admin", lang));
+  }
+  await db
+    .update(lineLinkSessions)
+    .set({ unexpectedCount: next })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
+  return reply(replyToken, promptOnFirstStrike);
+}
+
+/**
+ * SPEC-071 Amendment #2 / TASK-232 — is the 6-digit step switched on?
+ *
+ * 🔴 Read from `app_settings` on every use, never cached: **turning it on must be a setting, not a rebuild**,
+ * and a cached flag would make it a restart. Default `off` is the owner's recorded choice, not a soft launch.
+ */
+async function twoFaEnabled(): Promise<boolean> {
+  return (await getSetting("line_parent_2fa")).value === "on";
+}
+
+/**
+ * TASK-232 — park the 2FA challenge on the session. It rides in `pending_role` because that column already
+ * carries "what this step is waiting on", and the alternative is a migration for a branch that ships OFF.
+ * ⚠️ Named so a reader is not surprised by a code in a column called `pending_role`.
+ */
+async function setTwoFaChallenge(lineUserId: string, code: string) {
+  await setStep(lineUserId, "AWAIT_2FA", code);
+}
+
+/** AC-19 — a valid answer clears the strikes. Cheap, and it is what keeps the counter about THIS confusion. */
+async function resetStrikes(lineUserId: string) {
+  await db
+    .update(lineLinkSessions)
+    .set({ unexpectedCount: 0 })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
 }
 
 async function detectLinkedRole(lineUserId: string): Promise<LinkRole | null> {
@@ -171,11 +275,42 @@ async function verifyAndLink(
     if (existing.lineUserId && existing.lineUserId !== lineUserId) {
       return { ok: false, message: t("verify_parent_other", lang) };
     }
+    // 🔴 SPEC-071 / TASK-232 — the mirror of the check above, and the one the unique index enforces: this LINE
+    // ACCOUNT may already belong to a different family. Refused here so the parent gets a sentence they can
+    // act on instead of a `23505`, and refused at all because the alternative is silently re-pointing an
+    // account — a parent opening the app to **another family's children** (TASK-047's failure, other route).
+    const bind = await bindFamilyLine(existing.id, lineUserId);
+    if (!bind.ok) return { ok: false, message: t("verify_parent_other_family", lang) };
+
     await linkParentLine(existing.id, lineUserId);
     await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
     const kids = await listStudentsOfParent(existing.id);
-    // TASK-047: a COUNT, never the children's names — phone alone is not proof of identity.
-    const list = parentChildrenNote(kids.length, lang);
+
+    // 🔴 REQ-079 §2 — the phone alone now returns the children BY NAME. TASK-047 withheld them, and that
+    // reasoning was NOT refuted: the owner put the danger to the customer in those words and **the customer
+    // chose the convenience**.
+    //
+    // 🔀 The 2FA branch is the whole switchable part. ON: the parent gets the COUNT and a prompt, and the
+    // names are gated behind the code — TASK-047's rule still applies wherever a gate exists. OFF (default,
+    // the owner's choice): the names come straight back. **Nothing below this line differs between the two
+    // except which note is built**, which is what makes turning it on a setting rather than a rebuild.
+    if (await twoFaEnabled()) {
+      const code = generate2faCode();
+      deliver2faCode(lineUserId, code); // throws loudly if delivery was never configured — see lib/line-2fa.ts
+      return {
+        ok: true,
+        needs2fa: true,
+        code,
+        message:
+          t("verify_parent_ok_existing", lang, { phone, list: parentChildrenNote(kids.length, lang) }) +
+          "\n" +
+          t("twofa_prompt", lang),
+      };
+    }
+    const list = parentChildrenNames(
+      kids.map((k: any) => k.nickname ?? k.name),
+      lang,
+    );
     return { ok: true, message: t("verify_parent_ok_existing", lang, { phone, list }) };
   }
   await findOrCreateParentByPhone(phone, { lineUserId });
@@ -458,7 +593,13 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     return doLeaveBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
-  return doMenu(replyToken, lang);
+  // 🔴 AC-16 — SILENCED FALLBACK #1 (parent), and the loudest of the four. This was `return doMenu(...)`, so a
+  // linked parent typing ANYTHING got the menu back — including while a human was mid-conversation with them.
+  //
+  // Every recognised command above still answers, deliberately: `ลา` is how a parent reports sick leave and
+  // `เช็คอิน` is how they check in. Silencing those would be "silenced the wrong branch and nobody notices for
+  // a week" — the failure this task warns about, on the two flows a family uses most.
+  return;
 }
 
 async function handleMessage(ev: LineWebhookEvent) {
@@ -480,7 +621,17 @@ async function handleMessage(ev: LineWebhookEvent) {
 
   // TASK-046: an in-progress multi-turn conversation (adding a student, OR linking) must win over
   // already-linked routing — otherwise an already-linked user can never finish `สมัคร`.
-  const route = decideMessageRoute(session?.step, linked);
+  // TASK-231 adds two outcomes around that rule: a MUTED chat, and SILENCE.
+  const route = decideMessageRoute(session?.step, linked, { mutedUntil: session?.mutedUntil });
+
+  // 🔴 AC-17 — a human is talking in this chat. Deliver nothing, and do NOT touch the session: the parent may
+  // be mid-flow, and clearing their step would lose it while a person is helping them.
+  if (route === "muted") return;
+
+  // The inactivity window is measured from the last message the session HANDLED, so refresh it here — before
+  // any branch below can return — for exactly the two routes a session owns. A `linked` or `silence` route is
+  // not a session conversation and must not keep a dead row alive.
+  if (route === "add-student" || route === "linking") await touchSession(lineUserId);
 
   // Multi-turn: adding students (right after linking, or via "เพิ่มนักเรียน").
   if (route === "add-student") {
@@ -504,27 +655,64 @@ async function handleMessage(ev: LineWebhookEvent) {
       if (["ปฏิทิน", "calendar"].includes(lower)) {
         return doTeacherCalendar(lineUserId, replyToken, lang); // keyword fallback (REQ-017)
       }
-      return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("teacher_linked_menu", lang) : t("teacher_linked", lang));
+      // 🔴 AC-16 — SILENCED FALLBACK #2 (teacher). `ตาราง` / `ปฏิทิน` above still answer: they are recognised
+      // commands the teacher deliberately typed, and REQ-015/REQ-017 keep them as the keyboard route to the
+      // rich menu. What stops is the catch-all `teacher_linked` reply to anything else — which is the
+      // `yo` → *"ไม่พบครูชื่อเล่น yo"* class of noise from §16's screenshot.
+      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, t("teacher_linked_menu", lang));
+      return;
     }
     if (linked === "admin") {
-      return reply(replyToken, ["เมนู", "menu"].includes(lower) ? t("admin_linked_menu", lang) : t("admin_linked", lang));
+      // 🔴 AC-16 — SILENCED FALLBACK #3 (admin). Same rule: `เมนู` is a command, everything else is stray.
+      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, t("admin_linked_menu", lang));
+      return;
     }
   }
 
+  // 🔴 AC-16 — SILENCED FALLBACK #4, and the one §16 is actually about: an UNLINKED chat with no session used
+  // to get `welcome` for any text at all. `สมัคร` (handled at the top of this function, from any state) is
+  // still the way in, and the rich-menu postbacks are unaffected.
+  if (route === "silence") return;
+
   // Linking conversation.
-  if (!session) return reply(replyToken, t("welcome", lang));
+  if (!session) return;
 
   if (session.step === "CHOOSE_ROLE") {
     const role = parseRoleChoice(text);
-    if (!role) return reply(replyToken, t("role_prompt", lang));
+    // AC-18 — an unrecognised reply INSIDE a flow. Second one hands over to a human instead of re-prompting.
+    if (!role) return strikeOrPrompt(lineUserId, session, replyToken, t("role_prompt", lang), lang);
+    await resetStrikes(lineUserId); // AC-19: a valid answer clears the count — see `strikeOrPrompt`.
     await setStep(lineUserId, "AWAIT_CODE", role);
     return reply(replyToken, t(`code_${role}`, lang));
+  }
+
+  // 🔀 TASK-232 — the 2FA step. Unreachable while `line_parent_2fa` is `off`, because nothing sets this step;
+  // it exists from day one so switching the setting on is a setting change and not a rebuild.
+  if (session.step === "AWAIT_2FA") {
+    if (!matches2faCode(session.pendingRole, text)) {
+      // A wrong code is an unrecognised reply INSIDE a flow, so it is on the same two-strikes rule as every
+      // other step — rather than a second, bespoke lockout. 🚫 The deleted designs' attempt counts are NOT
+      // inherited; if the owner wants a different one here, it is his call on switch-on (`lib/line-2fa.ts`).
+      return strikeOrPrompt(lineUserId, session, replyToken, t("twofa_bad", lang), lang);
+    }
+    await resetStrikes(lineUserId);
+    const parent = await findParentByLineUserId(lineUserId);
+    const kids = parent ? await listStudentsOfParent(parent.id) : [];
+    // Verified — NOW the names. This is TASK-047's rule intact: the gate exists, so it is honoured.
+    await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
+    return reply(
+      replyToken,
+      `${parentChildrenNames(kids.map((k: any) => k.nickname ?? k.name), lang)}\n\n${t("add_student_prompt", lang, { max: MAX_STUDENTS_PER_PARENT })}`.trim(),
+    );
   }
 
   if (session.step === "AWAIT_CODE" && session.pendingRole) {
     const role = session.pendingRole as LinkRole;
     const res = await verifyAndLink(lineUserId, role, text, lang);
-    if (!res.ok) return reply(replyToken, res.message); // keep session for retry
+    // AC-18 — this is the exact branch §16's screenshot came from (`yo` → *"ไม่พบครูชื่อเล่น yo"*): it kept the
+    // session and re-prompted forever. Second failure now hands over to a human instead.
+    if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, res.message, lang);
+    await resetStrikes(lineUserId);
     if (role !== "admin") {
       // Seed the language from the LINE profile locale (best-effort), then link the role's rich menu.
       const seed: Lang = (await getProfileLang(lineUserId)) ?? "TH";
@@ -538,6 +726,12 @@ async function handleMessage(ev: LineWebhookEvent) {
         console.error("[line-webhook] linkRoleRichMenu failed:", e);
       }
     }
+    // 🔀 TASK-232 — the ONE place the 2FA switch changes the flow. `needs2fa` is set only when the setting is
+    // on, so with it off this branch never runs and the path below is byte-identical to before.
+    if (res.needs2fa && res.code) {
+      await setTwoFaChallenge(lineUserId, res.code);
+      return reply(replyToken, res.message);
+    }
     if (role === "customer") {
       // Linked — now offer to add children (multi-turn).
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
@@ -547,7 +741,10 @@ async function handleMessage(ev: LineWebhookEvent) {
     return reply(replyToken, res.message);
   }
 
-  return reply(replyToken, t("welcome", lang));
+  // 🔴 AC-16 — SILENCED FALLBACK #5: a session row exists but its `step` is none of the ones above (a state we
+  // no longer use, or a row left behind by an older flow). It used to answer `welcome` to anything, which is
+  // stray text in a chat that merely LOOKS busy — the same defect as #4 wearing a stale session.
+  return;
 }
 
 /** Rich-menu / quick-reply taps arrive as postback events — route each action to the SAME handler the
@@ -615,6 +812,14 @@ async function handlePostback(ev: LineWebhookEvent) {
   }
 }
 
+/**
+ * 🚫 NOT silenced by TASK-231, deliberately.
+ *
+ * A `follow` event is someone **adding the OA** — they just knocked on the door, and AC-16 is about stray text
+ * in a chat nobody addressed. Greeting a new follower is the one moment the bot is certainly not talking over
+ * a human, and it is also how anyone learns that `สมัคร` is the way in. Silencing it would leave a new parent
+ * with an empty chat and no idea what to type.
+ */
 async function handleFollow(ev: LineWebhookEvent) {
   const replyToken = ev.replyToken;
   const lineUserId = eventUserId(ev);

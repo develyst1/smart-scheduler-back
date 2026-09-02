@@ -15,6 +15,12 @@ const TABLE: Record<string, Entry> = {
     TH: "สวัสดีค่ะ ยินดีต้อนรับสู่ Smart Scheduler\n\nพิมพ์ สมัคร เพื่อผูกบัญชี LINE\nหลังผูกแล้ว (ผู้ปกครอง): เพิ่มนักเรียน · เช็คอิน · ลา · qr",
     EN: "Welcome to Smart Scheduler 👋\n\nType 'register' to link your LINE account.\nOnce linked (parent): add child · check-in · leave · qr",
   },
+  // SPEC-071 / TASK-231 — AC-18: two unexpected replies inside a flow and the bot stops trying. The apology
+  // matters: the parent has just failed twice and the next voice they hear should be a person.
+  handover_to_admin: {
+    TH: "ขอโทษค่ะ ขอส่งให้แอดมินช่วยดูนะคะ 🙏",
+    EN: "Sorry about that — I am passing this to an admin to help you. 🙏",
+  },
   role_prompt: {
     TH: "เลือกบทบาทของคุณ:\n1 = ลูกค้า/ผู้ปกครอง\n2 = ครู\n3 = แอดมิน",
     EN: "Choose your role:\n1 = Customer/Parent\n2 = Teacher\n3 = Admin",
@@ -77,6 +83,29 @@ const TABLE: Record<string, Entry> = {
   // TASK-047: a COUNT, never names — anyone can type a phone number, so listing the children would disclose
   // a family's data to a stranger. (Replaces the retired `verify_parent_students`.)
   verify_parent_children_count: { TH: "\nพบนักเรียน {n} คนในบัญชีนี้", EN: "\n{n} children on file" },
+  // SPEC-071 Amendment #2 / TASK-232 — REQ-079 §2's own wording: the phone alone returns the children BY NAME.
+  // 🔴 The count above is NOT retired — it is what the 2FA-on path shows before verification. Two paths, two
+  // rules, both deliberate (`lib/line-pairing.ts`).
+  verify_parent_children_names: {
+    TH: "\nพบข้อมูลของคุณแล้วค่ะ — {names}",
+    EN: "\nFound your family — {names}",
+  },
+  // This chat is already bound to a DIFFERENT family. Says so plainly and offers a human — the one thing it
+  // must never do is quietly re-point the account, which would show a parent another family's children.
+  verify_parent_other_family: {
+    TH: "บัญชี LINE นี้ผูกกับอีกครอบครัวไว้แล้วค่ะ หากไม่ถูกต้องกรุณาติดต่อแอดมิน",
+    EN: "This LINE account is already linked to another family. Please contact an admin if that is wrong.",
+  },
+  // TASK-232 — the 2FA step, shipped OFF. The copy lives here from day one so switching the setting on needs
+  // no copy work either: turning it on must be a setting, never a rebuild.
+  twofa_prompt: {
+    TH: "กรุณาพิมพ์รหัส 6 หลักเพื่อยืนยันตัวตนค่ะ",
+    EN: "Please type the 6-digit code to verify your identity.",
+  },
+  twofa_bad: {
+    TH: "รหัสไม่ถูกต้องค่ะ กรุณาลองใหม่อีกครั้ง",
+    EN: "That code is not correct. Please try again.",
+  },
   verify_parent_ok_new: { TH: "ลงทะเบียนผู้ปกครองสำเร็จ ✅ (เบอร์ {phone})", EN: "Parent registered ✅ (phone {phone})" },
 
   added_more: { TH: 'เพิ่ม "{name}" สำเร็จ ✅ (ตอนนี้มี {count} คน)\nพิมพ์ชื่อคนถัดไป หรือพิมพ์ "ข้าม" เพื่อจบ', EN: 'Added "{name}" ✅ (now {count})\nType the next name, or "skip" to finish' },

@@ -41,6 +41,9 @@ describe("registry shape (TASK-101)", () => {
       "checkin_early_minutes",
       "leave_cutoff_hours_freelance", // TASK-146 (REQ-047) — the leave cut-off stopped being a constant
       "leave_cutoff_hours_fulltime",
+      // TASK-232 (REQ-079 §2) — the LINE parent 2FA step, shipped `off` by the owner's recorded choice. It is
+      // a SETTING and not a stub precisely so switching it on is never a rebuild.
+      "line_parent_2fa",
       "notify_on_leave",
       "teacher_change_notice_days",
     ]);

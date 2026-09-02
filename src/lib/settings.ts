@@ -36,6 +36,9 @@ const oneOf =
 
 export const NOTIFY_ON_LEAVE_OPTIONS = ["admin_only", "admin_and_teacher"] as const;
 
+/** SPEC-071 Amendment #2 / TASK-232 — the LINE parent 2FA step. Shipped `off`; see the entry below. */
+export const LINE_PARENT_2FA_OPTIONS = ["off", "on"] as const;
+
 export const SETTINGS = {
   teacher_change_notice_days: {
     key: "teacher_change_notice_days",
@@ -81,6 +84,25 @@ export const SETTINGS = {
     options: NOTIFY_ON_LEAVE_OPTIONS,
     label: "แจ้งเตือนเมื่อมีการลา",
     parse: oneOf(NOTIFY_ON_LEAVE_OPTIONS),
+  },
+  // SPEC-071 Amendment #2 / TASK-232 (REQ-079 §2) — the 6-digit step between "the parent typed a phone" and
+  // "here are your children".
+  //
+  // 🔴 `off` is the OWNER'S CHOICE, not a soft launch. He raised the risk with the customer — anyone who knows
+  // a phone number can see that family's children and act for them — and **the customer refused the extra
+  // step**. That refusal is on the record (REQ-079 §2, `SYSTEM-FACTS.md`), which is why this ships switchable
+  // rather than hardened: re-adding the check quietly is as forbidden as re-opening the question.
+  //
+  // It is a SETTING and not a stub so that turning it on is a decision, never a rebuild — the branch, the
+  // storage and the verification all ship today.
+  line_parent_2fa: {
+    key: "line_parent_2fa",
+    type: "enum",
+    default: "off",
+    unit: "option",
+    options: LINE_PARENT_2FA_OPTIONS,
+    label: "ยืนยันตัวตน 6 หลัก ก่อนแสดงรายชื่อนักเรียน (LINE)",
+    parse: oneOf(LINE_PARENT_2FA_OPTIONS),
   },
 } as const satisfies Record<string, SettingSpec>;
 
