@@ -17,9 +17,12 @@ const TABLE: Record<string, Entry> = {
   },
   // SPEC-071 / TASK-231 — AC-18: two unexpected replies inside a flow and the bot stops trying. The apology
   // matters: the parent has just failed twice and the next voice they hear should be a person.
+  // 🔴 TASK-246 / AC-24 — the message that MUTES the chat is the message that must name the way back in. A way
+  // out nobody was told about is not a way out, and this is the one screen a muted parent is guaranteed to have
+  // read. (LINE on PC has no rich menu at all, so "tap something" is not an answer for them.)
   handover_to_admin: {
-    TH: "ขอโทษค่ะ ขอส่งให้แอดมินช่วยดูนะคะ 🙏",
-    EN: "Sorry about that — I am passing this to an admin to help you. 🙏",
+    TH: "ขอโทษค่ะ ขอส่งให้แอดมินช่วยดูนะคะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
+    EN: "Sorry about that — I am passing this to an admin to help you. 🙏\n(To use the bot again, type: reopen)",
   },
   role_prompt: {
     TH: "เลือกบทบาทของคุณ:\n1 = ลูกค้า/ผู้ปกครอง\n2 = ครู\n3 = แอดมิน",
@@ -68,9 +71,11 @@ const TABLE: Record<string, Entry> = {
     EN: "· {course} · {teacher} · {remaining}/{total} left · {leave} leave left · expires {expiry}",
   },
   // Flow 7 — the way to a human. On BOTH menus, and never removed by any flow.
+  // TASK-246 / AC-24 — the second message that mutes a chat. Same rule as the handover: it names the word,
+  // because a parent who taps this is choosing silence and must be told how to end it.
   admin_called: {
-    TH: "แจ้งแอดมินให้แล้วนะคะ รอสักครู่ เดี๋ยวมีเจ้าหน้าที่มาคุยด้วยค่ะ 🙏",
-    EN: "I have told an admin — someone will reply here shortly. 🙏",
+    TH: "แจ้งแอดมินให้แล้วนะคะ รอสักครู่ เดี๋ยวมีเจ้าหน้าที่มาคุยด้วยค่ะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
+    EN: "I have told an admin — someone will reply here shortly. 🙏\n(To use the bot again, type: reopen)",
   },
   // เข้าใช้ระบบ on the unknown menu. Flow 2 is deleted (§15), so this points at a person, not a code prompt.
   enter_ask_admin: {
@@ -158,6 +163,12 @@ const TABLE: Record<string, Entry> = {
   add_cancelled: {
     TH: "ยกเลิกแล้วค่ะ ข้อมูลที่กรอกไว้ถูกลบทิ้งแล้ว ยังไม่ได้บันทึกอะไรลงระบบนะคะ",
     EN: "Cancelled. What you typed has been discarded — nothing was saved.",
+  },
+  // TASK-246 — `ยกเลิก` with nothing in progress. A separate string because `add_cancelled` claims a draft was
+  // discarded, and claiming a deletion that never happened is the same class of lie as hiding one.
+  cancel_nothing: {
+    TH: "ไม่มีรายการที่ค้างอยู่นะคะ ยกเลิกให้เรียบร้อยค่ะ",
+    EN: "There was nothing in progress — all clear.",
   },
   twofa_prompt: {
     TH: "กรุณาพิมพ์รหัส 6 หลักเพื่อยืนยันตัวตนค่ะ",

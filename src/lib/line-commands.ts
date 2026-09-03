@@ -29,6 +29,17 @@ export const CMD_CALENDAR = ["ปฏิทิน", "calendar"] as const;
 
 /** TASK-245 — the exit, available at every step of every flow. */
 export const CMD_CANCEL = ["ยกเลิก", "cancel"] as const;
+
+/**
+ * 🔴 TASK-246 (AC-23 / AC-26) — the way back IN, for a chat the bot has muted.
+ *
+ * A different word from `เมนู` on purpose, and @Porter's reasoning is the whole of it: while muted, `เมนู` is
+ * **deliberately** ignored, so if it un-muted, a parent idly reaching for a familiar command would drop the bot
+ * back into a live conversation with an admin. ⇒ **the un-mute must be a thing you choose, not a thing you
+ * reach for** — which only holds if the word is one the bot had to tell them (AC-24).
+ */
+export const CMD_REOPEN = ["เปิดเมนู", "reopen", "open menu"] as const;
+
 /** "I do not want to answer this one." Pre-existing vocabulary, listed here so it is reserved too. */
 export const CMD_SKIP = ["ข้าม", "ไม่", "ไม่เพิ่ม", "เสร็จ", "จบ", "skip", "no", "done"] as const;
 
@@ -49,6 +60,7 @@ export const RESERVED_WORDS: readonly string[] = [
   ...CMD_SCHEDULE,
   ...CMD_CALENDAR,
   ...CMD_CANCEL,
+  ...CMD_REOPEN,
   ...CMD_SKIP,
 ];
 
@@ -58,3 +70,7 @@ export const isReservedWord = (text: string): boolean =>
 
 export const isCancelWord = (text: string): boolean =>
   (CMD_CANCEL as readonly string[]).includes(text.trim().toLowerCase());
+
+/** TASK-246 — "let me back in". Distinct from `isCancelWord`: two intents, two effects. */
+export const isReopenWord = (text: string): boolean =>
+  (CMD_REOPEN as readonly string[]).includes(text.trim().toLowerCase());

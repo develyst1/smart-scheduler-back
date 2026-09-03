@@ -3,7 +3,7 @@
 // is resolved once per event from their LINE-link record (default TH, seeded from locale on link, toggled by the
 // language button). Rich-menu/quick-reply taps arrive as postback events routed to the SAME handlers as keywords.
 
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db";
 import { coursePackages, lineLinkSessions, parents, teachers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
@@ -40,6 +40,7 @@ import { parentChildrenNames, parentChildrenNote } from "../lib/line-pairing";
 import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa";
 import {
   decideDuplicate,
+  isAddStudentStep,
   isCancel,
   isConfirm,
   isSkip,
@@ -60,7 +61,9 @@ import {
   CMD_REGISTER,
   CMD_SCHEDULE,
   CMD_SKIP,
+  CMD_REOPEN,
   isCancelWord,
+  isReopenWord,
   isReservedWord,
 } from "../lib/line-commands";
 import { claimReplyKey } from "../lib/teacher-link";
@@ -178,6 +181,73 @@ async function setStep(lineUserId: string, step: string, pendingRole: string | n
 
 async function clearSession(lineUserId: string) {
   await db.delete(lineLinkSessions).where(eq(lineLinkSessions.lineUserId, lineUserId));
+}
+
+/**
+ * The step a row carries when it exists only to hold a mute — no conversation is in progress. `doCallAdmin`
+ * already wrote this literal; naming it makes "a muted row with no flow" one concept instead of two spellings.
+ * `decideMessageRoute` does not recognise it, so such a row owns nothing once the mute lapses.
+ */
+const MUTED_STEP = "MUTED";
+
+/**
+ * "No conversation is in progress on this row." ONE definition, shared by the two writers below, so *"the flow
+ * is over"* cannot come to mean two different sets of columns.
+ */
+const FLOW_CLEARED = { step: MUTED_STEP, pendingRole: null, draft: null, unexpectedCount: 0 } as const;
+
+/**
+ * 🔴 TASK-246 — **the** un-mute. One function, and every path back in goes through it.
+ *
+ * > **No path may ENTER a flow while muted. A door that can start something either un-mutes, or is silent —
+ * > never both halves.** (Sober's principle, sharpened at review; it decides the *fourth* door before anyone
+ * > builds it.)
+ *
+ * @Porter's requirement, and the reason it is one function rather than two correct copies: *the parent must not
+ * learn two different ways back depending on their device.* LINE on PC cannot tap a rich menu at all, so the
+ * typed word and the button must be the same act with the same effect — and two implementations is how those
+ * two quietly diverge.
+ *
+ * 🔑 It runs BEFORE the action it precedes, which is what makes DEF-8 unreachable **by construction**: a flow
+ * can only ever be entered unmuted, so "a muted chat must not be able to enter a flow" needs no second guard.
+ * 🚫 Do not add one — it would never fire, and the next reader would have to work out why.
+ *
+ * 🔄 **And it clears any in-flight flow** (Sober, from my own Q2). A mute lasts 60 minutes and a session expires
+ * after 30 of silence, so returning EARLY used to leave a live row: the parent's next free text landed in a step
+ * they had forgotten, behind **every** door — a button that renders a list has the identical hole, so fixing the
+ * typed word alone would have left the same confusion behind one of the three. The rule is right rather than
+ * merely convenient because **the mute means a human took over**: whatever was half-finished was superseded by
+ * that, so **coming back is a fresh start**, and the door they chose already says what happens next.
+ * ⚠️ This does not weaken TASK-231's *"the handover KEEPS the session"* — the handover still keeps it, so an
+ * admin reads the whole conversation. The clear happens only when the parent chooses to return, afterwards.
+ *
+ * ⚠️ Scoped to a chat that is muted **right now** (the same test `isMuted` applies, so the two cannot disagree).
+ * *"Coming back"* presupposes having been away: an unmuted parent taps a button mid-flow all the time, and their
+ * half-finished registration is not ours to discard.
+ */
+async function unmute(lineUserId: string) {
+  await db
+    .update(lineLinkSessions)
+    .set({ ...FLOW_CLEARED, mutedUntil: null, updatedAt: new Date() })
+    .where(and(eq(lineLinkSessions.lineUserId, lineUserId), gt(lineLinkSessions.mutedUntil, new Date())));
+}
+
+/**
+ * 🔴 TASK-246 — `ยกเลิก` inside a MUTED chat: end the flow, **keep the mute.**
+ *
+ * *"Get me out"* is not *"let me back in"* — two intents, two effects. That distinction has a mechanical edge
+ * the plain exit could not have: the mute lives on the session ROW, so `clearSession`'s delete would un-mute as
+ * a side effect and put the bot straight back on top of the admin who is typing. So this clears the flow
+ * **in place** — draft included, explicitly — instead of deleting the row that carries the silence.
+ *
+ * It writes the SAME `FLOW_CLEARED` columns the un-mute does. The only difference between the two functions is
+ * the mute itself, which is exactly the difference between the two intents.
+ */
+async function clearFlowKeepMute(lineUserId: string) {
+  await db
+    .update(lineLinkSessions)
+    .set({ ...FLOW_CLEARED, updatedAt: new Date() })
+    .where(eq(lineLinkSessions.lineUserId, lineUserId));
 }
 
 /**
@@ -765,7 +835,7 @@ async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang) {
   // Mute with the SAME helper the handover uses — one definition of "how long the bot stays out of a chat".
   await db
     .insert(lineLinkSessions)
-    .values({ lineUserId, step: "MUTED", mutedUntil: muteUntilFrom() })
+    .values({ lineUserId, step: MUTED_STEP, mutedUntil: muteUntilFrom() })
     .onConflictDoUpdate({
       target: lineLinkSessions.lineUserId,
       set: { mutedUntil: muteUntilFrom(), updatedAt: new Date() },
@@ -831,7 +901,10 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
   const cmd = raw.toLowerCase();
   const { date } = bangkokNow();
 
-  if (inList(CMD_MENU, cmd)) return doMenu(replyToken, lang);
+  // `เปิดเมนู` answers here too, not only in a muted chat: it is the word the mute message told them, and a
+  // word the bot advertises must mean the same thing everywhere (TASK-245's rule). Un-muting an unmuted chat is
+  // a no-op, so this is the same list with no second behaviour.
+  if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang);
 
   // Add a student — inline ("เพิ่มนักเรียน น้องเอ") or start a name prompt.
   const addMatch = raw.match(/^(?:เพิ่มนักเรียน|เพิ่มลูก|add)\s*(.*)$/i);
@@ -895,6 +968,14 @@ async function handleMessage(ev: LineWebhookEvent) {
 
   // Registration (re)start — works from any state.
   if (inList(CMD_REGISTER, lower)) {
+    // 🔴 TASK-246 (Q1, approved) — `สมัคร` is checked above the mute gate (TASK-231: it is the only way in, so
+    // silence must never swallow it), which meant a muted chat was **asked for a role and then ignored the
+    // answer** — DEF-8's exact shape through a second door. Under the principle above, a door that can start
+    // something must un-mute; this one starts the registration, so it does.
+    //
+    // ⚠️ ORDER IS LOAD-BEARING: the un-mute now CLEARS the flow, so it must run BEFORE the step it enables —
+    // reversed, it would wipe the `CHOOSE_ROLE` it had just written and swallow the parent's "1" instead.
+    await unmute(lineUserId);
     await setStep(lineUserId, "CHOOSE_ROLE", null);
     return reply(replyToken, t("role_prompt", lang));
   }
@@ -907,9 +988,29 @@ async function handleMessage(ev: LineWebhookEvent) {
   // TASK-231 adds two outcomes around that rule: a MUTED chat, and SILENCE.
   const route = decideMessageRoute(session?.step, linked, { mutedUntil: session?.mutedUntil });
 
-  // 🔴 AC-17 — a human is talking in this chat. Deliver nothing, and do NOT touch the session: the parent may
-  // be mid-flow, and clearing their step would lose it while a person is helping them.
-  if (route === "muted") return;
+  // 🔴 AC-17 / TASK-246 — a human is talking in this chat, so the bot's INITIATIVE is off. What it never
+  // silences is **the parent's ability to get OUT, or to come BACK** (Sober's principle, DEF-8 + §14). The two
+  // doors below are the whole exception list; everything else falls through to silence (AC-25).
+  if (route === "muted") {
+    // 1. `ยกเลิก` is honoured HERE, ahead of the gate — because DEF-8 is precisely a gate swallowing the
+    // escape the prompt in the same chat is advertising. A promise the bot ignores is the `เมนู` contradiction
+    // returning through the state machine. The mute is deliberately left alone: two intents, two effects.
+    if (isCancelWord(lower)) {
+      const had = isAddStudentStep(session?.step) || !!session?.draft;
+      await clearFlowKeepMute(lineUserId);
+      return reply(replyToken, t(had ? "add_cancelled" : "cancel_nothing", lang));
+    }
+    // 2. `เปิดเมนู` — the way back in, for a parent who has no rich menu to tap (§14: LINE on PC). It un-mutes
+    // and shows the command list, and **starts nothing** (AC-26). 🚫 Plain `เมนู` deliberately does NOT land
+    // here: the un-mute must be a thing you choose, not a thing you reach for.
+    if (isReopenWord(lower)) {
+      await unmute(lineUserId);
+      return doMenu(replyToken, lang);
+    }
+    // AC-25 — `เมนู`, `เพิ่มนักเรียน`, free text: still silent, and the session is NOT touched. The parent may
+    // be mid-flow, and clearing their step would lose it while a person is helping them.
+    return;
+  }
 
   // The inactivity window is measured from the last message the session HANDLED, so refresh it here — before
   // any branch below can return — for exactly the two routes a session owns. A `linked` or `silence` route is
@@ -1050,6 +1151,16 @@ async function handlePostback(ev: LineWebhookEvent) {
   if (!KNOWN_POSTBACK_ACTIONS.has(action)) console.warn(formatUnknownAction(action, lineUserId));
   const { date } = bangkokNow();
   const lang = await resolveLang(lineUserId);
+
+  // 🔴 TASK-246 (DEF-8) — a TAP un-mutes, before anything else runs.
+  //
+  // A parent pressing the bot's own control has chosen to engage it (@Porter), and the defect this closes is
+  // what happened when it did not: the button worked, the bot asked *"พิมพ์ชื่อนักเรียน…"*, and the answer was
+  // swallowed by the mute — **the bot asked a question it would not answer.** Un-muting HERE, ahead of the
+  // dispatch, is also what makes that unreachable by construction: a flow can only be entered unmuted, so no
+  // second "a muted chat may not enter a flow" guard is needed. 🚫 Do not add one; it could never fire.
+  // (`action=admin` mutes again immediately below, which is correct — that tap is a request for silence.)
+  await unmute(lineUserId);
 
   // 🔴 TASK-234 (Flow 7) — `คุยกับแอดมิน` is handled BEFORE every role check, deliberately. It is on both menus
   // precisely so someone who is NOT recognised can still reach a person; gating it behind `detectLinkedRole`

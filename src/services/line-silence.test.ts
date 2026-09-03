@@ -119,8 +119,12 @@ describe("🔴 AC-17 — mute silences ONE chat, not the bot", () => {
   });
 
   test("a muted chat's session is NOT cleared — a person is mid-conversation with them", () => {
-    expect(HANDLE).toContain('if (route === "muted") return;');
+    // 🔴 TASK-246 changed the SHAPE of this branch, not the rule. It was a bare `return`; it is now a return
+    // with two doors in front of it — `ยกเลิก` (get out) and `เปิดเมนู` (come back) — because a mute that
+    // swallows the escape traps the parent through the state machine instead of the command list (DEF-8).
+    // Stray text is still silent, and the session is still not deleted. Details: `line-mute-exit.test.ts`.
     const mutedBranch = HANDLE.slice(HANDLE.indexOf('route === "muted"'), HANDLE.indexOf("add-student"));
+    expect(mutedBranch).toContain("return;");
     expect(mutedBranch).not.toContain("clearSession");
   });
 });

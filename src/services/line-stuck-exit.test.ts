@@ -26,6 +26,7 @@ import {
   CMD_MENU,
   CMD_QR,
   CMD_REGISTER,
+  CMD_REOPEN,
   CMD_SCHEDULE,
   CMD_SKIP,
   RESERVED_WORDS,
@@ -120,7 +121,9 @@ describe("🔴 2 — a word the bot advertises means the same thing everywhere",
     // is a command" and "the bot stored it as a name" both became true at once.
     const every = [
       ...CMD_REGISTER, ...CMD_MENU, ...CMD_COURSES, ...CMD_ADMIN, ...CMD_CHILDREN, ...CMD_QR,
-      ...CMD_CHECKIN, ...CMD_LEAVE, ...CMD_SCHEDULE, ...CMD_CALENDAR, ...CMD_CANCEL, ...CMD_SKIP,
+      ...CMD_CHECKIN, ...CMD_LEAVE, ...CMD_SCHEDULE, ...CMD_CALENDAR, ...CMD_CANCEL,
+      ...CMD_REOPEN, // TASK-246 — and it was reserved the day it was written, which is the property
+      ...CMD_SKIP,
     ];
     for (const word of every) expect(RESERVED_WORDS).toContain(word);
     expect(new Set(RESERVED_WORDS).size).toBe(new Set(every).size);
@@ -246,7 +249,9 @@ describe("✅ Face 2 — the bot is silent, but a PERSON is reachable", () => {
     expect([...CMD_MENU]).toContain("เมนู");
     expect([...CMD_MENU]).toContain("ช่วยเหลือ");
     expect([...CMD_MENU]).toContain("help");
-    expect(CODE).toContain("if (inList(CMD_MENU, cmd)) return doMenu(replyToken, lang)");
+    // TASK-246 joined `เปิดเมนู` to the same branch — one list, one `doMenu`, so the word the mute message
+    // advertises cannot become an unknown word an hour later.
+    expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang)");
     expect(fn("function doMenu")).toContain('t("menu_body", lang)');
   });
 
