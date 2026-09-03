@@ -19,6 +19,7 @@ import {
   shouldHandOver,
 } from "../lib/line-routing";
 import { t } from "../lib/line-i18n";
+import { CMD_REGISTER } from "../lib/line-commands";
 
 const SVC = readSrc(await Bun.file(new URL("./line-webhook.service.ts", import.meta.url)).text());
 const body = (decl: string) => {
@@ -74,9 +75,10 @@ describe("🔴 what must KEEP answering — the branch this could silence by mis
   });
 
   test("`สมัคร` still works from ANY state — it is the only way in", () => {
-    expect(HANDLE).toContain('["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"].includes(lower)');
+    expect(HANDLE).toContain("inList(CMD_REGISTER, lower)"); // TASK-245 — the same words, now from ONE list
     // …and it is checked BEFORE the session/route is even read, so silence cannot swallow it.
-    expect(HANDLE.indexOf("สมัคร")).toBeLessThan(HANDLE.indexOf("decideMessageRoute"));
+    expect(HANDLE.indexOf("CMD_REGISTER")).toBeLessThan(HANDLE.indexOf("decideMessageRoute"));
+    expect([...CMD_REGISTER]).toContain("สมัคร");
   });
 
   test("the in-flow steps still own their message (AC-19)", () => {
@@ -160,11 +162,18 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // any other, so it did not get a bespoke lockout. One handover rule, not two that drift.
     // TASK-233 added the fourth: an unrecognised answer at the summary/confirm step. Same reasoning again —
     // it is an unrecognised in-flow reply, so it gets the one handover rule rather than a bespoke retry loop.
-    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(5); // the declaration + four call sites
+    //
+    // 🔴 TASK-245 added the fifth and sixth, and corrected the sentence above: **a REJECTION is an unexpected
+    // reply too.** "Free-text steps have no unrecognised to detect" was true of a name the bot accepts — it was
+    // never true of a birthdate the bot refuses, and that gap is where the owner got stuck. The name step joins
+    // them because it can now reject: a reserved word.
+    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(7); // the declaration + six call sites
     expect(SVC).toContain("t(\"role_prompt\", lang), lang)");
     expect(SVC).toContain("res.message, lang)");
     expect(SVC).toContain('t("twofa_bad", lang), lang)');
     expect(SVC).toContain('t("add_summary_confirm", lang), lang)');
+    expect(SVC).toContain('t("add_name_reserved", lang, { word: name })');
+    expect(SVC).toContain('t("add_birthdate_bad", lang)');
   });
 
   test("🔴 the counter it uses is `unexpected_count`, and the CODE lockout is not resurrected", () => {
@@ -240,7 +249,7 @@ describe("🔴 a stale session stops owning the chat", () => {
 
   test("🔑 and the way back in is unchanged: `สมัคร` restarts from any state", () => {
     // The cost of expiring is one word retyped — which is why 30 minutes is safe rather than destructive.
-    expect(HANDLE).toContain('["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"].includes(lower)');
+    expect(HANDLE).toContain("inList(CMD_REGISTER, lower)"); // TASK-245 — the same words, now from ONE list
   });
 });
 

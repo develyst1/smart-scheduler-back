@@ -36,9 +36,13 @@ const TABLE: Record<string, Entry> = {
   add_student_name_prompt: { TH: "พิมพ์ชื่อนักเรียนที่ต้องการเพิ่ม (สูงสุด {max} คนต่อเบอร์)", EN: "Type the student name to add (up to {max} per phone)" },
 
   menu_title: { TH: "เมนูหลัก — แตะเพื่อใช้งาน", EN: "Main menu — tap to use" },
+  // 🔴 TASK-245 "Face 2" — the last line is the half of AC-16's trade that was missing from the live product.
+  // The bot went silent by default, but nothing told the person in front of it that a HUMAN still reads the
+  // chat. The command list is the right home because the person reading it is, by definition, the lost one.
+  // 🚫 Deliberately NOT a new rich-menu cell: that needs an image the owner has not asked for (task scope).
   menu_body: {
-    TH: "คำสั่งที่ใช้ได้:\n· เพิ่มนักเรียน — เพิ่มลูกเข้าระบบ (สูงสุด 5 คน)\n· นักเรียน — ดูรายชื่อลูกของคุณ\n· เช็คอิน — เช็คอินคาบวันนี้\n· ลา — แจ้งลาคาบวันนี้\n· qr — รับลิงก์เช็คอิน\n· เมนู — แสดงคำสั่งนี้อีกครั้ง",
-    EN: "Available commands:\n· add child — register a child (up to 5)\n· children — list your children\n· check-in — check in today's class\n· leave — report sick leave today\n· qr — get a check-in link\n· menu — show this again",
+    TH: "คำสั่งที่ใช้ได้:\n· เพิ่มนักเรียน — เพิ่มลูกเข้าระบบ (สูงสุด 5 คน)\n· นักเรียน — ดูรายชื่อลูกของคุณ\n· เช็คอิน — เช็คอินคาบวันนี้\n· ลา — แจ้งลาคาบวันนี้\n· qr — รับลิงก์เช็คอิน\n· เมนู — แสดงคำสั่งนี้อีกครั้ง\n\nหรือพิมพ์คำถามเข้ามาได้เลยค่ะ เดี๋ยวแอดมินมาตอบนะคะ 🙏",
+    EN: "Available commands:\n· add child — register a child (up to 5)\n· children — list your children\n· check-in — check in today's class\n· leave — report sick leave today\n· qr — get a check-in link\n· menu — show this again\n\nOr just type your question — an admin will read it and reply. 🙏",
   },
 
   btn_checkin: { TH: "เช็คอิน", EN: "Check-in" },
@@ -131,12 +135,30 @@ const TABLE: Record<string, Entry> = {
   },
   add_province_prompt: { TH: "จังหวัดที่อยู่ หรือพิมพ์ ข้าม ค่ะ", EN: "Province, or type skip." },
   add_summary_head: { TH: "ตรวจสอบข้อมูลก่อนบันทึกนะคะ", EN: "Please check before we save:" },
-  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก หรือ ยกเลิก", EN: "Correct? Type confirm to save, or cancel." },
+  // The trailing "หรือ ยกเลิก" moved OUT of this string in TASK-245: the exit is now appended to every question
+  // by `withExit`, and leaving it here too would print it twice on the one step that already had it.
+  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก", EN: "Correct? Type confirm to save." },
+  // 🔴 TASK-245 — the exit, appended to EVERY question the wizard asks. One string, one append site, because
+  // "the flow has an exit" is only true if it is true at every step: the owner's trap was three questions that
+  // each looked like the only thing he was allowed to answer.
+  add_exit_hint: { TH: " · หรือพิมพ์ ยกเลิก เพื่อออก", EN: " · or type cancel to exit" },
+  // 🔴 TASK-245 — a word the bot advertises is never stored as data. The refusal NAMES the word and names the
+  // way round it: the rare child genuinely called `เมนู` must not be left at a door that simply will not open.
+  add_name_reserved: {
+    TH: "「{word}」 เป็นคำสั่งของระบบค่ะ ถ้าเป็นชื่อน้องจริง ๆ รบกวนแจ้งแอดมินนะคะ",
+    EN: "「{word}」 is a system command. If that really is the child's name, please tell an admin and they will add them.",
+  },
   add_l_name: { TH: "ชื่อ", EN: "Name" },
   add_l_birthdate: { TH: "วันเกิด", EN: "Date of birth" },
   add_l_province: { TH: "จังหวัด", EN: "Province" },
   add_l_none: { TH: "ไม่ระบุ", EN: "not given" },
-  add_cancelled: { TH: "ยกเลิกแล้วค่ะ ยังไม่ได้บันทึกข้อมูลใดๆ", EN: "Cancelled. Nothing was saved." },
+  // TASK-245 — now reachable from EVERY step, not only the summary, so it says what happened to the answers
+  // already given: they are gone. The one thing a parent must not be left wondering is whether half of it was
+  // saved anyway — an unknown half-record in a roster with no delete.
+  add_cancelled: {
+    TH: "ยกเลิกแล้วค่ะ ข้อมูลที่กรอกไว้ถูกลบทิ้งแล้ว ยังไม่ได้บันทึกอะไรลงระบบนะคะ",
+    EN: "Cancelled. What you typed has been discarded — nothing was saved.",
+  },
   twofa_prompt: {
     TH: "กรุณาพิมพ์รหัส 6 หลักเพื่อยืนยันตัวตนค่ะ",
     EN: "Please type the 6-digit code to verify your identity.",

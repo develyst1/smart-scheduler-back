@@ -169,8 +169,13 @@ describe("the birthdate is parsed strictly — a wrong date cannot be undone", (
     expect(parseBirthDate("02-04-2018").ok).toBe(false);
   });
 
-  test("a bad format re-asks rather than guessing", () => {
-    expect(FLOW).toContain('if (!parsed.ok) return reply(replyToken, t("add_birthdate_bad", lang))');
+  test("a bad format re-asks rather than guessing — and TASK-245: the re-ask COUNTS", () => {
+    // 🔴 Changed by TASK-245, deliberately. This used to pin a bare `reply`, and that bare `reply` is why rule 5
+    // never fired for the owner: he typed `เมนู` at this step, was told the date was malformed, and the strike
+    // counter never moved — so the second attempt re-asked instead of fetching a person.
+    expect(FLOW).toContain("if (!parsed.ok) return strikeOrPrompt(");
+    expect(FLOW).toContain('t("add_birthdate_bad", lang)');
+    expect(FLOW).not.toMatch(/if \(!parsed\.ok\) return reply\(/);
   });
 });
 

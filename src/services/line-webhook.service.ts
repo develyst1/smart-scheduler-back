@@ -48,6 +48,21 @@ import {
   type StudentDraft,
 } from "../lib/line-add-student";
 import { bindFamilyLine } from "../lib/family-link";
+import {
+  CMD_ADMIN,
+  CMD_CALENDAR,
+  CMD_CHECKIN,
+  CMD_CHILDREN,
+  CMD_COURSES,
+  CMD_LEAVE,
+  CMD_MENU,
+  CMD_QR,
+  CMD_REGISTER,
+  CMD_SCHEDULE,
+  CMD_SKIP,
+  isCancelWord,
+  isReservedWord,
+} from "../lib/line-commands";
 import { claimReplyKey } from "../lib/teacher-link";
 import { requestTeacherLink } from "./teacher-link.service";
 import { calendarUrls } from "../lib/calendar-link";
@@ -76,7 +91,11 @@ import {
 } from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
 
-const SKIP_WORDS = ["ข้าม", "ไม่", "ไม่เพิ่ม", "เสร็จ", "จบ", "skip", "no", "done"];
+// TASK-245 — the router's vocabulary now lives in `lib/line-commands.ts`, because the reserved set and the
+// words the bot advertises MUST be the same list. A second copy is how "the bot said it is a command" and
+// "the bot stored it as a name" both become true at once — which is exactly what happened to the owner.
+const SKIP_WORDS: readonly string[] = CMD_SKIP;
+const inList = (list: readonly string[], word: string) => list.includes(word);
 
 /** Every postback action this handler has a branch for — anything else is logged as UNHANDLED (TASK-045). */
 const KNOWN_POSTBACK_ACTIONS = new Set([
@@ -349,6 +368,16 @@ async function verifyAndLink(
 
 /** Create one student under the linked parent and craft the right reply. */
 /** TASK-233 — park the wizard's draft on the session. Nothing here touches the roster. */
+/**
+ * 🔴 TASK-245 — every question the add-student wizard asks advertises the way out.
+ *
+ * One helper rather than the sentence baked into six i18n strings: *"the flow has an exit"* is a property of
+ * the whole flow, and six copies is how the seventh step ends up without one. It is also why the exit itself
+ * (`isCancelWord`) is checked once at the top of the handler rather than per step — the promise and the
+ * behaviour are each in exactly one place, so they cannot drift apart.
+ */
+const withExit = (question: string, lang: Lang) => `${question}${t("add_exit_hint", lang)}`;
+
 async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
   await db
     .update(lineLinkSessions)
@@ -367,7 +396,9 @@ async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
  */
 async function handleAddStudentStep(
   lineUserId: string,
-  session: { step: string; draft?: Record<string, unknown> | null },
+  // 🔴 `unexpectedCount` is part of the shape now, not cast away at one call site: every rejection below reaches
+  // `strikeOrPrompt`, and a strike counter the handler cannot see is a rule that silently never fires.
+  session: { step: string; draft?: Record<string, unknown> | null; unexpectedCount?: number | null },
   text: string,
   replyToken: string,
   lang: Lang,
@@ -379,9 +410,27 @@ async function handleAddStudentStep(
   }
   const draft: StudentDraft = (session.draft as StudentDraft) ?? {};
 
+  // 🔴 TASK-245 — THE EXIT, checked before any step reads the text as an answer.
+  //
+  // The owner typed `เมนู` to escape and the wizard read it as a birthdate; he finished a registration he did
+  // not want **because there was no way out** — writing a student row that has no delete. The exit is here, at
+  // the top, rather than per-step, so a step added later cannot forget it. `clearSession` deletes the row, and
+  // the draft lives ON that row, so cancelling and "the draft is gone" are the same act rather than two.
+  if (isCancelWord(text)) {
+    await clearSession(lineUserId);
+    return reply(replyToken, `${t("add_cancelled", lang)}\n\n${t("menu_body", lang)}`);
+  }
+
   if (session.step === "AWAIT_STUDENT_NAME" || session.step === "AWAIT_STUDENT_DETAIL") {
     const name = text.trim();
-    if (!name) return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
+    if (!name) return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+    // 🔴 TASK-245 — a word the bot advertises can never become data. `เมนู` was stored as a child's NAME, in a
+    // roster with no delete, by a bot that had just told him `เมนู` was a command. The refusal counts as a
+    // strike like every other rejection: two of them and a person takes over — which is exactly the escape the
+    // owner was reaching for when he typed it the second time.
+    if (isReservedWord(name)) {
+      return strikeOrPrompt(lineUserId, session, replyToken, t("add_name_reserved", lang, { word: name }), lang);
+    }
     // 🔴 The cap, asked at the FIRST step instead of at the write (SA instruction). Walking a parent through
     // three questions and refusing them at the end reads as the system being broken.
     //
@@ -401,25 +450,34 @@ async function handleAddStudentStep(
       const siblings = await listStudentsOfParent(parent.id);
       if (decideDuplicate(siblings.map((s: any) => s.name), name) === "more-detail") {
         await setDraft(lineUserId, "AWAIT_STUDENT_DETAIL", { ...draft, name });
-        return reply(replyToken, t("add_dup_detail", lang));
+        // 🚫 NOT a strike: the parent answered the question correctly and is being asked a further one. Counting
+        // it would hand a two-child family over to a human for having two children.
+        return reply(replyToken, withExit(t("add_dup_detail", lang), lang));
       }
     }
+    await resetStrikes(lineUserId); // a valid answer clears the count (`strikeOrPrompt`).
     await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", { ...draft, name });
-    return reply(replyToken, t("add_birthdate_prompt", lang));
+    return reply(replyToken, withExit(t("add_birthdate_prompt", lang), lang));
   }
 
   if (session.step === "AWAIT_STUDENT_BIRTHDATE") {
     const parsed = parseBirthDate(text);
     // Strict on purpose: a birthdate that silently becomes the wrong date is worse than one nobody entered,
     // and there is no delete to undo it with. A bad format re-asks rather than guessing.
-    if (!parsed.ok) return reply(replyToken, t("add_birthdate_bad", lang));
+    //
+    // 🔴 TASK-245 — through `strikeOrPrompt`, not a bare re-ask. THIS is the branch where rule 5 failed the
+    // owner: he typed `เมนู`, was told the date format was wrong, and the counter never moved — so the second
+    // failure re-asked instead of fetching a person. A rejection IS an unexpected reply.
+    if (!parsed.ok) return strikeOrPrompt(lineUserId, session, replyToken, withExit(t("add_birthdate_bad", lang), lang), lang);
+    await resetStrikes(lineUserId);
     await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
-    return reply(replyToken, t("add_province_prompt", lang));
+    return reply(replyToken, withExit(t("add_province_prompt", lang), lang));
   }
 
   if (session.step === "AWAIT_STUDENT_PROVINCE") {
     const province = isSkip(text) ? null : text.trim() || null;
     const next = { ...draft, province };
+    await resetStrikes(lineUserId);
     await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", next);
     const lines = summaryLines(next, {
       name: t("add_l_name", lang),
@@ -429,13 +487,14 @@ async function handleAddStudentStep(
     });
     return reply(
       replyToken,
-      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${t("add_summary_confirm", lang)}`,
+      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
     );
   }
 
   if (session.step === "AWAIT_STUDENT_CONFIRM") {
     // AC-12 — cancelling here writes nothing, and says so plainly. The parent has just read a summary; the
-    // one thing they must not wonder is whether some of it was saved anyway.
+    // one thing they must not wonder is whether some of it was saved anyway. (`ยกเลิก` itself is already gone
+    // at the top of this function; this keeps the wider vocabulary — `ไม่`, `no` — that AC-12 shipped with.)
     if (isCancel(text)) {
       await clearSession(lineUserId);
       return reply(replyToken, `${t("add_cancelled", lang)}\n\n${t("menu_body", lang)}`);
@@ -443,7 +502,7 @@ async function handleAddStudentStep(
     if (!isConfirm(text)) {
       // An unrecognised answer at the last step is an unrecognised in-flow reply like any other — same
       // two-strikes rule as everywhere else, rather than a bespoke retry loop (TASK-231).
-      return strikeOrPrompt(lineUserId, session as any, replyToken, t("add_summary_confirm", lang), lang);
+      return strikeOrPrompt(lineUserId, session, replyToken, withExit(t("add_summary_confirm", lang), lang), lang);
     }
     try {
       const { student, count } = await createStudentForParent(parent.id, {
@@ -471,7 +530,7 @@ async function handleAddStudentStep(
 
   // Unknown step inside this flow — treat as the start rather than answering unpredictably.
   await setDraft(lineUserId, "AWAIT_STUDENT_NAME", {});
-  return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
+  return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
 }
 
 async function addStudentAndReply(
@@ -772,7 +831,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
   const cmd = raw.toLowerCase();
   const { date } = bangkokNow();
 
-  if (["เมนู", "menu", "help", "ช่วยเหลือ"].includes(cmd)) return doMenu(replyToken, lang);
+  if (inList(CMD_MENU, cmd)) return doMenu(replyToken, lang);
 
   // Add a student — inline ("เพิ่มนักเรียน น้องเอ") or start a name prompt.
   const addMatch = raw.match(/^(?:เพิ่มนักเรียน|เพิ่มลูก|add)\s*(.*)$/i);
@@ -780,23 +839,23 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     const name = (addMatch[1] ?? "").trim();
     if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-    return reply(replyToken, t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }));
+    return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
   }
 
   // TASK-234 / AC-19 — every choice has a typed twin, because LINE on PC cannot tap a rich menu at all.
-  if (["คอร์ส", "คอร์สของฉัน", "courses", "mycourses"].includes(cmd)) {
+  if (inList(CMD_COURSES, cmd)) {
     return doMyCourses(lineUserId, replyToken, lang);
   }
-  if (["แอดมิน", "คุยกับแอดมิน", "admin"].includes(cmd)) {
+  if (inList(CMD_ADMIN, cmd)) {
     return doCallAdmin(lineUserId, replyToken, lang);
   }
-  if (["นักเรียน", "ลูก", "รายชื่อ", "children", "students"].includes(cmd)) {
+  if (inList(CMD_CHILDREN, cmd)) {
     return doChildren(lineUserId, replyToken, lang);
   }
 
-  if (["qr", "คิวอาร์"].includes(cmd)) return doQr(lineUserId, replyToken, date, lang);
+  if (inList(CMD_QR, cmd)) return doQr(lineUserId, replyToken, date, lang);
 
-  if (["เช็คอิน", "checkin", "check-in"].includes(cmd)) return doCheckin(lineUserId, replyToken, date, lang);
+  if (inList(CMD_CHECKIN, cmd)) return doCheckin(lineUserId, replyToken, date, lang);
 
   const checkinMatch = cmd.match(/^เช็คอิน\s*(\d+)$/);
   if (checkinMatch) {
@@ -806,7 +865,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     return doCheckinBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
-  if (["ลา", "แจ้งลา", "sick", "leave"].includes(cmd)) return doLeave(lineUserId, replyToken, date, lang);
+  if (inList(CMD_LEAVE, cmd)) return doLeave(lineUserId, replyToken, date, lang);
 
   const leaveMatch = cmd.match(/^ลา\s*(\d+)$/);
   if (leaveMatch) {
@@ -835,7 +894,7 @@ async function handleMessage(ev: LineWebhookEvent) {
   const lower = text.toLowerCase();
 
   // Registration (re)start — works from any state.
-  if (["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"].includes(lower)) {
+  if (inList(CMD_REGISTER, lower)) {
     await setStep(lineUserId, "CHOOSE_ROLE", null);
     return reply(replyToken, t("role_prompt", lang));
   }
@@ -875,10 +934,10 @@ async function handleMessage(ev: LineWebhookEvent) {
       return handleParentCommand(lineUserId, text, replyToken, lang);
     }
     if (linked === "teacher") {
-      if (["ตาราง", "ตารางสอน", "schedule"].includes(lower)) {
+      if (inList(CMD_SCHEDULE, lower)) {
         return doTeacherSchedule(lineUserId, replyToken, lang, "today"); // keyword fallback (REQ-015 principle)
       }
-      if (["ปฏิทิน", "calendar"].includes(lower)) {
+      if (inList(CMD_CALENDAR, lower)) {
         return doTeacherCalendar(lineUserId, replyToken, lang); // keyword fallback (REQ-017)
       }
       // 🔴 AC-16 — SILENCED FALLBACK #2 (teacher). `ตาราง` / `ปฏิทิน` above still answer: they are recognised
@@ -1046,7 +1105,7 @@ async function handlePostback(ev: LineWebhookEvent) {
       return doMyCourses(lineUserId, replyToken, lang);
     case "register":
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-      return send(replyToken, [textReply(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang)]);
+      return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang), lang)]);
     default: // menu / help / unknown → the menu
       return doMenu(replyToken, lang);
   }

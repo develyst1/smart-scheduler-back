@@ -239,8 +239,8 @@ describe("🔴 AC-13 / AC-14 — the leave flow was WIRED, not rebuilt", () => {
 
 describe("🔴 AC-19 — every choice takes a typed answer too (LINE on PC cannot tap)", () => {
   test("the new buttons have typed twins", () => {
-    expect(SVC).toContain('["คอร์ส", "คอร์สของฉัน", "courses", "mycourses"].includes(cmd)');
-    expect(SVC).toContain('["แอดมิน", "คุยกับแอดมิน", "admin"].includes(cmd)');
+    expect(SVC).toContain("inList(CMD_COURSES, cmd)"); // TASK-245 — one list, shared with the reserved set
+    expect(SVC).toContain("inList(CMD_ADMIN, cmd)");
   });
 
   test("…and they call the SAME handlers the postbacks call", () => {
