@@ -15,6 +15,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { familyLineLinks, parents } from "../db/schema";
+import { unlinkRichMenuFromUser } from "./line-rich-menu";
 
 /**
  * Every LINE account that may act for this family, **primary first**.
@@ -140,6 +141,26 @@ export async function clearFamilyLine(
   // has a transaction (the shape every other writer in this file uses, so a future caller can still fold this
   // into theirs), and **atomic** when nobody supplies one — which is every caller today.
   const result = exec ? await run(exec) : await db.transaction(run);
+
+  // 🔴 TASK-249 (C-13) — the phone must stop showing the buttons of an account this family no longer has.
+  //
+  // The menu link is PER USER and nothing in this repo ever removed one, so a cleared family kept **menu B**
+  // (แจ้งลา · เช็คอิน · คอร์สของฉัน) on a chat we had just unbound. Removing the link drops that chat to the
+  // account default — ยังไม่รู้จัก: the fallback `line-rich-menu.ts` has always described and never had a caller
+  // for.
+  //
+  // EVERY account the family held, not just the primary: a family can hold several since TASK-230, and clearing
+  // one phone while another keeps the menu is the same half-state the transaction above exists to prevent.
+  // ⚠️ AFTER the commit, never inside it — this is a network call, so a LINE hiccup must not roll back an
+  // admin's database act, and a clear the database refused must not reach a phone.
+  await Promise.all(
+    result.cleared.map((lineUserId) =>
+      unlinkRichMenuFromUser(lineUserId).catch((e) =>
+        console.error(`[family-link] menu unlink failed for ${lineUserId} (the DB link IS cleared):`, e),
+      ),
+    ),
+  );
+
   // Logged AFTER the write commits, so the trail can never claim something the database refused. (TASK-244 makes
   // this durable; until then it is a log line, and its limits are recorded in TASK-243 §Questions.)
   console.info(

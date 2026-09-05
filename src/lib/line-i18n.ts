@@ -77,8 +77,12 @@ const TABLE: Record<string, Entry> = {
     TH: "แจ้งแอดมินให้แล้วนะคะ รอสักครู่ เดี๋ยวมีเจ้าหน้าที่มาคุยด้วยค่ะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
     EN: "I have told an admin — someone will reply here shortly. 🙏\n(To use the bot again, type: reopen)",
   },
-  // เข้าใช้ระบบ on the unknown menu. Flow 2 is deleted (§15), so this points at a person, not a code prompt.
-  enter_ask_admin: {
+  // เข้าใช้ระบบ on the unknown menu. Flow 2 is deleted (§15) and amendment #2 made the entry the PHONE ALONE,
+  // so this asks for the phone — and points at a person only for someone who has never registered.
+  // 🔴 TASK-248/DEF-9: renamed from `enter_ask_admin`. The old name read as *"tell them to ask an admin"* while
+  // the text asked for a phone, and **that mismatch is the likeliest reason nobody wired the step behind it**:
+  // the handler did what the KEY said and only replied. A key that argues with its own copy is a defect waiting.
+  enter_ask_phone: {
     TH: "กรุณาพิมพ์เบอร์โทรที่ลงทะเบียนไว้ค่ะ หากยังไม่เคยลงทะเบียน กรุณาติดต่อแอดมิน",
     EN: "Please type your registered phone number. If you have never registered, please contact an admin.",
   },

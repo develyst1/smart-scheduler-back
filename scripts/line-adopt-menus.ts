@@ -11,21 +11,32 @@
 //   bun run line:adopt-menus
 // Re-runnable: storing the same ids again is a harmless no-op change.
 import {
+  KNOWN_RICH_MENU,
   PARENT_RICH_MENU,
   PARENT_RICH_MENU_EN,
   TEACHER_RICH_MENU,
   TEACHER_RICH_MENU_EN,
+  UNKNOWN_RICH_MENU,
   listRichMenus,
   storeMenuIds,
   type MenuIds,
 } from "../src/lib/line-rich-menu";
 
-/** Canonical menu name → the `MenuIds` key, taken from the defs `publishRichMenus` creates. */
+/**
+ * Canonical menu name → the `MenuIds` key, taken from the defs `publishRichMenus` creates.
+ *
+ * 🔴 TASK-249 §4 — the two REQ-079 menus joined this map **after** the owner published them (2026-09-05), and
+ * the order mattered: `selectMenuIds` computes `missing` over EVERY key here and the script aborts on any gap
+ * (*"Nothing was stored"*). Adding them earlier would have broken `line:adopt-menus` on every OA that had not
+ * been re-published yet. **Safe now; it was not in TASK-247.**
+ */
 export const NAME_TO_KEY: Record<string, keyof MenuIds> = {
   [PARENT_RICH_MENU.name]: "parentTH",
   [PARENT_RICH_MENU_EN.name]: "parentEN",
   [TEACHER_RICH_MENU.name]: "teacherTH",
   [TEACHER_RICH_MENU_EN.name]: "teacherEN",
+  [UNKNOWN_RICH_MENU.name]: "unknownTH",
+  [KNOWN_RICH_MENU.name]: "knownTH",
 };
 
 /** Pure name→id selection (no IO). `missing` lists the canonical names the OA has none of, so a gap is
@@ -66,6 +77,8 @@ async function main() {
   console.log(`  parent-EN : ${ids.parentEN}`);
   console.log(`  teacher-TH: ${ids.teacherTH}`);
   console.log(`  teacher-EN: ${ids.teacherEN}`);
+  console.log(`  unknown-TH: ${ids.unknownTH}`);
+  console.log(`  known-TH  : ${ids.knownTH}`);
   console.log("No menu was created, linked, deleted, or made default. Verify with `bun run line:inspect-menus`.");
   process.exit(0);
 }

@@ -17,7 +17,7 @@ import {
   type ClaimOutcome,
 } from "../lib/teacher-link";
 import { moveRosterLink } from "../lib/roster-link";
-import { linkRoleRichMenu } from "../lib/line-rich-menu";
+import { linkRoleRichMenu, unlinkRichMenuFromUser } from "../lib/line-rich-menu";
 import { enqueueLine } from "../lib/line";
 import { t, type Lang } from "../lib/line-i18n";
 
@@ -178,11 +178,23 @@ export async function rejectTeacherLinkRequest(id: string, decidedBy?: string) {
  * no way to stop it. Reversible by design — they can claim again, which queues a normal request.
  */
 export async function unlinkTeacherLine(teacherId: string) {
+  // 🔴 TASK-249 — the SECOND DB link-clear (the grep @Sober asked for). Same defect as C-13, other role: a
+  // departed teacher kept `ตารางของฉัน` on their phone, the buttons of an account they no longer have.
+  // ⚠️ Read the account BEFORE the write — `returning()` hands back the row as it now IS, and by then the id
+  // needed to unlink the menu is already `null`.
+  const before = await db.query.teachers.findFirst({ where: (t2, { eq: e }) => e(t2.id, teacherId) });
   const [row] = await db
     .update(teachers)
     .set({ lineUserId: null })
     .where(eq(teachers.id, teacherId))
     .returning();
   if (!row) throw notFound("ไม่พบครู");
+  // Best-effort, and after the write: an unreachable Messaging API must not fail an unlink the database has
+  // already made true.
+  if (before?.lineUserId) {
+    await unlinkRichMenuFromUser(before.lineUserId).catch((e) =>
+      console.error(`[teacher-link] menu unlink failed for ${before.lineUserId} (the DB link IS cleared):`, e),
+    );
+  }
   return { ok: true as const, teacherId };
 }

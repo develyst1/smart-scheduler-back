@@ -171,6 +171,25 @@ export async function setDefaultRichMenu(richMenuId: string): Promise<void> {
   if (!res.ok) throw new Error(`setDefaultRichMenu ${res.status}`);
 }
 
+/**
+ * 🔴 TASK-249 (C-13) — remove a chat's PER-USER menu link, so it falls back to the account default.
+ *
+ * The note above `linkKnownRichMenu` has always said *"a chat whose per-user link is ever removed falls back to
+ * ยังไม่รู้จัก"*. **That was true and its premise never happened**: every menu call in this repo was a link, so
+ * after an admin cleared a family's LINE binding the parent's phone still showed **menu B — the buttons of an
+ * account they no longer have.** This is the caller the comment was describing.
+ *
+ * ⚠️ Deliberately NOT best-effort in itself — it throws like its siblings — but **every caller treats it as
+ * best-effort**: a Messaging-API hiccup must never fail an admin's clear-link, which is a database act.
+ */
+export async function unlinkRichMenuFromUser(userId: string): Promise<void> {
+  const res = await fetch(`${API}/user/${userId}/richmenu`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok) throw new Error(`unlinkRichMenuFromUser ${res.status}`);
+}
+
 /** Link a menu to one user (used to give a teacher the teacher menu on account-link). */
 export async function linkRichMenuToUser(userId: string, richMenuId: string): Promise<void> {
   const res = await fetch(`${API}/user/${userId}/richmenu/${richMenuId}`, {

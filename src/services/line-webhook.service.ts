@@ -1168,7 +1168,24 @@ async function handlePostback(ev: LineWebhookEvent) {
   if (action === "admin") return doCallAdmin(lineUserId, replyToken, lang);
   // `เข้าใช้ระบบ` on the unknown menu. Flow 2 is deleted (§15), so this points at the phone — and at a person
   // if they have never registered — rather than at the retired code prompt.
-  if (action === "enter") return send(replyToken, [textReply(t("enter_ask_admin", lang), lang)]);
+  //
+  // 🔴 DEF-9 / TASK-248 — it used to REPLY AND RETURN. The parent typed the phone the bot had just asked for,
+  // it arrived with no session step, fell past every flow branch, and was handled as idle chat: **silence.**
+  // The bot asked a question nothing was listening for.
+  //
+  // 🚫 No new step and no second phone flow: `AWAIT_CODE` + `pendingRole = "customer"` **already is** *"type
+  // your phone and get linked"* — `verifyAndLink` below runs it, strikes on failure (AC-18), links the account
+  // and the known menu. A parallel path would be a second place for the same rules to drift.
+  //
+  // 📌 It presumes **customer** (SA's call, TASK-248 §3). A teacher who taps it and types a nickname fails into
+  // the AC-18 handover — which is exactly what this button's own copy promises. Asking a stranger *"parent or
+  // teacher?"* as the very first question is the friction REQ-079 removed.
+  // ⚠️ The step is set AFTER `unmute()` above, which since TASK-246 clears any in-flight flow. Reversed, the
+  // un-mute would erase the step this line just wrote — the same ordering trap `สมัคร` has. Move them together.
+  if (action === "enter") {
+    await setStep(lineUserId, "AWAIT_CODE", "customer");
+    return send(replyToken, [textReply(t("enter_ask_phone", lang), lang)]);
+  }
 
   // Language toggle — flip, re-link the matching-language menu, confirm in the NEW language.
   if (action === "lang") {

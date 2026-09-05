@@ -69,11 +69,18 @@ describe("the two menu sets — unknown is the DEFAULT, known is the per-user li
     ]);
   });
 
-  test("🔑 there is NO unlink — 'unknown' is where a chat lands, not a state anyone must set", () => {
+  test("🔑 nothing LINKS a chat to unknown — it is where a chat lands, not a state anyone must set", () => {
     // That is the whole reason unknown is the default: a brand-new follower gets the right menu with no code
     // running at all, and a removed link falls back correctly by itself.
+    //
+    // 🔴 TASK-249 changed one half of this deliberately. It used to read `not.toContain("unlinkRichMenu")` —
+    // and **that absence was the C-13 defect**: the fallback above says *"a removed link falls back"*, and
+    // nothing ever removed one, so a cleared family kept the family menu on their phone. Removing a link and
+    // linking a chat TO unknown are different acts: the first is the fallback's caller, the second would be a
+    // second definition of the state. The first now exists; the second still must not.
     expect(MENU).toContain("export async function linkKnownRichMenu");
-    expect(code(MENU)).not.toContain("unlinkRichMenu");
+    expect(MENU).toContain("export async function unlinkRichMenuFromUser");
+    expect(code(MENU)).not.toContain("linkUnknownRichMenu");
   });
 
   test("a bound family chat gets the known menu", () => {
@@ -267,9 +274,13 @@ describe("🔴 AC-21 — unchanged for teachers and for anyone not in a bound ch
 
   test("`เข้าใช้ระบบ` points at the phone and at a person — NOT the retired code prompt", () => {
     // Flow 2 was deleted in §15; a button that reopened it would resurrect a mechanism the owner removed.
-    expect(SVC).toContain('t("enter_ask_admin", lang)');
-    expect(t("enter_ask_admin", "TH")).toContain("เบอร์โทร");
-    expect(t("enter_ask_admin", "TH")).toContain("แอดมิน");
+    //
+    // 🔴 These three lines are the ones DEF-9 slipped through: they assert the WORDS and never asked whether
+    // anything receives the phone the words ask for. They stay (the copy still matters) but they are **not the
+    // coverage** — `line-enter-button.test.ts` owns the behaviour. Renamed key: TASK-248.
+    expect(SVC).toContain('t("enter_ask_phone", lang)');
+    expect(t("enter_ask_phone", "TH")).toContain("เบอร์โทร");
+    expect(t("enter_ask_phone", "TH")).toContain("แอดมิน");
   });
 
   test("a suspended household is still refused every postback", () => {
