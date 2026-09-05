@@ -6,6 +6,7 @@
 // (runtime — verify on the real OA). Re-publish with `publishRichMenus({ parentImagePath, teacherImagePath })`
 // after supplying two menu images (2500×1686 parent, 2500×843 teacher); it stores the ids in app_settings and
 // sets the parent menu as the default. Teachers get the teacher menu linked on account-link.
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings } from "../db/schema";
 import type { Lang } from "./line-i18n";
@@ -162,6 +163,58 @@ export async function uploadRichMenuImage(richMenuId: string, imagePath: string)
   if (!res.ok) throw new Error(`uploadRichMenuImage ${res.status}: ${await res.text().catch(() => "")}`);
 }
 
+/**
+ * TASK-250 — delete ONE rich menu by id. `DELETE /v2/bot/richmenu/{id}`.
+ *
+ * 🔑 **A 404 is success, not failure**: the end state is what matters, and a removal that refuses to finish
+ * because something was already gone is worse than either end state. Returns which of the two it was, so the
+ * tool can report *"already absent"* honestly instead of claiming a deletion it did not perform.
+ *
+ * ⚠️ I could not confirm from the docs, without calling the API, that a missing id is always `404` (it may be
+ * `400` for a malformed id). **Both are handled and reported distinctly** rather than guessed at in silence.
+ */
+export async function deleteRichMenu(richMenuId: string): Promise<"deleted" | "already-gone"> {
+  const res = await fetch(`${API}/richmenu/${richMenuId}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (res.ok) return "deleted";
+  if (res.status === 404) return "already-gone";
+  throw new Error(`deleteRichMenu ${res.status}: ${await res.text().catch(() => "")}`);
+}
+
+/**
+ * TASK-250 — cancel the channel-wide default. `DELETE /v2/bot/user/all/richmenu`.
+ *
+ * After this, a follower with no per-user link sees NO menu at all. That is a product state, not a clean slate,
+ * which is why the tool that calls this says so in words.
+ */
+export async function clearDefaultRichMenu(): Promise<void> {
+  const res = await fetch(`${API}/user/all/richmenu`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`clearDefaultRichMenu ${res.status}`);
+}
+
+/**
+ * TASK-250 — WHICH account this token points at. `GET /v2/bot/info`.
+ *
+ * 🔴 The token now decides whether a destructive command is about the demo OA or **the customer's**. A tool
+ * whose purpose is review must not hide the one fact that makes the review meaningful. Best-effort: an
+ * unreadable identity is reported as unknown rather than blocking a read-only dry run.
+ */
+export async function getBotAccountLabel(): Promise<string> {
+  try {
+    const res = await fetch(`${API}/info`, { headers: { authorization: `Bearer ${token()}` } });
+    if (!res.ok) return `unknown (GET /info → ${res.status})`;
+    const b = (await res.json()) as { displayName?: string; basicId?: string; userId?: string };
+    return `${b.displayName ?? "?"} (${b.basicId ?? "?"}) userId=${b.userId ?? "?"}`;
+  } catch (e) {
+    return `unknown (${(e as Error).message})`;
+  }
+}
+
 /** Set the default menu shown to every follower (used for the parent menu). */
 export async function setDefaultRichMenu(richMenuId: string): Promise<void> {
   const res = await fetch(`${API}/user/all/richmenu/${richMenuId}`, {
@@ -236,6 +289,31 @@ export function mergeMenuIds(current: MenuIds, incoming: MenuIds): MenuIds {
     if (value !== undefined) merged[key as keyof MenuIds] = value as string;
   }
   return merged;
+}
+
+/**
+ * 🔴 TASK-250 — the ONLY way to REMOVE stored ids, and it deliberately does not go through `storeMenuIds`.
+ *
+ * ⚠️ **`storeMenuIds({})` is a no-op.** TASK-247 made it merge — for a good reason, so a partial publish cannot
+ * erase an id it did not create — and the exact consequence is that *"clear the ids"* written the obvious way
+ * would report success and change nothing. A removal tool that leaves the DB pointing at deleted menus is the
+ * worst of the three possible outcomes, so the clear is its own function with its own write.
+ *
+ * `keep` exists because §4's last line matters: **clear only what was actually deleted.** An id whose delete
+ * failed must survive — otherwise the surviving menu is stranded with nothing pointing at it and the next run
+ * cannot finish the job.
+ */
+export async function clearMenuIds(keep: MenuIds = {}): Promise<void> {
+  const remaining = Object.entries(keep).filter(([, v]) => !!v);
+  if (!remaining.length) {
+    await db.delete(appSettings).where(eq(appSettings.key, MENU_IDS_KEY));
+    return;
+  }
+  // Written UNMERGED, on purpose: this is the one write whose job is to make ids disappear.
+  await db
+    .insert(appSettings)
+    .values({ key: MENU_IDS_KEY, value: Object.fromEntries(remaining) })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value: Object.fromEntries(remaining) } });
 }
 
 export async function storeMenuIds(ids: MenuIds): Promise<void> {
