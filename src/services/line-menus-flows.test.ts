@@ -55,12 +55,16 @@ describe("the two menu sets — unknown is the DEFAULT, known is the per-user li
     expect(UNKNOWN_RICH_MENU.selected).toBe(true);
   });
 
-  test("known = แจ้งลา · เช็คอิน · คอร์สของฉัน · เพิ่มนักเรียน · คุยกับแอดมิน", () => {
+  test("known = แจ้งลา · เช็คอิน · คอร์สของฉัน / เพิ่มนักเรียน · ภาษา-ช่วยเหลือ · คุยกับแอดมิน", () => {
+    // 🔴 SIX cells since TASK-247, not five: REQ-079's later table (*"`ภาษา` and `ช่วยเหลือ` STAY"*) wins over
+    // §12's 3+2 sketch, so `action=lang` takes the middle of the bottom row and `คุยกับแอดมิน` narrows to the
+    // corner it already sat in. REQ-079 calls the corner non-negotiable; the width was always incidental.
     expect(actions(KNOWN_RICH_MENU)).toEqual([
       "action=leave",
       "action=checkin",
       "action=mycourses",
       "action=register",
+      "action=lang",
       "action=admin",
     ]);
   });

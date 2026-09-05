@@ -84,7 +84,14 @@ export const UNKNOWN_RICH_MENU: RichMenuDef = {
   ],
 };
 
-/** Known (bound) chat: the four things a family does, plus the way to a human. */
+/**
+ * Known (bound) chat: the four things a family does, the language/help pair, and the way to a human.
+ *
+ * 🔴 TASK-247 — **six cells, not five.** REQ-079's later table (*"`ภาษา` and `ช่วยเหลือ` STAY"*) wins over §12's
+ * 3+2 sketch: `action=lang` takes the middle of the bottom row and `คุยกับแอดมิน` narrows to the third-width
+ * corner. **The corner is the non-negotiable half; the width was always incidental** — a parent looks for the
+ * way to a person in the same place on both menus.
+ */
 const KW = Math.floor(W / 3);
 export const KNOWN_RICH_MENU: RichMenuDef = {
   size: { width: W, height: H },
@@ -96,7 +103,8 @@ export const KNOWN_RICH_MENU: RichMenuDef = {
     cell(KW, 0, KW, CH, "action=checkin"),
     cell(KW * 2, 0, W - KW * 2, CH, "action=mycourses"),
     cell(0, CH, KW, CH, "action=register"),
-    cell(KW, CH, W - KW, CH, "action=admin"),
+    cell(KW, CH, KW, CH, "action=lang"),
+    cell(KW * 2, CH, W - KW * 2, CH, "action=admin"),
   ],
 };
 
@@ -193,21 +201,55 @@ export async function getMenuIds(): Promise<MenuIds> {
   return v && typeof v === "object" ? (v as MenuIds) : {};
 }
 
-/** Upsert the four ids into app_settings (the only write both publish and adopt (TASK-130) need). */
-export async function storeMenuIds(ids: MenuIds): Promise<void> {
-  await db
-    .insert(appSettings)
-    .values({ key: MENU_IDS_KEY, value: ids })
-    .onConflictDoUpdate({ target: appSettings.key, set: { value: ids } });
+/**
+ * Upsert menu ids into app_settings (the only write both publish and adopt (TASK-130) need).
+ *
+ * 🔴 TASK-247 — it **MERGES**. It used to write the whole object, so a partial or repeated publish silently
+ * dropped every id it did not create itself: `adopt` (which knows only the four REQ-015 names) would erase the
+ * two REQ-079 ids, and vice versa. Same class as every whole-row overwrite this repo has removed.
+ *
+ * ⚠️ Every field of `MenuIds` is optional, so a naive spread still clobbers — `{ knownTH: undefined }` overwrites
+ * a stored id with nothing. **Absent keys are omitted, not written as `undefined`.**
+ */
+export function mergeMenuIds(current: MenuIds, incoming: MenuIds): MenuIds {
+  const merged: MenuIds = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value !== undefined) merged[key as keyof MenuIds] = value as string;
+  }
+  return merged;
 }
 
-/** One-shot (re)publish: create all four menus (parent/teacher × TH/EN), upload images, store the ids,
- *  set the Thai parent menu as the default. Supply four 2500-wide images (parent 2500×1686, teacher 2500×843). */
+export async function storeMenuIds(ids: MenuIds): Promise<void> {
+  const merged = mergeMenuIds(await getMenuIds(), ids);
+  await db
+    .insert(appSettings)
+    .values({ key: MENU_IDS_KEY, value: merged })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value: merged } });
+}
+
+/**
+ * One-shot (re)publish: create the **six** menus, upload their images, store the ids, and make the
+ * **ยังไม่รู้จัก** menu the account default.
+ *
+ * 🔴 TASK-247 — this function is why REQ-079's menus never reached a phone. It created only the four REQ-015
+ * menus, so `UNKNOWN_RICH_MENU` / `KNOWN_RICH_MENU` **were never created on the channel at all**;
+ * `linkKnownRichMenu` then found no `knownTH`, and — best-effort by design — did nothing, silently. Supplying
+ * artwork alone would have changed nothing and the run would still have reported success.
+ *
+ * 🔑 And the default is now `unknownTH`. The file's own note says *"ยังไม่รู้จัก is the DEFAULT … a brand-new
+ * follower gets the right menu with no code running at all"* — but the only call that sets an account default
+ * pointed at the old parent menu. **The design and the code disagreed, and the code is what runs.**
+ *
+ * ⚠️ TH only, deliberately (SA's call): `*_EN` menus are created only when their images exist. **A stored id
+ * with no uploaded image renders BLANK on a phone**, which is worse than falling back to the default.
+ */
 export async function publishRichMenus(opts: {
   parentThImage: string;
   parentEnImage: string;
   teacherThImage: string;
   teacherEnImage: string;
+  unknownThImage: string;
+  knownThImage: string;
 }): Promise<MenuIds> {
   const parentTH = await createRichMenu(PARENT_RICH_MENU);
   await uploadRichMenuImage(parentTH, opts.parentThImage);
@@ -217,9 +259,16 @@ export async function publishRichMenus(opts: {
   await uploadRichMenuImage(teacherTH, opts.teacherThImage);
   const teacherEN = await createRichMenu(TEACHER_RICH_MENU_EN);
   await uploadRichMenuImage(teacherEN, opts.teacherEnImage);
-  const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN };
+  // SPEC-071 / REQ-079 — the two menus the runtime has been reading for and never finding.
+  const unknownTH = await createRichMenu(UNKNOWN_RICH_MENU);
+  await uploadRichMenuImage(unknownTH, opts.unknownThImage);
+  const knownTH = await createRichMenu(KNOWN_RICH_MENU);
+  await uploadRichMenuImage(knownTH, opts.knownThImage);
+  const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN, unknownTH, knownTH };
   await storeMenuIds(ids);
-  await setDefaultRichMenu(parentTH); // TH parent menu is the default; EN/teacher menus link per user
+  // 🔴 The default is the UNKNOWN menu — the state a chat lands in with no code running. The known menu is the
+  // per-user link (`linkKnownRichMenu`), and there is deliberately no unlink: removing the link falls back here.
+  await setDefaultRichMenu(unknownTH);
   return ids;
 }
 

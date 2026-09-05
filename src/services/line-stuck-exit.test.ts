@@ -255,10 +255,12 @@ describe("✅ Face 2 — the bot is silent, but a PERSON is reachable", () => {
     expect(fn("function doMenu")).toContain('t("menu_body", lang)');
   });
 
-  test("🚫 SCOPE — no rich-menu cell was added; this needs no new image", () => {
-    // @Porter's line, and it is firm: a `คุยกับแอดมิน` cell means an image the owner has not asked for. The
-    // menus keep exactly the cells TASK-234 shipped.
+  test("🚫 SCOPE — TASK-245 added no rich-menu cell; this needed no new image", () => {
+    // @Porter's line for TASK-245, and it was firm: a cell means an image the owner has not asked for, so Face 2
+    // went into the command list instead.
+    // 📌 The known menu is SIX cells as of TASK-247 — the task that was given the artwork and asked for it. The
+    // point of this guard is unchanged: the menus change only in the task that owns them, never as a side effect.
     expect(UNKNOWN_RICH_MENU.areas).toHaveLength(2);
-    expect(KNOWN_RICH_MENU.areas).toHaveLength(5);
+    expect(KNOWN_RICH_MENU.areas).toHaveLength(6);
   });
 });
