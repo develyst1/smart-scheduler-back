@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { readSrc } from "../lib/read-src";
 import { formatOutboxMessage } from "../lib/line-message";
 import { renderSchedule } from "../lib/line-schedule";
+import { renderTodaySchedule } from "../lib/line-today-schedule";
 import { groupReminders, type ReminderSession } from "../lib/daily-reminder";
 
 const SVC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
@@ -161,7 +162,9 @@ describe("🔴 AC-16 — EVERY assigned teacher, on the schedule and in the conf
     const groups = groupReminders([s({ id: "b1", additionalTeachers: [{ id: "t2", lineUserId: "Ut2" }] })]);
     for (const g of groups.filter((x) => x.recipientType === "teacher")) {
       expect(g.rows[0]!.studentName).toBe("ประชุมทีม");
-      expect(renderSchedule(g.rows, "TH", "today")).toContain("ประชุมทีม");
+      // ⚠️ TASK-256 re-cut the reminder BODY to REQ-077 Parent 2, so this renders through the composer that now
+      // writes it. The property under test is unchanged: an อื่นๆ session reads as the typed title.
+      expect(renderTodaySchedule(g.rows, "TH", "teacher")).toContain("ประชุมทีม");
     }
   });
 

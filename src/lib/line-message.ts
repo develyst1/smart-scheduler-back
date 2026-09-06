@@ -4,7 +4,16 @@
 
 import { t, type Lang } from "./line-i18n";
 import { buildDigestMessage } from "./attention";
-import { renderSchedule, type SchedRow } from "./line-schedule";
+import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
+import {
+  notifyTypeOf,
+  programLabel,
+  renderFieldBlock,
+  type Audience,
+  type FieldKey,
+  type NotifyType,
+  type TemplateKey,
+} from "./line-message-fields";
 
 export interface OutboxPayload {
   kind?: string;
@@ -24,11 +33,28 @@ export interface MessageContext {
    * lesson types, which is exactly why nothing about their messages changes.
    */
   title?: string;
+  /**
+   * SPEC-072 / TASK-253 (REQ-077) — every assigned teacher, joined into ONE `Coach` field. `teacherNickname`
+   * above stays the primary alone: it feeds the shipped `sick_leave` wording, which names the teacher of the
+   * class and must not change.
+   */
+  coach?: string;
 }
 
 const line = (label: string, value?: string) => (value ? `${label}: ${value}\n` : "");
 
-export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext = {}, lang: Lang = "TH"): string {
+/**
+ * @param recipientType WHO is reading this. The outbox row has always carried it and the worker simply never
+ * forwarded it, which is why *"the teacher's copy loses the family's private lines"* could not be expressed.
+ * Defaults to `parent` — the fuller message — so a caller that has not been updated cannot silently strip
+ * lines from someone entitled to them.
+ */
+export function formatOutboxMessage(
+  payload: OutboxPayload,
+  ctx: MessageContext = {},
+  lang: Lang = "TH",
+  recipientType: Audience = "parent",
+): string {
   switch (payload?.kind) {
     case "booking_confirmed": {
       const when =
@@ -63,11 +89,15 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
     }
     // SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push.
     //
-    // 🔴 It calls `renderSchedule` — **the owner-verified `ตารางวันนี้` composer** — rather than formatting a
-    // second version of the same list here. The owner has already read that layout on a phone; a second format
-    // would be a second thing to get wrong and a second thing to re-verify.
+    // 🔴 SPEC-072 / TASK-256 — re-cut to REQ-077 Parent 2 (@Porter's Decision 6): the customer's own block, once
+    // per class, under a header carrying whatever is genuinely constant. One class renders EXACTLY as their
+    // template, which is the common case.
+    //
+    // 🚫 `renderSchedule` — the owner-verified `ตารางวันนี้` composer — is deliberately NOT deleted: it still
+    // serves the teacher's `ตาราง` command, and it is the fallback if the customer prefers what they have been
+    // reading for weeks. This change is in @Porter's review batch with the other five decisions.
     case "daily_reminder":
-      return renderSchedule((payload.rows as SchedRow[]) ?? [], lang, "today");
+      return renderTodaySchedule((payload.rows as TodayRow[]) ?? [], lang, recipientType);
     // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
     //
     // 🔴 Everything it needs is IN THE PAYLOAD, not enriched from a booking. A course summary is not a fact
@@ -83,16 +113,68 @@ export function formatOutboxMessage(payload: OutboxPayload, ctx: MessageContext 
       const plannedDates = Array.isArray(payload.plannedLeaveDates)
         ? (payload.plannedLeaveDates as string[])
         : [];
+      // SPEC-072 / TASK-253 — REQ-077 Parent 1 · `CONFIRMED SCHEDULE`, and the teacher's copy of it.
+      //
+      // 🔑 ONE payload, TWO renderings. Everything below comes from the same object the parent's row and the
+      // teacher's row share; `recipientType` only decides which of those facts are printed. A second payload —
+      // or a `teacher_course_confirmed` kind — would re-create the exact failure the payload's own comment
+      // prevents: the parent and the coach reading a different schedule.
+      const type = notifyTypeOf((payload.bookingType as string) ?? "COURSE_PACKAGE");
       return (
         t("ob_course_title", lang) + "\n" +
-        line(t("ob_l_student", lang), payload.studentName as string) +
-        line(t("ob_l_subject", lang), payload.subject as string) +
-        line(t("ob_l_start", lang), payload.startDate as string) +
-        line(t("ob_l_schedule", lang), schedule) +
+        renderFieldBlock(
+          "confirmed_schedule",
+          {
+            student: (payload.studentName as string) || undefined,
+            program: programLabel(type, {
+              subject: payload.subject as string,
+              size: payload.size as number,
+              title: payload.title as string,
+            }),
+            date: schedule,
+            time: (payload.startTime as string) || undefined,
+            start: (payload.startDate as string) || undefined,
+            coach: (payload.coach as string) || undefined,
+            expiry: (payload.expiryDate as string) || undefined,
+            // 🔴 Resolved to `ไม่มี` HERE, before the block sees it, precisely so the omit-empty rule cannot
+            // swallow it: a parent reading this to check whether their leave was recorded must be answered,
+            // and an absent line does not answer.
+            advanceLeave: plannedDates.length ? plannedDates.join(", ") : t("ob_f_none", lang),
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        // 📌 KEPT below the customer's block, deliberately, and one line each to delete if their template is
+        // meant to be exhaustive: the confirmed COUNT is what this message exists to announce, and the note is
+        // TASK-219's fix — a note typed at booking ("แพ้ถั่ว") reaching the one message a teacher reads.
+        // Dropping either would be a regression the templates never asked for. Flagged in the TASK.
         line(t("ob_l_sessions", lang), String(payload.confirmed ?? 0)) +
-        // Only when there IS one — an empty "leave" line reads as a problem to a teacher scanning the message.
-        (plannedDates.length ? line(t("ob_l_planned_leave", lang), plannedDates.join(", ")) : "") +
         line(t("ob_l_note", lang), (payload.note as string) || undefined)
+      ).trimEnd();
+    }
+    // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.
+    //
+    // 🔴 `Remaining` is the balance AFTER the deduction; it arrives already rendered (`2 HR` · `4/6 ครั้ง`)
+    // from the write that caused this message, never recomputed here. The money facts are in the payload; the
+    // student, program, date, time and coach are enriched from the booking this row points at — the same facts
+    // every other booking-based message reads.
+    case "course_deduction": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      const when = ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
+      return (
+        t("ob_deduct_title", lang) + "\n" +
+        renderFieldBlock(
+          "course_deduction",
+          {
+            student: ctx.studentName,
+            program: programLabel(type, { subject: ctx.subject, size: payload.total as number, title: ctx.title }),
+            date: ctx.date,
+            time: when,
+            coach: ctx.coach ?? ctx.teacherNickname,
+            remaining: (payload.remaining as string) || undefined,
+            expiry: (payload.expiryDate as string) || undefined,
+          },
+          { type, audience: recipientType, lang },
+        )
       ).trimEnd();
     }
     case "reschedule_requested": {

@@ -41,6 +41,7 @@ import {
   teacherWorksOnDay,
 } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
+import { notifyCourseDeduction } from "../lib/course-deduction";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -2508,17 +2509,38 @@ export async function updateBookingStatus(
       if (current.status !== "ATTENDED") {
         await tx.update(bookings).set({ status: "ATTENDED" }).where(eq(bookings.id, id));
         if (current.courseId && current.course) {
+          const used = current.course.usedSessions + 1;
           await tx
             .update(coursePackages)
-            .set({ usedSessions: current.course.usedSessions + 1 })
+            .set({ usedSessions: used })
             .where(eq(coursePackages.id, current.courseId));
+          // 🔴 TASK-254 — deduction site 1 of 2 (the manual one). The message is enqueued INSIDE this `if`,
+          // so it is tied to the write that caused it: a second "attend" on an already-ATTENDED booking
+          // deducts nothing and therefore announces nothing. `used` is the post-value, exact by construction.
+          await notifyCourseDeduction(tx, {
+            bookingId: id,
+            studentId: current.studentId,
+            kind: "course",
+            used,
+            total: current.course.size,
+            expiryDate: current.course.expiryDate ?? null,
+          });
         }
         // Voucher hour deduction on real attendance (B.5).
         if (current.voucherId && current.voucher) {
+          const used = current.voucher.usedHours + 1;
           await tx
             .update(vouchers)
-            .set({ usedHours: current.voucher.usedHours + 1 })
+            .set({ usedHours: used })
             .where(eq(vouchers.id, current.voucherId));
+          await notifyCourseDeduction(tx, {
+            bookingId: id,
+            studentId: current.studentId,
+            kind: "voucher",
+            used,
+            total: current.voucher.totalHours,
+            expiryDate: current.voucher.expiryDate ?? null,
+          });
         }
       }
     } else if (action === "cancel") {
@@ -3311,6 +3333,16 @@ export async function confirmCourse(id: string) {
       courseId: id,
       studentName: student?.nickname ?? student?.name ?? null,
       subject: rows[0]?.subject?.name ?? null,
+      // SPEC-072 / TASK-253 (REQ-077) — the facts the CONFIRMED SCHEDULE template needs, added to the ONE
+      // payload both people receive. 🚫 Not a second payload, and not a second read in the worker: they are
+      // known here, inside the transaction that confirmed the course, and a course summary is not a fact about
+      // any one session — which is why this row deliberately carries no `bookingId` to enrich from.
+      bookingType: "COURSE_PACKAGE",
+      size: course.size,
+      expiryDate: course.expiryDate,
+      // `Coach`: one teacher for a course. The multi-teacher case (REQ-078) is อื่นๆ, which is never a course;
+      // the booking-based templates read theirs from `ctx.coach`, joined by the worker from the one accessor.
+      coach: teacher?.nickname ?? null,
       startDate: course.startDate,
       weekday: course.weekday,
       startTime: hhmm(course.startTime),

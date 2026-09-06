@@ -11,6 +11,7 @@ import { db } from "../db";
 import { notificationOutbox } from "../db/schema";
 import { hhmm } from "../lib/time";
 import { formatOutboxMessage, type MessageContext } from "../lib/line-message";
+import { joinCoaches } from "../lib/coach-names";
 import { LinePushError, lineConfigured, pushMessage } from "../lib/line-client";
 import { resolveBotLang } from "../lib/line-lang";
 
@@ -21,7 +22,9 @@ async function bookingContext(bookingId: string | null): Promise<MessageContext>
   if (!bookingId) return {};
   const b = await db.query.bookings.findFirst({
     where: (x, { eq }) => eq(x.id, bookingId),
-    with: { student: true, teacher: true, subject: true },
+    // 🔴 SPEC-072 / TASK-253 — `additionalTeachers` joins onto the SAME query rather than adding a second
+    // round trip: this runs once per outbox row, and REQ-077's `Coach` may name several people (REQ-078).
+    with: { student: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } } },
   });
   if (!b) return {};
   return {
@@ -30,6 +33,11 @@ async function bookingContext(bookingId: string | null): Promise<MessageContext>
     // lesson types are untouched.
     studentName: b.student?.name,
     teacherNickname: b.teacher?.nickname,
+    // 🔴 TASK-253 — `Coach` is ONE field that may name several people (REQ-078), joined rather than repeated:
+    // a second `Coach :` line would read as a second class. Primary first, then the additional teachers in
+    // their stored order; duplicates dropped, because a teacher listed twice looks like a data fault to the
+    // person reading it.
+    coach: joinCoaches(b.teacher, b.additionalTeachers ?? []),
     subject: b.subject?.name,
     // TASK-228 (AC-16) — what names an อื่นๆ booking in every message the teacher reads.
     title: b.otherTitle ?? undefined,
@@ -62,7 +70,12 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
   for (const row of rows) {
     const ctx = await bookingContext(row.bookingId);
     const lang = await resolveBotLang(row.recipientLineUserId);
-    const text = formatOutboxMessage(row.payload as any, ctx, lang);
+    // 🔴 SPEC-072 / TASK-253 — the row has always known WHO it is for; forwarding it is the whole of what was
+    // missing for *"the teacher's copy loses the family's private lines"*.
+    // 📌 `admin` reads as `parent` — the fuller message. An admin is staff reading a family's copy, and hiding
+    // the expiry from the person who answers questions about it would be the wrong half to cut.
+    const audience = row.recipientType === "teacher" ? "teacher" : "parent";
+    const text = formatOutboxMessage(row.payload as any, ctx, lang, audience);
     const attempts = row.attempts + 1;
     try {
       await pushMessage(row.recipientLineUserId!, [{ type: "text", text }]);

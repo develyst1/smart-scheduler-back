@@ -11,13 +11,25 @@
 //
 // Pure — no DB, no clock.
 
-import type { SchedRow } from "./line-schedule";
+import type { TodayRow } from "./line-today-schedule";
 
 export interface ReminderSession {
   id: string;
   date: string;
   startTime: string;
   status: string;
+  /**
+   * SPEC-072 / TASK-256 — the fields REQ-077 Parent 2 prints beside the time. All optional: a booking whose
+   * course was deleted, or an อื่นๆ with no program, must still produce a row rather than vanish from someone's
+   * day. `remaining` arrives already rendered — this file decides WHO and WHICH ROWS, never money.
+   */
+  endTime?: string | null;
+  bookingType?: string | null;
+  title?: string | null;
+  size?: number | null;
+  remaining?: string | null;
+  expiryDate?: string | null;
+  coach?: string | null;
   teacherId: string | null;
   teacherLineUserId: string | null;
   /**
@@ -43,7 +55,7 @@ export interface ReminderGroup {
   /** Who this is about — the teacher or the parent. Used only to key the group; never sent. */
   personId: string;
   lineUserId: string | null;
-  rows: SchedRow[];
+  rows: TodayRow[];
 }
 
 /** Statuses that mean "there is a class today". A cancelled or leave row must never produce a reminder. */
@@ -64,12 +76,19 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
   const byParent = new Map<string, ReminderGroup>();
 
   for (const s of live) {
-    const row: SchedRow = {
+    const row: TodayRow = {
       date: s.date,
       startTime: s.startTime,
       studentName: s.studentName,
       subjectName: s.subjectName,
-      status: s.status,
+      // TASK-256 — carried through unchanged; the composer decides what to print and what to hoist.
+      endTime: s.endTime ?? null,
+      bookingType: s.bookingType ?? null,
+      title: s.title ?? null,
+      size: s.size ?? null,
+      remaining: s.remaining ?? null,
+      expiryDate: s.expiryDate ?? null,
+      coach: s.coach ?? null,
     };
     // TASK-228 (AC-16): EVERY assigned teacher, not just the first. Built as one list so the grouping below
     // is a single loop — a second `if` block for the extras is how one of the two ends up missing a rule the

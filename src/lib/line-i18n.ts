@@ -298,6 +298,29 @@ const TABLE: Record<string, Entry> = {
   // TASK-206: the label names DAYS, because the value is now a list of dates rather than a tally.
   ob_l_planned_leave: { TH: "แจ้งลาล่วงหน้าไว้ (วันที่)", EN: "Leave already booked (dates)" },
   ob_l_note: { TH: "หมายเหตุ", EN: "Note" },
+  // ── SPEC-072 / TASK-253 (REQ-077) — the customer's own template labels ────────────────────────────────────
+  // ⚠️ These are **English in both languages, on purpose**: the customer wrote the templates that way
+  // (`Student : {ชื่อนักเรียน}`) — English label, Thai value — and a message the owner has approved on paper is
+  // not the place to improve on his wording. They live here rather than in the renderer because that is where
+  // every user-visible string in this repo lives; if the customer ever asks for Thai labels, it is this block.
+  // 🔑 The separator is ` : `, also theirs, and it is why these are separate keys from the `ob_l_*` above —
+  // those render five LIVE messages whose text must not shift by a byte in this task.
+  ob_f_student: { TH: "Student", EN: "Student" },
+  ob_f_program: { TH: "Program", EN: "Program" },
+  ob_f_date: { TH: "Date", EN: "Date" },
+  ob_f_time: { TH: "Time", EN: "Time" },
+  ob_f_start: { TH: "Start", EN: "Start" },
+  ob_f_coach: { TH: "Coach", EN: "Coach" },
+  ob_f_remaining: { TH: "Remaining", EN: "Remaining" },
+  ob_f_expiry: { TH: "*Expiry date", EN: "*Expiry date" },
+  ob_f_advance_leave: { TH: "**Advance Leave Notice", EN: "**Advance Leave Notice" },
+  // 🔴 The one value that must PRINT rather than vanish — see `line-message.ts`. A parent may be reading the
+  // message to check exactly this, and silence cannot be told from a missing feature.
+  ob_f_none: { TH: "ไม่มี", EN: "None" },
+  // TASK-254 (REQ-077 Parent 3) — the customer's own heading, emoji included.
+  ob_deduct_title: { TH: "💡COURSE DEDUCTION", EN: "💡COURSE DEDUCTION" },
+  // TASK-256 (REQ-077 Parent 2) — likewise theirs, emoji and colon included.
+  ob_today_title: { TH: "⏱️TODAY'S SCHEDULE:", EN: "⏱️TODAY'S SCHEDULE:" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

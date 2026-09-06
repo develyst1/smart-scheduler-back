@@ -94,12 +94,13 @@ describe("course_confirmed (TASK-201)", () => {
   test("🔴 TASK-206: the planned leaves are DATES, not a count — the owner asked WHICH DAYS", () => {
     // "2 planned leaves" tells a teacher the schedule they just confirmed is wrong somewhere, and not where.
     // This asserts the RENDERED STRING, because a `plannedLeaves: 2` field compiled perfectly and was useless.
+    // ⚠️ TASK-253 renamed the label to the customer's own (`**Advance Leave Notice`); the RULE is unchanged.
     const out = formatOutboxMessage(payload, {}, "TH");
-    expect(out).toContain("แจ้งลาล่วงหน้าไว้");
+    expect(out).toContain("**Advance Leave Notice");
     expect(out).toContain("2026-09-14");
     expect(out).toContain("2026-09-28");
     // …and the leave line is never a bare tally: what follows the label is a date, not "2".
-    const leaveLine = out.split("\n").find((l) => l.includes("ลาล่วงหน้า"))!;
+    const leaveLine = out.split("\n").find((l) => l.includes("Advance Leave"))!;
     expect(leaveLine).toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(leaveLine.trim().endsWith(": 2")).toBe(false);
   });
@@ -110,12 +111,20 @@ describe("course_confirmed (TASK-201)", () => {
     expect(out).toContain("2026-09-14, 2026-09-28");
   });
 
-  test("…and the line is ABSENT when there are none — an empty leave line reads as a problem", () => {
+  test("🔴 TASK-253 REVERSES the empty case for the PARENT — it prints `ไม่มี`", () => {
+    // This used to assert the line was ABSENT: an empty leave line reads as a problem to a TEACHER scanning a
+    // schedule (TASK-206). @Porter's REQ-077 rule is the opposite for the parent — *a parent may be reading the
+    // message TO CHECK that, and silence cannot be told from a missing feature.*
+    //
+    // 📌 Both rules are true at once now, and that is what the audience projection bought: the teacher's copy
+    // carries no advance-leave line at all, so the line a teacher would misread is not on their message.
     const none = { ...payload, plannedLeaveDates: [] };
-    expect(formatOutboxMessage(none, {}, "TH")).not.toContain("แจ้งลาล่วงหน้าไว้");
+    expect(formatOutboxMessage(none, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");
+    expect(formatOutboxMessage(none, {}, "EN", "parent")).toContain("**Advance Leave Notice : None");
+    expect(formatOutboxMessage(none, {}, "TH", "teacher")).not.toContain("Advance Leave");
     // A payload that never carried the field at all must behave the same, not crash.
     const { plannedLeaveDates: _d, ...missing } = payload;
-    expect(formatOutboxMessage(missing, {}, "TH")).not.toContain("แจ้งลาล่วงหน้าไว้");
+    expect(formatOutboxMessage(missing, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");
   });
 
   test("everything it needs is in the PAYLOAD — it renders with no booking context at all", () => {
@@ -139,20 +148,30 @@ describe("daily_reminder (TASK-208)", () => {
     { date: "2026-09-05", startTime: "11:00:00", studentName: "น้องบี", subjectName: "Bike", status: "PENDING" },
   ];
 
-  test("🔴 it renders as ตารางวันนี้ — the layout the owner has already read on a phone", () => {
+  // 🔴 TASK-256 re-cut this body to REQ-077 Parent 2 (@Porter's Decision 6). The three assertions below used to
+  // pin `renderSchedule`'s layout — `🗓️ ตารางวันนี้`, `09:00  น้องเอ`. That composer is NOT deleted (it still
+  // serves the teacher's `ตาราง` command and is the fallback if the customer prefers what they have); this
+  // message simply no longer uses it. **The property each test was protecting is kept, restated in the new
+  // layout** — which is why these were rewritten rather than removed.
+  test("🔴 it renders as the customer's TODAY'S SCHEDULE, with their labels", () => {
     const out = formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "TH");
-    expect(out).toContain("🗓️ ตารางวันนี้");
-    expect(out).toContain("09:00  น้องเอ");
-    expect(out).toContain("11:00  น้องบี");
+    expect(out).toContain("⏱️TODAY'S SCHEDULE:");
+    expect(out).toContain("น้องเอ");
+    expect(out).toContain("น้องบี");
   });
 
   test("one message lists every session that person has today — not one message each", () => {
+    // The non-negotiable this file has always guarded: one message per person per day. Two classes ⇒ two
+    // numbered blocks in ONE message, never two messages.
     const out = formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "TH");
-    expect(out.split("\n").filter((l) => /^\d{2}:\d{2} /.test(l))).toHaveLength(2);
+    expect(out.split("\n").filter((l) => /^\d\) /.test(l))).toHaveLength(2);
+    expect(out).toContain("1) Time : 09:00:00");
+    expect(out).toContain("2) Time : 11:00:00");
   });
 
   test("EN renders the same list", () => {
-    expect(formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "EN")).toContain("Today's schedule");
+    // The customer's labels are English in both languages — their template, not a translation.
+    expect(formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "EN")).toContain("TODAY'S SCHEDULE:");
   });
 
   test("a malformed payload degrades to the empty-state, never a crash in the worker", () => {

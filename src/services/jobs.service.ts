@@ -20,6 +20,9 @@ import { postBookingSale, recordSale } from "../lib/sale-post";
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
+import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
+import { joinCoaches } from "../lib/coach-names";
+import { hhmm } from "../lib/time";
 import { enqueueLine } from "../lib/line";
 import { dueReminders, groupReminders, reminderKey, reminderReach } from "../lib/daily-reminder";
 
@@ -44,6 +47,9 @@ export async function runEndOfDayJob(date?: string) {
         id: bookings.id,
         courseId: bookings.courseId,
         voucherId: bookings.voucherId,
+        // TASK-254 — who the deduction message is for. Taken from the row the job already has in hand; a second
+        // read later would be a second chance to disagree with it.
+        studentId: bookings.studentId,
       })
       .from(bookings)
       .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended));
@@ -53,18 +59,46 @@ export async function runEndOfDayJob(date?: string) {
     for (const b of due) {
       await tx.update(bookings).set({ status: "ATTENDED" }).where(eq(bookings.id, b.id));
       if (b.courseId) {
-        await tx
+        // 🔴 TASK-254 — deduction site 2 of 2, and since REQ-070 it is the MAJORITY path: the day-end
+        // auto-attends every unmarked class, so most sessions are deducted here rather than by a person.
+        //
+        // `.returning()` because this write is `used + 1` **in SQL** — the post-value exists only in the
+        // database until it is read back. 🚫 Never a second SELECT: a concurrent write between them would print
+        // a number that was true at neither moment. `Remaining` comes from the write that caused the message.
+        const [course] = await tx
           .update(coursePackages)
           .set({ usedSessions: sql`${coursePackages.usedSessions} + 1` })
-          .where(eq(coursePackages.id, b.courseId));
+          .where(eq(coursePackages.id, b.courseId))
+          .returning();
         coursesAutoAttended++;
+        if (course) {
+          await notifyCourseDeduction(tx, {
+            bookingId: b.id,
+            studentId: b.studentId,
+            kind: "course",
+            used: course.usedSessions,
+            total: course.size,
+            expiryDate: course.expiryDate ?? null,
+          });
+        }
       }
       if (b.voucherId) {
-        await tx
+        const [voucher] = await tx
           .update(vouchers)
           .set({ usedHours: sql`${vouchers.usedHours} + 1` })
-          .where(eq(vouchers.id, b.voucherId));
+          .where(eq(vouchers.id, b.voucherId))
+          .returning();
         vouchersAutoAttended++;
+        if (voucher) {
+          await notifyCourseDeduction(tx, {
+            bookingId: b.id,
+            studentId: b.studentId,
+            kind: "voucher",
+            used: voucher.usedHours,
+            total: voucher.totalHours,
+            expiryDate: voucher.expiryDate ?? null,
+          });
+        }
       }
     }
 
@@ -313,6 +347,10 @@ export async function runDailyReminderJob(date?: string) {
       student: true,
       subject: true,
       additionalTeachers: { with: { teacher: true } },
+      // SPEC-072 / TASK-256 — REQ-077 Parent 2 prints `Remaining` and `*Expiry date`. Two more relations on the
+      // SAME query, not a per-row lookup: a Saturday is ~60 sessions, and that is the shape this job avoids.
+      course: true,
+      voucher: true,
     },
   });
 
@@ -349,6 +387,21 @@ export async function runDailyReminderJob(date?: string) {
       // `null`, not `"-"`: an อื่นๆ booking has no program, and `renderSchedule` omits the segment rather than
       // printing a placeholder that reads as a program nobody recorded.
       subjectName: r.subject?.name ?? null,
+      // SPEC-072 / TASK-256 — the rest of REQ-077 Parent 2, straight off the rows this job already loaded.
+      endTime: r.endTime ? hhmm(r.endTime) : null,
+      bookingType: r.bookingType ?? null,
+      title: r.otherTitle ?? null,
+      size: r.course?.size ?? r.voucher?.totalHours ?? null,
+      // 🔴 The balance as it stands NOW — before today's class is deducted at check-in or at the day-end. It is
+      // rendered by the ONE helper TASK-254 wrote, so the same number reads the same way in both messages.
+      remaining: r.course
+        ? remainingLabel("course", r.course.size - r.course.usedSessions, r.course.size)
+        : r.voucher
+          ? remainingLabel("voucher", r.voucher.totalHours - r.voucher.usedHours, r.voucher.totalHours)
+          : null,
+      expiryDate: r.course?.expiryDate ?? r.voucher?.expiryDate ?? null,
+      // The same joiner the outbox worker uses — one definition of `Coach` (TASK-256 pulled it into a lib).
+      coach: joinCoaches(r.teacher, r.additionalTeachers ?? []) ?? null,
     })),
   );
 
