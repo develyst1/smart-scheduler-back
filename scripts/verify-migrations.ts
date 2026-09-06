@@ -25,7 +25,8 @@ import {
   type LedgerRow,
   type OwnMigration,
 } from "../src/lib/migration-ledger";
-import { SCHEDULING_WITNESSES as WITNESSES, judge } from "../src/lib/migration-witness";
+import { SCHEDULING_WITNESSES as ALL_WITNESSES, judge } from "../src/lib/migration-witness";
+import { entriesThrough } from "../src/lib/migrate-preflight";
 import { probeAll } from "./probe-witnesses";
 
 const OWN = "__drizzle_migrations_scheduling"; // must match drizzle.config.ts
@@ -39,11 +40,29 @@ const dir = resolve(import.meta.dir, "..", "drizzle");
 const journal = JSON.parse(readFileSync(resolve(dir, "meta/_journal.json"), "utf8")) as {
   entries: Array<{ idx: number; tag: string; when: number }>;
 };
-const mine: OwnMigration[] = journal.entries.map((e) => ({
+// 🔴 TASK-266 §4 — `--through <tag>` scopes the check to the migrations a PARTIAL run was supposed to
+// apply. `db:migrate:through` needs to end in a verify like the full command does; an unscoped one would
+// report the migrations that run deliberately left behind as failures, and a control that cries wolf on its
+// own printed instructions is a control people stop reading. 🚫 The default is unchanged and unscoped —
+// this narrowing must be asked for explicitly, by a caller that knows what it applied.
+const throughIdx = process.argv.indexOf("--through");
+const through = throughIdx >= 0 ? process.argv[throughIdx + 1]?.trim() : undefined;
+let scoped = journal.entries;
+if (through) {
+  try {
+    scoped = entriesThrough(journal.entries, through);
+  } catch (e) {
+    console.error(`✗ db:verify --through: ${(e as Error).message}`);
+    process.exit(1);
+  }
+  console.log(`db:verify — scoped to the ${scoped.length} migration(s) through ${through}.`);
+}
+const mine: OwnMigration[] = scoped.map((e) => ({
   tag: e.tag,
   when: e.when,
   hash: migrationHash(readFileSync(resolve(dir, `${e.tag}.sql`), "utf8")),
 }));
+const scopedTags = new Set(scoped.map((e) => e.tag));
 
 const exists = await sql`
   SELECT 1 FROM information_schema.tables WHERE table_schema = ${SCHEMA} AND table_name = ${OWN}
@@ -58,6 +77,9 @@ const missing = missingMigrations(mine, rows.map((r) => r.hash));
 // seeder uses (imported, not re-stated), so the two cannot form different notions of "applied". If they
 // could disagree we'd eventually get a green verify on a broken database — worse than today, because today
 // it is at least red.
+// Scoped the same way, and from the same list — two notions of "which migrations am I checking" is how the
+// ledger half and the schema half would come to disagree, which is the failure `judge` exists to catch.
+const WITNESSES = ALL_WITNESSES.filter((w) => scopedTags.has(w.tag));
 const witnessed = judge(WITNESSES, await probeAll(sql, WITNESSES));
 await sql.end();
 
