@@ -147,6 +147,39 @@ export function formatRefusal(blockers: readonly Blocker[]): string[] {
   return out;
 }
 
+/**
+ * 🔴 TASK-267 — **node's own resolution algorithm, reproduced**, because nothing else reproduces the bug.
+ *
+ * `db:migrate:through` writes a drizzle config whose first line is `import … from "drizzle-kit"`, and
+ * drizzle-kit loads that config from ITS OWN path. When the config sat in the OS temp folder, resolution
+ * walked up from `C:Users…Temp`, never reached this repo's `node_modules`, and the owner got
+ * `Cannot find module 'drizzle-kit'` on `sid`.
+ *
+ * ⚠️ **`Bun.resolveSync` cannot stand in for this and I checked rather than assumed:** from the OS temp
+ * folder it succeeds, returning `~/.bun/install/cache/drizzle-kit@…`. A probe that passes on the broken
+ * arrangement is a comfort, not a control — it would have printed a ✓ over the exact failure.
+ *
+ * So this walks directories upward looking for `node_modules/<pkg>`, which is what node (and therefore
+ * esbuild, and therefore drizzle-kit's config loader) actually does.
+ */
+export function resolvesByNodeWalk(
+  fromDir: string,
+  pkg: string,
+  exists: (path: string) => boolean,
+): string | null {
+  // ⚠️ No regex, and both separators: the first attempt used a forward-slash-only character class and, on
+  // Windows, never stripped a parent — so it reported "not reachable" from INSIDE the repo. A resolution
+  // check that fails on the correct arrangement is as useless as one that passes on the broken one.
+  let dir = fromDir;
+  for (;;) {
+    if (exists(`${dir}/node_modules/${pkg}`)) return `${dir}/node_modules/${pkg}`;
+    const cut = Math.max(dir.lastIndexOf("/"), dir.lastIndexOf("\\"));
+    if (cut <= 0) return null; // filesystem root, or a bare drive letter
+    const parent = dir.slice(0, cut);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
 /** The journal entries a `--through <tag>` run may apply: everything up to and including `tag`, in order. */
 export function entriesThrough<T extends { tag: string }>(entries: readonly T[], tag: string): T[] {
   const at = entries.findIndex((e) => e.tag === tag);

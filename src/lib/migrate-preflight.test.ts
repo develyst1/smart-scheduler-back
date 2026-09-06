@@ -185,8 +185,11 @@ describe("TASK-266 §4 — the split command exists and both halves end in db:ve
 
   test("🔑 the partial run ends in a SCOPED verify", () => {
     expect(THROUGH).toContain('"scripts/verify-migrations.ts", "--through", tag');
-    // …and it refuses to report success if that verify fails.
-    expect(THROUGH).toContain("if (verify.exitCode !== 0) process.exit(verify.exitCode ?? 1);");
+    // …and it refuses to report success if that verify fails. ⚠️ Reworded by TASK-267, not loosened: the
+    // script no longer calls `process.exit()` inside its try block, because `process.exit()` does not run
+    // `finally` and the scratch folder would have survived. The verify's code is now the script's code.
+    expect(THROUGH).toContain("exitCode = verify.exitCode ?? 1;");
+    expect(THROUGH).toContain("if (exitCode === 0) console.log");
   });
 
   test("🚫 the split runner never edits the real drizzle/ folder", () => {
