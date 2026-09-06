@@ -44,6 +44,15 @@ export interface MessageContext {
 const line = (label: string, value?: string) => (value ? `${label}: ${value}\n` : "");
 
 /**
+ * 🔴 TASK-257 §3 — a line APPENDED to a REQ-077 block, in the customer's convention (` : `, English label).
+ *
+ * The cause it removes: `line()` above is the OLD convention (`label: value`, bilingual labels), and the two
+ * survive side by side only because `booking_confirmed` is byte-frozen on the old one. Anything printed inside
+ * or beside a REQ-077 message goes through here or through `fieldLines`; nothing else may.
+ */
+const extra = (label: string, value?: string) => (value ? `${label} : ${value}\n` : "");
+
+/**
  * @param recipientType WHO is reading this. The outbox row has always carried it and the worker simply never
  * forwarded it, which is why *"the teacher's copy loses the family's private lines"* could not be expressed.
  * Defaults to `parent` — the fuller message — so a caller that has not been updated cannot silently strip
@@ -105,8 +114,18 @@ export function formatOutboxMessage(
     // reference would make the message depend on which session was picked. `sick_leave` already carries its own
     // fields for the same reason.
     case "course_confirmed": {
+      // 🔴 TASK-257 §2 — `Date` is the WEEKDAY ALONE and `Time` is a RANGE.
+      //
+      // It used to print `Date : อาทิตย์ 10:00` beside `Time : 10:00` — the time twice, neither of them a range,
+      // while `COURSE DEDUCTION` printed `Time : 10:00-11:00`. **Two messages disagreeing about what `Time`
+      // means is the kind of difference a customer reads as an error rather than a preference.**
+      // 📌 The range is built from `endTime` on the payload, derived ONCE where the payload is built
+      // (`addHour`, the same derivation `insertBooking` uses). Deriving +1h here would put that rule in two
+      // places, and the next duration change would fix only one of them.
       const dow = payload.weekday != null ? t(`ob_dow_${payload.weekday}`, lang) : undefined;
-      const schedule = dow && payload.startTime ? `${dow} ${payload.startTime}` : (dow ?? undefined);
+      const when = payload.startTime
+        ? `${payload.startTime}${payload.endTime ? `-${payload.endTime}` : ""}`
+        : undefined;
       // 🔴 TASK-206 — the DAYS, not a tally. The owner asked "ลาล่วงหน้าวันไหนบ้าง"; a teacher who reads
       // "2 planned leaves" knows the schedule they just confirmed is wrong somewhere and not where. Rendered
       // as a comma-joined dated list, in order.
@@ -131,8 +150,8 @@ export function formatOutboxMessage(
               size: payload.size as number,
               title: payload.title as string,
             }),
-            date: schedule,
-            time: (payload.startTime as string) || undefined,
+            date: dow,
+            time: when,
             start: (payload.startDate as string) || undefined,
             coach: (payload.coach as string) || undefined,
             expiry: (payload.expiryDate as string) || undefined,
@@ -147,8 +166,13 @@ export function formatOutboxMessage(
         // meant to be exhaustive: the confirmed COUNT is what this message exists to announce, and the note is
         // TASK-219's fix — a note typed at booking ("แพ้ถั่ว") reaching the one message a teacher reads.
         // Dropping either would be a regression the templates never asked for. Flagged in the TASK.
-        line(t("ob_l_sessions", lang), String(payload.confirmed ?? 0)) +
-        line(t("ob_l_note", lang), (payload.note as string) || undefined)
+        //
+        // 🔴 TASK-257 §3 — printed in the CUSTOMER'S convention (English label · ` : `), because a message with
+        // two labelling conventions is what put `จำนวนคาบที่ยืนยัน` and `หมายเหตุ` under eight English labels.
+        // They cannot reuse `ob_l_*`: those are bilingual, and `ob_l_note` also renders `booking_confirmed`,
+        // which is owner-verified and byte-frozen. **One message, one convention** — the cause, not the symptom.
+        extra(t("ob_f_sessions", lang), String(payload.confirmed ?? 0)) +
+        extra(t("ob_f_note", lang), (payload.note as string) || undefined)
       ).trimEnd();
     }
     // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.

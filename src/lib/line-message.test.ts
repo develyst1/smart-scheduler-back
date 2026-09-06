@@ -78,17 +78,20 @@ describe("course_confirmed (TASK-201)", () => {
   };
 
   test("TH: the slot is named in words, not a weekday number", () => {
+    // ⚠️ TASK-257 §1/§2: the heading is now the customer's own, and the weekday stands ALONE — the time moved
+    // to `Time`, as a range, where `COURSE DEDUCTION` already had it. The property here is unchanged: a teacher
+    // reads "อาทิตย์", never "0".
     const out = formatOutboxMessage(payload, {}, "TH");
-    expect(out).toContain("📅 ยืนยันคอร์สแล้ว");
+    expect(out).toContain("📅CONFIRMED SCHEDULE:");
     expect(out).toContain("น้องเอ");
-    expect(out).toContain("อาทิตย์ 10:00"); // a teacher reads "Sunday", never "0"
-    expect(out).toContain("10");
+    expect(out).toContain("Date : อาทิตย์");
+    expect(out).not.toContain("Date : 0");
   });
 
   test("EN renders the same facts", () => {
     const out = formatOutboxMessage(payload, {}, "EN");
-    expect(out).toContain("Course schedule confirmed");
-    expect(out).toContain("Sunday 10:00");
+    expect(out).toContain("📅CONFIRMED SCHEDULE:"); // the customer's heading, English in both languages
+    expect(out).toContain("Date : Sunday");
   });
 
   test("🔴 TASK-206: the planned leaves are DATES, not a count — the owner asked WHICH DAYS", () => {

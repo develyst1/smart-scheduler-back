@@ -3346,6 +3346,11 @@ export async function confirmCourse(id: string) {
       startDate: course.startDate,
       weekday: course.weekday,
       startTime: hhmm(course.startTime),
+      // 🔴 TASK-257 §2 — the END of the class, so `Time` is a RANGE and this message agrees with
+      // `COURSE DEDUCTION` about what `Time` means. Derived HERE, once, with the same `addHour` every booking
+      // write uses: the renderer building "+1 hour" from a start alone would put that rule in two places, and
+      // the next duration change would fix only one of them.
+      endTime: addHour(course.startTime),
       confirmed,
       plannedLeaveDates: rows
         .filter((r: any) => r.status === "SICK_LEAVE")

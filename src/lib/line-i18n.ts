@@ -291,7 +291,9 @@ const TABLE: Record<string, Entry> = {
   ob_l_subject: { TH: "วิชา", EN: "Subject" },
   ob_l_time: { TH: "เวลา", EN: "Time" },
   // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course, not one per session.
-  ob_course_title: { TH: "📅 ยืนยันคอร์สแล้ว", EN: "📅 Course schedule confirmed" },
+  // 🔴 TASK-257 §1 — the customer's own heading, the one `COURSE DEDUCTION` and `TODAY'S SCHEDULE` already use.
+  // The emoji stays: they put `⏱️` and `💡` on their own two, so it is their convention, not ours.
+  ob_course_title: { TH: "📅CONFIRMED SCHEDULE:", EN: "📅CONFIRMED SCHEDULE:" },
   ob_l_start: { TH: "เริ่ม", EN: "Starts" },
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },
   ob_l_sessions: { TH: "จำนวนคาบที่ยืนยัน", EN: "Sessions confirmed" },
@@ -321,6 +323,12 @@ const TABLE: Record<string, Entry> = {
   ob_deduct_title: { TH: "💡COURSE DEDUCTION", EN: "💡COURSE DEDUCTION" },
   // TASK-256 (REQ-077 Parent 2) — likewise theirs, emoji and colon included.
   ob_today_title: { TH: "⏱️TODAY'S SCHEDULE:", EN: "⏱️TODAY'S SCHEDULE:" },
+  // 🔴 TASK-257 §3 — the two lines kept BELOW the customer's block need labels in the customer's convention,
+  // and they cannot reuse `ob_l_*`: those are bilingual, and `ob_l_note` also renders `booking_confirmed`,
+  // whose text is owner-verified and byte-frozen. **The same key cannot serve two labelling conventions**, so
+  // the fix is new keys rather than an edit — that is the whole of §3's cause, in one line.
+  ob_f_sessions: { TH: "Sessions", EN: "Sessions" },
+  ob_f_note: { TH: "Note", EN: "Note" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

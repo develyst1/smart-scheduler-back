@@ -19,6 +19,13 @@ import {
   visibleFields,
   type NotifyType,
 } from "./line-message-fields";
+import { readSrc } from "./read-src";
+
+// Read at module top level: `await` inside a `describe`/`test` callback is a syntax error (they are sync).
+const MSG_SRC = readSrc(await Bun.file(new URL("./line-message.ts", import.meta.url)).text());
+const SCHED_SRC = readSrc(await Bun.file(new URL("../services/scheduler.service.ts", import.meta.url)).text());
+/** Comments stripped — the repo convention for source assertions (Sober, 2026-09-02). */
+const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 
 const COURSE = {
   kind: "course_confirmed",
@@ -32,6 +39,8 @@ const COURSE = {
   startDate: "2026-09-06",
   weekday: 0,
   startTime: "10:00",
+  // TASK-257 §2 — carried on the payload, derived once by `confirmCourse` (`addHour`), never by the renderer.
+  endTime: "11:00",
   confirmed: 6,
   plannedLeaveDates: ["2026-09-14"],
   note: "แพ้ถั่ว",
@@ -71,8 +80,12 @@ describe("🔴 ONE payload, TWO renderings — the same object, projected", () =
     expect(parent).toContain("Student : น้องเอ");
     expect(parent).toContain("Program : Private Freeskate 6 HR");
     expect(parent).toContain("Start : 2026-09-06");
-    expect(parent).toContain("Time : 10:00");
-    expect(parent).toContain("Date : อาทิตย์ 10:00");
+    // 🔴 TASK-257 §2 — `Date` is the weekday ALONE and `Time` is a RANGE, which is what `COURSE DEDUCTION`
+    // always printed. The two messages disagreeing about what `Time` means is the difference a customer reads
+    // as an error rather than a preference; asserted here so they cannot drift apart again.
+    expect(parent).toContain("Date : อาทิตย์");
+    expect(parent).toContain("Time : 10:00-11:00");
+    expect(parent).not.toContain("Date : อาทิตย์ 10:00");
   });
 
   test("⚠️ the count and the note survive BELOW the block — one line each to delete", () => {
@@ -167,6 +180,78 @@ describe("`Program` per type — the REQ's table, as data", () => {
     // Never one that invents a balance it cannot know.
     expect(notifyTypeOf(undefined)).toBe("ONE_HOUR");
     expect(TYPE_OMITS[notifyTypeOf("SOMETHING_NEW")]).toContain("remaining");
+  });
+});
+
+describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, not the three symptoms)", () => {
+  const CODE = code(MSG_SRC);
+  const reqCase = (name: string) => {
+    const rest = CODE.slice(CODE.indexOf(`case "${name}":`));
+    return rest.slice(0, rest.indexOf("\n    case "));
+  };
+
+  test("🔑 no REQ-077 message prints a bilingual `ob_l_*` label — that is the whole defect class", () => {
+    // `จำนวนคาบที่ยืนยัน` and `หมายเหตุ` under eight English labels were two instances of ONE cause: the old
+    // `line()` printer with bilingual labels, used inside a block written in the customer's convention. A net,
+    // not three fixes — the next line appended to one of these messages cannot reintroduce it silently.
+    for (const kind of ["course_confirmed", "course_deduction", "daily_reminder"]) {
+      expect(reqCase(kind)).not.toContain("line(t(");
+      expect(reqCase(kind)).not.toContain("ob_l_");
+    }
+  });
+
+  test("…and the two kept lines print in the customer's convention", () => {
+    const parent = formatOutboxMessage(COURSE, {}, "TH", "parent");
+    expect(parent).toContain("Sessions : 6");
+    expect(parent).toContain("Note : แพ้ถั่ว");
+    expect(parent).not.toContain("จำนวนคาบที่ยืนยัน");
+    expect(parent).not.toContain("หมายเหตุ");
+  });
+
+  test("the labels are English in BOTH languages — the customer's template, not a translation", () => {
+    const en = formatOutboxMessage(COURSE, {}, "EN", "parent");
+    expect(en).toContain("Sessions : 6");
+    expect(en).toContain("Note : แพ้ถั่ว"); // the VALUE stays as typed; only the label is theirs
+  });
+
+  test("§1 — the heading is the customer's own, in both languages, emoji kept", () => {
+    for (const lang of ["TH", "EN"] as const) {
+      expect(formatOutboxMessage(COURSE, {}, lang, "parent")).toContain("📅CONFIRMED SCHEDULE:");
+    }
+  });
+
+  test("🔴 §2 — `Time` means the same thing here as in `COURSE DEDUCTION`", () => {
+    // The defect was not the format itself; it was two messages disagreeing. So the assertion compares them
+    // rather than pinning each separately — a future change to one alone fails here.
+    const confirmed = formatOutboxMessage(COURSE, {}, "TH", "parent");
+    const deduction = formatOutboxMessage(
+      { kind: "course_deduction", bookingType: "COURSE_PACKAGE", remaining: "2 HR", total: 6 },
+      { studentName: "น้องเอ", date: "2026-09-06", startTime: "10:00", endTime: "11:00" },
+      "TH",
+      "parent",
+    );
+    const timeLine = (s: string) => s.split("\n").find((l) => l.startsWith("Time : "))!;
+    expect(timeLine(confirmed)).toBe("Time : 10:00-11:00");
+    expect(timeLine(deduction)).toBe(timeLine(confirmed));
+    // …and `Date` no longer repeats the time it used to carry.
+    expect(confirmed).toContain("Date : อาทิตย์");
+    expect(confirmed.split("\n").find((l) => l.startsWith("Date : "))).toBe("Date : อาทิตย์");
+  });
+
+  test("§2 — the +1h rule lives ONCE, where the payload is built", () => {
+    // The renderer reads `endTime`; it never derives it. Deriving in both places is how the next duration
+    // change fixes only one of them.
+    expect(CODE).not.toContain("addHour");
+    expect(reqCase("course_confirmed")).toContain("payload.endTime");
+    expect(code(SCHED_SRC)).toContain("endTime: addHour(course.startTime)");
+  });
+
+  test("a payload from BEFORE this task still renders — an old outbox row must not print a dangling dash", () => {
+    // The worker renders whatever is in the outbox, including rows queued by an older deploy (the existing
+    // `daily_reminder` rule, applied here).
+    const { endTime: _e, ...old } = COURSE;
+    expect(formatOutboxMessage(old, {}, "TH", "parent")).toContain("Time : 10:00");
+    expect(formatOutboxMessage(old, {}, "TH", "parent")).not.toContain("10:00-");
   });
 });
 
