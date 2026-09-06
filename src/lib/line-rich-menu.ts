@@ -265,6 +265,122 @@ export type MenuIds = {
   knownEN?: string;
 };
 
+/**
+ * 🔴 TASK-252 — every menu name this repo has ever DEFINED.
+ *
+ * The gap this closes: provenance used to be inferred from `getMenuIds()` — a row we own and MUTATE — and
+ * `line:remove-menus` clears that row as its last act. So after one run our own menus became
+ * indistinguishable from the customer's, and `ours-only` would have protected our litter instead of their
+ * menus. `line-inspect-menus` had the same inference and it had already misfired: 20 menus we created
+ * ourselves, labelled foreign on the demo OA.
+ *
+ * ✅ **A name is a mark that travels with the object.** It is stored on LINE, on their account, outside our
+ * database, and it survives anything we do to `app_settings`.
+ *
+ * ⚠️ **Derived from the defs, never retyped** — a ninth menu joins this list by existing, and the test asserts
+ * that from the module's own exports rather than from a second list someone has to remember to update.
+ */
+export const ALL_MENU_DEFS: readonly RichMenuDef[] = [
+  PARENT_RICH_MENU,
+  PARENT_RICH_MENU_EN,
+  TEACHER_RICH_MENU,
+  TEACHER_RICH_MENU_EN,
+  UNKNOWN_RICH_MENU,
+  UNKNOWN_RICH_MENU_EN,
+  KNOWN_RICH_MENU,
+  KNOWN_RICH_MENU_EN,
+];
+
+/** The names above, as a set. **Eight**, not six — see `NAME_TO_KEY` for why those are different numbers. */
+export const OUR_MENU_NAMES: ReadonlySet<string> = new Set(ALL_MENU_DEFS.map((m) => m.name));
+
+/**
+ * Canonical menu name → its `MenuIds` key. **SIX**, moved here from `scripts/line-adopt-menus.ts` (TASK-249 §4)
+ * so both readers and `adopt` share one registry.
+ *
+ * 🔑 **This map and `OUR_MENU_NAMES` answer two different questions, which is why the counts differ:**
+ * - `NAME_TO_KEY` — *"which names must be PRESENT for a complete id map?"* ⇒ only what `publishRichMenus`
+ *   creates. `unknownEN` / `knownEN` are defined but deliberately never published (TASK-247 §4: a stored id
+ *   with no uploaded image renders BLANK), and `selectMenuIds` aborts on any gap — listing them here would
+ *   break `line:adopt-menus` on every OA.
+ * - `OUR_MENU_NAMES` — *"did WE name this menu?"* ⇒ every name we define. If one of those two ever reaches a
+ *   channel, it is unambiguously ours, and a predicate that omitted it would leave our own litter behind and
+ *   let `inspect` accuse it.
+ *
+ * ⚠️ **Do not collapse them into one list.** The bug that would produce is silent in opposite directions.
+ */
+export const NAME_TO_KEY: Record<string, keyof MenuIds> = {
+  [PARENT_RICH_MENU.name]: "parentTH",
+  [PARENT_RICH_MENU_EN.name]: "parentEN",
+  [TEACHER_RICH_MENU.name]: "teacherTH",
+  [TEACHER_RICH_MENU_EN.name]: "teacherEN",
+  [UNKNOWN_RICH_MENU.name]: "unknownTH",
+  [KNOWN_RICH_MENU.name]: "knownTH",
+};
+
+/** One row of `GET /v2/bot/richmenu/list`, reduced to what an ownership decision needs. */
+export interface ChannelMenuRef {
+  richMenuId?: string;
+  name?: string | null;
+}
+
+export interface OurMenuMatch {
+  /** `unknownTH`, `parentTH`, … — an id means nothing to the person reading a removal plan. */
+  label: string;
+  /**
+   * 🔴 Which test claimed it, and it must reach the operator's screen.
+   *
+   * §5 of the task allows a name match precisely BECAUSE a human reviews the printed list before anything is
+   * deleted — a name is a convention, not a cryptographic claim, and a customer could in principle create one.
+   * A plan that printed both kinds identically would take that judgement away from the reviewer and leave the
+   * safety argument resting on nothing.
+   */
+  matchedBy: "id" | "name";
+}
+
+/**
+ * 🔴 TASK-252 — **the single answer to "is this menu ours?"**: stored id **OR** a name we define.
+ *
+ * Both readers (`line-remove-menus` via `planMenuRemoval`, and `line-inspect-menus`) call THIS. Neither keeps
+ * its own inference — that is the whole point, and it is asserted in the tests.
+ *
+ * ✅ Stored ids keep the job they are good at: saying WHICH menu is current. They stop being asked a question
+ * they cannot answer once they are cleared.
+ * 🚫 **Never use this to act without review.** It makes a *candidate*; a human makes the decision.
+ */
+export function ourMenuMatch(menu: ChannelMenuRef, stored: MenuIds): OurMenuMatch | null {
+  if (menu.richMenuId) {
+    const byId = Object.entries(stored).find(([, id]) => !!id && id === menu.richMenuId);
+    if (byId) return { label: byId[0], matchedBy: "id" };
+  }
+  const name = menu.name;
+  if (name && OUR_MENU_NAMES.has(name)) {
+    return { label: NAME_TO_KEY[name] ?? name.replace(/^smart-scheduler-/, ""), matchedBy: "name" };
+  }
+  return null;
+}
+
+/**
+ * §4 — what `publish` must SAY. *"Nobody looked because nothing told them."*
+ *
+ * `publishRichMenus` creates its set and deletes nothing, so every publish leaves the previous one behind —
+ * six per run, for weeks. 🚫 It still must not delete (that is the unreviewed destruction the owner refused);
+ * it reports, and `line:remove-menus` is where a human decides.
+ */
+export function summariseOurMenus(
+  channel: ChannelMenuRef[],
+  stored: MenuIds,
+): { onChannel: number; ours: number; current: number; leftover: number } {
+  const storedIds = new Set(Object.values(stored).filter(Boolean) as string[]);
+  const ours = channel.filter((m) => !!ourMenuMatch(m, stored));
+  const current = ours.filter((m) => !!m.richMenuId && storedIds.has(m.richMenuId));
+  return {
+    onChannel: channel.length,
+    ours: ours.length,
+    current: current.length,
+    leftover: ours.length - current.length,
+  };
+}
 export async function getMenuIds(): Promise<MenuIds> {
   const row = await db.query.appSettings.findFirst({
     where: (s, { eq }) => eq(s.key, MENU_IDS_KEY),

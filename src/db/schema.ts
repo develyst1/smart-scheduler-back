@@ -56,6 +56,13 @@ export const bookingStatus = pgEnum("booking_status", [
   "EXTENDED",
   "PENDING_RESCHEDULE", // conflict resolution (B.1): awaiting parent acceptance of a move
   "CANCELLED",
+  // SPEC-075 / TASK-260 (REQ-076) `0032` — **a hold, and nothing else.** The booking KEEPS its date and time:
+  // they become *the slot it came from*, which is what the tray row shows. No money, no entitlement, no expiry
+  // change, no reason — anything richer is REQ-081.
+  // 🚫 `PENDING_RESCHEDULE` was NOT reused, though it is already in both lists and would have cost no
+  // migration: it carries `incomingBookingId`/`proposedTo` and maps to `scheduled` in the history, so the tray
+  // would show abandoned old reschedules beside today's pauses with nothing to tell them apart.
+  "PAUSED",
 ]);
 
 export const notifyStatus = pgEnum("notify_status", [
@@ -79,7 +86,25 @@ export const notifyStatus = pgEnum("notify_status", [
  *     a replacement into the freed slot. This one is a deliberate feature, not an oversight.
  *   · `PENDING_RESCHEDULE` — legacy rows from the old B.1 flow.
  */
-export const SLOT_INACTIVE_STATUSES = ["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE"] as const;
+export const SLOT_INACTIVE_STATUSES = ["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE", "PAUSED"] as const;
+
+/**
+ * 🔴 TASK-260 (REQ-076 §1a) — **the OTHER status list, and it answers a different question.**
+ *
+ * | list | question |
+ * |---|---|
+ * | `SLOT_INACTIVE_STATUSES` | *does it hold a teacher's slot?* — the unique index and every availability check |
+ * | `CALENDAR_HIDDEN_STATUSES` | *does it appear on the grid?* — the week payload |
+ *
+ * ⚠️ **They must NOT be merged.** `SICK_LEAVE` is in the first and deliberately **absent** from this one: a
+ * leave frees the slot for a replacement *and* stays visible on the calendar (the week query even resolves the
+ * overlap in its favour). Merging the two would hide every leave from the grid — a regression nobody asked for.
+ *
+ * 📌 It is a NAMED list because it used to be a hand-written `ne(status, "CANCELLED")` in one query, and a
+ * hand-written exclusion of one status is exactly how the next status gets missed — `PAUSED` keeps its date, so
+ * it would have rendered on the grid while every slot test passed.
+ */
+export const CALENDAR_HIDDEN_STATUSES = ["CANCELLED", "PAUSED"] as const;
 
 /** The same list as SQL literals, for the index predicate. Inlined verbatim — see the index's own comment. */
 const SLOT_INACTIVE_SQL = SLOT_INACTIVE_STATUSES.map((s) => `'${s}'`).join(", ");
@@ -751,6 +776,41 @@ export const teacherSubjectsRelations = relations(teacherSubjects, ({ one }) => 
   }),
 }));
 
+/**
+ * SPEC-076 / TASK-264 (REQ-082 AC-2) `0034` — every change to a course's expiry date: who · when · from · to.
+ *
+ * 🔴 A record, not a log line. `SYSTEM-FACTS.md` says *"NO audit table exists anywhere"*, and the question
+ * this answers — *"ทำไมคอร์สนี้หมดอายุวันนี้"* — has to be answerable **six weeks later**. An expiry is the
+ * boundary of something a family paid for, so moving it is a money-adjacent act performed by a staff click.
+ *
+ * 🚫 **Not an audit system.** Nobody specified one, and *"log everything"* is a design that grows until it is
+ * switched off. ⚠️ **But this is the second demand of its class in two weeks, so the SHAPE is the reusable
+ * part** — subject id · from · to · actor · timestamp, and nothing else. **TASK-244 is the likely second
+ * tenant** (a durable trail for the one act that moves a LINE account between families — today a log line,
+ * for the same reason). ⇒ Copy this shape rather than inventing a third answer.
+ *
+ * 🚫 No free-text reason column: nobody asked for one, and a reason field on an audit row is a prompt
+ * somebody has to fill in and will not.
+ */
+export const courseExpiryChanges = pgTable(
+  "course_expiry_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => coursePackages.id, { onDelete: "cascade" }),
+    // BOTH dates, not just the new one: "from what" is half of AC-2, and reconstructing it by walking the
+    // previous row breaks the moment one row is missing — which is exactly the state a hole would leave.
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date").notNull(),
+    // The same actor convention as `droppedBy` / `endedBy`: the TOKEN's subject, resolved at the route and
+    // never taken from a request body (TASK-160). Nullable, because a path with no authenticated user must
+    // write nothing rather than write a lie.
+    actor: text("actor"),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("course_expiry_changes_course_idx").on(t.courseId, t.changedAt)],
+);
 export const coursePackagesRelations = relations(coursePackages, ({ one, many }) => ({
   student: one(students, {
     fields: [coursePackages.studentId],

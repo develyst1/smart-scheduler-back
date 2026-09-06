@@ -116,6 +116,15 @@ export const api = new Hono()
   .post("/courses/:id/resume", zValidator("json", v.resumeCourse), async (c) =>
     c.json(await svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
   )
+  // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
+  // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and
+  // for the same reason: an audit row whose author the caller can choose records nothing.
+  .patch("/courses/:id/expiry", zValidator("json", v.updateCourseExpiry), async (c) =>
+    c.json(await svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+  )
+  .get("/courses/:id/expiry-history", async (c) =>
+    c.json(await svc.getCourseExpiryHistory(c.req.param("id"))),
+  )
   .get("/sellable-packages", async (c) => c.json(await svc.getSellablePackages()))
   // SPEC-070 / TASK-225 (REQ-078 AC-6) — the BACKOFFICE catalogue (active INCOME `bo.item`s), for the อื่นๆ
   // charge picker. Read-only. 🔴 Deliberately not `/sellable-packages`: those are the frontoffice product
@@ -229,6 +238,16 @@ export const api = new Hono()
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
+  )
+  // SPEC-075 / TASK-260 (REQ-076) — pause / resume ONE booking. These shapes are the ratified contract (§8),
+  // and they are REQ-071's COURSE pause/resume shapes deliberately, so one verb keeps one convention across
+  // the product. The FE half (TASK-261) is already built against exactly these.
+  //
+  // 🚫 **`pause` takes NO body, and that is a design property**: with no field to put one in, AC-8's forbidden
+  // reason cannot be sent even by accident.
+  .post("/bookings/:id/pause", async (c) => c.json(await svc.pauseBooking(c.req.param("id"))))
+  .post("/bookings/:id/resume", zValidator("json", v.resumeBooking), async (c) =>
+    c.json(await svc.resumeBooking(c.req.param("id"), c.req.valid("json"))),
   )
   // SPEC-063 / TASK-178 (REQ-068) — the attendee note, on its own route. Deliberately NOT part of
   // `PATCH /bookings/:id`: that one re-times a session and tells the teacher; a note is not a status change and

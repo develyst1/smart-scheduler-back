@@ -8,13 +8,16 @@
 // The IO shell (`scripts/line-remove-menus.ts`) only fetches, prints this, and — with `--apply` — performs it.
 // Same shape as `db-reset-plan` (TASK-151), and for the same reason: a destructive act against someone else's
 // live account should be decidable on paper.
-import type { MenuIds } from "./line-rich-menu";
+import { ourMenuMatch, type ChannelMenuRef, type MenuIds } from "./line-rich-menu";
 
-/** One row of `GET /v2/bot/richmenu/list`, reduced to what the decision needs. */
-export interface ChannelMenu {
-  richMenuId?: string;
-  name?: string;
-}
+/**
+ * One row of `GET /v2/bot/richmenu/list`, reduced to what the decision needs.
+ *
+ * 🔴 TASK-252 — an ALIAS now, not a second shape: the ownership predicate lives beside the menu definitions
+ * and this module is one of its two callers. Two structurally-identical interfaces are two things to keep in
+ * step, and the first drift would be silent.
+ */
+export type ChannelMenu = ChannelMenuRef;
 
 export interface PlannedDelete {
   /** Our own label — `unknownTH`, `parentTH`… — because an id means nothing to the person reading this. */
@@ -24,6 +27,15 @@ export interface PlannedDelete {
   name: string | null;
   onChannel: boolean;
   isDefault: boolean;
+  /**
+   * 🔴 TASK-252 §5 — which test claimed this menu, printed for the operator.
+   *
+   * `id` is a fact: we stored that id when we created it. `name` is a CONVENTION — a customer could in
+   * principle create a menu called `smart-scheduler-known-th`. The name match is allowed only because a
+   * human reads the list before anything is deleted, so a plan that printed both kinds identically would
+   * remove the very judgement the safety argument rests on.
+   */
+  matchedBy: "id" | "name";
 }
 
 export interface RemovalPlan {
@@ -40,9 +52,12 @@ export interface RemovalPlan {
 }
 
 /**
- * 🔴 **Ours only, by stored id.** `inspect` says the channel holds six and all six are ours — true today, and
- * not a guarantee: the customer may add one tomorrow from the OA Manager. A tool that deletes what it finds
- * would take that with it.
+ * 🔴 **Ours only — by stored id OR by a name we define** (TASK-252). Never "everything the channel lists":
+ * the customer may add one tomorrow from the OA Manager, and a tool that deletes what it finds would take
+ * that with it. An unrecognised menu is reported and LEFT, exactly as before.
+ *
+ * ⚠️ The name half exists because the id half **erases itself**: this tool clears the stored ids as its last
+ * act, so without it a second run cannot recognise anything it created on the first.
  *
  * ⚠️ **The default is cancelled only when it is OURS.** §1 says "cancel the channel default", and taken
  * literally that would clear a default the customer set for a menu we never made — a configuration change
@@ -58,25 +73,55 @@ export function planMenuRemoval(
   const ours = Object.entries(stored).filter(([, id]) => !!id) as Array<[string, string]>;
   const byId = new Map(channel.filter((m) => m.richMenuId).map((m) => [m.richMenuId!, m.name ?? null]));
 
+  // Stored ids first — including ones the channel no longer has. A 404 counts as done, and dropping them
+  // here would leave `app_settings` pointing at menus that are gone.
   const toDelete: PlannedDelete[] = ours.map(([label, id]) => ({
     label,
     id,
     name: byId.get(id) ?? null,
     onChannel: byId.has(id),
     isDefault: !!defaultId && defaultId === id,
+    matchedBy: "id" as const,
   }));
 
-  const ourIds = new Set(ours.map(([, id]) => id));
+  // 🔴 TASK-252 — then the ones the stored ids CANNOT see. This is the whole task: `remove-menus` clears the
+  // ids as its last act, so on the second run every menu it created reads as the customer's, and `ours-only`
+  // would protect our own litter instead of their menus. A name we chose is a mark on LINE's side of the
+  // line, so it survives our own bookkeeping.
+  const claimed = new Set(toDelete.map((m) => m.id));
+  for (const m of channel) {
+    if (!m.richMenuId || claimed.has(m.richMenuId)) continue;
+    const match = ourMenuMatch(m, stored);
+    if (!match) continue;
+    claimed.add(m.richMenuId);
+    toDelete.push({
+      label: match.label,
+      id: m.richMenuId,
+      name: m.name ?? null,
+      onChannel: true,
+      isDefault: !!defaultId && defaultId === m.richMenuId,
+      matchedBy: match.matchedBy,
+    });
+  }
+
+  // ⚠️ Unchanged in meaning: a menu we do not recognise is REPORTED and LEFT. `ours-only` did not relax —
+  // it became able to recognise its own.
   const foreign = channel
-    .filter((m) => m.richMenuId && !ourIds.has(m.richMenuId))
+    .filter((m) => m.richMenuId && !claimed.has(m.richMenuId))
     .map((m) => ({ id: m.richMenuId!, name: m.name ?? null }));
+
+  // The default is cancelled only when it is OURS — by either test, now. ⚠️ A default id the channel list
+  // does not contain stays foreign: we cannot read a name we were never given, and claiming it on an id we
+  // do not hold would be a guess on a live account.
+  // `claimed` already holds every id we recognised, by either test — the by-name loop above put them there.
+  const defaultIsOurs = !!defaultId && claimed.has(defaultId);
 
   return {
     toDelete,
     foreign,
     defaultId,
-    cancelDefault: !!defaultId && ourIds.has(defaultId),
-    foreignDefault: !!defaultId && !ourIds.has(defaultId),
+    cancelDefault: defaultIsOurs,
+    foreignDefault: !!defaultId && !defaultIsOurs,
   };
 }
 
@@ -116,12 +161,25 @@ export function formatRemovalPlan(
   const present = plan.toDelete.filter((m) => m.onChannel);
   const gone = plan.toDelete.filter((m) => !m.onChannel);
 
-  out.push(`DELETE — ours, matched by stored id (${present.length}):`);
+  const byName = present.filter((m) => m.matchedBy === "name");
+  out.push(`DELETE — ours, matched by stored id or by a name we define (${present.length}):`);
   if (!present.length) out.push("  (none — nothing of ours is on this channel)");
   for (const m of present) {
+    // 🔴 TASK-252 §5 — the provenance is printed per row, not summarised away. `id` is a fact we recorded;
+    // `name` is a convention, and the reviewer is the control that makes relying on one acceptable.
+    const how = m.matchedBy === "id" ? "stored id" : "OUR NAME (not in the stored ids)";
     out.push(
-      `  ${m.label.padEnd(10)} ${m.id}  name="${m.name ?? "?"}"${m.isDefault ? "   ← the current channel DEFAULT" : ""}`,
+      `  ${m.label.padEnd(10)} ${m.id}  name="${m.name ?? "?"}"  [${how}]` +
+        `${m.isDefault ? "   ← the current channel DEFAULT" : ""}`,
     );
+  }
+  if (byName.length) {
+    out.push("");
+    out.push(
+      `  ⚠️  ${byName.length} of the above ${byName.length === 1 ? "is" : "are"} ours by NAME only — an earlier publish, or the ids were cleared`,
+    );
+    out.push("      by a previous run of this command. A name is a convention we chose, not proof: read those");
+    out.push("      rows before confirming. Nothing here is deleted until you type the phrase below.");
   }
 
   if (gone.length) {

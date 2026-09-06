@@ -172,7 +172,10 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // never true of a birthdate the bot refuses, and that gap is where the owner got stuck. The name step joins
     // them because it can now reject: a reserved word.
     expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(7); // the declaration + six call sites
-    expect(SVC).toContain("t(\"role_prompt\", lang), lang)");
+    // TASK-251: the role branch now hands `strikeOrPrompt` a SIXTH argument — the picker — so the re-ask
+    // carries buttons instead of only naming them (LINE drops a quick reply as soon as the user replies).
+    // The wiring this test guards is unchanged: the role branch still goes through the one handover rule.
+    expect(SVC).toContain('t("role_prompt", lang), lang, askRole(lang))');
     expect(SVC).toContain("res.message, lang)");
     expect(SVC).toContain('t("twofa_bad", lang), lang)');
     expect(SVC).toContain('t("add_summary_confirm", lang), lang)');

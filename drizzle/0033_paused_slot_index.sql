@@ -1,0 +1,23 @@
+-- SPEC-075 / TASK-260 (REQ-076) — a PAUSED booking releases the teacher's slot.
+--
+-- 🔴 **This file exists separately from `0032` because it USES the label `0032` adds**, and a new enum value
+-- cannot be used in the transaction that created it. `drizzle-kit migrate` runs all pending migrations in ONE
+-- transaction ⇒ **`0032` and `0033` must be applied in two separate `db:migrate` runs.** Together they fail.
+--
+-- What it does, and it is AC-17: `PAUSED` joins the predicate of the partial unique index, which is the ONE
+-- place "does this booking hold a teacher's slot?" is answered. The application's `SLOT_INACTIVE_STATUSES`
+-- builds the same literal (TASK-239), so the index and every availability check keep sharing one definition
+-- instead of two that drift.
+--
+-- ⚠️ WITNESS — the index's **PREDICATE**, never its existence. `bookings_teacher_slot_uq` exists before and
+-- after this migration; only its `WHERE` changes. An existence probe would be satisfied by `0007`'s version and
+-- would report this as applied on a box where it never ran — the `0022` blindness exactly. (`0007` is
+-- witnessed the same way, for the same reason: it and `0002` share a name and differ only here.)
+--
+-- 🔴 LOCK: `DROP INDEX` + `CREATE UNIQUE INDEX` take an ACCESS EXCLUSIVE lock on `bookings` for the rebuild —
+-- writes AND reads block for its duration. See the task's answer for the measured expectation on `uat`'s size.
+-- 🚫 Deliberately NOT `CREATE INDEX CONCURRENTLY`: it cannot run inside a transaction, and every migration here
+-- does. A brief total lock on a small table is the honest trade; a concurrent build would need this file to
+-- leave the migration mechanism entirely.
+DROP INDEX "bookings_teacher_slot_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "bookings_teacher_slot_uq" ON "bookings" USING btree ("teacher_id","date","start_time") WHERE "bookings"."status" not in ('CANCELLED', 'PENDING_RESCHEDULE', 'SICK_LEAVE', 'PAUSED');

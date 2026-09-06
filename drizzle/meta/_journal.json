@@ -225,6 +225,27 @@
       "when": 1783000000027,
       "tag": "0031_line_session_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783000000028,
+      "tag": "0032_booking_paused_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783000000029,
+      "tag": "0033_paused_slot_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783000000030,
+      "tag": "0034_course_expiry_changes",
+      "breakpoints": true
     }
   ]
 }

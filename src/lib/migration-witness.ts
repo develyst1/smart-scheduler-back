@@ -27,6 +27,12 @@ export type WitnessKind =
   | { kind: "index"; index: string; schema?: string }
   | { kind: "index-predicate"; index: string; contains: string; schema?: string }
   | { kind: "constraint"; constraint: string }
+  /**
+   * TASK-260 — a LABEL on a pg enum. The only honest witness for an `ALTER TYPE … ADD VALUE` migration: the
+   * type, the column and every index over it exist before and after, so nothing else about that migration is
+   * observable. (`0029` could reach for a CHECK constraint because it added one too; `0032` adds only a label.)
+   */
+  | { kind: "enum-label"; type: string; label: string }
   | { kind: "superseded-by"; tag: string }
   | { kind: "needs-human" };
 
@@ -328,6 +334,43 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "be here because 0031 ran (TASK-233 — the registration wizard's in-flight form).",
     rerunnable: true,
   },
+  {
+    tag: "0032_booking_paused_status",
+    probe: { kind: "enum-label", type: "booking_status", label: "PAUSED" },
+    why:
+      "🔴 0032 adds ONE enum label and nothing else, so the label is not merely the last object it creates — " +
+      "it is the ONLY one. Every table, column and index around it exists before and after, which is why no " +
+      "existence probe on `bookings` could tell an un-migrated box from a migrated one (the 0022 blindness). " +
+      "Nothing else adds this label (TASK-260 — REQ-076's hold).",
+    rerunnable: true, // `ADD VALUE IF NOT EXISTS` — a re-run is a no-op
+  },
+  {
+    tag: "0033_paused_slot_index",
+    probe: {
+      kind: "index-predicate",
+      index: "bookings_teacher_slot_uq",
+      contains: "PAUSED",
+    },
+    why:
+      "🔴 NOT the index's existence — `bookings_teacher_slot_uq` exists before AND after; only its predicate " +
+      "changes. An existence probe would be satisfied by 0007's version and would report this as applied on a " +
+      "box where it never ran. Probing the DEFINITION is the same reasoning 0007 needed against 0002, one " +
+      "status later (TASK-260 — a paused booking releases the teacher's slot).",
+    rerunnable: false, // DROP INDEX (unguarded) then a bare CREATE UNIQUE INDEX — same shape as 0007
+  },
+  {
+    tag: "0034_course_expiry_changes",
+    probe: { kind: "index", index: "course_expiry_changes_course_idx" },
+    why:
+      "TASK-264 (REQ-082 AC-2). Rule 1 — the LAST object 0034 creates, which is the index and not the " +
+      "table: witnessing the table would call a run that died between the two statements 'applied', and " +
+      "the index would never be created. Rule 2 — EXISTENCE is a valid probe here, unlike 0033: this index " +
+      "is invented by this migration, over a table invented by this migration, so nothing that ran before " +
+      "it could have produced it and a false 'applied' is impossible. 0033 could not use existence because " +
+      "`bookings_teacher_slot_uq` existed before AND after and only its predicate changed — the 0022 " +
+      "blindness. The rule was never 'avoid existence'; it is 'the object must exist ONLY because this ran'.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";
@@ -358,6 +401,8 @@ export function describeProbe(p: WitnessKind): string {
       return `index ${p.index} definition contains "${p.contains}"`;
     case "constraint":
       return `constraint ${p.constraint} exists`;
+    case "enum-label":
+      return `enum ${p.type} has label '${p.label}'`;
     case "superseded-by":
       return `inherited from ${p.tag} (own effect no longer observable)`;
     case "needs-human":

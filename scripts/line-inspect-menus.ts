@@ -13,6 +13,8 @@ import {
   getRichMenu,
   getUserRichMenuId,
   listRichMenus,
+  ourMenuMatch,
+  summariseOurMenus,
 } from "../src/lib/line-rich-menu";
 
 /** Renders one menu's identity + its tap areas — the direct test of hypothesis (A). Pure (no IO). */
@@ -62,9 +64,26 @@ async function main() {
   console.log("\n── All menus on the channel (GET /richmenu/list) ──");
   const all = await listRichMenus();
   if (!all.length) console.log("  (none)");
+  // 🔴 TASK-252 — this line used to read ownership off the STORED IDS alone, and @Porter watched it label
+  // **20 menus we created ourselves** as foreign on the demo OA: no ids were stored, so nothing was ours.
+  // `ourMenuMatch` is the one predicate both this and `line:remove-menus` ask. No private copy here.
   for (const m of all) {
-    const known = entries.some(([, id]) => id === m.richMenuId) ? "" : "  ⚠️  created outside our publish (OA Manager?)";
+    const match = ourMenuMatch(m, ids);
+    const known = !match
+      ? "  ⚠️  created outside our publish (OA Manager?)"
+      : match.matchedBy === "id"
+        ? `  (= our ${match.label})`
+        : `  (OURS by name → ${match.label}; not in the stored ids — an earlier publish, or ids cleared)`;
     console.log(`  ${m.richMenuId} name="${m.name}" areas=${Array.isArray(m.areas) ? m.areas.length : "?"}${known}`);
+  }
+  // §4 — say the number nobody was told. `publish` leaves its predecessors behind; this is where they show.
+  const footprint = summariseOurMenus(all, ids);
+  console.log(
+    `  ⇒ ${footprint.ours} of the channel's ${footprint.onChannel} menu(s) are ours; ` +
+      `${footprint.current} match the stored ids, ${footprint.leftover} do not.`,
+  );
+  if (footprint.leftover) {
+    console.log("     `bun run line:remove-menus` lists them for review. Nothing here deletes anything.");
   }
 
   if (userId) {

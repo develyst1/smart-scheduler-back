@@ -24,10 +24,18 @@ const TABLE: Record<string, Entry> = {
     TH: "ขอโทษค่ะ ขอส่งให้แอดมินช่วยดูนะคะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
     EN: "Sorry about that — I am passing this to an admin to help you. 🙏\n(To use the bot again, type: reopen)",
   },
+  // 🔴 TASK-251 (REQ-079 §16) — **no digits.** `1 / 2 / 3` collided with numbered replies the customer's own OA
+  // owns, on a live account. The buttons carry the choices now, so the text stops listing them as a numbered
+  // menu; the three words below are also what a PC user can still TYPE, which is why they are named in the
+  // prompt rather than left only on the buttons.
   role_prompt: {
-    TH: "เลือกบทบาทของคุณ:\n1 = ลูกค้า/ผู้ปกครอง\n2 = ครู\n3 = แอดมิน",
-    EN: "Choose your role:\n1 = Customer/Parent\n2 = Teacher\n3 = Admin",
+    TH: "คุณเป็นใครคะ? แตะปุ่มด้านล่าง หรือพิมพ์ ผู้ปกครอง · ครู · แอดมิน",
+    EN: "Who are you? Tap a button below, or type: parent · teacher · admin",
   },
+  // The button labels — short, because LINE clamps a quick-reply label at 20 characters.
+  role_btn_customer: { TH: "ผู้ปกครอง", EN: "Parent" },
+  role_btn_teacher: { TH: "ครู", EN: "Teacher" },
+  role_btn_admin: { TH: "แอดมิน", EN: "Admin" },
   code_customer: { TH: "กรุณาพิมพ์เบอร์โทรของผู้ปกครอง (เช่น 0812345678)", EN: "Please type the parent's phone number (e.g. 0812345678)" },
   code_teacher: { TH: "กรุณาพิมพ์ชื่อเล่นครูตามที่ลงทะเบียนในระบบ", EN: "Please type the teacher nickname as registered" },
   code_admin: { TH: "กรุณาพิมพ์รหัสแอดมิน (เช่น 229)", EN: "Please type the admin code (e.g. 229)" },
@@ -323,6 +331,17 @@ const TABLE: Record<string, Entry> = {
   ob_deduct_title: { TH: "💡COURSE DEDUCTION", EN: "💡COURSE DEDUCTION" },
   // TASK-256 (REQ-077 Parent 2) — likewise theirs, emoji and colon included.
   ob_today_title: { TH: "⏱️TODAY'S SCHEDULE:", EN: "⏱️TODAY'S SCHEDULE:" },
+  // SPEC-075 / TASK-260 (REQ-076) — the two teacher messages, @Porter's copy VERBATIM from the REQ.
+  // 📌 *"ยังไม่มีกำหนดใหม่"* is the whole point of the pause message: a hold with no new date is exactly what a
+  // coach needs to know, and inventing one would be the reschedule this feature deliberately is not.
+  ob_paused: {
+    TH: "คาบนี้ถูกพักไว้ชั่วคราวค่ะ — {student} · {date} {time} · ยังไม่มีกำหนดใหม่",
+    EN: "This class has been put on hold — {student} · {date} {time} · no new date yet",
+  },
+  ob_resumed: {
+    TH: "คาบที่พักไว้ กลับมาลงตารางแล้วค่ะ — {student} · {date} {time}",
+    EN: "The paused class is back on the schedule — {student} · {date} {time}",
+  },
   // 🔴 TASK-257 §3 — the two lines kept BELOW the customer's block need labels in the customer's convention,
   // and they cannot reuse `ob_l_*`: those are bilingual, and `ob_l_note` also renders `booking_confirmed`,
   // whose text is owner-verified and byte-frozen. **The same key cannot serve two labelling conventions**, so

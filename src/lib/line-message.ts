@@ -201,6 +201,20 @@ export function formatOutboxMessage(
         )
       ).trimEnd();
     }
+    // SPEC-075 / TASK-260 (REQ-076 AC-7) — the two teacher messages for a hold and its return.
+    //
+    // 🔑 Both read the SAME enriched booking the worker already loads, so the date they name is the one the row
+    // carries: on a pause that is *the slot it came from*, on a resume it is the new one. Nothing here computes
+    // a date, which is why "no new date yet" can be stated as a fact rather than as a guess.
+    // 📌 @Porter's copy verbatim; `-` where a field is missing, the same convention `sick_leave` uses so a
+    // deleted student still sends rather than throwing.
+    case "booking_paused":
+    case "booking_resumed":
+      return t(payload.kind === "booking_paused" ? "ob_paused" : "ob_resumed", lang, {
+        student: (payload.studentName as string) || ctx.studentName || ctx.title || "-",
+        date: ctx.date ?? "-",
+        time: ctx.startTime ?? "-",
+      });
     case "reschedule_requested": {
       const target =
         payload.to?.date && payload.to?.startTime

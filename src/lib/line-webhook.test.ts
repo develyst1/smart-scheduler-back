@@ -10,7 +10,12 @@ import {
 
 describe("line-webhook (C.4)", () => {
   test("parseRoleChoice", () => {
-    expect(parseRoleChoice("1")).toBe("customer");
+    // TASK-251 (REQ-079 section 16): this line used to read `parseRoleChoice("1")` -> "customer". The bare
+    // number is retired because it collided with the numbered replies the customer's own OA already owns, so
+    // the fixture is CORRECTED to the new truth rather than deleted. The exhaustive role-word matrix lives in
+    // `line-role-buttons.test.ts`; what this C.4 fixture keeps is the one assertion that must never regress.
+    expect(parseRoleChoice("1")).toBeNull();
+    expect(parseRoleChoice("ผู้ปกครอง")).toBe("customer");
     expect(parseRoleChoice("ครู")).toBe("teacher");
     expect(parseRoleChoice("แอดมิน")).toBe("admin");
     expect(parseRoleChoice("xyz")).toBeNull();

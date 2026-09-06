@@ -45,6 +45,14 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /bookings/:id/badges": "allowed", // a badge on a delivered session is a record, not a change
   "POST /courses/:id/cancel/preview": "allowed", // read-only; it must still say "already ended"
   "POST /rentals": "allowed", // see the task notes — equipment, and a standalone rental has no course at all
+  // 🔴 SPEC-076 / TASK-264 (REQ-082) — move a course's expiry. **`allowed`, and it is a DECISION, not an
+  // oversight.** AC-1 is *"any course"*, and AC-3 is that this changes one date and nothing else: it adds,
+  // moves and removes no session, touches no money and no entitlement, so there is nothing on an ended course
+  // for the guard to protect. ⚠️ And guarding it would break the pair it ships with — REQ-084's resume
+  // warning tells the admin *"ขยับวันหมดอายุก่อน"* about a course that is DROPPED at that very moment, and
+  // `assertCourseWritable` refuses DROPPED. **The guard would make the warning point at a control that
+  // refuses.** If this route ever gains a second field, that field decides this line again.
+  "PATCH /courses/:id/expiry": "allowed",
 
   // ── cannot touch an existing course ──
   "POST /students": "unrelated",
@@ -85,6 +93,13 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // not reachable from it at all. Classified deliberately rather than by default — this guard exists precisely
   // so a new write route cannot slip past because nobody thought about it, and it caught mine.
   "POST /parents/:id/clear-line-link": "unrelated",
+  // SPEC-075 / TASK-260 (REQ-076) — pause / resume ONE booking. 🔴 Classified `unrelated` for a REASON, not by
+  // default: `pauseBooking` **refuses any booking that has a `courseId` at all** (AC-3 — a course session is
+  // REQ-071's business), so an ended course's session cannot reach either route. That refusal is what makes
+  // the ended-course guard unnecessary here rather than merely absent — if AC-3 were ever relaxed, both would
+  // become `guarded` and this line is where that shows up.
+  "POST /bookings/:id/pause": "unrelated",
+  "POST /bookings/:id/resume": "unrelated",
 };
 
 describe("every write route is classified against the ended-course rule (TASK-185)", () => {

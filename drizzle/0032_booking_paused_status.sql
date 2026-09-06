@@ -1,0 +1,20 @@
+-- SPEC-075 / TASK-260 (REQ-076) — `PAUSED`: a single booking put on hold, and NOTHING else.
+--
+-- The owner's sentence, and everything in this pair agrees with it: *a hold, and nothing else.* No money, no
+-- entitlement, no expiry change, no reason. Anything richer belongs to REQ-081.
+--
+-- 🔴 Numbering: counted at the moment of writing — `drizzle/*.sql` = 32, journal tags = 32 — so this pair is
+-- `0032` and `0033`. (Board rule: *"no migration" is a CLAIM, not a state*; the same count is why the SA's
+-- draft numbers, written before TASK-233's `0031` landed, are one behind.) Hand-authored + journal-registered
+-- per drizzle/README.md; do NOT run `db:generate` — the snapshot chain stops at 0003.
+--
+-- 🔴 WHY THIS IS ITS OWN FILE, and the whole reason there are two: **a new enum value cannot be USED in the
+-- transaction that adds it**, and `drizzle-kit migrate` runs every pending migration inside ONE transaction.
+-- So the index rebuild that must name `'PAUSED'` cannot live here — it is `0033`, and it must be applied as a
+-- separate `db:migrate` run. Splitting them is not tidiness; putting them together fails.
+-- (Same trap as `0029`'s `OTHER`, one file further: there, nothing in the file referenced the new label.)
+--
+-- ⚠️ WITNESS — the enum LABEL, not any table or index. `bookings.status` exists before and after, and so does
+-- `bookings_teacher_slot_uq`; probing either would make an un-migrated box look identical to a migrated one.
+-- That blindness is how `0022` hid and took the calendar down, and this is the easiest place to repeat it.
+ALTER TYPE "booking_status" ADD VALUE IF NOT EXISTS 'PAUSED';

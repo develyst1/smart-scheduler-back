@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -11,6 +11,9 @@ import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
+// TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?", read by
+// the expiry edit's warning, the resume's warning and the resume's `EXPIRY_REQUIRED` gate.
+import { expiryImpact } from "../lib/course-expiry-impact";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
 import { firstFreeWeeklySlot } from "../lib/extension-slot";
 import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
@@ -471,11 +474,17 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
   for (const d of teacherDtos) d.limitOverride = overrides.has(d.id);
 
   const bookingRows = await db.query.bookings.findMany({
-    where: (b, { and, eq, gte, lte, ne }) =>
+    where: (b, { and, eq, gte, lte, notInArray }) =>
       and(
         gte(b.date, range.start),
         lte(b.date, range.end),
-        ne(b.status, "CANCELLED"),
+        // 🔴 TASK-260 (REQ-076 §1a) — the NAMED list, not a hand-written `ne(status, "CANCELLED")`.
+        //
+        // A `PAUSED` booking keeps its date, so it satisfied that old single exclusion and would have rendered
+        // on the grid — while every `SLOT_INACTIVE_STATUSES` test passed, because that list feeds the unique
+        // index and the availability checks, **not this query**. Two lists, two questions; `SICK_LEAVE` is in
+        // the other one and is deliberately still shown here (see the overlap resolution below).
+        notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
         // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
         // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
         eq(b.pendingSlot, false),
@@ -1810,15 +1819,30 @@ export async function getEntitlementPlan(id: string) {
       // TASK-165 (REQ-064): the PLAN's size, not the purchased size — an imported course only ever holds
       // `size − priorSessions` sessions here. `summary.size` below stays the purchase, which is what the card shows.
       insertable: canInsertIntoCourse(course, planSessions), // TASK-181: an ENDED course offers no insert
+      // 🔴 TASK-263 — the WHOLE summary goes in, never a projection.
+      //
+      // This used to hand-copy five of `toCourseSummary`'s fields, and the three it left out were the
+      // LIFECYCLE ones: `status`, `endedAt`, `endReason`. ⇒ `plan.summary.status` was `undefined` on every
+      // course, so the FE's pause control never hid and its resume button — which has existed since the drop
+      // shipped — rendered on nothing. **One omission, both halves of the owner's report.** And `SummaryBar`
+      // had been reading `endedAt`/`endReason` all along, so its "this course has ended" notice could never
+      // appear either: a third symptom nobody had connected.
+      //
+      // 📌 This is TASK-205's finding for the third time in this file, and its comment already said it: *"the
+      // whole rows go in, never a projection. This used to hand-copy four fields, and when TASK-198 added
+      // `droppedAt` to the status rule it was not added here."* A projection buys nothing here — `summary` is
+      // already computed on the line above — and it costs a silent omission every time the builder grows.
+      // `toCourseWithStudent` (`db/mappers.ts`) has spread it like this all along.
+      //
+      // ⚠️ Exactly ONE field of this summary is plan-specific, and it is overridden AFTER the spread so it
+      // cannot be shadowed. Everything else the old literal listed was already identical to `summary`'s.
       summary: {
+        ...summary,
         kind: "course" as const,
-        size: course.size,
-        leaveUsed: summary.leaveUsed,
-        leaveQuota: summary.leaveQuota,
-        maxWeek: summary.maxWeek,
-        // TASK-165 plan size (not purchase size) · TASK-181 an ended course owes 0, by construction not by luck
+        // TASK-165 the PLAN's owed count, not the purchase's · TASK-181 an ended course owes 0, by
+        // construction not by luck. 🚫 `summary.usedSessions` is the course's stored counter and answers a
+        // different question — do not read it as the plan's progress.
         owedCount: Math.max(0, courseOwedTarget(course) - current),
-        expiryDate: course.expiryDate, // the MAX_WEEK ceiling, not the live end
       },
     };
   }
@@ -2076,8 +2100,18 @@ async function findFreeExtensionDate(
   return firstFreeWeeklySlot(fromDate, async (d) => {
     if (alreadyTaken.has(d)) return true;
     return !!(await exec.query.bookings.findFirst({
-      where: (b: any, { and, eq, ne }: any) =>
-        and(eq(b.teacherId, teacherId), eq(b.date, d), eq(b.startTime, startTime), ne(b.status, "CANCELLED")),
+      // 🔴 TASK-260 — "is this weekly slot taken?" is an AVAILABILITY question (REQ-076 AC-17), so it reads the
+      // same `SLOT_INACTIVE_STATUSES` the unique index is built from. It used to hand-write `ne(CANCELLED)`,
+      // which would have made a PAUSED booking block a make-up from a slot it no longer holds — the third
+      // copy of this rule, and the last one still written out by hand.
+      // 📌 Nothing changes for existing data: before this task no booking could be PAUSED.
+      where: (b: any, { and, eq, notInArray }: any) =>
+        and(
+          eq(b.teacherId, teacherId),
+          eq(b.date, d),
+          eq(b.startTime, startTime),
+          notInArray(b.status, [...SLOT_INACTIVE_STATUSES]),
+        ),
     }));
   });
 }
@@ -3472,6 +3506,217 @@ export async function confirmCourse(id: string) {
     };
   });
 }
+// ─────────── SPEC-075 / TASK-260 (REQ-076) — pause and resume ONE booking ───────────
+//
+// 🔴 The owner's sentence, and every line below agrees with it: **a hold, and nothing else.** No money, no
+// entitlement, no expiry change, no reason. Anything richer is REQ-081.
+//
+// 📌 The booking KEEPS its `date` / `start_time` — they become *the slot it came from*, which is what the tray
+// row shows. 🚫 Nulling the date would put a null check in every query and destroy that row in the same move.
+
+/** Statuses a booking can be paused FROM — it must not have happened yet (AC-1, AC-2). */
+const PAUSABLE_STATUSES = new Set(["PENDING", "CONFIRMED", "EXTENDED"]);
+
+/**
+ * AC-1 — put one booking on hold. `1HR` · `VOUCHER` · `FIRST_TRIAL` only.
+ *
+ * 🚫 **No `reason` parameter, and the route takes no body** (§8): with nowhere to put one, AC-8's reason cannot
+ * be sent even by accident. *The absence is structural instead of a promise.*
+ */
+export async function pauseBooking(id: string) {
+  return db.transaction(async (tx: any) => {
+    const current = await tx.query.bookings.findFirst({
+      where: (b: any, { eq: e }: any) => e(b.id, id),
+      with: { teacher: true },
+    });
+    if (!current) throw notFound("ไม่พบคาบเรียน");
+    if (current.status === "PAUSED") throw conflict("ALREADY_PAUSED", "คาบนี้พักอยู่แล้ว");
+    // 🚫 AC-3 — a course session is REQ-071's business and its wording does not change. Checked BEFORE the
+    // status, so a course booking is refused for being a course rather than for whatever state it is in.
+    if (current.courseId) {
+      throw conflict("COURSE_SESSION", "คาบในคอร์สใช้การพักคอร์สแทน — พักทีละคาบไม่ได้");
+    }
+    // 🚫 AC-2 — never a session that already happened. `isDelivered` is the same predicate every other
+    // "this is done" guard uses, so a NO_SHOW is refused for the same reason an ATTENDED one is.
+    if (isDelivered(current.status) || !PAUSABLE_STATUSES.has(current.status)) {
+      throw conflict("NOT_PAUSABLE", "พักได้เฉพาะคาบที่ยังไม่เกิดขึ้น");
+    }
+
+    await tx.update(bookings).set({ status: "PAUSED" }).where(eq(bookings.id, id));
+
+    // 🔴 AC-7 is an ENQUEUE rule, not a rendering one: no teacher ⇒ **no row at all**. A SKIPPED row would read
+    // as *we tried to reach someone* when there was nobody to reach (SPEC-072 §5's shape).
+    let notification: NotifyResult | null = null;
+    if (current.teacher?.lineUserId) {
+      notification = await enqueueLine(
+        {
+          recipientType: "teacher",
+          recipientLineUserId: current.teacher.lineUserId,
+          bookingId: id,
+          payload: { kind: "booking_paused" },
+        },
+        tx,
+      );
+    }
+
+    const row = await tx.query.bookings.findFirst({
+      where: (b: any, { eq: e }: any) => e(b.id, id),
+      with: withBookingRelations,
+    });
+    return { paused: true, booking: toBookingDTO(row), notification };
+  });
+}
+
+/**
+ * AC-13 — put it back on the calendar, at **any** date and time, not only the one it came from.
+ *
+ * 🔴 AC-14 reuses the existing clash refusal (`describeSlotClash`), so the product has ONE clash message.
+ * 📌 AC-16 needed no code: the row becomes `CONFIRMED` with a date, which every downstream path already treats
+ * as ordinary — which is the evidence that §1's representation was the right one.
+ */
+export async function resumeBooking(id: string, input: { date: string; startTime: string }) {
+  return db.transaction(async (tx: any) => {
+    const current = await tx.query.bookings.findFirst({
+      where: (b: any, { eq: e }: any) => e(b.id, id),
+    });
+    if (!current) throw notFound("ไม่พบคาบเรียน");
+    if (current.status !== "PAUSED") {
+      throw conflict("NOT_PAUSED", "คาบนี้ไม่ได้พักอยู่ — ไม่ต้องกดนำกลับมา");
+    }
+
+    try {
+      await tx
+        .update(bookings)
+        .set({
+          status: "CONFIRMED",
+          date: input.date,
+          startTime: input.startTime,
+          endTime: addHour(input.startTime),
+        })
+        .where(eq(bookings.id, id));
+    } catch (e: any) {
+      // 🔴 AC-14 — the partial unique index refuses the clash and the message is the one every other clash
+      // uses. ⚠️ `describeSlotClash` reads on `db`, not `tx`, because a `23505` aborts the transaction — the
+      // lookup that explains the refusal cannot run inside the one it just broke (TASK-238's lesson).
+      if (pgErrorCode(e) === "23505") {
+        throw conflict("SLOT_TAKEN", await describeSlotClash(current.teacherId, input.date, input.startTime));
+      }
+      throw e;
+    }
+
+    const withTeacher = await tx.query.bookings.findFirst({
+      where: (b: any, { eq: e }: any) => e(b.id, id),
+      with: { teacher: true },
+    });
+    let notification: NotifyResult | null = null;
+    if (withTeacher?.teacher?.lineUserId) {
+      notification = await enqueueLine(
+        {
+          recipientType: "teacher",
+          recipientLineUserId: withTeacher.teacher.lineUserId,
+          bookingId: id,
+          payload: { kind: "booking_resumed" },
+        },
+        tx,
+      );
+    }
+
+    const row = await tx.query.bookings.findFirst({
+      where: (b: any, { eq: e }: any) => e(b.id, id),
+      with: withBookingRelations,
+    });
+    return { resumed: true, booking: toBookingDTO(row), notification };
+  });
+}
+
+/**
+ * SPEC-076 / TASK-264 (REQ-082 AC-2) — the ONE writer of `course_expiry_changes`.
+ *
+ * Takes the executor so it works inside a transaction (`resumeCourse`) and outside one (the edit). 🔴 It is
+ * one function because Q1's sweep found **two** paths that move a course's expiry: this REQ's edit, and
+ * `resumeCourse`. Recording from only the new one would have shipped the audit with a hole on day one, and
+ * the hole would be invisible — a missing row looks exactly like a course nobody edited.
+ *
+ * ⚠️ It records **from and to even when they are equal**? No — a no-op write is not a change, and an audit
+ * full of rows saying nothing happened is how people stop reading it. The caller decides; see below.
+ */
+async function recordExpiryChange(
+  exec: any,
+  row: { courseId: string; from: string; to: string; actor?: string | null },
+) {
+  if (row.from === row.to) return; // not a change
+  await exec.insert(courseExpiryChanges).values({
+    courseId: row.courseId,
+    fromDate: row.from,
+    toDate: row.to,
+    actor: row.actor ?? null,
+  });
+}
+
+/**
+ * 🔴 SPEC-076 / TASK-264 (REQ-082) — **change one date, and nothing else.**
+ *
+ * ## AC-3 is an ABSENCE, and it is the whole point
+ * *"the sessions already on the calendar are not moved, added or removed."* ⇒ this function calls
+ * **none** of `reconcileCoursePlan`, `applyPlanChange`, `courseOwedTarget`, `insertBooking` or
+ * `courseSessionDates`, and there is a test asserting that by name. **An expiry edit that quietly
+ * regenerates a plan is a worse defect than the missing feature** — the admin asked to move a boundary and
+ * would get a rebuilt calendar, which is not something a warning can undo.
+ *
+ * ## AC-1 says "any course", so there is deliberately NO `assertCourseWritable`
+ * ⚠️ That gate exists to keep ENDED/DROPPED courses out of the paths that **create or move sessions** — and
+ * this path creates and moves nothing, which is AC-3. So it has nothing to protect here.
+ * 🔴 And refusing a DROPPED course would break the pair this ships with: REQ-084's resume warning tells the
+ * admin *"ขยับวันหมดอายุก่อน"*, and a course is DROPPED at exactly the moment it says so. **The gate would
+ * make the warning point at a control that refuses.**
+ *
+ * ## AC-4 warns and SAVES
+ * The owner's rule is *warn, do not act*. The new expiry is written whatever `expiryImpact` says, and the
+ * response carries which sessions now fall outside. 🚫 Not a refusal, not a blocking confirmation.
+ *
+ * ## AC-5 — no money, no entitlement
+ * An expiry is a boundary, not a purchase. No `bo.movement`, no `usedSessions`, no `usedHours`; asserted as
+ * absences, because "we didn't touch the money" is the kind of claim that quietly stops being true.
+ */
+export async function updateCourseExpiry(
+  id: string,
+  input: { expiryDate: string },
+  actor?: string | null,
+) {
+  const course = await db.query.coursePackages.findFirst({ where: (c, { eq: e }) => e(c.id, id) });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+
+  // The warning's inputs are computed HERE, on the server (SPEC-076 §3): a second derivation on the screen
+  // is how the warning and the truth come apart. `bookings` are read only to be COUNTED — nothing is written
+  // to them, which is AC-3.
+  const rows = await db.query.bookings.findMany({
+    where: (b, { and: a, eq: e }) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+  });
+  const impact = expiryImpact(input.expiryDate, rows.map((r) => ({ id: r.id, date: r.date, status: r.status, startTime: r.startTime })));
+
+  const from = course.expiryDate;
+  await db.transaction(async (tx: any) => {
+    // One UPDATE, one column. The audit row is written in the SAME transaction as the change it records —
+    // an audit that can be committed without its subject, or vice versa, is not a record of anything.
+    await tx.update(coursePackages).set({ expiryDate: input.expiryDate }).where(eq(coursePackages.id, id));
+    await recordExpiryChange(tx, { courseId: id, from, to: input.expiryDate, actor });
+  });
+
+  const updated = await db.query.coursePackages.findFirst({
+    where: (c, { eq: e }) => e(c.id, id),
+    with: { student: true },
+  });
+  return { course: toCourseWithStudent(updated), expiryWarning: impact, previousExpiryDate: from };
+}
+
+/** REQ-082 AC-2 — the record, newest first. Read-only; the FE shows it beside the expiry control. */
+export async function getCourseExpiryHistory(id: string) {
+  return db.query.courseExpiryChanges.findMany({
+    where: (r, { eq: e }) => e(r.courseId, id),
+    orderBy: (r, { desc }) => [desc(r.changedAt)],
+  });
+}
 export async function dropCourse(id: string, input: { reason?: string | null }, actor?: string | null) {
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
@@ -3512,9 +3757,12 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
  * loudly** (`SLOT_TAKEN`): silently moving a child to another time, months after the parent was told when their
  * lesson is, is the one outcome this must never produce.
  */
-export async function resumeCourse(id: string, input: { expiryDate: string }, _actor?: string | null) {
-  if (!input.expiryDate) throw new ApiException(400, "EXPIRY_REQUIRED", "ต้องระบุวันหมดอายุใหม่");
-
+export async function resumeCourse(id: string, input: { expiryDate?: string | null }, actor?: string | null) {
+  // 🔴 TASK-264 (ข) — the gate is no longer unconditional; it now lives BELOW, after the course is loaded.
+  // It used to read `if (!input.expiryDate) throw EXPIRY_REQUIRED`, which demanded a decision on every
+  // resume including the ones where nothing was wrong. The owner's own rule applied to itself: **required
+  // only when the warning fires.** Moving it inside the transaction is not a style change — the answer
+  // needs the course's weekday, its owed count and its current expiry, none of which exist up here.
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
     if (isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
@@ -3536,13 +3784,45 @@ export async function resumeCourse(id: string, input: { expiryDate: string }, _a
         ),
     );
 
+    // 🔴 TASK-264 (ข) — ONE computation, read twice: the gate and the warning.
+    //
+    // The dates the resume is ABOUT to create, measured against the expiry that would apply. Asked before
+    // anything is written, because the gate's whole job is to refuse before a decision is made — and asked
+    // through `expiryImpact`, the same function the expiry EDIT uses, so *"required only when the warning
+    // fires"* is true by construction instead of by two implementations agreeing.
+    //
+    // ⚠️ These sessions do not exist yet, which is why `expiryImpact` takes candidates rather than fetching
+    // rows: a resume asks about the future, an edit asks about the calendar, and the question is the same.
+    const effectiveExpiry = input.expiryDate ?? course.expiryDate;
+    const projected =
+      owed > 0
+        ? courseSessionDates(nextWeekdayOnOrAfter(bangkokNow().date, course.weekday), owed).map((date) => ({
+            date,
+          }))
+        : [];
+    const impact = expiryImpact(effectiveExpiry, projected);
+
+    // (ข): required ONLY when the warning fires. A resume where every session it will create still falls
+    // inside the existing expiry asks the admin for nothing — which is the case the old gate could not tell
+    // apart from the broken one.
+    if (!input.expiryDate && impact.warn) {
+      throw new ApiException(
+        400,
+        "EXPIRY_REQUIRED",
+        `ต้องระบุวันหมดอายุใหม่ — มี ${impact.outsideCount} คาบที่จะเลยวันหมดอายุเดิม (${effectiveExpiry})`,
+      );
+    }
+
     // Clear the pause FIRST: `insertBooking` runs through `assertCourseWritable`, and a course still marked
     // dropped would refuse its own resume. Doing it inside the same transaction means a clash below still
     // rolls the whole thing back — the course does not come back half-resumed.
     await tx
       .update(coursePackages)
-      .set({ droppedAt: null, droppedBy: null, dropReason: null, expiryDate: input.expiryDate })
+      .set({ droppedAt: null, droppedBy: null, dropReason: null, expiryDate: effectiveExpiry })
       .where(eq(coursePackages.id, id));
+    // Q1's hole, closed: `resumeCourse` is the OTHER path that moves a course's expiry, so it records too —
+    // through the same writer, in the same transaction. A no-op (resume without a new date) records nothing.
+    await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: effectiveExpiry, actor });
 
     const studentId = course.studentId;
     const teacherId = rows[0]?.teacherId ?? null;
@@ -3580,7 +3860,16 @@ export async function resumeCourse(id: string, input: { expiryDate: string }, _a
     const updated = await tx.query.coursePackages.findFirst({
       where: (c: any, { eq: e }: any) => e(c.id, id),
     });
-    return { resumed: true, createdSessions: created.length, dates: created, course: toCourseSummary(updated) };
+    // ⚠️ Warn and still SAVE, here too: an admin who DID supply a date that still leaves sessions outside is
+    // told which, and the resume goes through. Same shape as the edit's response, so the FE renders one
+    // warning component for both REQs rather than two that drift.
+    return {
+      resumed: true,
+      createdSessions: created.length,
+      dates: created,
+      course: toCourseSummary(updated),
+      expiryWarning: impact,
+    };
   });
 }
 export async function endCourse(

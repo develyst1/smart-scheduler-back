@@ -35,7 +35,9 @@ describe("🔴 ONE definition of 'live' — the index's own, not a copy of it", 
   });
 
   test("🔑 the index is BUILT from that constant — so there is no second list left to drift", () => {
-    expect([...SLOT_INACTIVE_STATUSES]).toEqual(["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE"]);
+    // ⚠️ TASK-260 added `PAUSED`: a paused booking releases the teacher's slot (REQ-076 AC-17), which is the
+    // same question this list has always answered. The guard itself needed no change — that IS the property.
+    expect([...SLOT_INACTIVE_STATUSES]).toEqual(["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE", "PAUSED"]);
   });
 
   test("a CANCELLED / SICK_LEAVE / PENDING_RESCHEDULE booking must NOT refuse", () => {

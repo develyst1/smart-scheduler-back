@@ -43,6 +43,14 @@ async function probeOne(sql: postgres.Sql, p: WitnessKind): Promise<boolean | nu
       if (rows.length === 0) return false;
       return rows[0]!.indexdef.includes(p.contains);
     }
+    case "enum-label": {
+      // TASK-260 — the only observable effect of an `ALTER TYPE … ADD VALUE` is the label itself.
+      const rows = await sql`
+        SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = ${p.type} AND e.enumlabel = ${p.label}
+      `;
+      return rows.length > 0;
+    }
     case "constraint": {
       const rows = await sql`SELECT 1 FROM pg_constraint WHERE conname = ${p.constraint}`;
       return rows.length > 0;

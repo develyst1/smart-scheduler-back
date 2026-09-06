@@ -11,6 +11,7 @@ import { SLOT_INACTIVE_STATUSES } from "../db/schema";
 
 const SVC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
 const SCHEMA = readSrc(await Bun.file(new URL("../db/schema.ts", import.meta.url)).text());
+const MIGRATION_0033 = await Bun.file(new URL("../../drizzle/0033_paused_slot_index.sql", import.meta.url)).text();
 const FN = (() => {
   const at = SVC.indexOf("async function describeSlotClash");
   const rest = SVC.slice(at);
@@ -62,8 +63,9 @@ describe("the lookup that feeds it", () => {
     expect(indexWhere).toContain("sql.raw(SLOT_INACTIVE_SQL)");
     expect(SCHEMA).toContain("SLOT_INACTIVE_SQL = SLOT_INACTIVE_STATUSES.map(");
     expect(FN).toContain("nin(b.status, [...SLOT_INACTIVE_STATUSES])");
-    // …and the list itself is still exactly the three the index has always excluded.
-    expect([...SLOT_INACTIVE_STATUSES]).toEqual(["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE"]);
+    // …and the list itself is exactly what the index excludes. ⚠️ TASK-260 added PAUSED — a paused booking
+    // releases the teacher slot (AC-17), which is the same question this list has always answered.
+    expect([...SLOT_INACTIVE_STATUSES]).toEqual(["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE", "PAUSED"]);
   });
 
   test("🔴 the emitted index predicate is byte-identical to the hand-written one it replaced", () => {
@@ -71,7 +73,10 @@ describe("the lookup that feeds it", () => {
     // If this ever stops matching, the running index and the schema have diverged — which `db:verify` cannot
     // see, because the index's NAME is unchanged either way (the `0022` blindness, one layer over).
     const literal = [...SLOT_INACTIVE_STATUSES].map((s) => `'${s}'`).join(", ");
-    expect(`not in (${literal})`).toBe("not in ('CANCELLED', 'PENDING_RESCHEDULE', 'SICK_LEAVE')");
+    // 🔴 TASK-260 — pinned to the MIGRATION that actually built the running index, not to a literal retyped
+    // here. The TS list and 0033 SQL are the two halves that must agree; a test comparing the list to itself
+    // would pass on a box where the migration never ran.
+    expect(MIGRATION_0033).toContain(`not in (${literal})`);
   });
 
   test("the booking name uses the `displayName` rule, not a second one", () => {
@@ -94,10 +99,16 @@ describe("AC-25 — no clash, no message", () => {
     // A refusal that fires when nothing clashes is worse than a generic one. The only caller is the unique-
     // violation handler, so on the happy path this code never runs at all.
     const calls = SVC.split("describeSlotClash(").length - 1;
-    expect(calls).toBe(2); // the declaration, and the one call site
+    // The declaration + one call per write that can hit the index. ⚠️ TASK-260 added the second call site:
+    // `resumeBooking` puts a paused booking back on a date that may have been taken meanwhile (AC-14), and it
+    // reuses THIS describer rather than writing a second clash message — the property asserted below.
+    expect(calls).toBe(3);
     const insert = SVC.slice(SVC.indexOf("async function insertBooking"), SVC.indexOf("export async function createBooking"));
     expect(insert).toContain('if (code === "23505") {');
     expect(insert.indexOf('code === "23505"')).toBeLessThan(insert.indexOf("describeSlotClash("));
+    // …and the new caller obeys the same rule: the description is built only after a real unique violation.
+    const resume = SVC.slice(SVC.indexOf("export async function resumeBooking"), SVC.indexOf("export async function dropCourse"));
+    expect(resume.indexOf('pgErrorCode(e) === "23505"')).toBeLessThan(resume.indexOf("describeSlotClash("));
   });
 });
 

@@ -657,9 +657,38 @@ export const dropCourse = z.object({
   /** Free text, optional: a pause has no closed set of causes the way an early ending does. */
   reason: z.string().trim().max(500).optional(),
 });
+/**
+ * SPEC-075 / TASK-260 (REQ-076 AC-13) — put ONE booking back on the calendar, at any date and time.
+ *
+ * 🚫 There is deliberately no `pauseBooking` schema: **the pause route takes no body at all** (§8's ratified
+ * contract). With no field to put one in, **AC-8's reason cannot be sent even by accident** — the absence is
+ * structural rather than a promise.
+ */
+export const resumeBooking = z.object({
+  date: DATE,
+  startTime: TIME,
+});
 export const resumeCourse = z.object({
-  /** 🔴 Required: resuming without a new window would leave the family under the OLD expiry, which the pause
-   *  has by now eaten into — the admin must say when the course now runs to. */
+  /**
+   * 🔴 TASK-264 (REQ-082 ข) — **OPTIONAL now, and the reason is the owner's own rule applied to itself.**
+   *
+   * It used to be required, on the reasoning that the pause has eaten into the old window. True when it
+   * has; **not true when it has not** — and demanding a date on a resume where nothing is wrong is the
+   * blocking-dialog shape the owner rejected (*warn, do not act*).
+   * ⚠️ The requirement did not disappear: `resumeCourse` still throws `EXPIRY_REQUIRED`, but only when the
+   * sessions it is about to create fall outside the existing expiry — the SAME `expiryImpact` the warning
+   * uses. A schema cannot express "required when the warning fires", so the check moved to where the
+   * course is loaded, not away.
+   */
+  expiryDate: DATE.optional(),
+});
+
+/**
+ * TASK-264 (REQ-082 AC-1) — move a course's expiry. One field, deliberately: this verb changes one date and
+ * nothing else (AC-3), and a schema that accepted more would be the first place that stopped being true.
+ * 🚫 No `reason` — see the table's comment; nobody asked for one and an audit prompt goes unfilled.
+ */
+export const updateCourseExpiry = z.object({
   expiryDate: DATE,
 });
 

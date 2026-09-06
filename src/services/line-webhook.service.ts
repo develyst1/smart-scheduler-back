@@ -17,7 +17,7 @@ import {
   type LineWebhookEvent,
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
-import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
+import { bookingPicker, childPicker, childrenFlex, rolePicker, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
 import { leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
 import { getSetting } from "./settings.service";
@@ -191,6 +191,36 @@ async function clearSession(lineUserId: string) {
 const MUTED_STEP = "MUTED";
 
 /**
+ * 🔴 TASK-251 (REQ-079 §16) — the role question, asked ONE way.
+ *
+ * Every place that asks it builds the message here, so the prompt and its buttons cannot drift apart: a picker
+ * on one path and a bare text on another is how a customer meets the retired numbered version months later.
+ */
+const askRole = (lang: Lang) =>
+  rolePicker(
+    t("role_prompt", lang),
+    {
+      customer: t("role_btn_customer", lang),
+      teacher: t("role_btn_teacher", lang),
+      admin: t("role_btn_admin", lang),
+    },
+    lang,
+  );
+
+/**
+ * 🔴 …and the role ANSWER is accepted one way, whether it arrived as a tap or as a typed word.
+ *
+ * `resetStrikes` → `AWAIT_CODE` → the role's own prompt. **One path, not two**: the postback below and the
+ * typed branch both call this, so a change to the transition cannot reach only one of them — and the tap can
+ * never quietly skip the strike reset that a typed answer performs.
+ */
+async function acceptRole(lineUserId: string, role: LinkRole, replyToken: string, lang: Lang) {
+  await resetStrikes(lineUserId); // AC-19: a valid answer clears the count — see `strikeOrPrompt`.
+  await setStep(lineUserId, "AWAIT_CODE", role);
+  return reply(replyToken, t(`code_${role}`, lang));
+}
+
+/**
  * "No conversation is in progress on this row." ONE definition, shared by the two writers below, so *"the flow
  * is over"* cannot come to mean two different sets of columns.
  */
@@ -268,6 +298,15 @@ async function strikeOrPrompt(
   replyToken: string,
   promptOnFirstStrike: string,
   lang: Lang,
+  /**
+   * TASK-251 — the first-strike re-ask, as a MESSAGE rather than a string.
+   *
+   * LINE removes a quick reply the moment the user sends anything, so after a miss the buttons are gone from
+   * the screen. Re-prompting with text alone would mean the picker is offered once and never again — the
+   * person most likely to need a button would be the one person who cannot see one. Optional, so every other
+   * caller keeps its plain-text prompt untouched; the HANDOVER reply stays text either way.
+   */
+  promptMessage?: LineMessage,
 ) {
   const next = (session.unexpectedCount ?? 0) + 1;
   if (shouldHandOver(next)) {
@@ -283,7 +322,7 @@ async function strikeOrPrompt(
     .update(lineLinkSessions)
     .set({ unexpectedCount: next })
     .where(eq(lineLinkSessions.lineUserId, lineUserId));
-  return reply(replyToken, promptOnFirstStrike);
+  return promptMessage ? send(replyToken, [promptMessage]) : reply(replyToken, promptOnFirstStrike);
 }
 
 /**
@@ -977,7 +1016,8 @@ async function handleMessage(ev: LineWebhookEvent) {
     // reversed, it would wipe the `CHOOSE_ROLE` it had just written and swallow the parent's "1" instead.
     await unmute(lineUserId);
     await setStep(lineUserId, "CHOOSE_ROLE", null);
-    return reply(replyToken, t("role_prompt", lang));
+    // TASK-251 — the question comes with its buttons, from the one builder.
+    return send(replyToken, [askRole(lang)]);
   }
 
   const session = await getSession(lineUserId);
@@ -1066,10 +1106,11 @@ async function handleMessage(ev: LineWebhookEvent) {
   if (session.step === "CHOOSE_ROLE") {
     const role = parseRoleChoice(text);
     // AC-18 — an unrecognised reply INSIDE a flow. Second one hands over to a human instead of re-prompting.
-    if (!role) return strikeOrPrompt(lineUserId, session, replyToken, t("role_prompt", lang), lang);
-    await resetStrikes(lineUserId); // AC-19: a valid answer clears the count — see `strikeOrPrompt`.
-    await setStep(lineUserId, "AWAIT_CODE", role);
-    return reply(replyToken, t(`code_${role}`, lang));
+    // ⚠️ TASK-251: a bare `1`/`2`/`3` now lands here, and that is deliberate — the strike path ends at a person,
+    // with the picker still on screen.
+    if (!role)
+      return strikeOrPrompt(lineUserId, session, replyToken, t("role_prompt", lang), lang, askRole(lang));
+    return acceptRole(lineUserId, role, replyToken, lang);
   }
 
   // 🔀 TASK-232 — the 2FA step. Unreachable while `line_parent_2fa` is `off`, because nothing sets this step;
@@ -1182,6 +1223,20 @@ async function handlePostback(ev: LineWebhookEvent) {
   // teacher?"* as the very first question is the friction REQ-079 removed.
   // ⚠️ The step is set AFTER `unmute()` above, which since TASK-246 clears any in-flight flow. Reversed, the
   // un-mute would erase the step this line just wrote — the same ordering trap `สมัคร` has. Move them together.
+  // 🔴 TASK-251 (REQ-079 §16) — the role picker's tap. It carries OUR action on OUR namespace, so it cannot be
+  // confused with anything the customer's own OA numbers on its account.
+  //
+  // 🚫 It does NOT re-implement the transition: `acceptRole` is the same function the typed word reaches, so a
+  // tap and a typed `ครู` cannot come to mean two different things, and neither can skip the strike reset.
+  // ⚠️ Dispatched here, before `detectLinkedRole`, because whoever answers it is by definition not yet
+  // recognised as anything.
+  if (action === "role") {
+    const role = params.role;
+    if (role === "customer" || role === "teacher" || role === "admin") {
+      return acceptRole(lineUserId, role, replyToken, lang);
+    }
+    return send(replyToken, [askRole(lang)]);
+  }
   if (action === "enter") {
     await setStep(lineUserId, "AWAIT_CODE", "customer");
     return send(replyToken, [textReply(t("enter_ask_phone", lang), lang)]);

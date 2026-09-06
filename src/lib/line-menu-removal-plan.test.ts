@@ -40,7 +40,7 @@ const CHANNEL = [
   { richMenuId: "rm-k-th", name: "smart-scheduler-known-th" },
 ];
 
-describe("🔴 OURS ONLY — by stored id, never 'everything the channel lists'", () => {
+describe("🔴 OURS ONLY — by stored id OR our name, never 'everything the channel lists'", () => {
   test("the six stored menus are planned for deletion", () => {
     const plan = planMenuRemoval(STORED, CHANNEL, "rm-u-th");
     expect(plan.toDelete.map((m) => m.label)).toEqual([
@@ -67,11 +67,53 @@ describe("🔴 OURS ONLY — by stored id, never 'everything the channel lists'"
     expect(formatRemovalPlan(plan, { apply: false, account: "acc" })).toContain("404, which counts as done");
   });
 
-  test("nothing stored ⇒ nothing to delete, and the plan says so rather than erroring", () => {
+  // 🔴 TASK-252 CORRECTED this test. It used to assert `toDelete == []` and `foreign` of 6 for exactly the
+  // input below — and that assertion was the DEFECT, written down as an expectation. `remove-menus` clears
+  // the stored ids as its LAST act, so "nothing stored" is the state this command itself produces; the rule
+  // written to protect the customer's menus would then have protected our own litter and refused to clean it.
+  // @Porter watched the same inference mislabel 20 of our menus as foreign on the demo OA.
+  test("🔴 stored ids EMPTY + our names on the channel ⇒ still OURS (the state a previous run leaves)", () => {
     const plan = planMenuRemoval({}, CHANNEL, "rm-u-th");
+    expect(plan.toDelete.map((m) => m.id)).toEqual(["rm-p-th", "rm-p-en", "rm-t-th", "rm-t-en", "rm-u-th", "rm-k-th"]);
+    expect(plan.toDelete.every((m) => m.matchedBy === "name")).toBe(true);
+    expect(plan.foreign).toEqual([]);
+    // ⚠️ §5 — a name is a convention, so the reviewer must be told which rows rest on one.
+    const out = formatRemovalPlan(plan, { apply: false, account: "acc" });
+    expect(out).toContain("OUR NAME (not in the stored ids)");
+    expect(out).toContain("ours by NAME only");
+  });
+
+  test("🚫 …and a FOREIGN name in the same list is still reported and left — `ours-only` did not relax", () => {
+    const plan = planMenuRemoval({}, [...CHANNEL, { richMenuId: "rm-promo", name: "promo-2026" }], "rm-u-th");
+    expect(plan.foreign).toEqual([{ id: "rm-promo", name: "promo-2026" }]);
+    expect(plan.toDelete.map((m) => m.id)).not.toContain("rm-promo");
+  });
+
+  test("an EMPTY channel with nothing stored ⇒ nothing to delete, said rather than errored", () => {
+    // The sentence the old test was really guarding, on the input that actually produces it.
+    const plan = planMenuRemoval({}, [], null);
     expect(plan.toDelete).toEqual([]);
-    expect(plan.foreign).toHaveLength(6);
+    expect(plan.foreign).toEqual([]);
     expect(formatRemovalPlan(plan, { apply: false, account: "acc" })).toContain("nothing of ours is on this channel");
+  });
+
+  test("🔑 a menu matched by BOTH is listed ONCE, and the stored id is what claims it", () => {
+    // The id is the stronger claim (we recorded it when we created it), and a duplicate row would make the
+    // typed `REMOVE <n>` confirmation count something that does not exist.
+    const plan = planMenuRemoval(STORED, CHANNEL, null);
+    expect(plan.toDelete).toHaveLength(6);
+    expect(plan.toDelete.every((m) => m.matchedBy === "id")).toBe(true);
+  });
+
+  test("🔴 the leftovers a repeated publish leaves behind are found — the litter @Porter saw", () => {
+    // `publishRichMenus` creates its set and deletes nothing, so the channel accumulates six per run. With
+    // ids stored for the CURRENT set only, the older ones are ours by name and nothing else can see them.
+    const older = CHANNEL.map((m) => ({ richMenuId: `${m.richMenuId}-old`, name: m.name }));
+    const plan = planMenuRemoval(STORED, [...older, ...CHANNEL], "rm-u-th");
+    expect(plan.toDelete).toHaveLength(12);
+    expect(plan.toDelete.filter((m) => m.matchedBy === "name")).toHaveLength(6);
+    expect(plan.foreign).toEqual([]);
+    expect(plan.cancelDefault).toBe(true);
   });
 });
 

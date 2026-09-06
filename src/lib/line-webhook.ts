@@ -66,12 +66,24 @@ export function parsePostback(data: string): { action: string; params: Record<st
   return { action: params.action ?? "", params };
 }
 
-/** Normalize user role choice: "1" / "ลูกค้า" / "customer" → customer */
+/**
+ * Normalize a typed role choice: `ผู้ปกครอง` / `customer` → customer.
+ *
+ * 🔴 TASK-251 (REQ-079 §16) — **the bare numbers are gone.** `1 / 2 / 3` collided with numbered replies the
+ * customer's own OA already owns, on a live account. The sweep found this is the ONE parser in the product that
+ * accepted a bare number — `เช็คอิน <n>` / `ลา <n>` need a keyword first, so a lone `2` never reaches them — so
+ * closing it here removes the collision from the product rather than discouraging it.
+ *
+ * ✅ **The words stay, and `พ่อ` / `แม่` join them.** The picker is the front door, but LINE on PC cannot tap a
+ * quick reply, so a typed answer is the path that must not close.
+ * ⚠️ A parent who learned `1/2/3` now takes the AC-18 strike path and, on a second miss, reaches a person. That
+ * is correct and deliberate: a special case for a retired input is a rule nobody would remember to delete.
+ */
 export function parseRoleChoice(text: string): "customer" | "teacher" | "admin" | null {
   const t = text.trim().toLowerCase();
-  if (["1", "ลูกค้า", "customer", "นักเรียน", "ผู้ปกครอง"].includes(t)) return "customer";
-  if (["2", "ครู", "teacher"].includes(t)) return "teacher";
-  if (["3", "แอดมิน", "admin"].includes(t)) return "admin";
+  if (["ลูกค้า", "customer", "นักเรียน", "ผู้ปกครอง", "พ่อ", "แม่", "parent"].includes(t)) return "customer";
+  if (["ครู", "teacher"].includes(t)) return "teacher";
+  if (["แอดมิน", "admin"].includes(t)) return "admin";
   return null;
 }
 

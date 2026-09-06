@@ -4,7 +4,12 @@
 //   bun run line:publish-menus
 // Re-run to republish after artwork changes. Fails clearly BEFORE any LINE API call if the token or any image
 // is missing (never half-publishes). Do NOT run against the real OA from a dev box.
-import { publishRichMenus } from "../src/lib/line-rich-menu";
+import {
+  listRichMenus,
+  publishRichMenus,
+  summariseOurMenus,
+  type MenuIds,
+} from "../src/lib/line-rich-menu";
 
 /** Fixed image-path contract with TASK-041 (Fern). Paths are relative to the repo (bun run cwd). */
 export const IMAGE_PATHS = {
@@ -27,6 +32,38 @@ export function preflightErrors(hasToken: boolean, missingImages: string[]): str
   return errors;
 }
 
+/**
+ * 🔴 TASK-252 §4 — **`publish` must SAY it.** *"Nobody looked because nothing told them."*
+ *
+ * `publishRichMenus` creates its set and deletes nothing, so every run leaves its predecessor on the
+ * channel — six per run, accumulating for weeks. @Porter's inspect found **20 menus on the demo OA, every
+ * one ours**, and no command had ever mentioned it.
+ *
+ * 🚫 It reports; it does not clean up. Deleting menus on a live account as a side effect of publishing is
+ * exactly the unreviewed destruction the owner refused (*"สั่งทีมทำเครื่องมือ แบบนี้เสี่ยงไป"*). Removal
+ * stays a deliberate, reviewed act behind `line:remove-menus`.
+ *
+ * Pure: the IO shell hands it the channel list, so the sentence can be asserted without a network.
+ */
+export function formatPublishFootprint(
+  channel: Array<{ richMenuId?: string; name?: string | null }>,
+  created: MenuIds,
+): string[] {
+  const f = summariseOurMenus(channel, created);
+  const out = [
+    `Channel now holds ${f.onChannel} rich menu(s); ${f.ours} carry our names, and ${f.current} are the set just published.`,
+  ];
+  if (f.leftover) {
+    out.push(
+      `⚠️  ${f.leftover} of our menus are LEFT OVER from earlier publishes — this command never deletes.`,
+      "    `bun run line:remove-menus` lists them for review; `bun run line:inspect-menus` shows them all.",
+    );
+  }
+  if (f.onChannel - f.ours > 0) {
+    out.push(`${f.onChannel - f.ours} menu(s) on the channel are not ours and are none of this command's business.`);
+  }
+  return out;
+}
 async function main() {
   const missing: string[] = [];
   for (const p of Object.values(IMAGE_PATHS)) {
@@ -50,6 +87,10 @@ async function main() {
   console.log(`  teacher-EN: ${ids.teacherEN}`);
   console.log(`  unknown-TH: ${ids.unknownTH}   ← account DEFAULT (REQ-079)`);
   console.log(`  known-TH  : ${ids.knownTH}     ← linked per user when a chat is bound`);
+
+  // §4 — the footprint, read back from LINE rather than assumed from what we just created.
+  for (const line of formatPublishFootprint(await listRichMenus(), ids)) console.log(`  ${line}`);
+
   console.log("Re-run `bun run line:publish-menus` to republish after the artwork changes.");
   process.exit(0);
 }
