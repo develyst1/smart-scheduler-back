@@ -12,6 +12,7 @@
 // the row back. 🚫 Never a second SELECT: a concurrent write between them would print a number that was true at
 // neither moment.
 import { enqueueLine } from "./line";
+import { familyLineUserIds } from "./family-link";
 
 /** Which balance was drawn down. It is also the answer to "does this booking get the message at all". */
 export type DeductionKind = "course" | "voucher";
@@ -71,30 +72,46 @@ export function deductionPayload(input: DeductionInput) {
  */
 export async function notifyCourseDeduction(exec: any, input: DeductionInput): Promise<void> {
   if (!input.studentId) return;
-  const parentLineUserId = await lookupParentLine(exec, input.studentId);
-  // An unlinked parent still writes a SKIPPED row — that is `enqueueLine`'s job and it is how the reach is
-  // counted; most `uat` parents were imported and have never linked.
-  await enqueueLine(
-    {
-      recipientType: "parent",
-      recipientLineUserId: parentLineUserId,
-      // The row carries the booking, so the worker enriches student · program · date · time · coach from it —
-      // the same facts every other booking-based message reads, rather than a second copy in this payload.
-      bookingId: input.bookingId,
-      payload: deductionPayload(input),
-    },
-    exec,
-  );
+  // 🔴 TASK-259 — EVERY account the family has linked, through the one accessor. This used to read
+  // `parents.line_user_id` directly, so the second parent received nothing and nothing said so.
+  const accounts = await familyAccountsOfStudent(exec, input.studentId);
+  const payload = deductionPayload(input);
+
+  // An unlinked family still writes ONE SKIPPED row — that is `enqueueLine`'s job and it is how the reach is
+  // counted; most `uat` parents were imported and have never linked. 🚫 Not one skipped row per nobody.
+  if (!accounts.length) {
+    await enqueueLine(
+      { recipientType: "parent", recipientLineUserId: null, bookingId: input.bookingId, payload },
+      exec,
+    );
+    return;
+  }
+  for (const lineUserId of accounts) {
+    await enqueueLine(
+      {
+        recipientType: "parent",
+        recipientLineUserId: lineUserId,
+        // The row carries the booking, so the worker enriches student · program · date · time · coach from it —
+        // the same facts every other booking-based message reads, rather than a second copy in this payload.
+        bookingId: input.bookingId,
+        payload,
+      },
+      exec,
+    );
+  }
 }
 
-/** The parent's LINE id for a student, or `null` — `null` is a first-class answer, not an error. */
-async function lookupParentLine(exec: any, studentId: string): Promise<string | null> {
+/**
+ * Every LINE account that may act for this student's family — `[]` when there is no parent or no link.
+ *
+ * 🔑 The student → parent hop stays here (it is this caller's own question); "which accounts does that family
+ * have" is asked of `familyLineUserIds`, the ONE accessor. TASK-255's read found three copies of the second
+ * half, all of them reading a column that names only one device.
+ */
+async function familyAccountsOfStudent(exec: any, studentId: string): Promise<string[]> {
   const student = await exec.query.students.findFirst({
     where: (s: any, { eq }: any) => eq(s.id, studentId),
   });
-  if (!student?.parentId) return null;
-  const parent = await exec.query.parents.findFirst({
-    where: (p: any, { eq }: any) => eq(p.id, student.parentId),
-  });
-  return parent?.lineUserId ?? null;
+  if (!student?.parentId) return [];
+  return familyLineUserIds(student.parentId, exec);
 }

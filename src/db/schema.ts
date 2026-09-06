@@ -97,6 +97,14 @@ export const parents = pgTable(
     phone: text("phone").notNull(),
     name: text("name"), // ชื่อผู้ปกครอง (ถ้ามี) — optional
     // LINE OA userId once the parent links via the chat flow (C.4). Null = not linked.
+    //
+    // 🔴 TASK-259 — **this is the family's PRIMARY account, for DISPLAY. It is not a routing fact.**
+    // Since REQ-079 a family may link several accounts (`family_line_links`), and both directions go through
+    // the accessors, never through this column: `familyLineUserIds` decides who RECEIVES a message,
+    // `familyOfLineUser` decides whose family an inbound message is from. The column names the FIRST account to
+    // link and never moves again — it used to be overwritten by each new link, which silently unsubscribed
+    // **and** un-recognised the parent who had linked first.
+    // 🚫 Do not re-use it to answer *"where do we send this"* — that is exactly what the next reader will try.
     lineUserId: text("line_user_id"),
     lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
     /** Household address — kept on the PARENT, not duplicated per student (REQ-019 / TASK-048). */

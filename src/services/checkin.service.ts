@@ -8,6 +8,7 @@ import { getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
 import { bookingsWithRentals, updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
+import { findParentByLineUserId } from "./parent.service";
 
 const withBookingRelations = {
   student: true,
@@ -79,9 +80,13 @@ export async function checkinByToken(token: string) {
 
 /** Parent LINE userId → today's CONFIRMED bookings for that parent's children. */
 export async function findTodayBookingsForParent(lineUserId: string, date: string) {
-  const parent = await db.query.parents.findFirst({
-    where: (p, { eq: e }) => e(p.lineUserId, lineUserId),
-  });
+  // 🔴 TASK-259 — through the ONE resolver, not a hand-rolled copy of it.
+  //
+  // 📌 This WAS the second copy of the two-step, written out by hand — which is exactly why a grep for
+  // `findParentByLineUserId` never counted it, and why it would have been the one site left behind when every
+  // other inbound path moved. A family's second account reaches its children through the same door as the
+  // first, or it reaches nothing.
+  const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return [];
   const linked = await db.query.students.findMany({
     where: (s, { eq: e }) => e(s.parentId, parent.id),

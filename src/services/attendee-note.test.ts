@@ -65,13 +65,16 @@ describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
 
   test("🔴 the parent is enqueued alongside the teacher, not instead of them", () => {
     expect(confirmBranch).toContain('recipientType: "teacher"');
-    expect(confirmBranch).toContain('recipientType: "parent"');
+    // ⚠️ TASK-259 — the parent's row(s) go through `enqueueParentCopies`, which is where `recipientType:
+    // "parent"` now lives: a family may hold several accounts and each one needs its own row.
+    expect(confirmBranch).toContain("enqueueParentCopies(tx,");
   });
 
-  test("the parent's LINE id is resolved through the student, and null is allowed", () => {
+  test("the parent's LINE ids are resolved through the student, and NONE is allowed", () => {
     // `enqueueLine` writes SKIPPED for a null recipient — the common case for uat's imported parents, and it
-    // must not be an error.
-    expect(confirmBranch).toContain("parentLineUserId(tx, current.studentId)");
+    // must not be an error. ⚠️ TASK-259: plural now, because a family may hold several accounts; an empty list
+    // is still exactly one SKIPPED row, because "we could not reach this family" is one fact.
+    expect(confirmBranch).toContain("parentLineUserIds(tx, current.studentId)");
   });
 
   test("🔑 both rows are inside the confirm branch — a cancel or a leave must not message a parent", () => {

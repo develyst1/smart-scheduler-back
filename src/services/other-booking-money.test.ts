@@ -111,9 +111,12 @@ describe("AC-5 / AC-6 — where the money lands, and what it is attributed to", 
 
 describe("🔴 the SAME `rev:<bookingId>` key as every other day-end post", () => {
   test("อื่นๆ uses it, so SPEC-069's warning covers it with no second lookup and no type list", () => {
-    expect(POST_OTHER).toContain("const idempotencyKey = `rev:${b.id}`");
-    // …and there is exactly one key expression in the whole อื่นๆ path — not one per branch.
-    expect(POST_OTHER.match(/rev:\$\{/g)).toHaveLength(1);
+    // ⚠️ TASK-258 — same key family, now generation-aware: `revKey(b.id, 0)` IS `rev:<id>`, byte for byte what
+    // this used to pin. อื่นๆ follows the sequence for the same reason it shared the key at all — otherwise it
+    // becomes the one type that silently stops re-posting after a correction.
+    expect(POST_OTHER).toContain("const idempotencyKey = revKey(b.id, await revGeneration(b.id))");
+    // …and there is still exactly ONE key expression in the whole อื่นๆ path — not one per branch.
+    expect(POST_OTHER.match(/revKey\(/g)).toHaveLength(1);
   });
 
   test("idempotency is the SAME shape as `recordSale`: up-front read + the unique index behind it", () => {
@@ -155,8 +158,10 @@ describe("🔴 the four existing types' posting path is byte-identical", () => {
     const loop = JOBS.slice(JOBS.indexOf("for (const b of attended)"), JOBS.indexOf("const report ="));
     expect(loop).toContain('if (b.bookingType === "OTHER")');
     expect(loop.indexOf('bookingType === "OTHER"')).toBeLessThan(loop.indexOf("resolvePriceGroup"));
-    // The trial/single post is the same call it always was.
-    expect(loop).toContain("await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}`, discount })");
+    // The trial/single post is the same call it always was, with TASK-258's generation on its key (and on the
+    // discount's, so a re-posted sale cannot lose the discount and over-charge the family in the books).
+    expect(loop).toContain("idempotencyKey: revKey(b.id, generation)");
+    expect(loop).toContain("discountKey: discountKey(b.id, generation)");
   });
 
   test("`recordSale` itself is untouched — its two rules still stand", () => {

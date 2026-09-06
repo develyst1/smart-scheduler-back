@@ -76,17 +76,21 @@ describe("runDailyReminderJob (TASK-208)", () => {
     // `groupReminders` is what collapses ~60 Saturday sessions into one message per person; enqueuing from
     // `rows` instead would put eight pushes on a teacher's phone before 08:20. TASK-218 narrowed the loop from
     // `groups` to `due` (the not-yet-reminded subset) — still one entry per PERSON, never per booking.
+    // ⚠️ TASK-259: the loop is over per-DEVICE sends now, expanded from the same groups — a family with two
+    // linked parents is two rows, never two messages per booking. The property guarded here is unchanged.
     expect(body).toContain("for (const g of due)");
     expect(body).toContain("groupReminders(");
-    expect(body).toContain("dueReminders(groups, runDate, alreadyKeyed)");
+    expect(body).toContain("reminderSends(groups, runDate)");
+    expect(body).toContain("dueSends(sends, alreadyKeyed)");
     expect(body).not.toMatch(/for \(const [a-z]+ of rows\)/);
   });
 
   test("🔴 TASK-218: idempotency is per RECIPIENT per day, and it is what gates the send", () => {
     // The gate must sit between "who is due" and "send", and it must be the per-person key — not a job flag.
-    expect(body).toContain("reminderKey(g.recipientType, g.personId, runDate)");
-    expect(body).toContain("idempotencyKey: reminderKey(");
-    expect(body.indexOf("dueReminders(")).toBeLessThan(body.indexOf("await enqueueLine("));
+    // ⚠️ TASK-259: per recipient **per device**. The key is built in `reminderSends`, and the primary account
+    // keeps the un-suffixed person key, so a row queued before this deploy still suppresses its own duplicate.
+    expect(body).toContain("idempotencyKey: g.key");
+    expect(body.indexOf("dueSends(")).toBeLessThan(body.indexOf("await enqueueLine("));
   });
 
   test("🔴 TASK-218: NO job-level flag may suppress the send — that is what ate the day", () => {
@@ -130,7 +134,7 @@ describe("runDailyReminderJob (TASK-208)", () => {
     // "already had it" and "cannot be reached at all" are the two answers an operator is choosing between when
     // a morning looks short. Folding them into one number loses exactly the distinction they are read for.
     expect(body).toContain('else if (result.status === "skipped") skipped++');
-    expect(body).toContain("alreadyReminded = groups.length - due.length");
+    expect(body).toContain("alreadyReminded = sends.length - due.length");
   });
 
   test("`reminderRanToday` is recorded, never acted on — and still keys on `attempted`", () => {

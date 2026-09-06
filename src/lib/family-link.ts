@@ -12,7 +12,7 @@
 // ⇒ Nothing outside this file reads either source for this question. `familyLineUserIds` is primary-first, so
 // `[0]` is always `parents.line_user_id` and the existing single-account meaning survives everywhere.
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { familyLineLinks, parents } from "../db/schema";
 import { unlinkRichMenuFromUser } from "./line-rich-menu";
@@ -25,19 +25,46 @@ import { unlinkRichMenuFromUser } from "./line-rich-menu";
  * phone, which is exactly how a notification channel gets muted.
  */
 export async function familyLineUserIds(parentId: string, exec: any = db): Promise<string[]> {
-  const parent = await exec.query.parents.findFirst({
-    columns: { lineUserId: true },
-    where: (p: any, { eq: e }: any) => e(p.id, parentId),
+  return (await familyLineUserIdsBulk([parentId], exec)).get(parentId) ?? [];
+}
+
+/**
+ * 🔴 TASK-259 — the same question for MANY families, in two queries.
+ *
+ * The daily reminder resolves ~60 sessions' parents at once and was written specifically to avoid a per-row
+ * lookup. Calling the single accessor in a loop would put that back, so the bulk shape exists — but it is the
+ * **same function**: `familyLineUserIds` is defined in terms of this one, so "which accounts belong to this
+ * family, primary first, deduped" has exactly one implementation and cannot drift between the two callers.
+ */
+export async function familyLineUserIdsBulk(
+  parentIds: string[],
+  exec: any = db,
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!parentIds.length) return out;
+
+  const rows = await exec.query.parents.findMany({
+    columns: { id: true, lineUserId: true },
+    where: (p: any, { inArray: inA }: any) => inA(p.id, parentIds),
   });
   const links = await exec
-    .select({ lineUserId: familyLineLinks.lineUserId })
+    .select({ parentId: familyLineLinks.parentId, lineUserId: familyLineLinks.lineUserId })
     .from(familyLineLinks)
-    .where(eq(familyLineLinks.parentId, parentId));
-  const ids = [
-    ...(parent?.lineUserId ? [parent.lineUserId] : []),
-    ...links.map((r: any) => r.lineUserId),
-  ];
-  return [...new Set(ids)];
+    .where(inArray(familyLineLinks.parentId, parentIds));
+
+  const linksByParent = new Map<string, string[]>();
+  for (const l of links as { parentId: string; lineUserId: string }[]) {
+    linksByParent.set(l.parentId, [...(linksByParent.get(l.parentId) ?? []), l.lineUserId]);
+  }
+  for (const p of rows as { id: string; lineUserId: string | null }[]) {
+    // Primary first — `[0]` is always `parents.line_user_id` when there is one, which is what keeps every
+    // existing single-account meaning (and TASK-259's send-once key) exactly as it was.
+    const ids = [...(p.lineUserId ? [p.lineUserId] : []), ...(linksByParent.get(p.id) ?? [])];
+    out.set(p.id, [...new Set(ids)]);
+  }
+  // A parent id with no row at all still answers, so a caller never has to tell "no accounts" from "no parent".
+  for (const id of parentIds) if (!out.has(id)) out.set(id, []);
+  return out;
 }
 
 /**

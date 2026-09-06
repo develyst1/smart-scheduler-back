@@ -239,24 +239,29 @@ describe("confirmCourse sends ONE message, not N (TASK-201)", () => {
   };
   const body = fn("confirmCourse");
 
-  test("🔴 exactly TWO enqueues — one per PERSON — and both OUTSIDE the per-session loop", () => {
-    // TASK-207 added the parent. Two people, two messages, for one decision about a ten-session course. The
-    // number that must never grow with the session count.
-    expect(body.match(/enqueueLine\(/g)).toHaveLength(2);
+  test("🔴 ONE enqueue per PERSON, and every one OUTSIDE the per-session loop", () => {
+    // TASK-207 added the parent. Two people, one decision about a ten-session course — the number that must
+    // never grow with the SESSION count.
+    // ⚠️ TASK-259: the parent's side is now `enqueueParentCopies`, which writes one row per linked ACCOUNT. That
+    // grows with the family's devices (two parents ⇒ two rows) and still never with the sessions, which is the
+    // property this test exists for.
+    expect(body.match(/enqueueLine\(/g)).toHaveLength(1); // the teacher's
+    expect(body.match(/enqueueParentCopies\(/g)).toHaveLength(1); // the family's
     expect(body.indexOf("for (const b of pending)")).toBeLessThan(body.indexOf("enqueueLine("));
+    expect(body.indexOf("for (const b of pending)")).toBeLessThan(body.indexOf("enqueueParentCopies("));
   });
 
   test("🔑 teacher and parent are sent the SAME payload object, not two copies of it", () => {
     // Two literals would be two places to update the next time the message changes — and one would be missed,
     // which is how a parent ends up reading a different schedule from the teacher.
     expect(body.match(/payload: coursePayload/g)).toHaveLength(2);
-    expect(body).toContain('recipientType: "parent"');
+    expect(body).toContain("enqueueParentCopies(tx, parentLines, { payload: coursePayload })");
   });
 
   test("an unlinked parent is a SKIPPED row and a reported fact, never an error", () => {
     // The common case on `uat`: imported parents who have never linked LINE. The response says whether the
     // parent was actually reached, so "we notified them" is checkable rather than assumed.
-    expect(body).toContain("parentLineUserId(tx");
+    expect(body).toContain("parentLineUserIds(tx");
     expect(body).toContain("parentLinked");
   });
 

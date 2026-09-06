@@ -16,15 +16,16 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { postBookingSale, recordSale } from "../lib/sale-post";
+import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
+import { familyLineUserIdsBulk } from "../lib/family-link";
 import { hhmm } from "../lib/time";
 import { enqueueLine } from "../lib/line";
-import { dueReminders, groupReminders, reminderKey, reminderReach } from "../lib/daily-reminder";
+import { dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -185,7 +186,16 @@ export async function runEndOfDayJob(date?: string) {
           b.id,
         )
       : undefined;
-    const res = await recordSale(ref, 1, { refId: b.id, idempotencyKey: `rev:${b.id}`, discount });
+    // 🔴 TASK-258 — the key carries the GENERATION, so a booking whose attendance was undone and re-marked
+    // posts again instead of returning `{ ok: true, skipped: "duplicate" }` and writing nothing (AC-8).
+    // Generation 0 is the un-suffixed `rev:<id>` every historical row already carries, so nothing re-posts.
+    const generation = await revGeneration(b.id);
+    const res = await recordSale(ref, 1, {
+      refId: b.id,
+      idempotencyKey: revKey(b.id, generation),
+      discountKey: discountKey(b.id, generation),
+      discount,
+    });
     if (res.ok) revenuePosted++;
   }
 
@@ -223,7 +233,10 @@ async function postOtherBookingSale(b: {
   // day-end job one comparison and touches no money at all.
   if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;
 
-  const idempotencyKey = `rev:${b.id}`;
+  // 🔴 TASK-258 — the same generation rule as the trial/single path above. อื่นๆ posts on the SAME key family
+  // deliberately (TASK-225), so it must follow the same sequence or an undone-and-re-marked อื่นๆ would be the
+  // one type that silently stops re-posting.
+  const idempotencyKey = revKey(b.id, await revGeneration(b.id));
 
   // 🔴 The whole body is wrapped, because this file's first rule is that revenue posting must NEVER fail the
   // job it runs inside. `postBookingSale` already honours that for its own writes, but the item LOOKUPS here
@@ -360,6 +373,10 @@ export async function runDailyReminderJob(date?: string) {
     ? await db.query.parents.findMany({ where: (p: any, { inArray: inA }: any) => inA(p.id, parentIds) })
     : [];
   const parentById = new Map(parents.map((p: any) => [p.id, p]));
+  // 🔴 TASK-259 — every account each family has linked, in TWO queries for the whole day. The single accessor
+  // in a loop would put back the per-row lookup this job exists to avoid, so the bulk shape is used — and it is
+  // the same function underneath, so its answer cannot differ from the one every other sender gets.
+  const familyAccounts = await familyLineUserIdsBulk(parentIds);
 
   const groups = groupReminders(
     rows.map((r: any) => ({
@@ -384,6 +401,8 @@ export async function runDailyReminderJob(date?: string) {
       parentLineUserId: r.student?.parentId
         ? (parentById.get(r.student.parentId)?.lineUserId ?? null)
         : null,
+      // 🔴 TASK-259 — the whole family, resolved once above rather than per row.
+      parentLineUserIds: r.student?.parentId ? (familyAccounts.get(r.student.parentId) ?? []) : [],
       // `null`, not `"-"`: an อื่นๆ booking has no program, and `renderSchedule` omits the segment rather than
       // printing a placeholder that reads as a program nobody recorded.
       subjectName: r.subject?.name ?? null,
@@ -414,7 +433,10 @@ export async function runDailyReminderJob(date?: string) {
   // This is the fast path only. The `notification_outbox_idempotency_uq` index is what actually makes a
   // double-send impossible when two boxes fire at the same moment — read-then-write alone is a race, and
   // `enqueueLine` reports that collision back as `duplicate` rather than throwing.
-  const keys = groups.map((g) => reminderKey(g.recipientType, g.personId, runDate));
+  // 🔴 TASK-259 — one send per DEVICE, so the keys are read per device too. A family's two rows carry two keys;
+  // sharing one would let the unique index swallow the second parent silently — the defect this task closes.
+  const sends = reminderSends(groups, runDate);
+  const keys = sends.map((s) => s.key);
   const alreadyKeyed = new Set(
     keys.length
       ? (
@@ -425,7 +447,7 @@ export async function runDailyReminderJob(date?: string) {
         ).map((r) => r.key as string)
       : [],
   );
-  const due = dueReminders(groups, runDate, alreadyKeyed);
+  const due = dueSends(sends, alreadyKeyed);
 
   // 🔴 TASK-209 — `sent` is the number ACTUALLY queued for delivery, not a boolean.
   //
@@ -438,7 +460,7 @@ export async function runDailyReminderJob(date?: string) {
   // TASK-218: people this run deliberately did not send to because they already had today's reminder. It is a
   // separate count from `skipped` (= unreachable, no LINE link) on purpose — "already done" and "cannot reach"
   // are the two answers an operator is choosing between when a morning looks short.
-  let alreadyReminded = groups.length - due.length;
+  let alreadyReminded = sends.length - due.length;
   for (const g of due) {
     const result = await enqueueLine({
       recipientType: g.recipientType,
@@ -449,7 +471,7 @@ export async function runDailyReminderJob(date?: string) {
       skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
       // 🔴 The send-once key. A SKIPPED row never stores it (`lib/line.ts`), so someone who was unlinked at
       // 07:00 and links LINE by 08:15 is still reached — an unreachable person was not reminded.
-      idempotencyKey: reminderKey(g.recipientType, g.personId, runDate),
+      idempotencyKey: g.key,
     });
     if (result.status === "duplicate") alreadyReminded++;
     else if (result.status === "skipped") skipped++;

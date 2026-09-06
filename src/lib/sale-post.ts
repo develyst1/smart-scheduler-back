@@ -12,7 +12,7 @@
 //   2. It must NEVER fail silently again. Every non-post is logged loudly, with the ref, at
 //      console.error. Rule 1 is why this went unnoticed; rule 2 is the actual fix.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, like, or } from "drizzle-orm";
 import { db } from "../db";
 import { boItem, boMovement } from "../db/schema";
 import { pgErrorCode } from "./http";
@@ -32,6 +32,36 @@ export function saleMovement(
   const qty = -Math.abs(quantity);
   return { qty, valueMinor: -qty * unitPriceMinor };
 }
+
+// ─────── SPEC-073 / TASK-258 (REQ-083) — a booking's revenue is a SEQUENCE, not one fact ───────
+//
+// 🔴 The key was `rev:<bookingId>`, fixed for the life of the booking. That is right until an attendance is
+// undone and re-marked: the second posting hits the duplicate check and `recordSale` returns
+// `{ ok: true, skipped: "duplicate" }` — **it reports success and writes nothing** (AC-8).
+//
+// A reversal key alone cannot fix it: AC-7 wants the *reversal* idempotent, AC-8 wants the *posting* repeatable —
+// opposite demands on one key. ⇒ both keys carry a **generation** `n` = the number of postings this booking has
+// already had. Same `n` ⇒ same key ⇒ a replay is still skipped; `n+1` ⇒ a fresh key ⇒ the re-post writes.
+// 🚫 No column: `n` is derived from the movements themselves — where the duplicate check already looks.
+//
+// 🔴 **Generation 0 is the UN-SUFFIXED key**, byte for byte what every historical row carries. Get that wrong
+// and every booking ever posted reads as unposted, and the next day-end posts it a second time.
+
+/** `rev:<bookingId>` at generation 0, `rev:<bookingId>#<n>` after that. */
+export const revKey = (bookingId: string, generation = 0): string =>
+  generation === 0 ? `rev:${bookingId}` : `rev:${bookingId}#${generation}`;
+
+/** The reversal OF the posting of the same generation — the same rule, so the pair always reads as a pair. */
+export const revUndoKey = (bookingId: string, generation = 0): string =>
+  generation === 0 ? `rev-undo:${bookingId}` : `rev-undo:${bookingId}#${generation}`;
+
+/**
+ * The discount rides its sale, so it has to follow it: a re-posted sale needs a re-posted discount, or the
+ * second posting nets the LIST price and the books over-charge the family by exactly the discount.
+ * ⚠️ Generation 0 is `discount:<refId>` — the string `discount-plan.ts` has always written.
+ */
+export const discountKey = (refId: string, generation = 0): string =>
+  generation === 0 ? `discount:${refId}` : `discount:${refId}#${generation}`;
 
 export interface SalePostResult {
   ok: boolean;
@@ -54,6 +84,12 @@ export async function recordSale(
     idempotencyKey?: string;
     /** TASK-160: an ALREADY-VALIDATED discount (see `planDiscount`) to post alongside this sale. */
     discount?: { discountMinor: number; reason: string; actor?: string | null };
+    /**
+     * TASK-258 — the discount's own key, when the caller is posting a later GENERATION of this booking's
+     * revenue. Omitted ⇒ `discount:<refId>`, exactly as before. Without it a re-posted sale would carry no
+     * discount (the fixed key is already taken) and the books would over-charge by the discount.
+     */
+    discountKey?: string;
   } = {},
 ): Promise<SalePostResult> {
   const where = `ref=${externalRef} refId=${opts.refId ?? "-"}`;
@@ -115,6 +151,9 @@ export async function recordSale(
           actor: opts.discount.actor ?? null,
           reason: opts.discount.reason,
         }),
+        // TASK-258 — the discount follows its sale's generation. Default (undefined) leaves
+        // `discountMovement`'s own `discount:<refId>` in place, so nothing about a first posting changes.
+        ...(opts.discountKey ? { idempotencyKey: opts.discountKey } : {}),
       });
     }
     return { ok: true };
@@ -279,6 +318,10 @@ export function netPostedSale(input: {
  * throw; the caller turns it into a visible "could not verify".
  */
 export async function postedSaleForBooking(bookingId: string): Promise<PostedSale | null> {
+  // 🔴 TASK-258 — read the CURRENT generation once, and use it for both halves. After an undo-and-re-attend the
+  // live sale is `rev:<id>#1`; reading the fixed key would tell an admin "no money posted" about a booking that
+  // has just been charged — the exact defect SPEC-069 exists to close, one generation along.
+  const generation = await postedGeneration(bookingId);
   const [sale] = await db
     .select({
       valueMinor: boMovement.valueMinor,
@@ -287,14 +330,14 @@ export async function postedSaleForBooking(bookingId: string): Promise<PostedSal
     })
     .from(boMovement)
     .innerJoin(boItem, eq(boItem.id, boMovement.itemId))
-    .where(eq(boMovement.idempotencyKey, `rev:${bookingId}`))
+    .where(eq(boMovement.idempotencyKey, revKey(bookingId, generation)))
     .limit(1);
   if (!sale) return null;
 
-  // The discount rides the SAME sale (same item, same refId), keyed `discount:<refId>` where refId is the
-  // booking — `lib/discount-plan.ts`. A discounted trial must not warn with the list price.
+  // The discount rides the SAME sale (same item, same refId) — `lib/discount-plan.ts`. A discounted trial must
+  // not warn with the list price, and it follows the sale's generation for the same reason the sale does.
   const discount = await db.query.boMovement.findFirst({
-    where: (m, { eq: e }) => e(m.idempotencyKey, `discount:${bookingId}`),
+    where: (m, { eq: e }) => e(m.idempotencyKey, discountKey(bookingId, generation)),
   });
 
   return netPostedSale({
@@ -305,4 +348,94 @@ export async function postedSaleForBooking(bookingId: string): Promise<PostedSal
     productCode: sale.productCode ?? "",
     postedAt: sale.createdAt,
   });
+}
+
+// ─────── SPEC-073 / TASK-258 (REQ-083) — the generation, and the reversal ───────
+
+/**
+ * How many times this booking's revenue has been posted — `n` for the NEXT posting, and the count of
+ * `rev:` movements it already has.
+ *
+ * Derived from the ledger, never stored: the movements are already the source of truth the duplicate check
+ * reads, and a counter column would be a second one that can disagree with it. Generation 0's key is the
+ * un-suffixed `rev:<bookingId>`, so a booking posted before this task counts as exactly one.
+ */
+export async function revGeneration(bookingId: string): Promise<number> {
+  const rows = await db
+    .select({ key: boMovement.idempotencyKey })
+    .from(boMovement)
+    .where(
+      or(
+        eq(boMovement.idempotencyKey, revKey(bookingId, 0)),
+        like(boMovement.idempotencyKey, `rev:${bookingId}#%`),
+      ),
+    );
+  return rows.length;
+}
+
+/** The generation of the posting that is CURRENTLY live — `revGeneration - 1`, or 0 when nothing was posted. */
+export async function postedGeneration(bookingId: string): Promise<number> {
+  return Math.max(0, (await revGeneration(bookingId)) - 1);
+}
+
+/**
+ * REQ-083 AC-5/AC-6/AC-7 — reverse the revenue an attendance posted.
+ *
+ * 🔴 **A NEW movement of −฿X. The original row is never edited and never deleted** (AC-9): the ledger keeps
+ * "posted, then reversed" as two facts, which is what makes the history legible afterwards.
+ * 🔴 **Posted nothing ⇒ writes nothing — not a ฿0 row** (AC-6). The condition is *"did THIS attendance post?"*,
+ * asked of the movements. 🚫 Never a booking-type list: a course or a voucher posts at SALE time, so it has no
+ * `rev:` movement and needs no reversal — that falls out of the ledger rather than out of a list that can drift.
+ * 🔴 **Idempotent** (AC-7): the reversal carries `rev-undo:<id>#<n>` for the generation it reverses, so running
+ * it twice writes one row.
+ *
+ * ⚠️ It reverses the **NET** — the sale plus its discount — because that is what was actually taken and what
+ * `postedSaleForBooking` shows the admin. Reversing the list price alone would refund money nobody was charged.
+ *
+ * Best-effort like everything else in this file: a correction to a booking must never fail because bookkeeping
+ * did, and a non-post is loud rather than silent.
+ */
+export async function reverseBookingSale(bookingId: string): Promise<SalePostResult> {
+  try {
+    const generation = await postedGeneration(bookingId);
+    const [sale] = await db
+      .select()
+      .from(boMovement)
+      .where(eq(boMovement.idempotencyKey, revKey(bookingId, generation)))
+      .limit(1);
+    // AC-6 — nothing was posted for this attendance, so nothing is reversed. Not a zero row: a ฿0 movement
+    // reads as "a sale of nothing happened", which is a different and false claim.
+    if (!sale) return { ok: true, skipped: "duplicate" };
+
+    const discount = await db.query.boMovement.findFirst({
+      where: (m, { eq: e }) => e(m.idempotencyKey, discountKey(bookingId, generation)),
+    });
+    const netMinor = sale.valueMinor + (discount?.valueMinor ?? 0);
+    if (netMinor === 0) return { ok: true, skipped: "duplicate" }; // fully discounted: nothing to give back
+
+    await db.insert(boMovement).values({
+      itemId: sale.itemId,
+      // The mirror of the sale: it sold one unit OUT (`qty: -1`), so the reversal brings one back IN.
+      qty: -sale.qty,
+      valueMinor: -netMinor,
+      // REQ-083's ledger wording, in the one text column `bo.movement` has. 📌 There is no `note` column here —
+      // `discountMovement` returns one and it is silently dropped by the spread; naming that so the next reader
+      // does not go looking for it in the books.
+      reason: "REVERSAL — attendance undone",
+      refType: "SALE",
+      refId: bookingId,
+      idempotencyKey: revUndoKey(bookingId, generation),
+    });
+    return { ok: true };
+  } catch (e) {
+    // A second reversal loses the race on the unique key — that IS the desired outcome (AC-7), so it is not
+    // reported as a failure.
+    if (pgErrorCode(e) === "23505") return { ok: true, skipped: "duplicate" };
+    console.error(
+      `[sale] NOT REVERSED — the attendance undo for booking ${bookingId} did not write its reversal. ` +
+        `The original posting is STILL in the books:`,
+      e,
+    );
+    return { ok: false, skipped: "error" };
+  }
 }

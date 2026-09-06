@@ -2,12 +2,12 @@
 // to MAX_STUDENTS_PER_PARENT students. Used by the LINE OA parent flow (register →
 // add children) and the staff endpoints (POST /students, GET /students dropdown).
 
-import { and, asc, eq, ilike, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { parents, students } from "../db/schema";
 import { badRequest, notFound } from "../lib/http";
 import { isSuspended } from "../lib/suspend";
-import { clearFamilyLine, familyLineUserIds } from "../lib/family-link";
+import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
 export const MAX_STUDENTS_PER_PARENT = 5;
@@ -29,12 +29,25 @@ export async function findParentByPhone(phone: string, exec: any = db): Promise<
   return row ?? null;
 }
 
+/**
+ * 🔴 TASK-259 — the family this LINE account acts for, resolved through **`familyOfLineUser`**.
+ *
+ * It used to match `parents.line_user_id` directly, which meant only ONE account per family could use the bot:
+ * a second parent linking overwrote that column, and the first one's `เช็คอิน` · `ลา` · `คอร์สของฉัน` stopped
+ * working — with no error, because they were simply not recognised as a parent any more.
+ *
+ * 🔑 Changed HERE rather than at the seven call sites, so every inbound path moves together and none can be
+ * missed. `familyOfLineUser` reads `family_line_links` first and **falls back to the column**, so a family that
+ * has never had a link row resolves exactly as before — which is what makes this safe with no backfill.
+ */
 export async function findParentByLineUserId(
   lineUserId: string,
   exec: any = db,
 ): Promise<ParentRow | null> {
+  const parentId = await familyOfLineUser(lineUserId, exec);
+  if (!parentId) return null;
   const row = await exec.query.parents.findFirst({
-    where: (x: any, { eq: e }: any) => e(x.lineUserId, lineUserId),
+    where: (x: any, { eq: e }: any) => e(x.id, parentId),
   });
   return row ?? null;
 }
@@ -56,7 +69,15 @@ export async function findOrCreateParentByPhone(
   return row;
 }
 
-/** Link a LINE userId to a parent (idempotent). Throws if the parent is linked elsewhere. */
+/**
+ * Link a LINE userId to a parent (idempotent). Throws if that account belongs to a different family.
+ *
+ * 🔴 TASK-259 — **the column is only written when it is EMPTY.** It used to be set unconditionally, so the
+ * second parent to link became the family's `line_user_id` and displaced the first — which is how a father
+ * silently stopped receiving anything and stopped being recognised by the bot, with no error anywhere.
+ * **First linked stays primary**; every account after it lives in `family_line_links`, which is what the
+ * routing now reads. `parents.line_user_id` is the family's primary account for display, not a routing fact.
+ */
 export async function linkParentLine(
   parentId: string,
   lineUserId: string,
@@ -66,7 +87,10 @@ export async function linkParentLine(
   if (owner && owner.id !== parentId) {
     throw badRequest("LINE นี้ผูกกับผู้ปกครองรายอื่นแล้ว");
   }
-  await exec.update(parents).set({ lineUserId }).where(eq(parents.id, parentId));
+  await exec
+    .update(parents)
+    .set({ lineUserId })
+    .where(and(eq(parents.id, parentId), isNull(parents.lineUserId)));
 }
 
 export async function listStudentsOfParent(

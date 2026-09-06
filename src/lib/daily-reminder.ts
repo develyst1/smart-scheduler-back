@@ -46,6 +46,8 @@ export interface ReminderSession {
   studentName: string;
   parentId: string | null;
   parentLineUserId: string | null;
+  /** 🔴 TASK-259 — all of the family's accounts. Optional so an older caller still compiles and behaves as before. */
+  parentLineUserIds?: string[];
   /** `null` for an อื่นๆ booking, which has no program. `renderSchedule` omits the segment rather than printing a blank. */
   subjectName: string | null;
 }
@@ -54,7 +56,10 @@ export interface ReminderGroup {
   recipientType: "teacher" | "parent";
   /** Who this is about — the teacher or the parent. Used only to key the group; never sent. */
   personId: string;
+  /** The PRIMARY account — `null` when the person has none. Kept for the reach count and the key rule. */
   lineUserId: string | null;
+  /** 🔴 TASK-259 — every account this person can be reached on. One for a teacher; several for a family. */
+  lineUserIds: string[];
   rows: TodayRow[];
 }
 
@@ -102,6 +107,9 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
         recipientType: "teacher" as const,
         personId: teacher.id,
         lineUserId: teacher.lineUserId,
+        // A teacher has exactly one account, so this list is that one or empty — the shape is shared, the
+        // behaviour is unchanged.
+        lineUserIds: teacher.lineUserId ? [teacher.lineUserId] : [],
         rows: [],
       };
       g.rows.push(row);
@@ -111,7 +119,10 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       const g = byParent.get(s.parentId) ?? {
         recipientType: "parent" as const,
         personId: s.parentId,
-        lineUserId: s.parentLineUserId,
+        lineUserId: s.parentLineUserIds?.[0] ?? s.parentLineUserId,
+        // 🔴 TASK-259 — EVERY account the family has linked. The caller resolves them in bulk (one query for
+        // the day, not one per row); this file only carries them.
+        lineUserIds: s.parentLineUserIds ?? (s.parentLineUserId ? [s.parentLineUserId] : []),
         rows: [],
       };
       g.rows.push(row);
@@ -142,6 +153,77 @@ export const reminderKey = (
   personId: string,
   date: string,
 ) => `reminder:${recipientType}:${personId}:${date}`;
+
+/**
+ * 🔴 TASK-259 — the send-once key for ONE DEVICE, now that a family may hold several.
+ *
+ * The key above identifies a **person**, and while one parent meant one phone the two were the same thing. The
+ * moment outbound writes a row per account, a family's two rows would carry one key, the second would hit
+ * `notification_outbox_idempotency_uq`, and **the second parent would get nothing — exactly as before, with
+ * every test of the accessor still passing.**
+ *
+ * 🔑 **The primary account keeps the un-suffixed key; every additional device carries its own id.** That is
+ * TASK-258's generation-0 rule in another costume, and it buys the same two properties at once:
+ *   · a row already queued today under the old format still suppresses the primary's duplicate — **nobody is
+ *     messaged twice on the day this deploys**, and
+ *   · an additional account's key has never existed before, so it cannot collide with anything.
+ *
+ * `primaryLineUserId` is `familyLineUserIds`' first element — `parents.line_user_id` when there is one. A
+ * teacher has exactly one account, so their key is byte-identical to what it always was.
+ */
+export const deviceReminderKey = (
+  recipientType: ReminderGroup["recipientType"],
+  personId: string,
+  date: string,
+  lineUserId: string | null,
+  primaryLineUserId: string | null,
+) =>
+  lineUserId && lineUserId !== primaryLineUserId
+    ? `${reminderKey(recipientType, personId, date)}:${lineUserId}`
+    : reminderKey(recipientType, personId, date);
+
+/** One outbox row to write: a person, ONE of their devices, and the key that makes it send once. */
+export interface ReminderSend {
+  recipientType: ReminderGroup["recipientType"];
+  personId: string;
+  /** `null` when the person has no linked account — a SKIPPED row, which is how the reach is counted. */
+  lineUserId: string | null;
+  key: string;
+  rows: TodayRow[];
+}
+
+/**
+ * Expand each person's group into the rows to write — **one per linked account**, or one skipped row when they
+ * have none. Pure, so "a two-account family gets two rows with two keys" is a test rather than a live-box hope.
+ */
+export function reminderSends(groups: ReminderGroup[], date: string): ReminderSend[] {
+  return groups.flatMap((g): ReminderSend[] => {
+    const primary = g.lineUserIds[0] ?? null;
+    if (!g.lineUserIds.length) {
+      return [
+        {
+          recipientType: g.recipientType,
+          personId: g.personId,
+          lineUserId: null,
+          key: reminderKey(g.recipientType, g.personId, date),
+          rows: g.rows,
+        },
+      ];
+    }
+    return g.lineUserIds.map((lineUserId) => ({
+      recipientType: g.recipientType,
+      personId: g.personId,
+      lineUserId,
+      key: deviceReminderKey(g.recipientType, g.personId, date, lineUserId, primary),
+      rows: g.rows,
+    }));
+  });
+}
+
+/** The sends whose key has not already been written today. Same rule as `dueReminders`, one level finer. */
+export function dueSends(sends: ReminderSend[], alreadyKeyed: ReadonlySet<string>): ReminderSend[] {
+  return sends.filter((s) => !alreadyKeyed.has(s.key));
+}
 
 /**
  * Who still needs today's reminder — the groups whose key is **not** already in `alreadyKeyed`.

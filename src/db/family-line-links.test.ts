@@ -75,8 +75,12 @@ describe("an invite is a one-shot expiring token, and it remembers", () => {
 
 describe("🔴 ONE accessor — two readers is how the two sources disagree", () => {
   test("`familyLineUserIds` is primary-first, so the existing single-account meaning survives", () => {
-    expect(ACCESSOR).toContain("...(parent?.lineUserId ? [parent.lineUserId] : [])");
-    expect(ACCESSOR).toContain("...links.map(");
+    // ⚠️ TASK-259 — the merge moved into `familyLineUserIdsBulk` (the reminder job resolves a whole day at
+    // once and must not go per row), and the single accessor is now defined in terms of it. **One
+    // implementation, two shapes** — which is the property this test was written to protect.
+    expect(ACCESSOR).toContain("...(p.lineUserId ? [p.lineUserId] : [])");
+    expect(ACCESSOR).toContain("linksByParent.get(p.id)");
+    expect(ACCESSOR).toContain("familyLineUserIdsBulk([parentId], exec)");
   });
 
   test("it dedupes — a duplicate here is a duplicate push on someone's phone", () => {

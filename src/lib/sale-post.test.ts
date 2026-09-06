@@ -127,7 +127,10 @@ describe("SPEC-069 / TASK-221 — netting a posted sale", () => {
 
 describe("SPEC-069 / TASK-221 — how the sale is FOUND (source claims)", () => {
   test("🔴 detection is by IDEMPOTENCY KEY — no booking-type list, no status or date condition", () => {
-    expect(FN).toContain("`rev:${bookingId}`");
+    // ⚠️ TASK-258 — the key is generation-aware now (`revKey(bookingId, generation)`): after an undo and a
+    // re-attend the live posting is `rev:<id>#1`. The RULE this test exists for is unchanged — the sale is
+    // found by its KEY, never inferred from the booking's type, status or date.
+    expect(FN).toContain("revKey(bookingId, generation)");
     expect(FN).toContain("boMovement.idempotencyKey");
     for (const inferred of ["bookingType", "FIRST_TRIAL", "SINGLE_SESSION", "ATTENDED", "status", "date"]) {
       expect(FN).not.toContain(inferred);
@@ -135,7 +138,13 @@ describe("SPEC-069 / TASK-221 — how the sale is FOUND (source claims)", () => 
   });
 
   test("the discount sibling is looked up by its own key, on the same booking", () => {
-    expect(FN).toContain("`discount:${bookingId}`");
+    expect(FN).toContain("discountKey(bookingId, generation)");
+  });
+
+  test("🔴 TASK-258 — it reads the CURRENT generation, not `rev:<id>` forever", () => {
+    // Reading the fixed key after a re-attend would tell an admin "no money posted" about a booking that has
+    // just been charged — the defect SPEC-069 exists to close, one generation along.
+    expect(FN).toContain("const generation = await postedGeneration(bookingId)");
   });
 
   test("🔴 it does NOT catch — a swallowed error would render as 'no money posted'", () => {

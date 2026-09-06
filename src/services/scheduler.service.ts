@@ -42,8 +42,9 @@ import {
 } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
+import { familyLineUserIds } from "../lib/family-link";
 import { enqueueLine, type NotifyResult } from "../lib/line";
-import { recordSale } from "../lib/sale-post";
+import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
 import { GENERIC_SLOT_TAKEN, slotClashMessage } from "../lib/slot-clash";
 import {
@@ -2495,15 +2496,11 @@ export async function updateBookingStatus(
         // ⚠️ This path is also what `bulkConfirm` loops over, so a bulk confirm now enqueues a parent row per
         // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
         // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
-        await enqueueLine(
-          {
-            recipientType: "parent",
-            recipientLineUserId: await parentLineUserId(tx, current.studentId),
-            bookingId: id,
-            payload: confirmPayload,
-          },
-          tx,
-        );
+        // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
+        await enqueueParentCopies(tx, await parentLineUserIds(tx, current.studentId), {
+          bookingId: id,
+          payload: confirmPayload,
+        });
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -2632,6 +2629,53 @@ export async function updateBookingStatus(
           throw e;
         }
       }
+    } else if (action === "sick-leave" && current.status === "ATTENDED") {
+      // ═══ SPEC-073 / TASK-258 (REQ-083) — UNDO an attendance. It sits here, beside the `attend` branch it
+      // reverses, so `ATTENDED → SICK_LEAVE` behaves identically however it is reached (§6).
+      //
+      // 🔴 AC-1 — accepted, and **no reason is required**. It deliberately does NOT run the advance-notice
+      // check: that rule asks whether leave was declared before the class, and this session has already
+      // happened — the answer is always "too late", which would refuse every correction there is.
+      await tx
+        .update(bookings)
+        .set({ status: "SICK_LEAVE", note: reason ?? current.note })
+        .where(eq(bookings.id, id));
+
+      // 🔴 AC-2 — the entitlement goes back. `usedSessions` / `usedHours` are the running counters; a decrement
+      // is exactly the inverse of what `attend` and the day-end wrote, and it leaves `priorSessions` alone
+      // (deliberately not derived from them — TASK-165).
+      // ⚠️ Floored at 0: a balance can never be more than what was bought, and a negative on a money-adjacent
+      // number reads as a system fault to whoever sees it first.
+      if (current.courseId && current.course) {
+        await tx
+          .update(coursePackages)
+          .set({ usedSessions: Math.max(0, current.course.usedSessions - 1) })
+          .where(eq(coursePackages.id, current.courseId));
+      }
+      if (current.voucherId && current.voucher) {
+        await tx
+          .update(vouchers)
+          .set({ usedHours: Math.max(0, current.voucher.usedHours - 1) })
+          .where(eq(vouchers.id, current.voucherId));
+      }
+
+      // 🔴 AC-4 — **no leave quota is consumed** (the owner's named exception to C-22). Nothing here touches
+      // `leaveUsed`, and the guard is the session's own **status** — it is in this branch only because it was
+      // `ATTENDED`. 🚫 Never a flag on the request: whether a family is charged a leave must not depend on
+      // which button an admin picked.
+      // 📌 And no auto-EXTENDED make-up is created, unlike a real leave: that row exists to replace a session
+      // the family used their entitlement on. Here the entitlement itself came back, so a make-up would give
+      // them the same session twice. **Named for @Sober — it is the one judgement in this branch.**
+      //
+      // 🔴 AC-5/AC-6/AC-7 — the money. `reverseBookingSale` writes a NEW −฿X movement when this attendance
+      // posted, nothing at all when it did not (a course/voucher posts at SALE time, so it has no `rev:`
+      // movement), and is idempotent on its own key. Best-effort, like every other posting in this codebase:
+      // a correction to a booking must not fail because bookkeeping did.
+      await reverseBookingSale(id);
+
+      // 🚫 TASK-254's `COURSE DEDUCTION` is NOT re-fired here: that message is enqueued inside the branch that
+      // WRITES the deduction, and this branch reverses one. A "session returned" message is @Porter's to decide.
+      notification = { channel: "line", status: "skipped", reason: "แก้ไขการเช็คชื่อ — ไม่ส่งข้อความ" };
     } else if (action === "sick-leave" && current.status === "SICK_LEAVE") {
       // SPEC-044 / TASK-136 AC-6 — a re-save (or a retry) of an already-cancelled session changes nothing and
       // must NOT enqueue a second notification. Mirrors the confirm (`confirmedAt`) and attend guards; it also
@@ -3271,22 +3315,47 @@ export async function previewCourseEnd(id: string) {
  */
 
 /**
- * SPEC-066 / TASK-207 (REQ-072 part 3A) — the parent's LINE id for a student, or `null`.
+ * SPEC-066 / TASK-207 (REQ-072 part 3A) — the LINE accounts for a student's family.
  *
- * 🔴 `null` is a first-class answer here, not an error. Many `uat` parents were imported and have **never
- * linked LINE**, so an unlinked parent must write a SKIPPED outbox row exactly like a teacher without a link —
- * a notification feature that throws on the common case is a notification feature nobody turns on.
+ * 🔴 TASK-259 — it returned ONE id, read straight off `parents.line_user_id`, and that is why a family's second
+ * parent received nothing: the column names one device, and since REQ-079 a family may have several. Now it asks
+ * the ONE accessor.
+ * 🔴 `[]` is a first-class answer, not an error. Many `uat` parents were imported and have **never linked
+ * LINE**, so an unlinked family must write a SKIPPED outbox row exactly like a teacher without a link — a
+ * notification feature that throws on its common case is one nobody turns on.
  */
-async function parentLineUserId(exec: any, studentId: string | null | undefined): Promise<string | null> {
-  if (!studentId) return null;
+async function parentLineUserIds(exec: any, studentId: string | null | undefined): Promise<string[]> {
+  if (!studentId) return [];
   const student = await exec.query.students.findFirst({
     where: (s: any, { eq: e }: any) => e(s.id, studentId),
   });
-  if (!student?.parentId) return null;
-  const parent = await exec.query.parents.findFirst({
-    where: (p: any, { eq: e }: any) => e(p.id, student.parentId),
-  });
-  return parent?.lineUserId ?? null;
+  if (!student?.parentId) return [];
+  return familyLineUserIds(student.parentId, exec);
+}
+
+/**
+ * One outbox row per account — or ONE skipped row when the family has none.
+ *
+ * 🔑 The "no accounts" case must stay a single SKIPPED row: it records *"we could not reach this family"*, which
+ * is one fact, and the reach counting on the People screen reads it as one.
+ */
+async function enqueueParentCopies(
+  exec: any,
+  accounts: string[],
+  row: { bookingId?: string; payload: unknown },
+): Promise<NotifyResult> {
+  if (!accounts.length) {
+    return enqueueLine({ recipientType: "parent", recipientLineUserId: null, ...row }, exec);
+  }
+  let first: NotifyResult | null = null;
+  for (const lineUserId of accounts) {
+    const res = await enqueueLine(
+      { recipientType: "parent", recipientLineUserId: lineUserId, ...row },
+      exec,
+    );
+    first ??= res;
+  }
+  return first!;
 }
 export async function confirmCourse(id: string) {
   return db.transaction(async (tx: any) => {
@@ -3380,12 +3449,10 @@ export async function confirmCourse(id: string) {
     // TASK-207 (3A) — the parent gets the same schedule, as one message. `enqueueLine` writes a SKIPPED row
     // when they have no LINE link, which is the common case on `uat` (imported, never linked) and must not be
     // an error: a feature that throws on its commonest input is a feature nobody enables.
-    const parentLine = confirmed ? await parentLineUserId(tx, student?.id ?? course.studentId) : null;
+    // 🔴 TASK-259 — every account the family has linked gets the course summary, not just the primary one.
+    const parentLines = confirmed ? await parentLineUserIds(tx, student?.id ?? course.studentId) : [];
     const parentNotification = confirmed
-      ? await enqueueLine(
-          { recipientType: "parent", recipientLineUserId: parentLine, payload: coursePayload },
-          tx,
-        )
+      ? await enqueueParentCopies(tx, parentLines, { payload: coursePayload })
       : null;
 
     const updated = await tx.query.coursePackages.findFirst({
@@ -3397,7 +3464,7 @@ export async function confirmCourse(id: string) {
       // TASK-207: the reach is REPORTED, not assumed. An admin who confirms a course should be able to see
       // that the parent was told — or was not, because they have never linked LINE.
       parentNotified: parentNotification?.status === "queued",
-      parentLinked: !!parentLine,
+      parentLinked: parentLines.length > 0,
       alreadyConfirmed: already,
       results,
       notification,
