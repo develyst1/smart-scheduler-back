@@ -81,6 +81,8 @@ import {
   COURSE_LIVE_STATUSES,
   canInsert,
   courseCurrent,
+  COURSE_PAUSE_NOTE,
+  resumeAnchor,
   deriveLiveEndDate,
   exceedsExtensionCeiling,
   isCoursePlanRow,
@@ -3738,7 +3740,10 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
     for (const b of paused) {
       await tx
         .update(bookings)
-        .set({ status: "CANCELLED", note: "พักคอร์สชั่วคราว" })
+        // 🔴 TASK-282 §5 — the NAMED marker, not a second copy of the literal. `resumeAnchor` reads it back to
+        // find where the course was interrupted; two hand-typed copies drifting apart would silently return the
+        // resume to rebuilding from today, with every test still green.
+        .set({ status: "CANCELLED", note: COURSE_PAUSE_NOTE })
         .where(eq(bookings.id, b.id));
     }
 
@@ -3800,12 +3805,16 @@ export async function resumeCourse(id: string, input: { expiryDate?: string | nu
     // ⚠️ These sessions do not exist yet, which is why `expiryImpact` takes candidates rather than fetching
     // rows: a resume asks about the future, an edit asks about the calendar, and the question is the same.
     const effectiveExpiry = input.expiryDate ?? course.expiryDate;
-    const projected =
-      owed > 0
-        ? courseSessionDates(nextWeekdayOnOrAfter(bangkokNow().date, course.weekday), owed).map((date) => ({
-            date,
-          }))
-        : [];
+
+    // 🔴 TASK-282 §5 — the course's OWN week, computed ONCE and read by both the projection and the loop.
+    //
+    // This was `nextWeekdayOnOrAfter(bangkokNow().date, …)` written out twice — the same expression in two
+    // places, which is how the gate and the writes could ever have disagreed. It kept the course's WEEKDAY and
+    // threw away its WEEK: @Tanya's NOVEMBER course came back as SEPTEMBER, onto this week's calendar.
+    // ⇒ `resumeAnchor` answers where it picks up — its own next cancelled date, floored at today — and the
+    // snap to the course's weekday happens here, once, because a make-up may sit on another weekday.
+    const start = nextWeekdayOnOrAfter(resumeAnchor(rows, bangkokNow().date), course.weekday);
+    const projected = owed > 0 ? courseSessionDates(start, owed).map((date) => ({ date })) : [];
     const impact = expiryImpact(effectiveExpiry, projected);
 
     // (ข): required ONLY when the warning fires. A resume where every session it will create still falls
@@ -3837,10 +3846,9 @@ export async function resumeCourse(id: string, input: { expiryDate?: string | nu
       throw badRequest("คอร์สนี้ไม่มีข้อมูลครู/วิชา/นักเรียนพอที่จะสร้างคาบใหม่");
     }
 
-    // Forward from today on the course's own weekday — the first slot on or after today, then weekly.
+    // Forward from the SAME `start` the gate above measured — the course's own week, on its own weekday.
     const created: string[] = [];
     if (owed > 0) {
-      const start = nextWeekdayOnOrAfter(bangkokNow().date, course.weekday);
       for (const date of courseSessionDates(start, owed)) {
         try {
           await insertBooking(tx, studentId, {

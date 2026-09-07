@@ -152,8 +152,8 @@ describe("course_confirmed (TASK-201)", () => {
 // ═══ SPEC-066 / TASK-208 (REQ-072 3B) — the reminder reuses the verified composer ═══
 describe("daily_reminder (TASK-208)", () => {
   const rows = [
-    { date: "2026-09-05", startTime: "09:00:00", studentName: "น้องเอ", subjectName: "Surfskate", status: "CONFIRMED" },
-    { date: "2026-09-05", startTime: "11:00:00", studentName: "น้องบี", subjectName: "Bike", status: "PENDING" },
+    { date: "2026-09-05", startTime: "09:00", studentName: "น้องเอ", subjectName: "Surfskate", status: "CONFIRMED" },
+    { date: "2026-09-05", startTime: "11:00", studentName: "น้องบี", subjectName: "Bike", status: "PENDING" },
   ];
 
   // 🔴 TASK-256 re-cut this body to REQ-077 Parent 2 (@Porter's Decision 6). The three assertions below used to
@@ -173,8 +173,13 @@ describe("daily_reminder (TASK-208)", () => {
     // numbered blocks in ONE message, never two messages.
     const out = formatOutboxMessage({ kind: "daily_reminder", rows }, {}, "TH");
     expect(out.split("\n").filter((l) => /^\d\) /.test(l))).toHaveLength(2);
-    expect(out).toContain("1) Time : 09:00:00");
-    expect(out).toContain("2) Time : 11:00:00");
+    // 🔴 TASK-283 — these asserted `09:00:00` and `11:00:00`, and that was the DEFECT written down as an
+    // expectation: the owner read `Time : 09:00:00-10:00` on his phone. The fixture above hand-builds the
+    // payload, so it bypassed `groupReminders` and kept passing after the fix — a test defending a value no
+    // real payload can carry any more. Corrected rather than deleted: the property here is *two numbered
+    // blocks in ONE message*, and it is untouched. `message-time-format.test.ts` owns the format itself.
+    expect(out).toContain("1) Time : 09:00");
+    expect(out).toContain("2) Time : 11:00");
   });
 
   test("EN renders the same list", () => {

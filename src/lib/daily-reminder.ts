@@ -12,6 +12,7 @@
 // Pure — no DB, no clock.
 
 import type { TodayRow } from "./line-today-schedule";
+import { hhmm } from "./time";
 
 export interface ReminderSession {
   id: string;
@@ -83,11 +84,23 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
   for (const s of live) {
     const row: TodayRow = {
       date: s.date,
-      startTime: s.startTime,
+      // 🔴 TASK-283 — BOTH ends of the range are formatted HERE, in the one file that builds the row.
+      //
+      // `startTime` used to arrive raw (`09:00:00`) and `endTime` already trimmed, so the owner's phone
+      // read `Time : 09:00:00-10:00`. It was not a formatter applied to one end and not the other: the two
+      // ends had **different owners** — `endTime` was trimmed in `jobs.service.ts`, and `startTime` was
+      // owned by nobody. The other two templates that print a `Time` each format both ends in one place
+      // (`scheduler.service.ts` for CONFIRMED SCHEDULE, `outbox.service.ts` for COURSE DEDUCTION); this
+      // one is now the third, rather than the exception.
+      //
+      // 🚫 Deliberately NOT at the join in `line-today-schedule.ts` — trimming where the string is
+      // assembled would make two places responsible for the same fact, and the next message added would
+      // be the third.
+      startTime: hhmm(s.startTime),
       studentName: s.studentName,
       subjectName: s.subjectName,
-      // TASK-256 — carried through unchanged; the composer decides what to print and what to hoist.
-      endTime: s.endTime ?? null,
+      // TASK-256 — carried through; TASK-283 moved its trim here from the caller, so one file owns both ends.
+      endTime: s.endTime ? hhmm(s.endTime) : null,
       bookingType: s.bookingType ?? null,
       title: s.title ?? null,
       size: s.size ?? null,

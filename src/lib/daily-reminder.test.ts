@@ -55,7 +55,11 @@ describe("🔴 one message per PERSON, never per booking (TASK-208)", () => {
       s({ id: "mid", startTime: "13:00:00" }),
     ];
     const [teacher] = groupReminders(day);
-    expect(teacher!.rows.map((r) => r.startTime)).toEqual(["09:00:00", "13:00:00", "16:00:00"]);
+    // TASK-283 — the expectation is `hh:mm`, not `hh:mm:ss`. The property this test protects is the ORDER,
+    // and it is unchanged; what changed is that `groupReminders` now formats both ends of the range while
+    // it builds the row, so the raw `time` column value never reaches a payload. Sorting still happens on
+    // the raw input, and `hhmm` is a prefix slice, so it cannot reorder anything.
+    expect(teacher!.rows.map((r) => r.startTime)).toEqual(["09:00", "13:00", "16:00"]);
   });
 });
 

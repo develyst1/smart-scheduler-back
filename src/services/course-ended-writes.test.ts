@@ -221,9 +221,15 @@ describe("a dropped course is refused by the same chokepoint, with its own code"
     expect(body).toContain("ระบบไม่ย้ายคาบให้เอง");
   });
 
-  test("resume rebuilds on the course's OWN weekday and time, not on today's", () => {
+  test("resume rebuilds on the course's OWN weekday, time AND WEEK — not on today's", () => {
+    // 🔴 TASK-282 §5 — this test's NAME was the requirement and its BODY was the defect. It asserted
+    // `nextWeekdayOnOrAfter(bangkokNow().date, …)`, which keeps the course's weekday and throws away its WEEK:
+    // @Tanya reproduced a NOVEMBER course coming back as SEPTEMBER, onto this week's calendar. \"Its own slot\"
+    // was read as the weekday alone, and the two halves of the sentence were never checked against each other.
+    // 🔑 Corrected rather than deleted: the property it meant to protect — the family keeps their slot by
+    // construction, rebuilt from the course row and never re-picked — is intact and still asserted below.
     const body = fn("resumeCourse");
-    expect(body).toContain("nextWeekdayOnOrAfter(bangkokNow().date, course.weekday)");
+    expect(body).toContain("nextWeekdayOnOrAfter(resumeAnchor(rows, bangkokNow().date), course.weekday)");
     expect(body).toContain("startTime: course.startTime");
   });
 

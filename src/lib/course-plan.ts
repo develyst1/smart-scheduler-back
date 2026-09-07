@@ -194,6 +194,14 @@ export const isCourseEnded = (c: EndableCourse): boolean => c.endedAt != null;
  */
 export const isCourseDropped = (c: { droppedAt?: Date | string | null }): boolean => c.droppedAt != null;
 
+/**
+ * The note `dropCourse` stamps on every session a pause cancels — **and the only thing that tells those rows
+ * apart from a session an admin cancelled by hand.** Named here rather than typed twice: `resumeAnchor` reads
+ * it back to find where the course was interrupted, so the two literals drifting apart would silently return
+ * the resume to its rebuild-from-today behaviour with every test still green.
+ */
+export const COURSE_PAUSE_NOTE = "พักคอร์สชั่วคราว";
+
 /** An ended course owes nothing; otherwise the plan size is REQ-064's `size − priorSessions`. */
 export const courseOwedTarget = (c: EndableCourse): number =>
   isCourseEnded(c) ? 0 : coursePlanSize(c);
@@ -244,3 +252,32 @@ export const ENDABLE_STATUSES = COURSE_LIVE_STATUSES;
 
 export const endableSessions = <T extends { status: string; bookingType?: string }>(sessions: T[]): T[] =>
   sessions.filter((s) => isCoursePlanRow(s) && COURSE_LIVE.has(s.status));
+
+/**
+ * SPEC-065 / TASK-282 §5 — **WHERE a resumed course picks up.**
+ *
+ * 🔴 The defect this exists to fix: `resumeCourse` rebuilt from **today**, on the course's weekday, whatever
+ * week the course actually lived in. @Tanya reproduced it on the API — **a NOVEMBER course came back as
+ * SEPTEMBER**, and its sessions landed on this week's calendar beside courses that belong there. The route
+ * promises *"bring it back on its own slot"*; rebuilding from today keeps the WEEKDAY and throws away the WEEK.
+ * ⚠️ It is more visible than a wrong date: the expiry is untouched by a pause, so the course then runs
+ * September against a December expiry.
+ *
+ * ⇒ The anchor is the course's **own** next session — the earliest date the pause cancelled — **floored at
+ * today**, because a resume may never schedule a lesson into the past. A course paused last July comes back
+ * from today; a course paused into November comes back in November.
+ *
+ * 📌 Pure and clock-free: the caller passes today and snaps the answer to the course's weekday. A
+ * make-up (`findFreeExtensionDate`) can sit on a different weekday from the course, so the snap is the
+ * caller's and not skipped here.
+ */
+export function resumeAnchor(
+  rows: Array<{ status: string; date: string; note?: string | null }>,
+  today: string,
+): string {
+  const own = rows
+    .filter((r) => r.status === "CANCELLED" && r.note === COURSE_PAUSE_NOTE)
+    .map((r) => r.date)
+    .sort()[0];
+  return own && own > today ? own : today;
+}

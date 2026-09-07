@@ -23,7 +23,6 @@ import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
-import { hhmm } from "../lib/time";
 import { enqueueLine } from "../lib/line";
 import { dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 
@@ -407,7 +406,9 @@ export async function runDailyReminderJob(date?: string) {
       // printing a placeholder that reads as a program nobody recorded.
       subjectName: r.subject?.name ?? null,
       // SPEC-072 / TASK-256 — the rest of REQ-077 Parent 2, straight off the rows this job already loaded.
-      endTime: r.endTime ? hhmm(r.endTime) : null,
+      // 🔴 TASK-283 — RAW, both ends. `groupReminders` builds the payload row and formats it there,
+      // so one file owns the whole range. This used to trim `endTime` while `startTime` went through raw.
+      endTime: r.endTime ?? null,
       bookingType: r.bookingType ?? null,
       title: r.otherTitle ?? null,
       size: r.course?.size ?? r.voucher?.totalHours ?? null,
