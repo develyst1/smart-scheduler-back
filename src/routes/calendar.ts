@@ -28,7 +28,13 @@ export const publicCalendar = new Hono().get("/calendar/:file", async (c) => {
       status: b.status,
       updatedAt: b.updatedAt ?? null,
     })),
-    { calendarName: `ตารางสอน ${found.teacher.nickname}` },
+    {
+      calendarName: `ตารางสอน ${found.teacher.nickname}`,
+      // 🔴 TASK-272 §5 — the DESCRIPTION carries a status LABEL, so it needs the teacher's own language.
+      // `findBookingsForCalendarToken` already returns the teacher, so it was in hand here; `null → TH` is
+      // the same default every other reply uses.
+      lang: found.teacher.lineLang === "EN" ? "EN" : "TH",
+    },
   );
 
   c.header("Content-Type", "text/calendar; charset=utf-8");

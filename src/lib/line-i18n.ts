@@ -2,6 +2,8 @@
 // renders one. Missing EN falls back to TH (never a raw key). `{var}` placeholders are interpolated. This is
 // the single source of bot copy — no user-visible literal should remain in the service / reply / message layer.
 
+import type { BookingStatus } from "../types/contract";
+
 export type Lang = "TH" | "EN";
 export const isLang = (v: unknown): v is Lang => v === "TH" || v === "EN";
 
@@ -10,6 +12,50 @@ interface Entry {
   EN?: string;
 }
 
+/**
+ * 🔴 TASK-271 — every booking status a teacher can be shown, and the COMPILER keeps it total.
+ *
+ * ## The defect this closes
+ * There were **six** `status_*` keys against a database enum of **nine**, and `t()` returns the KEY on a
+ * miss (*"defensive — an unknown key never crashes a reply"*, and it is right to). ⇒ a paused session
+ * rendered on a coach's phone as the literal string **`status_PAUSED`**. ⚠️ `PENDING_RESCHEDULE` had the
+ * same gap for far longer and nobody found it — a coach reading `status_PENDING_RESCHEDULE` would assume
+ * it was our jargon rather than a bug.
+ *
+ * ## 🔑 Why a Record and not another test
+ * `Record<BookingStatus, Entry>` makes the next `ALTER TYPE … ADD VALUE` **fail the build** until a word
+ * exists. A test would be a second copy of the list; the type is the list.
+ * 📌 **And this only became possible yesterday:** TASK-270 made `BookingStatus` derive from
+ * `bookingStatus.enumValues`. Before that, an exhaustive map over the DTO type would have been exhaustive
+ * over the WRONG list — the very list that was missing `PAUSED`. **One fix made the next one cheap.**
+ *
+ * ⚠️ `t()`'s fall-through stays exactly as it is: it is correct for genuinely dynamic keys. The point is
+ * that a status is no longer one of them.
+ */
+const STATUS_LABELS: Record<BookingStatus, Entry> = {
+  PENDING: { TH: "รอยืนยัน", EN: "Pending" },
+  CONFIRMED: { TH: "ยืนยันแล้ว", EN: "Confirmed" },
+  ATTENDED: { TH: "เข้าเรียนแล้ว", EN: "Attended" },
+  SICK_LEAVE: { TH: "ลา", EN: "Leave" },
+  EXTENDED: { TH: "คาบขยาย", EN: "Extended" },
+  NO_SHOW: { TH: "ไม่มา", EN: "No-show" },
+  // REQ-076's own word, and the tray already uses it — not a new one invented here.
+  PAUSED: { TH: "พัก", EN: "Paused" },
+  // 🔴 TASK-271 §5 — PLACEHOLDER, @Porter is asking the customer. This is NOT a ratified string; it is
+  // plain Thai standing in front of a raw key while the question is answered. Do not treat it as agreed.
+  // 📌 The row stays VISIBLE on purpose: a `PENDING_RESCHEDULE` session is one whose move the parent has
+  // not accepted, so the coach is still rostered for the ORIGINAL slot. Hiding it would remove a class
+  // that may well happen.
+  PENDING_RESCHEDULE: { TH: "รอย้ายคาบ", EN: "Awaiting move" },
+  // Never rendered today — a cancelled row is filtered before it reaches a schedule — but the map must be
+  // TOTAL, and a label that exists costs nothing next to a raw key that ships.
+  CANCELLED: { TH: "ยกเลิก", EN: "Cancelled" },
+};
+
+/** `PAUSED` → `status_PAUSED`, so the existing `t(`status_${…}`)` call sites are unchanged. */
+const STATUS_LABEL_ENTRIES = Object.fromEntries(
+  Object.entries(STATUS_LABELS).map(([status, entry]) => [`status_${status}`, entry]),
+) as Record<string, Entry>;
 const TABLE: Record<string, Entry> = {
   welcome: {
     TH: "สวัสดีค่ะ ยินดีต้อนรับสู่ Smart Scheduler\n\nพิมพ์ สมัคร เพื่อผูกบัญชี LINE\nหลังผูกแล้ว (ผู้ปกครอง): เพิ่มนักเรียน · เช็คอิน · ลา · qr",
@@ -278,12 +324,11 @@ const TABLE: Record<string, Entry> = {
     TH: "บัญชีถูกระงับ — ติดต่อเจ้าหน้าที่",
     EN: "This account is suspended — please contact staff",
   },
-  status_PENDING: { TH: "รอยืนยัน", EN: "Pending" },
-  status_CONFIRMED: { TH: "ยืนยันแล้ว", EN: "Confirmed" },
-  status_ATTENDED: { TH: "เข้าเรียนแล้ว", EN: "Attended" },
-  status_SICK_LEAVE: { TH: "ลา", EN: "Leave" },
-  status_EXTENDED: { TH: "คาบขยาย", EN: "Extended" },
-  status_NO_SHOW: { TH: "ไม่มา", EN: "No-show" },
+  // 🔴 TASK-271 §2 — the six `status_*` keys that used to sit here are now built from `STATUS_LABELS`
+  // below, which is a `Record<BookingStatus, Entry>`. See its comment: this is the one place a status
+  // label may be written, and the COMPILER now refuses a new enum value until somebody writes the word a
+  // teacher will read.
+  ...STATUS_LABEL_ENTRIES,
   admin_linked: { TH: "บัญชีแอดมิน — รอรับแจ้งเตือนจากระบบ", EN: "Admin account — you'll get notifications" },
   admin_linked_menu: { TH: "บัญชีแอดมินผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการแจ้งลา", EN: "Admin account linked ✅ You'll be notified of leave requests" },
 
@@ -347,7 +392,7 @@ const TABLE: Record<string, Entry> = {
   // whose text is owner-verified and byte-frozen. **The same key cannot serve two labelling conventions**, so
   // the fix is new keys rather than an edit — that is the whole of §3's cause, in one line.
   ob_f_sessions: { TH: "Sessions", EN: "Sessions" },
-  ob_f_note: { TH: "Note", EN: "Note" },
+  ob_f_note: { TH: "Remark", EN: "Remark" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

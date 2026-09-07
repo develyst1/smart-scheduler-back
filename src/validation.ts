@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
 
@@ -42,15 +43,22 @@ const BOOKING_TYPE = z.enum([
  */
 const LESSON_TYPES = ["FIRST_TRIAL", "SINGLE_SESSION", "COURSE_PACKAGE", "VOUCHER"] as const;
 const isLessonType = (t: string) => (LESSON_TYPES as readonly string[]).includes(t);
-const BOOKING_STATUS = z.enum([
-  "PENDING",
-  "CONFIRMED",
-  "ATTENDED",
-  "SICK_LEAVE",
-  "EXTENDED",
-  "PENDING_RESCHEDULE",
-  "CANCELLED",
-]);
+/**
+ * 🔴 TASK-270 (DEF-1) — DERIVED from the database enum, never listed here again.
+ *
+ * It was a hand-written 7. The DB enum had 9. `PAUSED` reached the database, the service filter and the
+ * tray, and stopped at THIS line: `GET /bookings?status=PAUSED` was a 400, so the tray rendered
+ * *ไม่มีรายการที่พักไว้* while a paused booking existed — **as shipped, pause read as DELETE.**
+ * ⚠️ And `NO_SHOW` had the identical gap and nobody ever found it: historical rows render but cannot be
+ * listed. **The defect was not a forgotten line; it was that forgetting was possible.**
+ *
+ * ✅ Safe because this enum has exactly ONE use — `bookingsQuery.status`, a READ filter. The write path
+ * takes VERBS (`confirm | attend | sick-leave | cancel`), so widening what may be queried opens no write
+ * hole and nobody can PATCH a booking straight to `PAUSED` past `pauseBooking`'s guards.
+ * 🚫 Do NOT reuse this for a write, and do NOT merge it with `SLOT_INACTIVE_STATUSES` /
+ * `CALENDAR_HIDDEN_STATUSES`: those answer QUESTIONS and have reasons to differ. This is *every status*.
+ */
+const BOOKING_STATUS = z.enum(bookingStatus.enumValues);
 const TEACHER_TYPE = z.enum(["FULL_TIME", "PART_TIME", "FREELANCE"]);
 
 export const calendarQuery = z.object({

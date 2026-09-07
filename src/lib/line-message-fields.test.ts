@@ -20,6 +20,8 @@ import {
   type NotifyType,
 } from "./line-message-fields";
 import { readSrc } from "./read-src";
+import { readFileSync } from "node:fs";
+import { t } from "./line-i18n";
 
 // Read at module top level: `await` inside a `describe`/`test` callback is a syntax error (they are sync).
 const MSG_SRC = readSrc(await Bun.file(new URL("./line-message.ts", import.meta.url)).text());
@@ -41,7 +43,11 @@ const COURSE = {
   startTime: "10:00",
   // TASK-257 §2 — carried on the payload, derived once by `confirmCourse` (`addHour`), never by the renderer.
   endTime: "11:00",
-  confirmed: 6,
+  // 🔴 TASK-269 — deliberately NOT equal to `size` (6). It was `6`, which is the same number, so this
+  // fixture could not tell `Sessions : size` from `Sessions : confirmed` — the two agreed and the test
+  // passed either way. A field left on the payload that nothing renders is still worth a fixture that
+  // would notice if something started rendering it again.
+  confirmed: 8,
   plannedLeaveDates: ["2026-09-14"],
   note: "แพ้ถั่ว",
 };
@@ -50,13 +56,17 @@ describe("🔴 ONE payload, TWO renderings — the same object, projected", () =
   const parent = formatOutboxMessage(COURSE, {}, "TH", "parent");
   const teacher = formatOutboxMessage(COURSE, {}, "TH", "teacher");
 
-  test("the teacher's copy loses `*Expiry date` and `**Advance Leave Notice`", () => {
-    // @Porter's call, flagged for the customer: a course's expiry and a family's declared absences are the
-    // FAMILY's business. A coach needs who · what · when · where they stand today.
+  test("🔴 the teacher's copy IS the parent's — byte-identical (owner: เอาหมด, 2026-09-07)", () => {
+    // 🔻 TASK-269 §3 REVERSES @Porter's Decision 5. This test used to assert the teacher LOST
+    // `*Expiry date` and `**Advance Leave Notice`, on the reading that they are the family's business.
+    // The customer's own draft had them on the teacher's copy, and the owner confirmed it: *เอาหมด*.
+    //
+    // 🔑 Rewritten as the REQUIREMENT, not as the table. `expect(AUDIENCE_OMITS.teacher).toEqual([])` would
+    // prove the table equals itself; comparing the two RENDERINGS is what the customer actually asked for,
+    // and it stays true however the projection is implemented.
     expect(parent).toContain("*Expiry date : 2026-12-31");
     expect(parent).toContain("**Advance Leave Notice : 2026-09-14");
-    expect(teacher).not.toContain("Expiry date");
-    expect(teacher).not.toContain("Advance Leave");
+    expect(teacher).toBe(parent);
   });
 
   test("🔑 …and EVERY OTHER LINE is identical — the identity, not just the absence", () => {
@@ -112,12 +122,16 @@ describe("🔴 the per-type table — all five types, both audiences, one table-
     }
   });
 
-  test("the teacher never sees expiry or advance-leave, whatever the type", () => {
+  test("🔴 the teacher sees EXACTLY what the parent sees, whatever the type or template", () => {
+    // Was: *the teacher never sees expiry or advance-leave, whatever the type.* The rule reversed; the
+    // SHAPE of the guard is what was worth keeping — every type, every template, one loop.
     for (const type of ALL) {
       for (const template of ["confirmed_schedule", "todays_schedule", "course_deduction"] as const) {
-        const fields = visibleFields(template, type, "teacher");
-        expect(fields).not.toContain("expiry");
-        expect(fields).not.toContain("advanceLeave");
+        expect({ type, template, fields: visibleFields(template, type, "teacher") }).toEqual({
+          type,
+          template,
+          fields: visibleFields(template, type, "parent"),
+        });
       }
     }
   });
@@ -128,13 +142,15 @@ describe("🔴 the per-type table — all five types, both audiences, one table-
     expect(TEMPLATE_FIELDS.course_deduction).not.toContain("start");
   });
 
-  test("🔑 every rule is DATA — reverting one of @Porter's decisions is one line", () => {
-    // Each per-type rule is unreviewed by the customer and labelled reversible. A decision that costs a rewrite
-    // to reverse was not really reversible, so the tables are the whole mechanism and this asserts that shape.
+  test("🔑 every rule is DATA — and reverting one of @Porter's decisions really did cost one line", () => {
+    // 📌 This is no longer a claim. On 2026-09-07 the owner reversed Decision 5 (*เอาหมด*) and the change
+    // was `teacher: ["expiry", "advanceLeave"]` → `teacher: []`. The mechanism paid for itself.
     expect(TYPE_OMITS.COURSE).toEqual([]);
     expect(TYPE_OMITS.ONE_HOUR).toEqual(["remaining", "expiry"]);
     expect(AUDIENCE_OMITS.parent).toEqual([]);
-    expect(AUDIENCE_OMITS.teacher).toEqual(["expiry", "advanceLeave"]);
+    // 🚫 The table is EMPTY, not deleted — see its comment. This customer has changed their mind about
+    // these two fields twice, and deleting it means re-threading `audience` through five signatures.
+    expect(AUDIENCE_OMITS.teacher).toEqual([]);
   });
 
   test("field order is the customer's own line order", () => {
@@ -202,8 +218,11 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
 
   test("…and the two kept lines print in the customer's convention", () => {
     const parent = formatOutboxMessage(COURSE, {}, "TH", "parent");
+    // 🔴 TASK-269 §1/§2: `Sessions` is the course AS BOUGHT (`size`), not the count this confirm flipped
+    // (`confirmed`, 8 in this fixture), and the note's label is `Remark`.
     expect(parent).toContain("Sessions : 6");
-    expect(parent).toContain("Note : แพ้ถั่ว");
+    expect(parent).not.toContain("Sessions : 8");
+    expect(parent).toContain("Remark : แพ้ถั่ว");
     expect(parent).not.toContain("จำนวนคาบที่ยืนยัน");
     expect(parent).not.toContain("หมายเหตุ");
   });
@@ -211,7 +230,7 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
   test("the labels are English in BOTH languages — the customer's template, not a translation", () => {
     const en = formatOutboxMessage(COURSE, {}, "EN", "parent");
     expect(en).toContain("Sessions : 6");
-    expect(en).toContain("Note : แพ้ถั่ว"); // the VALUE stays as typed; only the label is theirs
+    expect(en).toContain("Remark : แพ้ถั่ว"); // the VALUE stays as typed; only the label is theirs
   });
 
   test("§1 — the heading is the customer's own, in both languages, emoji kept", () => {
@@ -288,5 +307,113 @@ describe("🚫 the four lesson types' `booking_confirmed` is BYTE-IDENTICAL — 
         formatOutboxMessage(payload, ctx, "TH", "teacher"),
       );
     }
+  });
+});
+
+describe("🔴 TASK-269 — the live `sid` message, and the three corrections it produced", () => {
+  // The owner sent two real messages from `sid`. This is the parent's, as a payload: a 10-session course
+  // with TWO advance leaves declared — the shape that printed `Program : Surfskate 10 HR` and
+  // `Sessions : 8` in the same message.
+  const LIVE = {
+    ...COURSE,
+    subject: "Surfskate",
+    size: 10,
+    confirmed: 8, // what the old code printed: two leaves were SICK_LEAVE and never PENDING
+    plannedLeaveDates: ["2026-09-14", "2026-09-28"],
+  };
+
+  test("🔑 §1 — ONE message, and `Program` and `Sessions` agree because they read ONE field", () => {
+    // The defect was not the number; it was two derivations of one fact disagreeing in front of a parent.
+    // Asserted on a SINGLE rendering, both lines together — pinning them in separate tests would let them
+    // drift to two new values and stay green.
+    const out = formatOutboxMessage(LIVE, {}, "TH", "parent");
+    expect(out).toContain("Program : Surfskate 10 HR");
+    expect(out).toContain("Sessions : 10");
+    expect(out).not.toContain("Sessions : 8");
+    // …and the leaves are still there, which is what made the old number 8.
+    expect(out).toContain("**Advance Leave Notice : 2026-09-14, 2026-09-28");
+  });
+
+  test("🚫 §1 — `Sessions` is OMITTED when `size` is absent, never `Sessions : 0`", () => {
+    // `Sessions : 0` on a course is a false statement, not a blank.
+    const { size: _s, ...noSize } = LIVE;
+    const out = formatOutboxMessage(noSize, {}, "TH", "parent");
+    expect(out).not.toContain("Sessions");
+    expect(out).toContain("Program : Surfskate"); // the rest of the message is unaffected
+  });
+
+  test("🔴 §1 — a re-confirm still reads the course, not the zero rows it flipped", () => {
+    // The second symptom the reported fix would have left: `confirmed + leaves` prints 2 on a re-confirm.
+    const reconfirm = { ...LIVE, confirmed: 0 };
+    expect(formatOutboxMessage(reconfirm, {}, "TH", "parent")).toContain("Sessions : 10");
+  });
+
+  test("🔑 §2 — the note renders as `Remark`, asserted with a note PRESENT", () => {
+    // ⚠️ Its absence from both live samples was omit-empty working. A field verified only by its absence is
+    // a field nobody has watched render.
+    const out = formatOutboxMessage(LIVE, {}, "TH", "parent");
+    expect(out).toContain("Remark : แพ้ถั่ว");
+    expect(out.trimEnd().endsWith("Remark : แพ้ถั่ว")).toBe(true); // last line, unchanged position
+    expect(out).not.toContain("Note :");
+  });
+
+  test("✅ §2 — omit-empty stays: no note, no line", () => {
+    const { note: _n, ...noNote } = LIVE;
+    expect(formatOutboxMessage(noNote, {}, "TH", "parent")).not.toContain("Remark");
+  });
+
+  test("🚫 §2 — `ob_l_note` is a DIFFERENT key and is untouched (booking_confirmed is byte-frozen)", () => {
+    // Merging the two keys is the obvious tidy-up and the reason this stays a one-line change.
+    expect(t("ob_l_note", "TH")).toBe("หมายเหตุ");
+    expect(t("ob_l_note", "EN")).toBe("Note");
+    expect(t("ob_f_note", "TH")).toBe("Remark");
+    expect(t("ob_f_note", "EN")).toBe("Remark");
+  });
+
+  test("🔴 §3 — teacher == parent, byte-identical, WITH leaves and WITHOUT", () => {
+    // *เอาหมด* made mechanical: the requirement, not a restatement of the omissions table.
+    for (const leaves of [["2026-09-14", "2026-09-28"], []]) {
+      const payload = { ...LIVE, plannedLeaveDates: leaves };
+      for (const lang of ["TH", "EN"] as const) {
+        expect({ leaves: leaves.length, lang, same: formatOutboxMessage(payload, {}, lang, "teacher") }).toEqual({
+          leaves: leaves.length,
+          lang,
+          same: formatOutboxMessage(payload, {}, lang, "parent"),
+        });
+      }
+    }
+  });
+});
+
+describe("🔴 TASK-269 §1 — the GATE and the printed figure are two different questions", () => {
+  // They were one variable: `confirmed` decided whether to send AND was printed as `Sessions`. Splitting
+  // them is the fix, so both halves need a guard — and the gate's half can only be asserted against the
+  // service's source, because reaching it needs a database.
+  const SVC = readSrc(readFileSync(new URL("../services/scheduler.service.ts", import.meta.url), "utf8"));
+  const code = (x: string) => x.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
+  const CONFIRM = (() => {
+    const c = code(SVC);
+    const at = c.indexOf("const coursePayload = {");
+    return c.slice(at, c.indexOf("const updated =", at));
+  })();
+
+  test("🚫 `confirmed` is NOT on the payload any more", () => {
+    const payload = CONFIRM.slice(0, CONFIRM.indexOf("};"));
+    expect(payload).toContain("size: course.size,");
+    expect(payload).not.toMatch(/^\s*confirmed,$/m);
+  });
+
+  test("🔑 …but it still GATES the send — a 0-confirm announces nothing, to either person", () => {
+    // *Nothing changed ⇒ nothing to announce.* Sending "confirmed 0 sessions" would train a teacher to
+    // ignore the message that matters. Both the teacher's row and the parent's copies are behind it.
+    expect(CONFIRM).toContain("const notification = confirmed");
+    expect(CONFIRM).toContain("const parentLines = confirmed ? await parentLineUserIds(");
+    expect(CONFIRM).toContain("const parentNotification = confirmed");
+  });
+
+  test("…and it is still what the ADMIN is told — the return value is unchanged", () => {
+    const c = code(SVC);
+    const ret = c.slice(c.indexOf("    return {", c.indexOf("const coursePayload = {")));
+    expect(ret.slice(0, ret.indexOf("    };"))).toContain("confirmed,");
   });
 });

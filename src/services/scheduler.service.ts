@@ -3454,7 +3454,13 @@ export async function confirmCourse(id: string) {
       // write uses: the renderer building "+1 hour" from a start alone would put that rule in two places, and
       // the next duration change would fix only one of them.
       endTime: addHour(course.startTime),
-      confirmed,
+      // 🔴 TASK-269 §1 — `confirmed` is NOT on the payload any more. It counted the rows this call flipped,
+      // and the message rendered it as `Sessions`, which made a 10-session course with two declared leaves
+      // print `Sessions : 8` beside `Program : Surfskate 10 HR`. The renderer now reads `size` — the same
+      // field `programLabel` reads — so the two cannot disagree.
+      // 🔑 `confirmed` still GATES the send below and is still in the return value: **the gate and the
+      // printed figure are two different questions**, and they were one variable. A second number sitting
+      // unrendered on the payload beside the one that is rendered is how they come apart again.
       plannedLeaveDates: rows
         .filter((r: any) => r.status === "SICK_LEAVE")
         .map((r: any) => r.date)

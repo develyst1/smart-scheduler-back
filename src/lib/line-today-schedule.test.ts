@@ -55,12 +55,16 @@ describe("🔴 ONE class — the customer's template, byte for byte", () => {
     );
   });
 
-  test("the teacher's copy drops `*Expiry date` (TASK-253's projection, in the new composer too)", () => {
+  test("🔴 the teacher's copy IS the parent's — the customer's own 09-05 draft, confirmed 09-07", () => {
+    // Was: *the teacher drops `*Expiry date`*. 🔻 TASK-269 §3 restores it. The customer's draft says
+    // *ครู 2. ⏱️TODAY'S SCHEDULE — identical to the parent's #2*, and the owner confirmed *เอาหมด*.
+    // ⚠️ Stated here rather than discovered: emptying the table changes THREE templates, not just the one
+    // the report was about, because it is per-audience.
     const teacher = renderTodaySchedule([course()], "TH", "teacher");
-    expect(teacher).not.toContain("Expiry date");
-    expect(teacher).not.toContain("Advance Leave");
-    expect(teacher).toContain("Remaining : 4 HR"); // a coach does see where the family stands today
+    const parent = renderTodaySchedule([course()], "TH", "parent");
+    expect(teacher).toContain("Remaining : 4 HR");
     expect(teacher).toContain("Coach : Ek");
+    expect(teacher).toBe(parent);
   });
 
   test("an อื่นๆ session is named by its title and grows no program it does not have", () => {

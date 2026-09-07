@@ -76,17 +76,30 @@ export const TYPE_OMITS: Record<NotifyType, readonly FieldKey[]> = {
 };
 
 /**
- * 🔴 The audience projection — @Porter's call, flagged for the customer's review.
+ * 🔴 The audience projection — **EMPTY since 2026-09-07** (TASK-269 §3, owner: *"เอาหมด"*).
  *
- * *"A course's expiry and a family's declared absences are the FAMILY's business."* A coach needs who · what ·
- * when · and where they stand today. ⚠️ The customer's own draft had both lines on the teacher's copy,
- * byte-identical to the parent's — **which is exactly what copy-paste looks like**. If they meant it, this is
- * the one line to put back.
- * 📌 `coach` is deliberately KEPT for the teacher: someone covering a class needs to see whose class it is.
+ * It held `teacher: ["expiry", "advanceLeave"]` on @Porter's reading that *"a course's expiry and a
+ * family's declared absences are the FAMILY's business"*. Its own note said the customer's draft had both
+ * lines on the teacher's copy and *"if they meant it, this is the one line to put back"*. **They meant it,
+ * and it was one line.** ⇒ **the teacher's copy is the parent's, field for field**, for every template.
+ *
+ * ⚠️ **Including the empty case, and that is the part that reverses something.** `advanceLeave` resolves to
+ * `ไม่มี` before the field block sees it, so a coach now reads `**Advance Leave Notice : ไม่มี` on a course
+ * with no declared leaves — the opposite of TASK-206's teacher-side reasoning. The reason the PARENT gets
+ * `ไม่มี` — *silence cannot be told from a missing feature* — applies to a coach at least as much, since a
+ * coach reads it to find out whether a child on their roster will be absent. And *"identical except when it
+ * is empty"* is a third rule nobody asked for.
+ *
+ * 🚫 **Do NOT delete this table because it is empty.** Its one line is what made a customer reversal cost
+ * one line, and this customer has now changed their mind about these two fields **twice**. Deleting it means
+ * re-threading `audience` through five signatures the next time.
+ * 📌 **And the other half, which a reader gets wrong in the opposite direction:** `audience` itself is NOT
+ * dead — `line-schedule.ts` still splits `คาบสอน` / `คาบเรียน` by it. **The projection is live; this one
+ * table is empty.**
  */
 export const AUDIENCE_OMITS: Record<Audience, readonly FieldKey[]> = {
   parent: [],
-  teacher: ["expiry", "advanceLeave"],
+  teacher: [],
 };
 
 /**

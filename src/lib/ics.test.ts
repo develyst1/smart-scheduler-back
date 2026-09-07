@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { buildCalendar, escapeIcsText, foldIcsLine, icsUid, toIcsUtc } from "./ics";
 
 const NOW = new Date("2026-07-31T03:00:00.000Z");
-const booking = (o: Partial<Parameters<typeof buildCalendar>[0][number]> = {}) => ({
+// 🔴 TASK-272 — the fixture is TYPED against the real row now (`IcsBooking`), because `status` stopped being
+// `string`. That change is the fix: `veventStatus` took a `string`, which is why nobody was ever asked what
+// a paused session should publish as, and it silently landed on `CONFIRMED`.
+const booking = (
+  o: Partial<Parameters<typeof buildCalendar>[0][number]> = {},
+): Parameters<typeof buildCalendar>[0][number] => ({
   id: "b1",
   date: "2026-07-31",
   startTime: "09:00:00",

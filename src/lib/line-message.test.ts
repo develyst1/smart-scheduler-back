@@ -114,17 +114,22 @@ describe("course_confirmed (TASK-201)", () => {
     expect(out).toContain("2026-09-14, 2026-09-28");
   });
 
-  test("🔴 TASK-253 REVERSES the empty case for the PARENT — it prints `ไม่มี`", () => {
-    // This used to assert the line was ABSENT: an empty leave line reads as a problem to a TEACHER scanning a
-    // schedule (TASK-206). @Porter's REQ-077 rule is the opposite for the parent — *a parent may be reading the
-    // message TO CHECK that, and silence cannot be told from a missing feature.*
+  test("🔴 the empty case prints `ไม่มี` — for the parent AND, since 2026-09-07, the teacher", () => {
+    // The history matters here because this line has now been reversed twice, in opposite directions.
+    // TASK-206: absent for a teacher — *an empty leave line reads as a problem to a coach scanning a
+    // schedule.* TASK-253: `ไม่มี` for a parent — *silence cannot be told from a missing feature*, and the
+    // audience projection let both be true at once.
     //
-    // 📌 Both rules are true at once now, and that is what the audience projection bought: the teacher's copy
-    // carries no advance-leave line at all, so the line a teacher would misread is not on their message.
+    // 🔻 TASK-269 §3, owner *เอาหมด*: the teacher's copy is the parent's, **including the empty case**. The
+    // parent's reason applies to a coach at least as much — a coach reads it to find out whether a child on
+    // their roster will be absent — and *identical except when it is empty* is a third rule nobody asked for.
+    // 🔴 Pinned as its OWN case, deliberately, because it reverses TASK-206 and must not arrive as a side
+    // effect of an omissions table going empty.
     const none = { ...payload, plannedLeaveDates: [] };
     expect(formatOutboxMessage(none, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");
     expect(formatOutboxMessage(none, {}, "EN", "parent")).toContain("**Advance Leave Notice : None");
-    expect(formatOutboxMessage(none, {}, "TH", "teacher")).not.toContain("Advance Leave");
+    expect(formatOutboxMessage(none, {}, "TH", "teacher")).toContain("**Advance Leave Notice : ไม่มี");
+    expect(formatOutboxMessage(none, {}, "EN", "teacher")).toContain("**Advance Leave Notice : None");
     // A payload that never carried the field at all must behave the same, not crash.
     const { plannedLeaveDates: _d, ...missing } = payload;
     expect(formatOutboxMessage(missing, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");

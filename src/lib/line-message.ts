@@ -171,7 +171,28 @@ export function formatOutboxMessage(
         // two labelling conventions is what put `จำนวนคาบที่ยืนยัน` and `หมายเหตุ` under eight English labels.
         // They cannot reuse `ob_l_*`: those are bilingual, and `ob_l_note` also renders `booking_confirmed`,
         // which is owner-verified and byte-frozen. **One message, one convention** — the cause, not the symptom.
-        extra(t("ob_f_sessions", lang), String(payload.confirmed ?? 0)) +
+        // 🔴 TASK-269 §1 — `Sessions` is the course AS BOUGHT, and it reads **the same field `programLabel`
+        // reads**. It used to be `payload.confirmed`, the count of rows this confirm flipped — so a
+        // `Surfskate 10 HR` with two declared leaves printed `Program : Surfskate 10 HR` and
+        // `Sessions : 8` **in the same message**: two derivations of one fact, disagreeing, in front of a
+        // parent. An advance leave is `SICK_LEAVE` and was never `PENDING`.
+        //
+        // 🚫 NOT `confirmed + plannedLeaveDates.length`. That patches the reported symptom and leaves two:
+        // a re-confirm counts 0, and a session that failed on budget is subtracted with no sign. **A
+        // derived figure can disagree with the one printed beside it; a shared field cannot.**
+        //
+        // ⚠️ Omitted when `size` is absent — `Sessions : 0` on a course is a false statement, not a blank.
+        extra(t("ob_f_sessions", lang), payload.size != null ? String(payload.size) : undefined) +
+        // TASK-269 §2 — the label is `Remark` (both languages; the house style is English labels for
+        // everyone). 🚫 `ob_l_note` is a DIFFERENT key and is untouched: it renders `booking_confirmed`,
+        // which is owner-verified and byte-frozen. Two keys is why this is a one-line change.
+        //
+        // 📌 Where the note comes from, and why it is right: the payload's `note` is
+        // `rows[0]?.attendeeNote` with `rows` ordered `asc(date)` ⇒ **the earliest session's note**.
+        // TASK-178 writes one note at creation onto EVERY session, so on the normal path every row carries
+        // the same string. ⚠️ `setAttendeeNote` edits ONE booking, so after a per-session edit only a note
+        // on the earliest session reaches here. **Known and deliberately not fixed:** a course summary has
+        // no true answer to "which session's note" when they differ, and inventing one is worse.
         extra(t("ob_f_note", lang), (payload.note as string) || undefined)
       ).trimEnd();
     }

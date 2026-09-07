@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { CALENDAR_HIDDEN_STATUSES } from "../db/schema";
 import { notFound, badRequest } from "../lib/http";
 import { isWithinCheckinWindow, checkinWindowMessage } from "../lib/checkin";
 import { formatCheckinPayload, issueCheckinToken } from "../lib/checkin-token";
@@ -109,9 +110,25 @@ export async function findBookingsForTeacher(lineUserId: string, from: string, t
     where: (t, { eq: e }) => e(t.lineUserId, lineUserId),
   });
   if (!teacher) return [];
+  // 🔴 TASK-271 §3 — `CALENDAR_HIDDEN_STATUSES`, not a hand-written `ne(status, "CANCELLED")`.
+  //
+  // That list's own comment names this exact bug: *"a hand-written exclusion of one status is exactly how
+  // the next status gets missed"*. TASK-260 wrote that sentence, fixed the instance it found, and **this
+  // identical line survived in another file** — so a paused booking stayed on a coach's phone.
+  //
+  // ✅ Reused rather than invented: a teacher's `ตาราง` IS a calendar, so *"does it appear on the grid?"*
+  // is the same question with the same answer, and REQ-076 already settled that a paused booking leaves
+  // the schedule. 🚫 A `TEACHER_SCHEDULE_HIDDEN_STATUSES` whose contents equal an existing list is the
+  // disagreement this project keeps paying for.
+  // 📌 `CANCELLED`'s behaviour is unchanged; `PAUSED` is the only row that stops appearing.
   return db.query.bookings.findMany({
-    where: (b, { and, eq, ne, gte, lte }) =>
-      and(eq(b.teacherId, teacher.id), gte(b.date, from), lte(b.date, to), ne(b.status, "CANCELLED")),
+    where: (b, { and, eq, notInArray, gte, lte }) =>
+      and(
+        eq(b.teacherId, teacher.id),
+        gte(b.date, from),
+        lte(b.date, to),
+        notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
+      ),
     with: { student: true, subject: true },
     orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });

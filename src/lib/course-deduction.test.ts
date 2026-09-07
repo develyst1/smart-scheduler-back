@@ -181,10 +181,14 @@ describe("the rendered message — Parent 3, and the teacher does not get the fa
     expect(out.split("\n").filter((l) => l.startsWith("Coach")).length).toBe(1);
   });
 
-  test("the teacher's copy keeps the balance but loses the family's expiry", () => {
+  test("🔴 the teacher's copy IS the parent's, expiry included (owner: เอาหมด, 2026-09-07)", () => {
+    // Was: *keeps the balance but loses the family's expiry.* TASK-269 §3 emptied `AUDIENCE_OMITS.teacher`,
+    // and this template is affected the same way as the other two — the table is per-audience, not
+    // per-template, which is why it is asserted here rather than assumed from the confirmed-schedule test.
     const teacher = formatOutboxMessage(payload, ctx, "TH", "teacher");
+    const parent = formatOutboxMessage(payload, ctx, "TH", "parent");
     expect(teacher).toContain("Remaining : 2 HR");
-    expect(teacher).not.toContain("Expiry date");
+    expect(teacher).toBe(parent);
   });
 
   test("a voucher renders its programme and its `n/N ครั้ง`", () => {

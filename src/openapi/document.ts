@@ -1,4 +1,5 @@
 // OpenAPI 3.0 — Scheduling API (frontoffice). Hand-maintained; keep in sync with routes/api.ts.
+import { bookingStatus } from "../db/schema";
 
 export const openApiDocument = {
   openapi: "3.0.3",
@@ -67,17 +68,12 @@ export const openApiDocument = {
           },
         },
       },
+      // 🔴 TASK-270 (DEF-1) — DERIVED from the database enum. It was a hand-written 7 against a DB enum of
+      // 9: the documented contract said `PAUSED` was not a status while the tray was querying for it.
+      // A published contract that disagrees with the database is worse than none — it is believed.
       BookingStatus: {
         type: "string",
-        enum: [
-          "PENDING",
-          "CONFIRMED",
-          "ATTENDED",
-          "SICK_LEAVE",
-          "EXTENDED",
-          "PENDING_RESCHEDULE",
-          "CANCELLED",
-        ],
+        enum: [...bookingStatus.enumValues],
       },
       BookingType: {
         type: "string",

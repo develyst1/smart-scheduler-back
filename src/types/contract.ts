@@ -10,6 +10,8 @@
 //     frontend renders directly and never calls N endpoints to stitch data.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { bookingStatus } from "../db/schema";
+
 // ───────────── Scalars / enums (must match the DB enums & FE unions) ─────────────
 
 export type TeacherType = "FULL_TIME" | "PART_TIME" | "FREELANCE";
@@ -18,14 +20,16 @@ export type BookingType =
   | "SINGLE_SESSION"
   | "COURSE_PACKAGE"
   | "VOUCHER";
-export type BookingStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "ATTENDED"
-  | "SICK_LEAVE"
-  | "EXTENDED"
-  | "PENDING_RESCHEDULE" // overbooked → awaiting parent acceptance of the move (B.1)
-  | "CANCELLED";
+/**
+ * 🔴 TASK-270 (DEF-1) — DERIVED from the database enum. It was a hand-written 7 against a DB enum of 9,
+ * and `PAUSED` reached the database and not this union.
+ *
+ * 🔑 `import type` + `typeof`: this file gains **no runtime import**. It was type-only for all three of its
+ * consumers and it stays type-only — `db/schema.ts` itself imports nothing but `drizzle-orm/pg-core`, and
+ * the connection lives in `db/index.ts`, which is a different module. So there is no shape of this change
+ * in which importing the contract opens a database.
+ */
+export type BookingStatus = (typeof bookingStatus.enumValues)[number];
 export type PackageSize = 4 | 6 | 10;
 
 /** How the existing booking is moved when a slot is overbooked. */
