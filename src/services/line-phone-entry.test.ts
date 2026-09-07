@@ -46,7 +46,10 @@ describe("🔴 the phone binds the chat — and can never re-bind it to another 
 
   test("the refusal reaches the parent as a sentence, not a 23505", () => {
     expect(VERIFY).toContain("const bind = await bindFamilyLine(existing.id, lineUserId)");
-    expect(VERIFY).toContain('if (!bind.ok) return { ok: false, message: t("verify_parent_other_family", lang) }');
+    // ⚠️ TASK-275: `message` is now a BUILDER `(lang) => string`, because the registration flow's replies
+    // are composed and a composed body must be built once per language. The PROPERTY this test guards —
+    // that the refusal is a sentence to the parent and not a raw `23505` — is unchanged; only the shape is.
+    expect(VERIFY).toContain('if (!bind.ok) return { ok: false, message: (l) => t("verify_parent_other_family", l) }');
     expect(t("verify_parent_other_family", "TH")).toContain("แอดมิน");
   });
 
@@ -59,7 +62,7 @@ describe("🔴 the phone binds the chat — and can never re-bind it to another 
   test("an unknown phone gives NO hint about whether that number is a customer", () => {
     // The reply is the same shape whether the number exists or not — and the existing-account branch is the
     // only one that says anything about a family.
-    expect(VERIFY).toContain('t("verify_parent_badphone", lang)');
+    expect(VERIFY).toContain('t("verify_parent_badphone", l)');
     expect(VERIFY).not.toContain("not a customer");
   });
 });
@@ -85,7 +88,10 @@ describe("🔴 §2 — the phone alone returns the children BY NAME", () => {
     // Not a style choice: names are for the path the owner accepted the risk on. Where a gate exists,
     // TASK-047's rule is honoured — the count before verifying, the names after.
     expect(VERIFY).toContain("parentChildrenNames(");
-    expect(VERIFY).toContain("list: parentChildrenNote(kids.length, lang)");
+    // TASK-275: `lang` → `l`, the builder's parameter. 🔑 The distinction this test exists for is intact and
+    // is now MORE visible: the count path and the names path are both inside the per-language builder, so
+    // each language renders the same choice rather than two builders drifting.
+    expect(VERIFY).toContain("list: parentChildrenNote(kids.length, l)");
   });
 });
 
@@ -153,7 +159,9 @@ describe("🔀 the 2FA branch — BUILT, and switched by a setting", () => {
   test("a wrong code reuses the ONE two-strikes rule — no bespoke lockout", () => {
     const branch = SVC.slice(SVC.indexOf('session.step === "AWAIT_2FA"'), SVC.indexOf("AWAIT_CODE\" && session.pendingRole"));
     expect(branch).toContain("strikeOrPrompt(");
-    expect(branch).toContain('t("twofa_bad", lang)');
+    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
+    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    expect(branch).toContain('tb("twofa_bad")');
   });
 
   test("verifying reveals the names, and only then", () => {

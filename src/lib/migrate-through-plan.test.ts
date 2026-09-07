@@ -46,6 +46,10 @@ describe("TASK-267 — `--plan` runs, and this test is the run", () => {
     // generated config sits, which is the only place that matters and the thing the OS temp folder broke.
     expect(out).toContain("(found by walking up from the config, as node does)");
     expect(out).toContain("node_modules/drizzle-kit");
+    // 🔴 TASK-268 — and the BINARY, which is what the run actually executes. Two different resolutions; both
+    // are now checked by the mode that exists to be run.
+    expect(out).toContain("drizzle-kit bin:");
+    expect(out).toContain("bin.cjs");
     expect(out).toContain("config         : loads and exports a config ✓");
     expect(out).not.toContain("Cannot find module");
   });
@@ -73,7 +77,11 @@ describe("TASK-267 — `--plan` runs, and this test is the run", () => {
 
   test("🚫 it says plainly that nothing happened, and prints the command it would have run", () => {
     expect(out).toContain("✅ --plan: nothing was applied and no database was contacted.");
-    expect(out).toContain("bunx drizzle-kit migrate --config");
+    // 🔴 TASK-268: `bunx` left the deploy path. It was a SECOND resolution that nothing checked — `--plan`
+    // proved the module resolved while the run executed something else — and it can reach the network from a
+    // step that should touch only the disk and the database. The command now names the resolved entry script.
+    expect(out).toContain("migrate --config");
+    expect(out).not.toContain("bunx");
     expect(out).toContain("scripts/verify-migrations.ts --through 0032_booking_paused_status");
   });
 

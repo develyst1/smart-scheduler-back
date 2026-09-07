@@ -12,6 +12,7 @@ import {
   eventPostbackData,
   eventText,
   eventUserId,
+  formatPhoneForDisplay,
   parsePostback,
   parseRoleChoice,
   type LineWebhookEvent,
@@ -27,7 +28,7 @@ import {
   formatUnknownAction,
 } from "../lib/line-log";
 import { linkKnownRichMenu, linkRoleRichMenu } from "../lib/line-rich-menu";
-import { t, type Lang } from "../lib/line-i18n";
+import { both, t, tb, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
 import {
   decideMessageRoute,
@@ -123,7 +124,21 @@ type LinkRole = "customer" | "teacher" | "admin";
  * TASK-232: `needs2fa` + `code` are set ONLY when the 2FA setting is on. The caller turns them into an
  * `AWAIT_2FA` session step — the branch, not a second flow.
  */
-type VerifyResult = { ok: boolean; message: string; needs2fa?: boolean; code?: string };
+/**
+ * 🔴 TASK-275 (REQ-079 §18) — `message` is a BUILDER, not a string.
+ *
+ * The registration flow's replies are composed — a verify result plus the add-student prompt, or plus the
+ * 2FA prompt — and a composed body must be built ONCE PER LANGUAGE and joined once, or the reader gets
+ * TH/EN/TH/EN interleaved down the message. A `string` here would have forced the language to be chosen
+ * inside `verifyRole`, which does database work and cannot be called twice.
+ * ⇒ the language is chosen at the SEND, by `both()`, which is the only place it can be chosen twice.
+ */
+type VerifyResult = {
+  ok: boolean;
+  message: (lang: Lang) => string;
+  needs2fa?: boolean;
+  code?: string;
+};
 
 async function reply(replyToken: string, text: string) {
   await replyMessage(replyToken, [{ type: "text", text }]);
@@ -196,9 +211,13 @@ const MUTED_STEP = "MUTED";
  * Every place that asks it builds the message here, so the prompt and its buttons cannot drift apart: a picker
  * on one path and a bare text on another is how a customer meets the retired numbered version months later.
  */
+// 🔴 TASK-275 (REQ-079 §18) — the PROMPT is bilingual, the BUTTON LABELS are not.
+// LINE caps a quick-reply label at 20 characters, and `ผู้ปกครอง / Parent` does not fit. That limit is why
+// §2 splits the rule at all: bodies get `tb()`, labels keep `t(key, lang)`. 📌 The signatures carry it —
+// `tb` cannot take a language, `t` must.
 const askRole = (lang: Lang) =>
   rolePicker(
-    t("role_prompt", lang),
+    tb("role_prompt"),
     {
       customer: t("role_btn_customer", lang),
       teacher: t("role_btn_teacher", lang),
@@ -217,7 +236,7 @@ const askRole = (lang: Lang) =>
 async function acceptRole(lineUserId: string, role: LinkRole, replyToken: string, lang: Lang) {
   await resetStrikes(lineUserId); // AC-19: a valid answer clears the count — see `strikeOrPrompt`.
   await setStep(lineUserId, "AWAIT_CODE", role);
-  return reply(replyToken, t(`code_${role}`, lang));
+  return reply(replyToken, tb(`code_${role}`));
 }
 
 /**
@@ -316,7 +335,7 @@ async function strikeOrPrompt(
       .update(lineLinkSessions)
       .set({ unexpectedCount: 0, mutedUntil: muteUntilFrom() })
       .where(eq(lineLinkSessions.lineUserId, lineUserId));
-    return reply(replyToken, t("handover_to_admin", lang));
+    return reply(replyToken, tb("handover_to_admin"));
   }
   await db
     .update(lineLinkSessions)
@@ -404,9 +423,9 @@ async function verifyAndLink(
 ): Promise<VerifyResult> {
   if (role === "admin") {
     const expected = process.env.LINE_ADMIN_VERIFY_CODE ?? "229";
-    if (code.trim() !== expected) return { ok: false, message: t("verify_admin_bad", lang) };
+    if (code.trim() !== expected) return { ok: false, message: (l) => t("verify_admin_bad", l) };
     await addAdminLineUserId(lineUserId);
-    return { ok: true, message: t("verify_admin_ok", lang) };
+    return { ok: true, message: (l) => t("verify_admin_ok", l) };
   }
 
   if (role === "teacher") {
@@ -418,26 +437,30 @@ async function verifyAndLink(
     const outcome = await requestTeacherLink(lineUserId, nick);
     // ⚠️ `pending` and `pending-ambiguous` deliberately share one reply key: the bot must not tell an
     // unauthenticated stranger whether a nickname exists, or how many teachers share it.
-    const message = t(claimReplyKey(outcome), lang, { nick });
+    const message = (l: Lang) => t(claimReplyKey(outcome), l, { nick });
     // They stay UNLINKED until approved — no teacher menu, no schedule pushes. `ok:false` keeps the session
     // at AWAIT_CODE so a typo can be retyped, exactly as the ambiguous case already did.
     return { ok: false, message };
   }
 
   // customer / parent — keyed by phone. One phone = one parent (many children).
+  // ⚠️ TASK-278 §6 — `phone` stays the DIGITS from here down: it is the lookup key, the stored value and the
+  // uniqueness rule. Only the three message interpolations below wrap it in `formatPhoneForDisplay`, and
+  // that function is display-only by contract. A formatted number reaching `findParentByPhone` is how a
+  // family stops matching their own record.
   const phone = normalizePhone(code);
-  if (phone.length < 9) return { ok: false, message: t("verify_parent_badphone", lang) };
+  if (phone.length < 9) return { ok: false, message: (l) => t("verify_parent_badphone", l) };
   const existing = await findParentByPhone(phone);
   if (existing) {
     if (existing.lineUserId && existing.lineUserId !== lineUserId) {
-      return { ok: false, message: t("verify_parent_other", lang) };
+      return { ok: false, message: (l) => t("verify_parent_other", l) };
     }
     // 🔴 SPEC-071 / TASK-232 — the mirror of the check above, and the one the unique index enforces: this LINE
     // ACCOUNT may already belong to a different family. Refused here so the parent gets a sentence they can
     // act on instead of a `23505`, and refused at all because the alternative is silently re-pointing an
     // account — a parent opening the app to **another family's children** (TASK-047's failure, other route).
     const bind = await bindFamilyLine(existing.id, lineUserId);
-    if (!bind.ok) return { ok: false, message: t("verify_parent_other_family", lang) };
+    if (!bind.ok) return { ok: false, message: (l) => t("verify_parent_other_family", l) };
 
     await linkParentLine(existing.id, lineUserId);
     await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
@@ -458,21 +481,23 @@ async function verifyAndLink(
         ok: true,
         needs2fa: true,
         code,
-        message:
-          t("verify_parent_ok_existing", lang, { phone, list: parentChildrenNote(kids.length, lang) }) +
+        // 📌 The composed case this change exists for: a verify line, a children note and the 2FA prompt.
+        // Built per language, so the parent reads a whole Thai message and then a whole English one.
+        message: (l) =>
+          t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNote(kids.length, l) }) +
           "\n" +
-          t("twofa_prompt", lang),
+          t("twofa_prompt", l),
       };
     }
-    const list = parentChildrenNames(
-      kids.map((k: any) => k.nickname ?? k.name),
-      lang,
-    );
-    return { ok: true, message: t("verify_parent_ok_existing", lang, { phone, list }) };
+    const names = kids.map((k: any) => k.nickname ?? k.name);
+    return {
+      ok: true,
+      message: (l) => t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNames(names, l) }),
+    };
   }
   await findOrCreateParentByPhone(phone, { lineUserId });
   await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
-  return { ok: true, message: t("verify_parent_ok_new", lang, { phone }) };
+  return { ok: true, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
 }
 
 /** Create one student under the linked parent and craft the right reply. */
@@ -485,6 +510,9 @@ async function verifyAndLink(
  * (`isCancelWord`) is checked once at the top of the handler rather than per step — the promise and the
  * behaviour are each in exactly one place, so they cannot drift apart.
  */
+// 🔴 TASK-275 — takes a per-language QUESTION, not a rendered one. Appending a bilingual hint to a
+// bilingual question would read TH · EN · TH · EN inline, which is the one way this change goes visibly
+// wrong (§Q2). The caller wraps the whole thing in `both()` instead.
 const withExit = (question: string, lang: Lang) => `${question}${t("add_exit_hint", lang)}`;
 
 async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
@@ -527,7 +555,7 @@ async function handleAddStudentStep(
   // the draft lives ON that row, so cancelling and "the draft is gone" are the same act rather than two.
   if (isCancelWord(text)) {
     await clearSession(lineUserId);
-    return reply(replyToken, `${t("add_cancelled", lang)}\n\n${t("menu_body", lang)}`);
+    return reply(replyToken, both((l) => `${t("add_cancelled", l)}\n\n${t("menu_body", l)}`));
   }
 
   if (session.step === "AWAIT_STUDENT_NAME" || session.step === "AWAIT_STUDENT_DETAIL") {
@@ -550,7 +578,9 @@ async function handleAddStudentStep(
       await assertCanAddStudent(parent.id);
     } catch (e: any) {
       await clearSession(lineUserId);
-      return reply(replyToken, `${e?.message ?? t("add_generic_err", lang)}\n\n${t("menu_body", lang)}`);
+      // ⚠️ `e?.message` is already a rendered sentence from the service layer and is NOT bilingual — it is
+      // the one part of this body that cannot be, and it is named here rather than silently half-translated.
+      return reply(replyToken, both((l) => `${e?.message ?? t("add_generic_err", l)}\n\n${t("menu_body", l)}`));
     }
     // 🔴 AC-9 — a duplicate asks for MORE DETAIL. It never demands a rename: two real children can share a
     // name, and a rename demand would also confirm to whoever typed the phone that such a child exists.
@@ -588,6 +618,18 @@ async function handleAddStudentStep(
     const next = { ...draft, province };
     await resetStrikes(lineUserId);
     await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", next);
+    // 🔴 TASK-277 (REQ-079 §17) — THIS STEP IS LOAD-BEARING FOR CORRECTNESS, not just for review.
+    //
+    // The birthdate is entered day-first (`วัน-เดือน-ปี`, the owner's ruling), and `03-04-2024` is genuinely
+    // ambiguous to a HUMAN — 3 April or 4 March. The parser is unambiguous; the person typing is not.
+    // **What saves them is this summary printing the date back before anything is written**, and the roster
+    // has no delete.
+    // 🚫 Nobody may "simplify" the confirm step away later. §17 says it in the owner's own decision, and it
+    // stopped being a nicety the day the input format became day-first.
+    // 🔴 TASK-280 — and the echo below is DAY-FIRST for the same reason. It printed the stored ISO, so the
+    // reader had to reverse the order to check it — **performing the very conversion this step exists to
+    // spare them.** A confirm step that echoes in a different format is not a weaker guard on this field;
+    // it is close to no guard at all.
     const lines = summaryLines(next, {
       name: t("add_l_name", lang),
       birthDate: t("add_l_birthdate", lang),
@@ -596,7 +638,7 @@ async function handleAddStudentStep(
     });
     return reply(
       replyToken,
-      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
+      both((l) => `${t("add_summary_head", l)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", l), l)}`),
     );
   }
 
@@ -606,7 +648,7 @@ async function handleAddStudentStep(
     // at the top of this function; this keeps the wider vocabulary — `ไม่`, `no` — that AC-12 shipped with.)
     if (isCancel(text)) {
       await clearSession(lineUserId);
-      return reply(replyToken, `${t("add_cancelled", lang)}\n\n${t("menu_body", lang)}`);
+      return reply(replyToken, both((l) => `${t("add_cancelled", l)}\n\n${t("menu_body", l)}`));
     }
     if (!isConfirm(text)) {
       // An unrecognised answer at the last step is an unrecognised in-flow reply like any other — same
@@ -629,11 +671,11 @@ async function handleAddStudentStep(
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;
       const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
-      return reply(replyToken, `${t("added_done", lang, { name: student.name, note })}\n\n${t("menu_body", lang)}`);
+      return reply(replyToken, both((l) => `${t("added_done", l, { name: student.name, note })}\n\n${t("menu_body", l)}`));
     } catch (e: any) {
       const msg = e?.message ?? t("add_generic_err", lang);
       await clearSession(lineUserId);
-      return reply(replyToken, `${msg}\n\n${t("menu_body", lang)}`);
+      return reply(replyToken, both((l) => `${msg}\n\n${t("menu_body", l)}`));
     }
   }
 
@@ -662,14 +704,14 @@ async function addStudentAndReply(
     }
     await clearSession(lineUserId);
     const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
-    return reply(replyToken, `${t("added_done", lang, { name: student.name, note })}\n\n${t("menu_body", lang)}`);
+    return reply(replyToken, both((l) => `${t("added_done", l, { name: student.name, note })}\n\n${t("menu_body", l)}`));
   } catch (e: any) {
     // createStudentForParent throws a Thai validation message (shared with the REST API — out of the LINE
     // reply layer's i18n scope); surface it, and drop the session on the "over max" case.
     const msg = e?.message ?? t("add_generic_err", lang);
     if (msg.includes("สูงสุด")) {
       await clearSession(lineUserId);
-      return reply(replyToken, `${msg}\n\n${t("menu_body", lang)}`);
+      return reply(replyToken, both((l) => `${msg}\n\n${t("menu_body", l)}`));
     }
     return reply(replyToken, msg); // keep the session so they can retry the name
   }
@@ -687,7 +729,10 @@ function parentActionItems(lang: Lang) {
 }
 
 function doMenu(replyToken: string, lang: Lang) {
-  return send(replyToken, [{ type: "text", text: t("menu_body", lang), quickReply: { items: parentActionItems(lang) } }]);
+  // 🔴 TASK-276 — the BODY is bilingual; `parentActionItems(lang)` builds the quick-reply LABELS and stays
+  // single-language, under LINE's 20-character cap. Same split as everywhere else, at the one site where
+  // both halves of it are visible on one line.
+  return send(replyToken, [{ type: "text", text: tb("menu_body"), quickReply: { items: parentActionItems(lang) } }]);
 }
 
 /** TASK-145 (AC-3): the check-in picker names the SESSION, like the leave one. Button labels are clamped to
@@ -713,7 +758,7 @@ function sessionPicker(
 
 async function doCheckin(lineUserId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
-  if (!today.length) return send(replyToken, [textReply(t("empty_checkin", lang), lang)]);
+  if (!today.length) return send(replyToken, [textReply(tb("empty_checkin"), lang)]);
   if (today.length === 1) return doCheckinBooking(lineUserId, today[0]!.id, replyToken, date, lang);
   return send(replyToken, [sessionPicker(t("pick_checkin", lang), "checkin", today, lang, true)]);
 }
@@ -722,10 +767,10 @@ async function doCheckin(lineUserId: string, replyToken: string, date: string, l
  *  child's check-in link. Same id-keyed picker as check-in when more than one is eligible. */
 async function doQr(lineUserId: string, replyToken: string, date: string, lang: Lang, bookingId?: string) {
   const today = await findTodayBookingsForParent(lineUserId, date);
-  if (!today.length) return send(replyToken, [textReply(t("qr_none", lang), lang)]);
+  if (!today.length) return send(replyToken, [textReply(tb("qr_none"), lang)]);
   const chosen = bookingId ? today.find((x) => x.id === bookingId) : today.length === 1 ? today[0] : undefined;
   if (!chosen) {
-    if (bookingId) return send(replyToken, [textReply(t("checkin_notfound", lang), lang)]); // not this parent's
+    if (bookingId) return send(replyToken, [textReply(tb("checkin_notfound"), lang)]); // not this parent's
     return send(replyToken, [sessionPicker(t("pick_qr", lang), "qr", today, lang, true)]);
   }
   const qr = await getCheckinQr(chosen.id);
@@ -740,7 +785,7 @@ async function doQr(lineUserId: string, replyToken: string, date: string, lang: 
 async function doCheckinBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
   const b = today.find((x) => x.id === bookingId); // authorize: must be one of THIS parent's today bookings
-  if (!b) return send(replyToken, [textReply(t("checkin_notfound", lang), lang)]);
+  if (!b) return send(replyToken, [textReply(tb("checkin_notfound"), lang)]);
   const qr = await getCheckinQr(b.id);
   try {
     const result = await checkinByToken(qr.token);
@@ -763,10 +808,10 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
 async function doLeave(lineUserId: string, replyToken: string, date: string, lang: Lang, studentId?: string) {
   const today = await findTodayBookingsForParent(lineUserId, date);
   let eligible = today.filter((b) => b.status === "CONFIRMED");
-  if (!eligible.length) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  if (!eligible.length) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
   if (studentId) {
     eligible = eligible.filter((b) => b.studentId === studentId); // authorize: still this parent's own rows
-    if (!eligible.length) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+    if (!eligible.length) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
   } else if (needsChildStep(eligible)) {
     return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible), lang)]);
   }
@@ -777,7 +822,7 @@ async function doLeave(lineUserId: string, replyToken: string, date: string, lan
 async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
   const b = today.find((x) => x.id === bookingId && x.status === "CONFIRMED"); // authorize + eligible
-  if (!b) return send(replyToken, [textReply(t("empty_leave", lang), lang)]);
+  if (!b) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
   // TASK-146: a refusal (LEAVE_NOTICE_TOO_LATE from the cut-off, LEAVE_LOCKED, …) used to propagate out of
   // this handler — the outer catch logged it and **the parent got no reply at all**. AC-7 wants them to read
   // the reason, so the server's message is surfaced instead of silence.
@@ -794,7 +839,7 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
       const { value: cutoffHours } = await getSetting(leaveCutoffKey(teacherType ?? "FULL_TIME"));
       return send(replyToken, [textReply(leaveNoticeMessage(cutoffHours, b.startTime, lang), lang)]);
     }
-    return send(replyToken, [textReply(e?.message ?? t("leave_err", lang), lang)]);
+    return send(replyToken, [textReply(e?.message ?? tb("leave_err"), lang)]);
   }
   const locked = result.locked ? t("leave_lockline", lang) : "";
   const extended = result.extended
@@ -815,8 +860,11 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
 async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
   const parent = await findParentByLineUserId(lineUserId);
   const kids = parent ? await listStudentsOfParent(parent.id) : [];
-  if (!kids.length) return send(replyToken, [textReply(t("children_none", lang), lang)]);
-  const title = `${t("children_title", lang)} (${kids.length}/${MAX_STUDENTS_PER_PARENT})`;
+  if (!kids.length) return send(replyToken, [textReply(tb("children_none"), lang)]);
+  // 🔴 TASK-276 §3 — THE SILENT ONE. The count is appended AFTER the key, so a per-key `TH\nEN` would put
+  // `(3/5)` on the ENGLISH line only and nothing about the Thai output would look wrong. Composed inside
+  // `both()`, the count is built once per language — which is why this needs an assertion and not an eye.
+  const title = both((l) => `${t("children_title", l)} (${kids.length}/${MAX_STUDENTS_PER_PARENT})`);
   return send(replyToken, [childrenFlex(title, kids.map((k) => k.name), lang)]);
 }
 
@@ -833,7 +881,7 @@ async function doChildren(lineUserId: string, replyToken: string, lang: Lang) {
 async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
   const parent = await findParentByLineUserId(lineUserId);
   const kids = parent ? await listStudentsOfParent(parent.id) : [];
-  if (!kids.length) return send(replyToken, [textReply(t("course_none", lang), lang)]);
+  if (!kids.length) return send(replyToken, [textReply(tb("course_none"), lang)]);
   const rows = await db.query.coursePackages.findMany({
     where: (c: any, { inArray: inA }: any) => inA(c.studentId, kids.map((k: any) => k.id)),
     // ⚠️ A course has NO teacher column — the teacher is a fact about its sessions (TASK-140 moved the PROGRAM
@@ -857,7 +905,8 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
       leaveRemaining: s.leaveRemaining,
       expiryDate: s.expiryDate,
     }));
-  return send(replyToken, [textReply(renderMyCourses(view, lang), lang)]);
+  // Same shape as the schedule: one whole list per language.
+  return send(replyToken, [textReply(both((l) => renderMyCourses(view, l)), lang)]);
 }
 
 /**
@@ -879,7 +928,7 @@ async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang) {
       target: lineLinkSessions.lineUserId,
       set: { mutedUntil: muteUntilFrom(), updatedAt: new Date() },
     });
-  return send(replyToken, [textReply(t("admin_called", lang), lang)]);
+  return send(replyToken, [textReply(tb("admin_called"), lang)]);
 }
 
 /** Teacher "my schedule" (REQ-016 / TASK-043) — today or this week (**Mon–Sun** via `weekRange`; it was
@@ -923,16 +972,27 @@ async function doTeacherSchedule(
       displayText: t("btn_calendar", lang),
     },
   };
-  return send(replyToken, [textReply(renderSchedule(rows, lang, range), lang, [toggle, calendarBtn])]);
+  // 🔴 TASK-276 §2 — shape (a): the WHOLE LIST twice, Thai block then English block. 🚫 Not row-per-language:
+  // a coach scanning eight classes needs one scannable column, and per-row doubling destroys the alignment
+  // the layout exists for. 📌 The owner's original length objection survives here even though it lost for
+  // prompts — a list is read differently from a prompt.
+  // 🔑 And it is `both()` rather than a bilingual key that keeps a ROW single-language: `renderSchedule` is
+  // called once per language, so `status_*` inside a row renders Thai in the Thai block and English in the
+  // English one, and the one-line-per-class layout survives.
+  // ⚠️ Measured, not assumed: 20 rows (the composer's own cap) with long names and a note on every row is
+  // 3,848 characters doubled — inside LINE's 5,000 cap. **The cap is what bounds it, not the data.**
+  return send(replyToken, [
+    textReply(both((l) => renderSchedule(rows, l, range)), lang, [toggle, calendarBtn]),
+  ]);
 }
 
 /** Reply with the teacher's private `.ics` subscription link (REQ-017 / TASK-044). Token is resolved from the
  *  caller's own `lineUserId` — never from the payload — and created on first ask. */
 async function doTeacherCalendar(lineUserId: string, replyToken: string, lang: Lang) {
   const token = await getCalendarTokenForLineUser(lineUserId);
-  if (!token) return send(replyToken, [textReply(t("cal_not_teacher", lang), lang)]);
+  if (!token) return send(replyToken, [textReply(tb("cal_not_teacher"), lang)]);
   const { webcal } = calendarUrls(token);
-  return send(replyToken, [textReply(t("cal_link", lang, { url: webcal }), lang)]);
+  return send(replyToken, [textReply(tb("cal_link", { url: webcal }), lang)]);
 }
 
 async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {
@@ -973,7 +1033,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
   if (checkinMatch) {
     const today = await findTodayBookingsForParent(lineUserId, date);
     const b = today[Number(checkinMatch[1]) - 1];
-    if (!b) return reply(replyToken, t("num_notfound", lang));
+    if (!b) return reply(replyToken, tb("num_notfound"));
     return doCheckinBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
@@ -984,7 +1044,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     const today = await findTodayBookingsForParent(lineUserId, date);
     const eligible = today.filter((b) => b.status === "CONFIRMED");
     const b = eligible[Number(leaveMatch[1]) - 1];
-    if (!b) return reply(replyToken, t("num_notfound", lang));
+    if (!b) return reply(replyToken, tb("num_notfound"));
     return doLeaveBooking(lineUserId, b.id, replyToken, date, lang);
   }
 
@@ -1063,7 +1123,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     // ever created**, because the row is written at confirm and nowhere else.
     if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME") {
       await clearSession(lineUserId);
-      return reply(replyToken, `${t("skip_done", lang)}\n\n${t("menu_body", lang)}`);
+      return reply(replyToken, both((l) => `${t("skip_done", l)}\n\n${t("menu_body", l)}`));
     }
     return handleAddStudentStep(lineUserId, session!, text.trim(), replyToken, lang);
   }
@@ -1071,7 +1131,7 @@ async function handleMessage(ev: LineWebhookEvent) {
   // Already-linked routing (only when no conversation is in progress).
   if (route === "linked") {
     if (linked === "customer") {
-      if (await isSuspendedLineParent(lineUserId)) return reply(replyToken, t("suspended_notice", lang));
+      if (await isSuspendedLineParent(lineUserId)) return reply(replyToken, tb("suspended_notice"));
       return handleParentCommand(lineUserId, text, replyToken, lang);
     }
     if (linked === "teacher") {
@@ -1085,12 +1145,12 @@ async function handleMessage(ev: LineWebhookEvent) {
       // commands the teacher deliberately typed, and REQ-015/REQ-017 keep them as the keyboard route to the
       // rich menu. What stops is the catch-all `teacher_linked` reply to anything else — which is the
       // `yo` → *"ไม่พบครูชื่อเล่น yo"* class of noise from §16's screenshot.
-      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, t("teacher_linked_menu", lang));
+      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, tb("teacher_linked_menu"));
       return;
     }
     if (linked === "admin") {
       // 🔴 AC-16 — SILENCED FALLBACK #3 (admin). Same rule: `เมนู` is a command, everything else is stray.
-      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, t("admin_linked_menu", lang));
+      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, tb("admin_linked_menu"));
       return;
     }
   }
@@ -1109,7 +1169,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     // ⚠️ TASK-251: a bare `1`/`2`/`3` now lands here, and that is deliberate — the strike path ends at a person,
     // with the picker still on screen.
     if (!role)
-      return strikeOrPrompt(lineUserId, session, replyToken, t("role_prompt", lang), lang, askRole(lang));
+      return strikeOrPrompt(lineUserId, session, replyToken, tb("role_prompt"), lang, askRole(lang));
     return acceptRole(lineUserId, role, replyToken, lang);
   }
 
@@ -1120,7 +1180,7 @@ async function handleMessage(ev: LineWebhookEvent) {
       // A wrong code is an unrecognised reply INSIDE a flow, so it is on the same two-strikes rule as every
       // other step — rather than a second, bespoke lockout. 🚫 The deleted designs' attempt counts are NOT
       // inherited; if the owner wants a different one here, it is his call on switch-on (`lib/line-2fa.ts`).
-      return strikeOrPrompt(lineUserId, session, replyToken, t("twofa_bad", lang), lang);
+      return strikeOrPrompt(lineUserId, session, replyToken, tb("twofa_bad"), lang);
     }
     await resetStrikes(lineUserId);
     const parent = await findParentByLineUserId(lineUserId);
@@ -1138,7 +1198,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     const res = await verifyAndLink(lineUserId, role, text, lang);
     // AC-18 — this is the exact branch §16's screenshot came from (`yo` → *"ไม่พบครูชื่อเล่น yo"*): it kept the
     // session and re-prompted forever. Second failure now hands over to a human instead.
-    if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, res.message, lang);
+    if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, both(res.message), lang);
     await resetStrikes(lineUserId);
     if (role !== "admin") {
       // Seed the language from the LINE profile locale (best-effort), then link the role's rich menu.
@@ -1160,15 +1220,20 @@ async function handleMessage(ev: LineWebhookEvent) {
     // on, so with it off this branch never runs and the path below is byte-identical to before.
     if (res.needs2fa && res.code) {
       await setTwoFaChallenge(lineUserId, res.code);
-      return reply(replyToken, res.message);
+      return reply(replyToken, both(res.message));
     }
     if (role === "customer") {
       // Linked — now offer to add children (multi-turn).
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-      return reply(replyToken, `${res.message}\n\n${t("add_student_prompt", lang, { max: MAX_STUDENTS_PER_PARENT })}`);
+      // Composed: the verify line and the add-student prompt are ONE body, so they are built together per
+      // language rather than glued from two already-bilingual halves.
+      return reply(
+        replyToken,
+        both((l) => `${res.message(l)}\n\n${t("add_student_prompt", l, { max: MAX_STUDENTS_PER_PARENT })}`),
+      );
     }
     await clearSession(lineUserId);
-    return reply(replyToken, res.message);
+    return reply(replyToken, both(res.message));
   }
 
   // 🔴 AC-16 — SILENCED FALLBACK #5: a session row exists but its `step` is none of the ones above (a state we
@@ -1239,7 +1304,7 @@ async function handlePostback(ev: LineWebhookEvent) {
   }
   if (action === "enter") {
     await setStep(lineUserId, "AWAIT_CODE", "customer");
-    return send(replyToken, [textReply(t("enter_ask_phone", lang), lang)]);
+    return send(replyToken, [textReply(tb("enter_ask_phone"), lang)]);
   }
 
   // Language toggle — flip, re-link the matching-language menu, confirm in the NEW language.
@@ -1262,12 +1327,12 @@ async function handlePostback(ev: LineWebhookEvent) {
       return doTeacherSchedule(lineUserId, replyToken, lang, params.range === "week" ? "week" : "today");
     }
     if (action === "calendar") return doTeacherCalendar(lineUserId, replyToken, lang);
-    return send(replyToken, [textReply(t("teacher_linked", lang), lang)]);
+    return send(replyToken, [textReply(tb("teacher_linked"), lang)]);
   }
-  if (linked !== "customer") return send(replyToken, [textReply(t("welcome", lang), lang)]);
+  if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
   // Suspended household → refuse every postback too, not just typed commands (TASK-048).
   if (await isSuspendedLineParent(lineUserId)) {
-    return send(replyToken, [textReply(t("suspended_notice", lang), lang)]);
+    return send(replyToken, [textReply(tb("suspended_notice"), lang)]);
   }
 
   switch (action) {
@@ -1307,7 +1372,7 @@ async function handleFollow(ev: LineWebhookEvent) {
   const lineUserId = eventUserId(ev);
   if (!replyToken) return;
   const lang = lineUserId ? await resolveLang(lineUserId) : "TH";
-  return reply(replyToken, t("welcome", lang));
+  return reply(replyToken, tb("welcome"));
 }
 
 /** Process one webhook POST body (already signature-verified). */

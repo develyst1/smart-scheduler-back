@@ -45,14 +45,16 @@ describe("🔴 AC-16 — an idle chat gets NO reply", () => {
     expect(PARENT_CMD).toContain("SILENCED FALLBACK #1");
     // #4 the unlinked welcome — the one §16's screenshot is actually about.
     expect(HANDLE).toContain('if (route === "silence") return;');
-    expect(HANDLE).not.toContain('return reply(replyToken, t("welcome", lang))');
+    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
+    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    expect(HANDLE).not.toContain('return reply(replyToken, tb("welcome"))');
   });
 
   test("🚫 the FOLLOW greeting is NOT silenced — that is someone knocking, not stray text", () => {
     // Adding the OA is the one moment the bot is certainly not talking over a human, and it is how a new
     // parent learns that `สมัคร` is the way in. Silencing it would leave them an empty chat.
     const follow = body("async function handleFollow");
-    expect(follow).toContain('t("welcome", lang)');
+    expect(follow).toContain('tb("welcome")');
   });
 });
 
@@ -71,7 +73,9 @@ describe("🔴 what must KEEP answering — the branch this could silence by mis
   test("the teacher keyword fallbacks (REQ-015 / REQ-017) still reply", () => {
     expect(HANDLE).toContain("doTeacherSchedule(");
     expect(HANDLE).toContain("doTeacherCalendar(");
-    expect(HANDLE).toContain('t("teacher_linked_menu", lang)');
+    // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
+    // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
+    expect(HANDLE).toContain('tb("teacher_linked_menu")');
   });
 
   test("`สมัคร` still works from ANY state — it is the only way in", () => {
@@ -175,9 +179,12 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // TASK-251: the role branch now hands `strikeOrPrompt` a SIXTH argument — the picker — so the re-ask
     // carries buttons instead of only naming them (LINE drops a quick reply as soon as the user replies).
     // The wiring this test guards is unchanged: the role branch still goes through the one handover rule.
-    expect(SVC).toContain('t("role_prompt", lang), lang, askRole(lang))');
-    expect(SVC).toContain("res.message, lang)");
-    expect(SVC).toContain('t("twofa_bad", lang), lang)');
+    expect(SVC).toContain('tb("role_prompt"), lang, askRole(lang))');
+    // TASK-275: the verify failure is handed to `strikeOrPrompt` already rendered in BOTH languages —
+    // `both(res.message)` — because `message` became a per-language builder. The wiring this guards is
+    // unchanged: the verify branch still goes through the one handover rule.
+    expect(SVC).toContain("both(res.message), lang)");
+    expect(SVC).toContain('tb("twofa_bad"), lang)');
     expect(SVC).toContain('t("add_summary_confirm", lang), lang)');
     expect(SVC).toContain('t("add_name_reserved", lang, { word: name })');
     expect(SVC).toContain('t("add_birthdate_bad", lang)');

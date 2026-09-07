@@ -39,9 +39,12 @@ const labels = { name: "ชื่อ", birthDate: "วันเกิด", provi
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 
 describe("🔴 AC-10 — the summary shows what will be written, and nothing is written before confirm", () => {
-  test("the summary carries all three fields", () => {
+  test("the summary carries all three fields — and the date in the order it was TYPED", () => {
+    // 🔴 TASK-280: this asserted the stored ISO. The confirm step is load-bearing for correctness (TASK-277),
+    // and echoing `2018-04-02` at someone who typed `02-04-2018` made them reverse the order to check it —
+    // the very conversion the step exists to spare them. The STORED value is unchanged; only the echo is.
     const lines = summaryLines({ name: "น้องรดา", birthDate: "2018-04-02", province: "ภูเก็ต" }, labels);
-    expect(lines).toEqual(["ชื่อ: น้องรดา", "วันเกิด: 2018-04-02", "จังหวัด: ภูเก็ต"]);
+    expect(lines).toEqual(["ชื่อ: น้องรดา", "วันเกิด: 02-04-2018", "จังหวัด: ภูเก็ต"]);
   });
 
   test("🔑 a SKIPPED field is shown as skipped, not omitted", () => {
@@ -153,20 +156,37 @@ describe("the step machine — one place, so no branch can skip the confirm", ()
 });
 
 describe("the birthdate is parsed strictly — a wrong date cannot be undone", () => {
-  test("`YYYY-MM-DD` is accepted; skip yields null", () => {
-    expect(parseBirthDate("2018-04-02")).toEqual({ ok: true, value: "2018-04-02" });
-    expect(parseBirthDate("2018/4/2")).toEqual({ ok: true, value: "2018-04-02" });
+  test("🔻 `DD-MM-YYYY` in, `YYYY-MM-DD` out — the owner's ruling (REQ-079 §17, 2026-09-06)", () => {
+    // 🔻 This test used to read `parseBirthDate("2018-04-02") → "2018-04-02"` and, on the line below,
+    // `parseBirthDate("02-04-2018").ok === false`. **It asserted the exact format the owner overruled** —
+    // the ruling was closed in the REQ on 09-06 and never became a task (TASK-277 §1).
+    // 🔑 The STORED value is unchanged: this is an input format, not a storage format.
+    expect(parseBirthDate("02-12-2024")).toEqual({ ok: true, value: "2024-12-02" });
+    expect(parseBirthDate("2-4-2018")).toEqual({ ok: true, value: "2018-04-02" });
+    expect(parseBirthDate("2/4/2018")).toEqual({ ok: true, value: "2018-04-02" }); // the slash still works
     expect(parseBirthDate("ข้าม")).toEqual({ ok: true, value: null });
     expect(isSkip("skip")).toBe(true);
   });
 
-  test("🔴 an impossible date is REFUSED, not rolled forward", () => {
+  test("🔑 a FOUR-DIGIT-FIRST string is refused as a wrong-order date, not parsed as day 2024", () => {
+    // §17's own warning, and the sharpest line in the task: *"the bot must still accept a 4-digit-first
+    // string and refuse it CLEARLY rather than read `2024-12-02` as day 2024 and produce a confusing error."*
+    // It would fail either way — the point is WHICH sentence the parent reads, and it must be the format one.
+    expect(parseBirthDate("2024-12-02").ok).toBe(false);
+    expect(parseBirthDate("2018/4/2").ok).toBe(false);
+    // 🚫 And both orders are NOT accepted: if they were, `03-04-2024` would mean two different dates
+    // depending on which rule fired, with no way for a reader to tell which one they got.
+    expect(parseBirthDate("03-04-2024")).toEqual({ ok: true, value: "2024-04-03" }); // 3 April, day-first, only
+  });
+
+  test("🔴 an impossible date is REFUSED, not rolled forward — the guard survived the reorder", () => {
     // `new Date("2026-02-31")` silently becomes March 3. A birthdate that quietly becomes the wrong date is
     // worse than one nobody entered, and this roster has no delete to fix it with.
-    expect(parseBirthDate("2026-02-31").ok).toBe(false);
-    expect(parseBirthDate("2018-13-01").ok).toBe(false);
+    // ⚠️ Restated day-first: the round-trip guard is the one thing a format change could have quietly lost.
+    expect(parseBirthDate("31-02-2026").ok).toBe(false);
+    expect(parseBirthDate("01-13-2018").ok).toBe(false);
     expect(parseBirthDate("yesterday").ok).toBe(false);
-    expect(parseBirthDate("02-04-2018").ok).toBe(false);
+    expect(parseBirthDate("").ok).toBe(false);
   });
 
   test("a bad format re-asks rather than guessing — and TASK-245: the re-ask COUNTS", () => {

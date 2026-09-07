@@ -196,8 +196,21 @@ export interface AttentionCheck {
 
 const hhmm = (t: string) => (t ?? "").slice(0, 5);
 
-/** ⬇️ Adding an eighth check = appending one entry here. That is the whole extensibility story. */
-export const ATTENTION_CHECKS: AttentionCheck[] = [
+/**
+ * ⬇️ Adding a check = appending one entry here. That is the whole extensibility story.
+ *
+ * 🔴 TASK-273 — `as const satisfies` rather than a `: AttentionCheck[]` annotation, so the literal `key`
+ * strings survive into the type instead of widening to `string`. `AttentionKey` below is derived from THIS
+ * array, and `line-i18n`'s label map is a `Record<AttentionKey, …>` — so appending a card without writing
+ * its heading **fails the build**.
+ *
+ * 📌 Why this was worth doing while nothing was broken: `att_${c.key}` goes through `t()`, which returns the
+ * KEY on a miss, so the eleventh card would have shipped `att_my_new_card` as a dashboard heading. That is
+ * the third instance of one class in a day — `status_*` (broken, found by a tester), `ics.ts`'s raw
+ * `STATUS:` (broken, found by reading), and this one. **Two of the three were found only because somebody
+ * happened to look.** This is the one where the control costs a line and there is no defect to argue first.
+ */
+const CHECKS = [
   {
     key: "unconfirmed_bookings",
     titleKey: "att_unconfirmed_bookings",
@@ -337,7 +350,19 @@ export const ATTENTION_CHECKS: AttentionCheck[] = [
       };
     },
   },
-];
+] as const satisfies readonly AttentionCheck[];
+
+/**
+ * 🔑 DERIVED from the array above — never hand-written. A hand-written union would be the same defect one
+ * level up: two lists that agree today.
+ *
+ * ⚠️ The `as const` lives on `CHECKS` and the EXPORT is re-typed as `readonly AttentionCheck[]`, deliberately:
+ * `as const` also narrows away the OPTIONAL `namesPeopleInDigest`, so every reader would have to prove the
+ * property exists before asking. One array, two views — the literal keys for the type, the interface for the
+ * readers.
+ */
+export type AttentionKey = (typeof CHECKS)[number]["key"];
+export const ATTENTION_CHECKS: readonly AttentionCheck[] = CHECKS;
 
 // ── Digest decision + message (pure — the job just executes what these return) ────────────────────────
 

@@ -278,7 +278,9 @@ describe("🔴 AC-21 — unchanged for teachers and for anyone not in a bound ch
     // 🔴 These three lines are the ones DEF-9 slipped through: they assert the WORDS and never asked whether
     // anything receives the phone the words ask for. They stay (the copy still matters) but they are **not the
     // coverage** — `line-enter-button.test.ts` owns the behaviour. Renamed key: TASK-248.
-    expect(SVC).toContain('t("enter_ask_phone", lang)');
+    // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
+    // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
+    expect(SVC).toContain('tb("enter_ask_phone")');
     expect(t("enter_ask_phone", "TH")).toContain("เบอร์โทร");
     expect(t("enter_ask_phone", "TH")).toContain("แอดมิน");
   });

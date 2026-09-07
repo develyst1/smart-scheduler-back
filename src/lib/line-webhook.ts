@@ -90,3 +90,22 @@ export function parseRoleChoice(text: string): "customer" | "teacher" | "admin" 
 export function normalizePhone(input: string): string {
   return input.replace(/\D/g, "");
 }
+
+/**
+ * 🔴 TASK-278 §6 (REQ-079 §3c) — `0825031502` → `082-503-1502`, for DISPLAY ONLY.
+ *
+ * Their screen 4 shows `เบอร์โทรศัพท์ / Phone: 082-503-1502`, so rendering their copy faithfully IS the
+ * formatting — and §3c asked for it on 09-06 as *"cosmetic, cheap, do them"* and it was never built.
+ *
+ * 🚫 **It is deliberately NOT the inverse of `normalizePhone`, and it must never be used as one.** Every
+ * stored, compared and looked-up value stays the digits: a formatted number reaching a lookup is how a
+ * family stops matching their own record. Its only caller is the message layer, and a test asserts that.
+ *
+ * ⚠️ **An unrecognised number passes through UNCHANGED** — not mangled into groups. We accept what people
+ * type (`normalizePhone` strips anything non-digit), so a 9-digit landline or a `66…` international form
+ * reaches here; inventing a shape for a number we do not recognise would print something the parent has
+ * never seen and cannot check against their phone.
+ */
+export function formatPhoneForDisplay(phone: string): string {
+  return /^0\d{9}$/.test(phone) ? `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}` : phone;
+}

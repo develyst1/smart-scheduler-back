@@ -63,7 +63,9 @@ describe("WIRING — the two ends of that chain, read from the source", () => {
   test("🔴 the button SETS the step before it replies", () => {
     expect(ENTER).toContain('await setStep(lineUserId, "AWAIT_CODE", "customer")');
     expect(ENTER.indexOf("setStep")).toBeLessThan(ENTER.indexOf("textReply"));
-    expect(ENTER).toContain('t("enter_ask_phone", lang)');
+    // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
+    // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
+    expect(ENTER).toContain('tb("enter_ask_phone")');
   });
 
   test("🚫 it does NOT build a second phone flow", () => {

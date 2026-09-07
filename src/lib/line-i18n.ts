@@ -3,6 +3,7 @@
 // the single source of bot copy — no user-visible literal should remain in the service / reply / message layer.
 
 import type { BookingStatus } from "../types/contract";
+import type { AttentionKey } from "./attention";
 
 export type Lang = "TH" | "EN";
 export const isLang = (v: unknown): v is Lang => v === "TH" || v === "EN";
@@ -56,10 +57,59 @@ const STATUS_LABELS: Record<BookingStatus, Entry> = {
 const STATUS_LABEL_ENTRIES = Object.fromEntries(
   Object.entries(STATUS_LABELS).map(([status, entry]) => [`status_${status}`, entry]),
 ) as Record<string, Entry>;
+/**
+ * 🔴 TASK-273 — every attention card's heading, and the COMPILER keeps the set complete.
+ *
+ * ## Why this exists while nothing is broken
+ * `attention.ts` renders `t(`att_${c.key}`, lang)`, and `t()` returns the KEY on a miss — correctly, for
+ * genuinely dynamic keys. Ten cards, ten headings: complete today, and **nothing was holding it that way**.
+ * ⇒ the eleventh card would have shipped **`att_my_new_card` as a heading on the dashboard.**
+ *
+ * 📌 Third instance of one class in a day — `status_*` (broken, found by a tester), `ics.ts`'s raw `STATUS:`
+ * (broken, found by reading), and this one. **Two of the three were found only because somebody looked.**
+ * This is the one where the control costs a line and there is no defect to argue about first.
+ *
+ * 🔑 `AttentionKey` is DERIVED from `ATTENTION_CHECKS` itself, so the type and the array cannot drift either.
+ * ⚠️ Type-only import: this file gains no runtime dependency on `attention.ts`, which imports `t` from here.
+ */
+const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
+  unconfirmed_bookings: { TH: "คาบที่ยังไม่ยืนยัน (วันนี้/พรุ่งนี้)", EN: "Unconfirmed classes (today/tomorrow)" },
+  teachers_without_line: { TH: "ครูที่ยังไม่ผูก LINE", EN: "Teachers without LINE linked" },
+  expiring_entitlements: { TH: "คอร์ส/วอยเชอร์ที่ใกล้หมดอายุ", EN: "Courses/vouchers expiring soon" },
+  nearly_finished_courses: { TH: "คอร์สที่ใกล้ใช้ครบ", EN: "Courses nearly finished" },
+  freelance_near_cap: { TH: "ครูฟรีแลนซ์ที่งบใกล้เต็ม", EN: "Freelance budgets near their cap" },
+  incomplete_students: { TH: "นักเรียนที่ข้อมูลไม่ครบ", EN: "Students with incomplete details" },
+  pending_teacher_links: {
+    TH: "คำขอผูกบัญชีครูที่รออนุมัติ",
+    EN: "Teacher link requests awaiting approval",
+  },
+  sales_not_posted: {
+    TH: "การขายที่ยังไม่ลงบัญชี",
+    EN: "Sales not posted to backoffice",
+  },
+  // SPEC-059 / TASK-163 — a discount the admin promised that the day-end sale did not apply.
+  discount_not_applied: {
+    TH: "ส่วนลดที่ไม่ได้ถูกใช้ (ขายเต็มราคา)",
+    EN: "Discounts not applied (charged full price)",
+  },
+  orphaned_sessions: {
+    TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
+    EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
+  },
+};
+
+/** `sales_not_posted` → `att_sales_not_posted`, so the existing `t(`att_${…}`)` call site is unchanged. */
+const ATTENTION_LABEL_ENTRIES = Object.fromEntries(
+  Object.entries(ATTENTION_LABELS).map(([key, entry]) => [`att_${key}`, entry]),
+) as Record<string, Entry>;
 const TABLE: Record<string, Entry> = {
   welcome: {
     TH: "สวัสดีค่ะ ยินดีต้อนรับสู่ Smart Scheduler\n\nพิมพ์ สมัคร เพื่อผูกบัญชี LINE\nหลังผูกแล้ว (ผู้ปกครอง): เพิ่มนักเรียน · เช็คอิน · ลา · qr",
-    EN: "Welcome to Smart Scheduler 👋\n\nType 'register' to link your LINE account.\nOnce linked (parent): add child · check-in · leave · qr",
+    // 🔴 TASK-275 (REQ-079 §17) — the register sentence is the CUSTOMER'S, verbatim: "Please type 'register'
+    // to start." Their words for their customers. ⚠️ It is the ONLY English string of theirs that exists in
+    // the repo — §17 is @Porter's ANALYSIS of their 8 screens, not a transcript — so the greeting and the
+    // command hints on this line are still OURS, and so is every other key. Listed in the TASK-275 report.
+    EN: "Welcome to Smart Scheduler 👋\n\nPlease type 'register' to start.\nOnce linked (parent): add child · check-in · leave · qr",
   },
   // SPEC-071 / TASK-231 — AC-18: two unexpected replies inside a flow and the bot stops trying. The apology
   // matters: the parent has just failed twice and the next voice they hear should be a person.
@@ -82,15 +132,21 @@ const TABLE: Record<string, Entry> = {
   role_btn_customer: { TH: "ผู้ปกครอง", EN: "Parent" },
   role_btn_teacher: { TH: "ครู", EN: "Teacher" },
   role_btn_admin: { TH: "แอดมิน", EN: "Admin" },
-  code_customer: { TH: "กรุณาพิมพ์เบอร์โทรของผู้ปกครอง (เช่น 0812345678)", EN: "Please type the parent's phone number (e.g. 0812345678)" },
+  // 🔴 TASK-278 (REQ-079 §17b screen 3) — the customer's English, verbatim. The TH keeps its example; their
+  // sentence has none and we are not removing a hint they simply did not write.
+  code_customer: { TH: "กรุณาพิมพ์เบอร์โทรของผู้ปกครอง (เช่น 0812345678)", EN: "Please enter your phone number to continue." },
   code_teacher: { TH: "กรุณาพิมพ์ชื่อเล่นครูตามที่ลงทะเบียนในระบบ", EN: "Please type the teacher nickname as registered" },
   code_admin: { TH: "กรุณาพิมพ์รหัสแอดมิน (เช่น 229)", EN: "Please type the admin code (e.g. 229)" },
 
+  // 🔴 TASK-278 (§17b screen 4) — their two sentences, in their order: the name prompt then the cap.
+  // ⚠️ `{max}` stays a VARIABLE. Their copy hardcodes 5; the cap is `MAX_STUDENTS_PER_PARENT` and a literal
+  // here would be a second place to change it — and the one nobody would remember.
+  // ⚠️ `skip` stays: their copy has no escape from this step and ours must keep one.
   add_student_prompt: {
     TH: 'ต้องการเพิ่มนักเรียน (ลูก) ไหมคะ?\nพิมพ์ชื่อนักเรียน เช่น "น้องพีพี" (เพิ่มได้สูงสุด {max} คนต่อเบอร์)\nหรือพิมพ์ "ข้าม" หากยังไม่เพิ่มตอนนี้',
-    EN: 'Would you like to add a child?\nType the student name (e.g. "PP") — up to {max} per phone.\nOr type "skip" to do it later.',
+    EN: 'Please enter the student\'s name, e.g. "Emily".\nYou can add up to {max} students per phone number.\nOr type "skip" to do it later.',
   },
-  add_student_name_prompt: { TH: "พิมพ์ชื่อนักเรียนที่ต้องการเพิ่ม (สูงสุด {max} คนต่อเบอร์)", EN: "Type the student name to add (up to {max} per phone)" },
+  add_student_name_prompt: { TH: "พิมพ์ชื่อนักเรียนที่ต้องการเพิ่ม (สูงสุด {max} คนต่อเบอร์)", EN: 'Please enter the student\'s name, e.g. "Emily". You can add up to {max} students per phone number.' },
 
   menu_title: { TH: "เมนูหลัก — แตะเพื่อใช้งาน", EN: "Main menu — tap to use" },
   // 🔴 TASK-245 "Face 2" — the last line is the half of AC-16's trade that was missing from the live product.
@@ -163,7 +219,11 @@ const TABLE: Record<string, Entry> = {
   verify_teacher_ok: { TH: "ผูกบัญชีครูสำเร็จ ✅ ({nick}) จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ ({nick}) You'll be notified when a schedule is confirmed" },
   verify_parent_badphone: { TH: "เบอร์โทรไม่ถูกต้อง กรุณาพิมพ์เบอร์ที่ลงทะเบียน (เช่น 0812345678)", EN: "Invalid phone. Please type the registered number (e.g. 0812345678)" },
   verify_parent_other: { TH: "เบอร์นี้ผูกกับ LINE อื่นแล้ว ติดต่อแอดมิน", EN: "This number is already linked to another LINE — contact admin" },
-  verify_parent_ok_existing: { TH: "ผูกบัญชีผู้ปกครองสำเร็จ ✅ (เบอร์ {phone}){list}", EN: "Parent account linked ✅ (phone {phone}){list}" },
+  // 🔴 TASK-278 (§17b screen 4) — their sentence, OUR variables. ⚠️ Their copy has no children line; ours
+  // does, and `{list}` is a PRIVACY decision (TASK-047: a count, never names, because anyone can type a
+  // phone number). Dropping it to match their text would undo a decision, not a wording.
+  // 📌 `{phone}` now renders formatted (`082-503-1502`) — §6, and their own screen 4 shows it that way.
+  verify_parent_ok_existing: { TH: "ผูกบัญชีผู้ปกครองสำเร็จ ✅ (เบอร์ {phone}){list}", EN: "Registration completed ✅ (phone {phone}){list}" },
   // TASK-047: a COUNT, never names — anyone can type a phone number, so listing the children would disclose
   // a family's data to a stranger. (Replaces the retired `verify_parent_students`.)
   verify_parent_children_count: { TH: "\nพบนักเรียน {n} คนในบัญชีนี้", EN: "\n{n} children on file" },
@@ -188,19 +248,29 @@ const TABLE: Record<string, Entry> = {
     TH: "มีน้องชื่อนี้อยู่แล้ว รบกวนใส่นามสกุลหรือชื่อเล่นเพิ่ม เพื่อไม่ให้สลับกันนะคะ",
     EN: "There is already a child with that name. Please add a surname or nickname so they are not mixed up.",
   },
+  // 🔴 TASK-277 (REQ-079 §17) — the OWNER'S sentences, verbatim, with `หรือพิมพ์ ข้าม` kept on the end.
+  // ⚠️ His sentences do not mention the escape; ours did. **Dropping the way out of a wizard step is not a
+  // wording change**, so it stays — added after his words, not woven through them.
+  // 📌 The EN side is OURS for now; TASK-278 replaces it with the customer's, plus the format their copy omits.
   add_birthdate_prompt: {
-    TH: "วันเกิดของน้อง (ปปปป-ดด-วว) หรือพิมพ์ ข้าม ค่ะ",
-    EN: "Child's date of birth (YYYY-MM-DD), or type skip.",
+    TH: "กรุณาพิมพ์วันเกิดของนักเรียนค่ะ (วัน-เดือน-ปี เช่น 02-12-2024) หรือพิมพ์ ข้าม",
+    // §17b screen 5 is *"Please enter the date of birth."* — their sentence, PLUS the format and the skip,
+    // which their copy omits. ⚠️ TASK-277's format is an owner RULING; a copy pass does not get to drop it.
+    EN: "Please enter the date of birth. (DD-MM-YYYY, e.g. 02-12-2024), or type skip.",
   },
   add_birthdate_bad: {
-    TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น ปปปป-ดด-วว หรือพิมพ์ ข้าม",
-    EN: "That date format is not valid. Please use YYYY-MM-DD, or type skip.",
+    TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น วัน-เดือน-ปี เช่น 02-12-2024 หรือพิมพ์ ข้าม",
+    EN: "That date format is not valid. Please use DD-MM-YYYY, e.g. 02-12-2024, or type skip.",
   },
-  add_province_prompt: { TH: "จังหวัดที่อยู่ หรือพิมพ์ ข้าม ค่ะ", EN: "Province, or type skip." },
-  add_summary_head: { TH: "ตรวจสอบข้อมูลก่อนบันทึกนะคะ", EN: "Please check before we save:" },
+  add_province_prompt: { TH: "จังหวัดที่อยู่ หรือพิมพ์ ข้าม ค่ะ", EN: "Please enter your current province, or type skip." },
+  add_summary_head: { TH: "ตรวจสอบข้อมูลก่อนบันทึกนะคะ", EN: "Please check your information before saving." },
   // The trailing "หรือ ยกเลิก" moved OUT of this string in TASK-245: the exit is now appended to every question
   // by `withExit`, and leaving it here too would print it twice on the one step that already had it.
-  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก", EN: "Correct? Type confirm to save." },
+  // 🔴 TASK-278 §4.1 — their screen 7 has THREE lines and only two of them belong here. The third,
+  // *"Type "Cancel" to exit."*, is NOT applied: `withExit` already appends the exit to every question
+  // (TASK-245), so putting it back inside this string prints it TWICE — on the one step that used to have
+  // it inline, which is the exact bug TASK-245's comment above records.
+  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก", EN: 'Is this information correct? Please type "Confirm" to save.' },
   // 🔴 TASK-245 — the exit, appended to EVERY question the wizard asks. One string, one append site, because
   // "the flow has an exit" is only true if it is true at every step: the owner's trap was three questions that
   // each looked like the only thing he was allowed to answer.
@@ -236,10 +306,13 @@ const TABLE: Record<string, Entry> = {
     TH: "รหัสไม่ถูกต้องค่ะ กรุณาลองใหม่อีกครั้ง",
     EN: "That code is not correct. Please try again.",
   },
-  verify_parent_ok_new: { TH: "ลงทะเบียนผู้ปกครองสำเร็จ ✅ (เบอร์ {phone})", EN: "Parent registered ✅ (phone {phone})" },
+  // §17b screen 4, same sentence — this is the new-parent branch of the same moment.
+  verify_parent_ok_new: { TH: "ลงทะเบียนผู้ปกครองสำเร็จ ✅ (เบอร์ {phone})", EN: "Registration completed ✅ (phone {phone})" },
 
   added_more: { TH: 'เพิ่ม "{name}" สำเร็จ ✅ (ตอนนี้มี {count} คน)\nพิมพ์ชื่อคนถัดไป หรือพิมพ์ "ข้าม" เพื่อจบ', EN: 'Added "{name}" ✅ (now {count})\nType the next name, or "skip" to finish' },
-  added_done: { TH: 'เพิ่ม "{name}" สำเร็จ ✅{note}', EN: 'Added "{name}" ✅{note}' },
+  // §17b screen 8 — their sentence with OUR `{name}`. Their literal `"Nong DC"` is the example child in a
+  // copy document, not a string we send.
+  added_done: { TH: 'เพิ่ม "{name}" สำเร็จ ✅{note}', EN: '"{name}" has been added successfully. ✅{note}' },
   added_atmax_note: { TH: " (ครบ {max} คนแล้ว)", EN: " (reached {max})" },
   add_no_parent: { TH: "ไม่พบบัญชีผู้ปกครอง พิมพ์ สมัคร เพื่อเริ่มใหม่", EN: "No parent account found. Type 'register' to start over" },
   add_generic_err: { TH: "ไม่สามารถเพิ่มนักเรียนได้", EN: "Couldn't add the student" },
@@ -289,31 +362,11 @@ const TABLE: Record<string, Entry> = {
   },
   cal_not_teacher: { TH: "ฟีเจอร์นี้สำหรับครูที่ผูกบัญชีแล้วเท่านั้น", EN: "This feature is for linked teachers only" },
   // Daily admin digest (REQ-023 / TASK-053) — check titles + message frame.
-  att_unconfirmed_bookings: { TH: "คาบที่ยังไม่ยืนยัน (วันนี้/พรุ่งนี้)", EN: "Unconfirmed classes (today/tomorrow)" },
-  att_teachers_without_line: { TH: "ครูที่ยังไม่ผูก LINE", EN: "Teachers without LINE linked" },
-  att_expiring_entitlements: { TH: "คอร์ส/วอยเชอร์ที่ใกล้หมดอายุ", EN: "Courses/vouchers expiring soon" },
-  att_nearly_finished_courses: { TH: "คอร์สที่ใกล้ใช้ครบ", EN: "Courses nearly finished" },
-  att_freelance_near_cap: { TH: "ครูฟรีแลนซ์ที่งบใกล้เต็ม", EN: "Freelance budgets near their cap" },
-  att_incomplete_students: { TH: "นักเรียนที่ข้อมูลไม่ครบ", EN: "Students with incomplete details" },
+  // 🔴 TASK-273 — the ten card headings moved into `ATTENTION_LABELS` below, a `Record<AttentionKey, Entry>`.
+  // The TEXT is unchanged; what changed is that the compiler now refuses an eleventh card without a heading.
+  ...ATTENTION_LABEL_ENTRIES,
   // REQ-070 / TASK-180: `att_yesterday_no_shows` deleted with its check — the day-end job no longer writes
   // NO_SHOW, so the line could only ever say "0".
-  att_pending_teacher_links: {
-    TH: "คำขอผูกบัญชีครูที่รออนุมัติ",
-    EN: "Teacher link requests awaiting approval",
-  },
-  att_sales_not_posted: {
-    TH: "การขายที่ยังไม่ลงบัญชี",
-    EN: "Sales not posted to backoffice",
-  },
-  // SPEC-059 / TASK-163 — a discount the admin promised that the day-end sale did not apply.
-  att_discount_not_applied: {
-    TH: "ส่วนลดที่ไม่ได้ถูกใช้ (ขายเต็มราคา)",
-    EN: "Discounts not applied (charged full price)",
-  },
-  att_orphaned_sessions: {
-    TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
-    EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
-  },
   digest_header: { TH: "📋 สรุปสิ่งที่ต้องดูแลวันนี้", EN: "📋 Today's attention summary" },
   digest_footer: { TH: "ดูรายละเอียดทั้งหมดในเว็บแอป", EN: "See full details in the web app" },
   digest_more: { TH: "+ อีก {n} รายการ — ดูในเว็บแอป", EN: "+{n} more — see the web app" },
@@ -432,6 +485,40 @@ export function t(key: string, lang: Lang = "TH", vars?: Record<string, string |
   return s;
 }
 
+/**
+ * 🔴 TASK-275 (REQ-079 §18) — a CONVERSATIONAL BODY, in Thai and English together.
+ *
+ * ## The rule, and the two families it divides
+ * §18 splits what was one question yesterday: **the conversation is bilingual; the notifications are not.**
+ * The owner ruled the opposite on 09-06 (*"มันจะยาวเกินไป"*) and §18 reverses it **narrowly** — the length
+ * objection still holds for the six notifications, so `formatOutboxMessage` is untouched and stays on
+ * `t(key, lang)`. 🚫 Do not reach for these helpers there.
+ *
+ * ## 🔑 Why `both()` takes a BUILDER and not a key
+ * A per-key `tb(key)` would be wrong for most of this bot's messages, and the reason is in the copy itself:
+ * **several keys are SUFFIX FRAGMENTS that begin with a newline** — `verify_parent_children_count`,
+ * `verify_parent_found`, `leave_extline`, `leave_lockline` — and many bodies are composed from two or three
+ * keys plus data (`add_cancelled` + `menu_body`, `children_title` + a count, a summary head + rows +
+ * a confirm line). Rendering each key as `TH\nEN` and then concatenating gives **TH/EN/TH/EN interleaved
+ * down the message**, and on `children_title` it puts the count on the English line only.
+ * ⇒ **Compose the WHOLE body once per language, then join once.** That is the only shape that is correct for
+ * a composed body, and it is correct for a simple one too.
+ *
+ * ## The control is still the signature
+ * `both()` returns both languages by construction — there is no argument that could make it render one — and
+ * label helpers keep `t(key, lang)`, which is what stops a 20-character LINE label quietly becoming 40.
+ * (`tb(key)` below is the one-key convenience, defined in terms of this so there is one joining rule.)
+ *
+ * ⚠️ The separator is a single newline and nothing else: no brackets, no `(EN)` marker — the customer's own
+ * copy puts the English plainly under the Thai.
+ */
+export function both(build: (lang: Lang) => string): string {
+  return `${build("TH")}\n${build("EN")}`;
+}
+
+/** The one-key body. `both()`'s common case, so the joining rule lives in exactly one place. */
+export const tb = (key: string, vars?: Record<string, string | number>): string =>
+  both((lang) => t(key, lang, vars));
 /** Seed a language from a LINE profile locale string (e.g. "en", "th-TH"). Non-EN → TH. */
 export const langFromLocale = (locale: string | null | undefined): Lang =>
   typeof locale === "string" && locale.toLowerCase().startsWith("en") ? "EN" : "TH";

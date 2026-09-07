@@ -64,7 +64,9 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
     // with no delete is precisely what the owner's flow produced.
     const exit = WIZARD.slice(WIZARD.indexOf("isCancelWord(text)"), WIZARD.indexOf("AWAIT_STUDENT_NAME"));
     expect(exit).toContain("clearSession(lineUserId)");
-    expect(exit).toContain('t("add_cancelled", lang)');
+    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
+    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    expect(exit).toContain('t("add_cancelled", l)');
     expect(exit).not.toContain("createStudentForParent");
   });
 
@@ -88,7 +90,10 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
       "add_summary_confirm",
     ];
     for (const key of QUESTIONS) {
-      const uses = [...CODE.matchAll(new RegExp('t\\("' + key + '"', "g"))];
+      // TASK-275: a body may now be rendered by `tb(key)` (both languages) as well as `t(key, lang)`. The
+      // invariant is unchanged — every key here is USED on a path that reaches the strike counter — so the
+      // pattern accepts either helper rather than the test being narrowed to one of them.
+      const uses = [...CODE.matchAll(new RegExp('\\btb?\\("' + key + '"', "g"))];
       expect(uses.length).toBeGreaterThan(0);
       for (const m of uses) {
         // `withExit(` sits immediately before the `t(` it wraps — one append site for the whole flow.
@@ -180,7 +185,7 @@ describe("🔴 3 — the invariant: no rejection bypasses the strike counter", (
 
   test("🔴 every refusal reaches `strikeOrPrompt` — directly, or as the message of a failed verify", () => {
     for (const key of REFUSAL_KEYS) {
-      const uses = [...CODE.matchAll(new RegExp('t\\("' + key + '"', "g"))];
+      const uses = [...CODE.matchAll(new RegExp('\\btb?\\("' + key + '"', "g"))];
       expect(uses.length).toBeGreaterThan(0);
       for (const m of uses) {
         const stmt = CODE.slice(Math.max(0, m.index! - 220), m.index!);
@@ -252,7 +257,9 @@ describe("✅ Face 2 — the bot is silent, but a PERSON is reachable", () => {
     // TASK-246 joined `เปิดเมนู` to the same branch — one list, one `doMenu`, so the word the mute message
     // advertises cannot become an unknown word an hour later.
     expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang)");
-    expect(fn("function doMenu")).toContain('t("menu_body", lang)');
+    // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
+    // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
+    expect(fn("function doMenu")).toContain('tb("menu_body")');
   });
 
   test("🚫 SCOPE — TASK-245 added no rich-menu cell; this needed no new image", () => {

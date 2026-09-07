@@ -33,7 +33,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { entriesThrough, resolvesByNodeWalk } from "../src/lib/migrate-preflight";
+import { entriesThrough, resolveDrizzleKitBin, resolvesByNodeWalk } from "../src/lib/migrate-preflight";
 
 const args = process.argv.slice(2);
 const plan = args.includes("--plan");
@@ -112,6 +112,19 @@ try {
     exitCode = 1;
     throw new Error("resolution");
   }
+  // 🔴 TASK-268 — and the BINARY the run will execute, resolved from the package's own `bin` field rather
+  // than from a `.bin` shim whose name differs per platform. `--plan` now checks the thing the real run
+  // uses, instead of a different resolution that happens to agree.
+  const binPath = resolveDrizzleKitBin(root, existsSync, (f) => JSON.parse(readFileSync(f, "utf8")));
+  if (!binPath) {
+    console.error(
+      "✗ db:migrate:through — drizzle-kit's own bin entry could not be resolved from the repo." +
+        "\n  This run would have had nothing to execute. Nothing was applied and no database was contacted.",
+    );
+    exitCode = 1;
+    throw new Error("resolution");
+  }
+
   // …and the config itself must LOAD. Resolution proves the module is findable; importing proves the file we
   // just generated parses and produces a config. Neither opens a connection.
   const loaded = (await import(pathToFileURL(cfg).href)) as { default?: unknown };
@@ -131,7 +144,8 @@ try {
   console.log(`\n  scratch folder : ${scratch}`);
   console.log(`  drizzle-kit    : ${resolved} ✓  (found by walking up from the config, as node does)`);
   console.log(`  config         : loads and exports a config ✓`);
-  console.log(`  would run      : bunx drizzle-kit migrate --config ${cfg}`);
+  console.log(`  drizzle-kit bin: ${binPath} ✓  (the package's own \`bin\` entry — not a shim, not a PATH lookup)`);
+  console.log(`  would run      : bun ${binPath} migrate --config ${cfg}`);
   console.log(`  then           : bun run scripts/verify-migrations.ts --through ${tag}`);
 
   if (plan) {
@@ -139,7 +153,10 @@ try {
     // point has happened. No connection has been opened — this script never imports a database driver.
     console.log("\n✅ --plan: nothing was applied and no database was contacted.");
   } else {
-    const migrate = Bun.spawnSync(["bunx", "drizzle-kit", "migrate", "--config", cfg], {
+    // 🔴 TASK-268 — the resolved entry script, run with `bun`. 🚫 No `bunx`: it is a second resolution
+    // nothing checked, and it can reach the network from a deploy step that should touch only the disk
+    // and the database.
+    const migrate = Bun.spawnSync(["bun", binPath, "migrate", "--config", cfg], {
       cwd: root,
       stdout: "inherit",
       stderr: "inherit",

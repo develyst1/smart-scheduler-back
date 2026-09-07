@@ -194,7 +194,9 @@ describe("TASK-251 — a tap and a typed word reach ONE transition", () => {
     const body = c.slice(c.indexOf("async function acceptRole("), c.indexOf("const FLOW_CLEARED"));
     expect(body).toContain("resetStrikes(lineUserId)"); // AC-19 — a valid answer clears the count
     expect(body).toContain('setStep(lineUserId, "AWAIT_CODE", role)');
-    expect(body).toContain("t(`code_${role}`, lang)");
+    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
+    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    expect(body).toContain("tb(`code_${role}`)");
   });
 
   test("an unknown role in the payload re-asks instead of advancing", () => {
@@ -212,6 +214,8 @@ describe("TASK-251 — a tap and a typed word reach ONE transition", () => {
     // to everyone except the person who just proved they needed them.
     const c = code(SVC);
     expect(c.match(/askRole\(lang\)/g)!.length).toBe(3); // the สมัคร door · the strike re-ask · the bad payload
-    expect(c).toContain('t("role_prompt", lang), lang, askRole(lang))');
+    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
+    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    expect(c).toContain('tb("role_prompt"), lang, askRole(lang))');
   });
 });

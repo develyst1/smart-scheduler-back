@@ -50,17 +50,36 @@ export const isConfirm = (text: string): boolean => CONFIRM.includes(text.trim()
 export const isCancel = (text: string): boolean => CANCEL.includes(text.trim().toLowerCase());
 
 /**
- * `YYYY-MM-DD`, or `null` when skipped/unparseable.
+ * The owner's format, `วัน-เดือน-ปี` (**`DD-MM-YYYY`**) in, **`YYYY-MM-DD` out** — the STORED value is
+ * unchanged, because this is an input format and not a storage format. `null` when skipped.
  *
- * Deliberately strict: a birthdate that silently becomes the wrong date is worse than one nobody entered, and
- * this roster has no delete. A malformed answer re-asks rather than guessing a format.
+ * ## 🔴 TASK-277 (REQ-079 §17, closed by the owner 2026-09-06)
+ * This matched **four-digit-year-first and nothing else** — the format the owner overruled. The customer
+ * asked for day-first; the owner took their ORDER with our DASH.
+ *
+ * ## ⚠️ The four-digit-first string is REFUSED, not reinterpreted — §17's own warning
+ * *"The bot must still accept a 4-digit-first string and refuse it CLEARLY rather than read `2024-12-02`
+ * as day 2024 and produce a confusing error."* ⇒ that shape is recognised and rejected, so the parent gets
+ * the format sentence instead of *"day 2024 is not a day"*.
+ * 🚫 **Both orders are NOT accepted.** If they were, `03-04-2024` would mean two different dates depending
+ * on which rule fired — and there is no way for a reader to tell which one they got.
+ *
+ * ⚠️ `03-04-2024` is still genuinely ambiguous to a HUMAN — 3 April or 4 March. **What saves it is the
+ * confirm step**, which prints the date back before anything is written. §17's words: that step is now
+ * **load-bearing for correctness**, not merely for review.
+ *
+ * Deliberately strict otherwise: a birthdate that silently becomes the wrong date is worse than one nobody
+ * entered, and this roster has no delete. A malformed answer re-asks rather than guessing a format.
  */
 export function parseBirthDate(text: string): { ok: true; value: string | null } | { ok: false } {
   const raw = text.trim();
   if (isSkip(raw)) return { ok: true, value: null };
-  const m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  // 🔴 The retired order, caught FIRST and refused. Falling through to the day-first pattern below would
+  // read `2024-12-02` as day 2024 — which fails anyway, but with an error about a day rather than a format.
+  if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(raw)) return { ok: false };
+  const m = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (!m) return { ok: false };
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const [d, mo, y] = [Number(m[1]), Number(m[2]), Number(m[3])];
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return { ok: false };
   const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   // Round-trip through Date so 2026-02-31 is refused rather than silently rolled into March.
@@ -69,6 +88,28 @@ export function parseBirthDate(text: string): { ok: true; value: string | null }
   return { ok: true, value: iso };
 }
 
+/**
+ * 🔴 TASK-280 — the stored ISO date, shown back in the order the parent TYPED it: `2024-12-02` →
+ * `02-12-2024`.
+ *
+ * ## Why this is not cosmetic
+ * TASK-277 made the confirm step **load-bearing for correctness** because `03-04-2024` is ambiguous to a
+ * HUMAN — 3 April or 4 March. The parser is unambiguous; the person is not, and the summary exists to let
+ * them catch their own slip. ⇒ **echoing in the other order makes the reader perform exactly the conversion
+ * the step exists to spare them.** On this field that is close to no guard at all.
+ *
+ * ## 🚫 It is deliberately NOT the inverse of `parseBirthDate`, and must never be used as one
+ * The obvious future mistake is reaching for it to undo the parse. **The stored value stays ISO** — a
+ * display format reaching the database is the one way this can do harm — and its only caller is
+ * `summaryLines`, asserted by position rather than by a count so a fourth call site cannot slip past.
+ *
+ * ⚠️ A value that is not a well-formed ISO date **passes through unchanged**. Same rule as the phone
+ * formatter: the display must not invent a shape for something it does not recognise.
+ */
+export function formatBirthDateForDisplay(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso;
+}
 /**
  * 🔴 AC-9 — what to do when the name already exists in THIS family.
  *
@@ -108,7 +149,9 @@ export function summaryLines(
 ): string[] {
   return [
     `${labels.name}: ${draft.name ?? labels.none}`,
-    `${labels.birthDate}: ${draft.birthDate ?? labels.none}`,
+    // 🔴 TASK-280 — shown in the order the parent typed (`DD-MM-YYYY`), not the ISO we store. This line IS
+    // the guard TASK-277 leans on; printing it back in the other order made the reader do the conversion.
+    `${labels.birthDate}: ${draft.birthDate ? formatBirthDateForDisplay(draft.birthDate) : labels.none}`,
     `${labels.province}: ${draft.province ?? labels.none}`,
   ];
 }

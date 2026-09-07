@@ -180,6 +180,43 @@ export function resolvesByNodeWalk(
     dir = parent;
   }
 }
+/**
+ * 🔴 TASK-268 — the package's OWN entry script, so the thing `--plan` checks is the thing the run executes.
+ *
+ * TASK-267's `--plan` proved the MODULE resolves from the config's directory. The run then executed
+ * `bunx drizzle-kit`, which is a **different resolution**: `bunx` prefers `node_modules/.bin` but may reach
+ * the network, and nothing checked it. They agreed — and *two things that agree today* is this project's
+ * most repeated lesson.
+ *
+ * ## 🔑 Why not `node_modules/.bin/drizzle-kit`
+ * ⚠️ **On this machine that file does not exist.** `.bin` holds `drizzle-kit.exe` and `drizzle-kit.bunx` —
+ * Windows shims — while POSIX gets a bare symlink. Resolving a shim means guessing at a per-platform name.
+ * ⇒ **read the package's own `bin` field instead**, which is what every shim ultimately runs:
+ * `drizzle-kit`'s `package.json` declares `"bin": { "drizzle-kit": "./bin.cjs" }`. **Authoritative, one
+ * file, same on every platform** — and resolvable by the walk we already trust.
+ *
+ * 🚫 Fails CLOSED: `null` when the package, its `bin` field or the file is missing, and the caller refuses.
+ * A preflight that passes when it cannot see is worse than none.
+ */
+export function resolveDrizzleKitBin(
+  fromDir: string,
+  exists: (path: string) => boolean,
+  readJson: (path: string) => unknown,
+): string | null {
+  const pkgDir = resolvesByNodeWalk(fromDir, "drizzle-kit", exists);
+  if (!pkgDir) return null;
+  let bin: unknown;
+  try {
+    bin = (readJson(`${pkgDir}/package.json`) as { bin?: unknown } | null)?.bin;
+  } catch {
+    return null;
+  }
+  // `bin` is either a string (one command, named after the package) or a map of command → path.
+  const rel = typeof bin === "string" ? bin : (bin as Record<string, string> | undefined)?.["drizzle-kit"];
+  if (typeof rel !== "string" || !rel) return null;
+  const full = `${pkgDir}/${rel.replace(/^\.\//, "")}`;
+  return exists(full) ? full : null;
+}
 /** The journal entries a `--through <tag>` run may apply: everything up to and including `tag`, in order. */
 export function entriesThrough<T extends { tag: string }>(entries: readonly T[], tag: string): T[] {
   const at = entries.findIndex((e) => e.tag === tag);
