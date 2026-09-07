@@ -175,25 +175,35 @@ describe("TASK-264 — AC-4 / (ข): ONE computation, and it warns rather than r
     expect(EDIT).toContain("expiryWarning: impact");
   });
 
-  test("🔴 (ข): the gate and the warning are the SAME function, and the gate is conditional", () => {
+  test("🔻 (ข) is SUPERSEDED on the resume — the expiry there is an OUTPUT, so no gate is left", () => {
+    // 🔴 TASK-282 §7.1(2), owner ruling. This asserted `if (!input.expiryDate && impact.warn)` and
+    // `EXPIRY_REQUIRED` — TASK-264's *"required only when the warning fires"*. **That question is gone from
+    // this verb.** A resume is a RE-PLAN: it derives the expiry to cover the last session it just laid out, so
+    // there is no expiry REQUEST that could be wrong and nothing to warn about.
+    // 🔑 That is also the DEF-4 fix — DEF-4's validator checks the REQUEST, and a re-plan moves the last
+    // session by construction, so a request-checking validator would have waved through every resume.
+    // 🚫 Corrected, not deleted: (ข)'s rule still governs the EDIT verb, which is what the rest of this file
+    // asserts. The two verbs simply stopped sharing a question.
     const c = code(SVC);
-    const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function cancelCourse("));
-    // One computation, read twice.
-    expect(resume).toContain("const impact = expiryImpact(effectiveExpiry, projected);");
-    expect(resume.match(/expiryImpact\(/g)!.length).toBe(1);
-    // Conditional: only when the warning fires AND the admin gave no date.
-    expect(resume).toContain("if (!input.expiryDate && impact.warn) {");
-    expect(resume).toContain('"EXPIRY_REQUIRED"');
-    // 🚫 The old unconditional gate must not survive anywhere.
-    expect(c).not.toContain('if (!input.expiryDate) throw new ApiException(400, "EXPIRY_REQUIRED"');
-    // …and the resume warns and saves too, with the same shape the edit returns.
-    expect(resume).toContain("expiryWarning: impact");
+    const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function endCourse("));
+    expect(resume).not.toContain("expiryImpact");
+    expect(c).not.toContain("EXPIRY_REQUIRED");
+    // The EDIT still warns and still saves — and it is now the ONLY caller of `expiryImpact`.
+    expect(c.match(/expiryImpact\(/g)!.length).toBe(1);
+    expect(EDIT).toContain("expiryWarning: impact");
   });
 
-  test("the resume schema made the field optional — the requirement moved, it did not disappear", () => {
+  test("🔻 the resume schema is REQUIRED again — a different field, for a different reason", () => {
+    // 🔴 TASK-282 §7.1(1). TASK-264 made `expiryDate` optional so a resume where nothing was wrong asked for
+    // nothing. **That optionality left `{}` and `{ expiryDate }` as two paths through one function and only
+    // one was ever trialled — which IS DEF-2's non-determinism.** A re-plan always carries a schedule, so
+    // there is one path. This is not the old field returning: `expiryDate` is gone from the verb entirely.
     const v = code(VALIDATION);
     const schema = v.slice(v.indexOf("export const resumeCourse = z.object({"));
-    expect(schema.slice(0, schema.indexOf("});"))).toContain("expiryDate: DATE.optional(),");
+    const body = schema.slice(0, schema.indexOf("});"));
+    expect(body).toContain("startDate: DATE,");
+    expect(body).toContain("startTime: TIME,");
+    expect(body).not.toContain("expiryDate");
     // The edit's own field stays required — there is nothing to infer there.
     const edit = v.slice(v.indexOf("export const updateCourseExpiry = z.object({"));
     expect(edit.slice(0, edit.indexOf("});"))).toContain("expiryDate: DATE,");
@@ -205,8 +215,11 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
     const c = code(SVC);
     // Q1's sweep: `updateCourseExpiry` (new) and `resumeCourse` are the only two writers of a COURSE expiry.
     expect(c.match(/recordExpiryChange\(/g)!.length).toBe(3); // the declaration + the edit + the resume
-    const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function cancelCourse("));
-    expect(resume).toContain("await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: effectiveExpiry, actor });");
+    const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function endCourse("));
+    // TASK-282 §7: `effectiveExpiry` was the admin's date-or-the-old-one; it is now `expiryDate`, DERIVED from
+    // the last session the re-plan laid out. 🔑 The audit is unchanged and that is the point — **the trail did
+    // not need touching when the reason for the change did.**
+    expect(resume).toContain("await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });");
   });
 
   test("🚫 a resume that changes nothing writes no audit row", () => {
@@ -228,7 +241,10 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
     // It took `_actor` and never used it: the route has always supplied one, and the underscore was the sign
     // nothing read it. The audit is the first reader.
     const c = code(SVC);
-    expect(c).toContain("export async function resumeCourse(id: string, input: { expiryDate?: string | null }, actor?: string | null)");
+    // TASK-282 §7 — the signature carries the RE-PLAN's body now. The actor is what this test is about and it
+    // is untouched; only the input beside it changed.
+    expect(c).toContain("input: { startDate: string; startTime: string },");
+    expect(c).toContain("actor?: string | null,");
     expect(c).not.toContain("_actor?: string | null");
     expect(ROUTES).toContain('svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)');
   });

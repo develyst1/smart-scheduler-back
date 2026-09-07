@@ -13,18 +13,21 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  COURSE_PAUSE_NOTE,
   courseCurrent,
   courseOwedTarget,
   endableSessions,
-  resumeAnchor,
+  replanExpiry,
   type PlanSession,
 } from "./course-plan";
-import { nextWeekdayOnOrAfter } from "./recurring";
+import { courseSessionDates, weekdayOf } from "./recurring";
+import * as v from "../validation";
 import { readSrc } from "./read-src";
 
 const root = resolve(import.meta.dir, "..", "..");
 const src = (f: string) => readSrc(readFileSync(resolve(root, f), "utf8"));
+/** Comments stripped before any `not.toContain`: a doc block that NAMES the thing it removed would otherwise
+ *  fail the assertion that it is gone — my own prose defeating my own test. */
+const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 
 type Row = PlanSession & { id: string };
 const row = (id: string, status: string, date = "2026-09-01"): Row => ({
@@ -141,48 +144,106 @@ describe("TASK-282 — where the resume DOES over-create, and it is not the coun
   });
 });
 
-describe("TASK-282 §5 — the real defect: a resumed course was RELOCATED into this week", () => {
-  // 🔴 @Tanya, API-driven: a NOVEMBER course came back as SEPTEMBER. `resumeCourse` rebuilt from
-  // `nextWeekdayOnOrAfter(today, course.weekday)` — which keeps the course's WEEKDAY and throws away its WEEK.
-  // The route promises \"bring it back on its own slot\" and did not.
-  const paused = (date: string) => ({ status: "CANCELLED", date, note: COURSE_PAUSE_NOTE });
+describe("TASK-282 §7 — resume is a RE-PLAN. Nothing is restored; the admin gives the schedule.", () => {
+  // 🔻 §5's reviving design is WITHDRAWN by the owner: *"ให้ไปเริ่มตามสูตรใหม่ เหมือนวางแผนใหม่ … เอาเหมือนตอนสร้าง
+  // คอร์สเลย"*. The defect was never the anchor — it was that ANY anchor is inferred. Nobody infers it now.
+  const SVC = code(src("src/services/scheduler.service.ts"));
+  const RESUME = SVC.slice(
+    SVC.indexOf("export async function resumeCourse("),
+    SVC.indexOf("export async function endCourse("),
+  );
 
-  test("🔑 a NOVEMBER course comes back in NOVEMBER — not on this week's calendar", () => {
-    const rows = [paused("2026-11-03"), paused("2026-11-10"), paused("2026-11-17")];
-    expect(resumeAnchor(rows, "2026-09-08")).toBe("2026-11-03");
+  test("🔑 a NOVEMBER course resumed in September comes back on the ADMIN'S schedule — asserted on the dates", () => {
+    // The DoD's wording is deliberate: *asserted on the dates, not on "not today"*. `courseSessionDates` is
+    // the course-CREATION planner, and it is what lays these out — the input changed, not the algorithm.
+    expect(courseSessionDates("2026-11-03", 4)).toEqual([
+      "2026-11-03",
+      "2026-11-10",
+      "2026-11-17",
+      "2026-11-24",
+    ]);
+    // …and the course's stored slot follows the answer, so the NEXT reader is not left on the old weekday.
+    expect(weekdayOf("2026-11-03")).toBe(2);
+    expect(RESUME).toContain("weekday: weekdayOf(input.startDate),");
+    expect(RESUME).toContain("startTime: input.startTime,");
+    expect(RESUME).toContain("const dates = owed > 0 ? courseSessionDates(input.startDate, owed) : [];");
   });
 
-  test("…and the whole regenerated series is November, on the course's own weekday", () => {
-    // Tuesday = 2. The anchor is snapped by the caller, so a make-up that landed on another weekday cannot
-    // put the series off the course's slot.
-    const rows = [paused("2026-11-03"), paused("2026-11-10")];
-    const start = nextWeekdayOnOrAfter(resumeAnchor(rows, "2026-09-08"), 2);
-    expect(start).toBe("2026-11-03");
+  test("🔑 the body is REQUIRED — `{}` is refused, and there is only ONE path", () => {
+    // 🔴 This IS the DEF-2 fix, not a side effect: `{}` and `{ expiryDate }` were two paths through one
+    // function and only one of them was ever trialled.
+    expect(v.resumeCourse.safeParse({}).success).toBe(false);
+    expect(v.resumeCourse.safeParse({ startDate: "2026-11-03" }).success).toBe(false);
+    expect(v.resumeCourse.safeParse({ startTime: "10:00" }).success).toBe(false);
+    expect(v.resumeCourse.safeParse({ startDate: "2026-11-03", startTime: "10:00" }).success).toBe(true);
   });
 
-  test("🚫 but a resume never schedules into the PAST — an old pause comes back from today", () => {
-    // The floor is the half that keeps this from being a plain \"use the old dates\": a course paused in July
-    // has no future dates of its own left, and re-creating them would put lessons behind the calendar.
-    const rows = [paused("2026-07-05"), paused("2026-07-12")];
-    expect(resumeAnchor(rows, "2026-09-08")).toBe("2026-09-08");
+  test("🚫 …and the two fields that are NOT asked for, each for its own reason", () => {
+    const parsed = v.resumeCourse.parse({
+      startDate: "2026-11-03",
+      startTime: "10:00",
+      weekday: 5,
+      expiryDate: "2027-01-01",
+    });
+    // `weekday` — derived from the start date, as course creation does; three fields can contradict, two cannot.
+    // `expiryDate` — an OUTPUT now (DEF-4), so there is no expiry request left to be wrong.
+    expect(parsed).toEqual({ startDate: "2026-11-03", startTime: "10:00" });
   });
 
-  test("a course with no pause-cancelled rows falls back to today — the old behaviour, kept", () => {
-    // Nothing to anchor on: a resume with zero owed sessions, or a course whose cancelled rows were an
-    // admin's rather than a pause's.
-    expect(resumeAnchor([], "2026-09-08")).toBe("2026-09-08");
-    expect(resumeAnchor([{ status: "CANCELLED", date: "2026-11-03", note: "ยกเลิกโดยแอดมิน" }], "2026-09-08")).toBe("2026-09-08");
+  test("🔑 the expiry is DERIVED and always covers the last planned session — the DEF-4 case", () => {
+    // A re-plan that runs PAST the old expiry: the expiry follows the course, which is the owner's
+    // *"วันหมดอายุก็งอกไปสิ เรื่องปกติ"* and the case a request-checking validator could never catch.
+    expect(replanExpiry("2026-10-20", "2026-12-01")).toBe("2026-12-01");
+    // 🚫 …and it never SHRINKS: a re-plan finishing early must not take back a window the family already had.
+    expect(replanExpiry("2026-12-31", "2026-11-24")).toBe("2026-12-31");
+    // Nothing owed ⇒ no last session ⇒ nothing moves.
+    expect(replanExpiry("2026-12-31", null)).toBe("2026-12-31");
   });
 
-  test("🔑 the service computes the anchor ONCE and both the gate and the loop read it", () => {
-    // ⚠️ The expiry gate projects the dates the resume is ABOUT to create. It used to build them from a
-    // second, hand-written copy of the same expression — so a fix applied to one and not the other would warn
-    // about September while writing November. Asserted as ONE `start`, and no surviving today-anchor.
-    const S = src("src/services/scheduler.service.ts");
-    expect(S).toContain("const start = nextWeekdayOnOrAfter(resumeAnchor(rows, bangkokNow().date), course.weekday);");
-    expect(S).toContain("const projected = owed > 0 ? courseSessionDates(start, owed).map((date) => ({ date })) : [];");
-    expect(S).not.toContain("nextWeekdayOnOrAfter(bangkokNow().date, course.weekday)");
-    // 🚫 And the pause's marker is the NAMED one, so `resumeAnchor` cannot stop matching it silently.
-    expect(S).toContain("note: COURSE_PAUSE_NOTE");
+  test("the response carries the new last session AND the new expiry, for TASK-287 to state", () => {
+    // @Porter: the expiry moved BECAUSE the course moved. A number that changed on its own reads as a second
+    // admin act, which is the one thing the confirmation must not imply.
+    expect(RESUME).toContain("lastSession,");
+    expect(RESUME).toContain("expiryDate,");
+    expect(RESUME).toContain("expiryExtended: expiryDate !== course.expiryDate,");
+    // 🚫 The old warning is gone: it reported that the sessions might fall outside the expiry, and the expiry
+    // is now derived FROM them — the condition cannot occur.
+    expect(RESUME).not.toContain("expiryWarning");
+  });
+
+  test("🚫 `EXPIRY_REQUIRED` is gone from the resume — and the EDIT path never had it", () => {
+    // §7.2: do not leave a throw nothing can trigger. Checked across the whole service, not just this body,
+    // so a copy surviving elsewhere fails here.
+    expect(SVC).not.toContain("EXPIRY_REQUIRED");
+    // The edit keeps `expiryImpact` — it is still the warning there, and only the resume's GATE was removed.
+    expect(SVC).toContain("const impact = expiryImpact(");
+  });
+
+  test("`recordExpiryChange` still fires, in the same transaction, before the writes", () => {
+    expect(RESUME).toContain(
+      "await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });",
+    );
+    expect(RESUME.indexOf("recordExpiryChange")).toBeLessThan(RESUME.indexOf("insertBooking"));
+  });
+
+  test("🚫 the old cancelled rows are UNTOUCHED — nothing revived, nothing re-dated", () => {
+    // The whole of the owner's ruling in one assertion: a re-plan lays out new sessions and leaves history
+    // alone. An update or a delete against `bookings` in this body would be the design he rejected.
+    expect(RESUME).not.toContain("update(bookings)");
+    expect(RESUME).not.toContain("tx.delete");
+    expect(RESUME).not.toContain("CANCELLED");
+  });
+
+  test("a slot clash still refuses with `SLOT_TAKEN`, and the whole resume rolls back", () => {
+    expect(RESUME).toContain('if (e?.code === "SLOT_TAKEN")');
+    expect(RESUME).toContain("ระบบไม่ย้ายคาบให้เอง");
+    // One transaction around everything — a clash on session 4 must not leave three on the calendar.
+    expect(RESUME).toContain("db.transaction");
+  });
+
+  test("🚫 no new scheduler was invented — `courseSessionDates` is the creation planner", () => {
+    expect(RESUME.match(/courseSessionDates\(/g)).toHaveLength(1);
+    expect(RESUME).not.toContain("nextWeekdayOnOrAfter");
+    expect(RESUME).not.toContain("bangkokNow");
   });
 });

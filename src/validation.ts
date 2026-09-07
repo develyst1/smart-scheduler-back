@@ -676,19 +676,27 @@ export const resumeBooking = z.object({
   date: DATE,
   startTime: TIME,
 });
+/**
+ * 🔴 TASK-282 §7 — **the course-CREATION question, and it is REQUIRED.** A resume is a RE-PLAN
+ * (owner ruling): the admin says when the remaining sessions start and at what time, exactly as they do when
+ * the course is sold.
+ *
+ * 🔑 **Required is the point, not a tightening.** TASK-264 made the old `expiryDate` optional, which left
+ * `{}` and `{ expiryDate }` as **two paths through one function, and only one of them was ever trialled** —
+ * that non-determinism is DEF-2 itself. A re-plan always carries a schedule, so there is **one path**.
+ * ⚠️ **Breaking for anyone sending `{}`.** The FE is the only caller and changes in the same shipment
+ * (TASK-287).
+ *
+ * 🚫 **No `expiryDate`, and its absence is structural.** It is now DERIVED to cover the last planned
+ * session (TASK-282 §7.1(2) — DEF-4), so there is no expiry request left to be wrong. The EDIT verb
+ * (`updateCourseExpiry`) keeps its own required field; that one has nothing to infer from.
+ *
+ * 🚫 **And no `weekday`** — `weekdayOf(startDate)` is what course creation derives
+ * (`createCoursePackage` has no such field either). Two fields cannot contradict each other; three can.
+ */
 export const resumeCourse = z.object({
-  /**
-   * 🔴 TASK-264 (REQ-082 ข) — **OPTIONAL now, and the reason is the owner's own rule applied to itself.**
-   *
-   * It used to be required, on the reasoning that the pause has eaten into the old window. True when it
-   * has; **not true when it has not** — and demanding a date on a resume where nothing is wrong is the
-   * blocking-dialog shape the owner rejected (*warn, do not act*).
-   * ⚠️ The requirement did not disappear: `resumeCourse` still throws `EXPIRY_REQUIRED`, but only when the
-   * sessions it is about to create fall outside the existing expiry — the SAME `expiryImpact` the warning
-   * uses. A schema cannot express "required when the warning fires", so the check moved to where the
-   * course is loaded, not away.
-   */
-  expiryDate: DATE.optional(),
+  startDate: DATE,
+  startTime: TIME,
 });
 
 /**

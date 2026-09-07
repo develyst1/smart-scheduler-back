@@ -217,20 +217,27 @@ describe("a dropped course is refused by the same chokepoint, with its own code"
 
   test("🔴 resume never moves a family silently — a taken slot surfaces as SLOT_TAKEN", () => {
     const body = fn("resumeCourse");
-    expect(body).toContain('conflict(\n              "SLOT_TAKEN"');
+    // TASK-282 §7: the loop lost a nesting level when the `owed > 0` wrapper went away — the dates array is
+    // empty when nothing is owed, so the guard was doing nothing. The REFUSAL is unchanged; only its indent is.
+    expect(body).toContain('conflict(\n            "SLOT_TAKEN"');
     expect(body).toContain("ระบบไม่ย้ายคาบให้เอง");
   });
 
-  test("resume rebuilds on the course's OWN weekday, time AND WEEK — not on today's", () => {
-    // 🔴 TASK-282 §5 — this test's NAME was the requirement and its BODY was the defect. It asserted
-    // `nextWeekdayOnOrAfter(bangkokNow().date, …)`, which keeps the course's weekday and throws away its WEEK:
-    // @Tanya reproduced a NOVEMBER course coming back as SEPTEMBER, onto this week's calendar. \"Its own slot\"
-    // was read as the weekday alone, and the two halves of the sentence were never checked against each other.
-    // 🔑 Corrected rather than deleted: the property it meant to protect — the family keeps their slot by
-    // construction, rebuilt from the course row and never re-picked — is intact and still asserted below.
+  test("resume does not rebuild from ANY inferred anchor — the admin gives the schedule", () => {
+    // 🔻 TASK-282 — the owner reshaped this twice, and BOTH earlier versions of this test were wrong.
+    //   1. It first asserted `nextWeekdayOnOrAfter(bangkokNow().date, …)` under the title "its OWN weekday":
+    //      the NAME was the requirement and the BODY was the defect — a November course came back as September.
+    //   2. §5 then made it assert a COMPUTED anchor (the earliest date the pause cancelled). The owner
+    //      rejected the whole idea of inferring one: *เอาเหมือนตอนสร้างคอร์สเลย*. A resume is a RE-PLAN.
+    // 🔑 So the property is now the ABSENCE of an anchor: nothing here reads the clock or the stored slot to
+    // decide WHEN. The dates come from the request, through the course-creation planner.
     const body = fn("resumeCourse");
-    expect(body).toContain("nextWeekdayOnOrAfter(resumeAnchor(rows, bangkokNow().date), course.weekday)");
-    expect(body).toContain("startTime: course.startTime");
+    expect(body).toContain("courseSessionDates(input.startDate, owed)");
+    expect(body).toContain("startTime: input.startTime,");
+    expect(body).not.toContain("bangkokNow");
+    expect(body).not.toContain("nextWeekdayOnOrAfter");
+    // The stored slot is WRITTEN, never read for the schedule — so the next reader is not left on the old day.
+    expect(body).toContain("weekday: weekdayOf(input.startDate),");
   });
 
   test("🔑 dropping does NOT reconcile — a pause is not a re-owe", () => {

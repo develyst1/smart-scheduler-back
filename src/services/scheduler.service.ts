@@ -81,8 +81,7 @@ import {
   COURSE_LIVE_STATUSES,
   canInsert,
   courseCurrent,
-  COURSE_PAUSE_NOTE,
-  resumeAnchor,
+  replanExpiry,
   deriveLiveEndDate,
   exceedsExtensionCeiling,
   isCoursePlanRow,
@@ -3740,10 +3739,7 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
     for (const b of paused) {
       await tx
         .update(bookings)
-        // 🔴 TASK-282 §5 — the NAMED marker, not a second copy of the literal. `resumeAnchor` reads it back to
-        // find where the course was interrupted; two hand-typed copies drifting apart would silently return the
-        // resume to rebuilding from today, with every test still green.
-        .set({ status: "CANCELLED", note: COURSE_PAUSE_NOTE })
+        .set({ status: "CANCELLED", note: "พักคอร์สชั่วคราว" })
         .where(eq(bookings.id, b.id));
     }
 
@@ -3760,20 +3756,40 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
 }
 
 /**
- * Bring a paused course back: clear the pause, take the admin's new expiry, and regenerate the sessions the
- * course still owes on **its own weekday and time**.
+ * Bring a paused course back — as a **RE-PLAN, not a restoration** (owner, TASK-282 §7:
+ * *"ให้ไปเริ่มตามสูตรใหม่ เหมือนวางแผนใหม่ … เอาเหมือนตอนสร้างคอร์สเลย … วันหมดอายุก็งอกไปสิ เรื่องปกติ"*).
  *
- * 🔴 The family keeps their slot **by construction** — the course row already stores `weekday`/`startTime`, so
- * resume rebuilds from those rather than asking anyone to re-pick. And a slot taken in the meantime **clashes
- * loudly** (`SLOT_TAKEN`): silently moving a child to another time, months after the parent was told when their
- * lesson is, is the one outcome this must never produce.
+ * 🔻 **This reverses what the doc above used to say.** It read *"the family keeps their slot by construction —
+ * the course row already stores `weekday`/`startTime`, so resume rebuilds from those rather than asking anyone
+ * to re-pick."* That was the design, and it produced the defect: rebuilding from **today** on the stored
+ * weekday kept the WEEKDAY and threw away the WEEK, so @Tanya's NOVEMBER course came back as SEPTEMBER.
+ * ⇒ The owner's answer is not a better anchor. **Nobody infers the schedule. The admin is asked the same
+ * question course creation asks, and the remaining sessions are laid out from their answer.**
+ *
+ * 🔑 **Three properties, and two of them close open defects rather than being extras:**
+ * 1. **The body is REQUIRED.** `{}` and `{ expiryDate }` were two paths and only one was ever trialled — that
+ *    non-determinism IS DEF-2. A re-plan always carries a schedule, so **there is no second path left**.
+ * 2. **The expiry is an OUTPUT.** DEF-4's validator checks the REQUEST, and a re-plan moves the last session
+ *    **by construction** — so a request-checking validator would wave through every resume. ⇒ there is no
+ *    expiry request left to be wrong. It is derived to cover the last planned session, and it **grows, never
+ *    shrinks**: a re-plan that happens to finish early must not take back a window the family already had.
+ * 3. **The response says the expiry moved and why** (@Porter) — the new last session AND the new expiry, so
+ *    TASK-287 can state *the expiry moved because the course moved*, rather than presenting it as a second
+ *    admin act. 📌 This is the one place that departs from REQ-082's *warn, do not act* — because here we
+ *    ARE acting, so it has to be said out loud.
+ *
+ * 🚫 **Nothing is restored.** The rows the pause cancelled stay cancelled, on their old dates. Reviving or
+ * re-dating them was the design the owner rejected.
+ * 🚫 **No new scheduler.** `courseSessionDates` is the course-creation planner and was already what this
+ * function called — the INPUT changed, not the algorithm.
+ * ⚠️ A slot taken in the meantime still **clashes loudly** (`SLOT_TAKEN`) and rolls the whole resume back:
+ * silently moving a child to another time is still the one outcome this must never produce.
  */
-export async function resumeCourse(id: string, input: { expiryDate?: string | null }, actor?: string | null) {
-  // 🔴 TASK-264 (ข) — the gate is no longer unconditional; it now lives BELOW, after the course is loaded.
-  // It used to read `if (!input.expiryDate) throw EXPIRY_REQUIRED`, which demanded a decision on every
-  // resume including the ones where nothing was wrong. The owner's own rule applied to itself: **required
-  // only when the warning fires.** Moving it inside the transaction is not a style change — the answer
-  // needs the course's weekday, its owed count and its current expiry, none of which exist up here.
+export async function resumeCourse(
+  id: string,
+  input: { startDate: string; startTime: string },
+  actor?: string | null,
+) {
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
     if (isCourseEnded(course)) throw conflict("COURSE_ENDED", COURSE_ENDED_MESSAGE);
@@ -3781,6 +3797,10 @@ export async function resumeCourse(id: string, input: { expiryDate?: string | nu
 
     // What the plan still owes, from the SAME counter the rest of the engine uses (`courseOwedTarget` already
     // knows about `priorSessions`). Sessions that were delivered before the pause still count as delivered.
+    // 📌 §7.5 — a declared `SICK_LEAVE` counts as neither live nor delivered ON PURPOSE, because within quota
+    // it has already been answered by an `EXTENDED` make-up that IS counted. The pause cancelled that make-up,
+    // so `owed` includes it, and the re-plan lays it out again. **That is correct: the family is still owed
+    // the replacement lesson they never had.**
     const owed = Math.max(
       0,
       courseOwedTarget(course) -
@@ -3795,49 +3815,46 @@ export async function resumeCourse(id: string, input: { expiryDate?: string | nu
         ),
     );
 
-    // 🔴 TASK-264 (ข) — ONE computation, read twice: the gate and the warning.
+    // 🔴 The re-plan. The admin's start date and time, laid out by the course-CREATION planner — the same
+    // `courseSessionDates` a new course is built with, so *"เหมือนตอนสร้างคอร์สเลย"* is true by construction
+    // rather than by two implementations agreeing.
     //
-    // The dates the resume is ABOUT to create, measured against the expiry that would apply. Asked before
-    // anything is written, because the gate's whole job is to refuse before a decision is made — and asked
-    // through `expiryImpact`, the same function the expiry EDIT uses, so *"required only when the warning
-    // fires"* is true by construction instead of by two implementations agreeing.
-    //
-    // ⚠️ These sessions do not exist yet, which is why `expiryImpact` takes candidates rather than fetching
-    // rows: a resume asks about the future, an edit asks about the calendar, and the question is the same.
-    const effectiveExpiry = input.expiryDate ?? course.expiryDate;
+    // ⚠️ **The weekday is DERIVED, not asked for** — `weekdayOf(input.startDate)`, the one line course
+    // creation uses (`createCoursePackage` has no `weekday` field either). A body carrying all three could
+    // arrive with a weekday that contradicts its own start date, and that has no correct answer: either it is
+    // refused for a case that can only ever be a typo, or one field silently wins. **Two fields cannot
+    // disagree with each other.**
+    const dates = owed > 0 ? courseSessionDates(input.startDate, owed) : [];
+    const lastSession = dates[dates.length - 1] ?? null;
 
-    // 🔴 TASK-282 §5 — the course's OWN week, computed ONCE and read by both the projection and the loop.
-    //
-    // This was `nextWeekdayOnOrAfter(bangkokNow().date, …)` written out twice — the same expression in two
-    // places, which is how the gate and the writes could ever have disagreed. It kept the course's WEEKDAY and
-    // threw away its WEEK: @Tanya's NOVEMBER course came back as SEPTEMBER, onto this week's calendar.
-    // ⇒ `resumeAnchor` answers where it picks up — its own next cancelled date, floored at today — and the
-    // snap to the course's weekday happens here, once, because a make-up may sit on another weekday.
-    const start = nextWeekdayOnOrAfter(resumeAnchor(rows, bangkokNow().date), course.weekday);
-    const projected = owed > 0 ? courseSessionDates(start, owed).map((date) => ({ date })) : [];
-    const impact = expiryImpact(effectiveExpiry, projected);
-
-    // (ข): required ONLY when the warning fires. A resume where every session it will create still falls
-    // inside the existing expiry asks the admin for nothing — which is the case the old gate could not tell
-    // apart from the broken one.
-    if (!input.expiryDate && impact.warn) {
-      throw new ApiException(
-        400,
-        "EXPIRY_REQUIRED",
-        `ต้องระบุวันหมดอายุใหม่ — มี ${impact.outsideCount} คาบที่จะเลยวันหมดอายุเดิม (${effectiveExpiry})`,
-      );
-    }
+    // 🔴 The expiry, DERIVED — always covering the last planned session, and never shrinking. A re-plan that
+    // finishes before the old expiry leaves it alone; `recordExpiryChange` then writes nothing, because it
+    // guards on `from === to`.
+    const expiryDate = replanExpiry(course.expiryDate, lastSession);
 
     // Clear the pause FIRST: `insertBooking` runs through `assertCourseWritable`, and a course still marked
     // dropped would refuse its own resume. Doing it inside the same transaction means a clash below still
     // rolls the whole thing back — the course does not come back half-resumed.
+    //
+    // 📌 The course's SLOT is updated with it: `weekday` and `startTime` are what every later reader rebuilds
+    // from (the confirm message, the next pause, `getEntitlementPlan`), so a re-plan that moved the lesson and
+    // left them stale would be the same class of defect one field over.
+    // 🚫 `startDate` is deliberately NOT touched — it is when the course was BOUGHT, and `Start` on the
+    // CONFIRMED SCHEDULE means that. See the report for what this leaves stale.
     await tx
       .update(coursePackages)
-      .set({ droppedAt: null, droppedBy: null, dropReason: null, expiryDate: effectiveExpiry })
+      .set({
+        droppedAt: null,
+        droppedBy: null,
+        dropReason: null,
+        weekday: weekdayOf(input.startDate),
+        startTime: input.startTime,
+        expiryDate,
+      })
       .where(eq(coursePackages.id, id));
     // Q1's hole, closed: `resumeCourse` is the OTHER path that moves a course's expiry, so it records too —
-    // through the same writer, in the same transaction. A no-op (resume without a new date) records nothing.
-    await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: effectiveExpiry, actor });
+    // through the same writer, in the same transaction. A resume that does not move it records nothing.
+    await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });
 
     const studentId = course.studentId;
     const teacherId = rows[0]?.teacherId ?? null;
@@ -3846,43 +3863,43 @@ export async function resumeCourse(id: string, input: { expiryDate?: string | nu
       throw badRequest("คอร์สนี้ไม่มีข้อมูลครู/วิชา/นักเรียนพอที่จะสร้างคาบใหม่");
     }
 
-    // Forward from the SAME `start` the gate above measured — the course's own week, on its own weekday.
     const created: string[] = [];
-    if (owed > 0) {
-      for (const date of courseSessionDates(start, owed)) {
-        try {
-          await insertBooking(tx, studentId, {
-            teacherId,
-            subjectId,
-            date,
-            startTime: course.startTime,
-            bookingType: "COURSE_PACKAGE",
-            courseId: id,
-          });
-          created.push(date);
-        } catch (e: any) {
-          if (e?.code === "SLOT_TAKEN")
-            throw conflict(
-              "SLOT_TAKEN",
-              `มีคาบชนในวันที่ ${date} — ต้องแก้ตารางก่อนจึงจะกลับมาเรียนได้ (ระบบไม่ย้ายคาบให้เอง)`,
-            );
-          throw e;
-        }
+    for (const date of dates) {
+      try {
+        await insertBooking(tx, studentId, {
+          teacherId,
+          subjectId,
+          date,
+          startTime: input.startTime,
+          bookingType: "COURSE_PACKAGE",
+          courseId: id,
+        });
+        created.push(date);
+      } catch (e: any) {
+        if (e?.code === "SLOT_TAKEN")
+          throw conflict(
+            "SLOT_TAKEN",
+            `มีคาบชนในวันที่ ${date} — ต้องแก้ตารางก่อนจึงจะกลับมาเรียนได้ (ระบบไม่ย้ายคาบให้เอง)`,
+          );
+        throw e;
       }
     }
 
     const updated = await tx.query.coursePackages.findFirst({
       where: (c: any, { eq: e }: any) => e(c.id, id),
     });
-    // ⚠️ Warn and still SAVE, here too: an admin who DID supply a date that still leaves sessions outside is
-    // told which, and the resume goes through. Same shape as the edit's response, so the FE renders one
-    // warning component for both REQs rather than two that drift.
+    // 🔑 `lastSession` and `expiryDate` are what TASK-287 states on the confirmation, and `expiryExtended` is
+    // the difference between *"the expiry moved because the course moved"* and a number that changed on its
+    // own. 🚫 `expiryWarning` is GONE: it warned that the sessions might fall outside the expiry, and the
+    // expiry is now derived from them — the condition it reported cannot occur.
     return {
       resumed: true,
       createdSessions: created.length,
       dates: created,
       course: toCourseSummary(updated),
-      expiryWarning: impact,
+      lastSession,
+      expiryDate,
+      expiryExtended: expiryDate !== course.expiryDate,
     };
   });
 }
