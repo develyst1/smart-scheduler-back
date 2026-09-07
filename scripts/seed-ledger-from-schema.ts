@@ -21,7 +21,8 @@ import { migrationHash } from "../src/lib/migration-ledger";
 import {
   SCHEDULING_WITNESSES as WITNESSES,
   appliedTags,
-  blockers,
+  seedHalts,
+  seedWarnings,
   judge,
 } from "../src/lib/migration-witness";
 import { probeAll } from "./probe-witnesses";
@@ -59,20 +60,36 @@ for (const r of results) {
   );
 }
 
-const halts = blockers(results);
+// 🔴 TASK-281 — the halt and the warning are two different questions, and only one of them is the seed's.
+const halts = seedHalts(results);
+const warnings = seedWarnings(results);
+const detail = (r: (typeof results)[number]) => {
+  console.log(`  ${r.tag}  [${r.verdict}, re-runnable: ${r.rerunnable ? "yes" : "NO"}]`);
+  console.log(`    witness: ${r.probe} → found=${r.found === null ? "n/a" : r.found}`);
+  console.log(`    why:     ${r.why}\n`);
+};
+
 if (halts.length) {
-  console.log(`\n🔴 STOP — ${halts.length} entr${halts.length === 1 ? "y" : "ies"} need a human:\n`);
-  for (const h of halts) {
-    console.log(`  ${h.tag}  [${h.verdict}, re-runnable: ${h.rerunnable ? "yes" : "NO"}]`);
-    console.log(`    witness: ${h.probe} → found=${h.found === null ? "n/a" : h.found}`);
-    console.log(`    why:     ${h.why}\n`);
-  }
+  console.log(`\n🔴 STOP — ${halts.length} entr${halts.length === 1 ? "y" : "ies"} could not be judged:\n`);
+  for (const h of halts) detail(h);
   console.log("  Do NOT run --apply and do NOT run db:migrate until these are resolved.");
+}
+
+// ⚠️ Shown in the same place a STOP would be, and deliberately NOT an exit: the seed never writes a row for
+// a not-applied tag, and `db:preflight` guards the migrate step this used to be guarding on its behalf.
+if (warnings.length) {
+  console.log(
+    `\n⚠️  WARNING — ${warnings.length} migration(s) have NOT run and \`db:migrate\` cannot safely retry them:\n`,
+  );
+  for (const w of warnings) detail(w);
+  console.log("  This does NOT block the seed: `--apply` writes rows only for migrations the DATABASE says");
+  console.log("  are already applied, so these are skipped either way.");
+  console.log("  ⚠️ But `db:migrate` will attempt them. Read `bun run db:preflight` before you run it.");
 }
 
 const applied = appliedTags(results);
 const notApplied = results.filter((r) => r.verdict === "not-applied");
-console.log(`\nSummary: ${applied.length} applied · ${notApplied.length} not applied · ${halts.length} need a human`);
+console.log(`\nSummary: ${applied.length} applied · ${notApplied.length} not applied · ${halts.length} need a human · ${warnings.length} warned`);
 if (notApplied.length) {
   console.log(`After seeding, \`db:migrate\` would apply: ${notApplied.map((r) => r.tag).join(", ")}`);
 }
@@ -103,7 +120,7 @@ const toInsert = applied
 console.log(`\nLedger ${SCHEMA}.${OWN}: ${present.size} row(s) present · ${toInsert.length} to insert`);
 
 if (halts.length) {
-  console.log("\nDRY RUN — refusing to proceed while entries need a human (see STOP above).");
+  console.log("\nDRY RUN — refusing to proceed while entries could not be JUDGED (see STOP above).");
   await sql.end();
   process.exit(1);
 }

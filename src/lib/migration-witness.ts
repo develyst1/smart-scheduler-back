@@ -455,13 +455,44 @@ export function judge(
 }
 
 /**
- * 🔴 The halt condition. Anything that would have `db:migrate` attempt a migration that cannot survive it,
- * or that we cannot judge, must stop the operator rather than proceed.
+ * 🔴 TASK-281 — this was ONE function answering TWO questions, and the difference cost the owner a halted
+ * deploy on the customer's live box.
+ *
+ * `blockers()` returned `needs-human` **or** `not-applied && !rerunnable`, and `db:seed-ledger` exited 1 on
+ * either. The second condition is a **`db:migrate` concern living inside a `db:seed-ledger` tool**: it
+ * blocked the seed to protect the step *after* it. When it was written nothing guarded that step; since
+ * TASK-266, **`db:preflight` guards it directly.**
+ *
+ * ⇒ Two questions, two functions, and the seed asks only the one that is its own.
  */
-export function blockers(results: WitnessResult[]): WitnessResult[] {
-  return results.filter(
-    (r) => r.verdict === "needs-human" || (r.verdict === "not-applied" && !r.rerunnable),
-  );
+
+/**
+ * 🔴 **Must the operator STOP?** Only when a witness could not be judged.
+ *
+ * `needs-human` means *we do not know whether this migration ran*. Nothing downstream can be trusted after
+ * that, and no other tool can answer it — so it halts, and it is the only thing that does.
+ */
+export function seedHalts(results: WitnessResult[]): WitnessResult[] {
+  return results.filter((r) => r.verdict === "needs-human");
+}
+
+/**
+ * ⚠️ **Must the operator be WARNED?** A migration the database says has not run, which `db:migrate` cannot
+ * safely retry.
+ *
+ * 🚫 It does NOT halt the seed, and the three reasons are worth keeping because each was verified rather
+ * than assumed:
+ * 1. **The seed cannot touch it.** `appliedTags` writes rows only for `applied` tags, so a `not-applied`
+ *    entry is skipped either way — halting protects nothing here.
+ * 2. **`db:preflight` guards the migrate step** (TASK-266), which is where this concern actually belongs.
+ * 3. `rerunnable: false` is **correct** on the entries that carry it (`0033`: a bare `DROP INDEX` with no
+ *    `IF EXISTS`) — 🚫 **that flag is not the thing to "fix"**.
+ *
+ * ⚠️ **It must still be SHOWN, loudly.** An operator who saw a `🔴 STOP` last night has to see something in
+ * the same place tonight, or the tool looks like it stopped noticing.
+ */
+export function seedWarnings(results: WitnessResult[]): WitnessResult[] {
+  return results.filter((r) => r.verdict === "not-applied" && !r.rerunnable);
 }
 
 /** Rows to seed: one per journal entry the database says is already applied. */

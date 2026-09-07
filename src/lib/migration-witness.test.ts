@@ -6,10 +6,12 @@ import { describe, expect, test } from "bun:test";
 import {
   SCHEDULING_WITNESSES,
   appliedTags,
-  blockers,
+  seedHalts,
+  seedWarnings,
   describeProbe,
   judge,
   type Witness,
+  type WitnessResult,
 } from "./migration-witness";
 
 const answers = (m: Record<string, boolean | null>) => new Map(Object.entries(m));
@@ -101,27 +103,48 @@ describe("judge — the database answers, we don't assume", () => {
   });
 });
 
-describe("🔴 blockers — what must HALT the operator", () => {
+describe("🔴 TASK-281 — the HALT and the WARNING are two different questions", () => {
+  // 🔻 They used to be one function, and `db:seed-ledger` exited 1 on either. That halted the owner
+  // mid-deploy on the CUSTOMER'S live box for a condition the seed cannot act on: `--apply` writes rows only
+  // for `applied` tags, so a not-applied entry is skipped whatever the flag says.
   const W: Witness[] = [
     { tag: "safe", probe: { kind: "table", table: "t" }, why: "x".repeat(50), rerunnable: true },
     { tag: "unsafe", probe: { kind: "table", table: "u" }, why: "x".repeat(50), rerunnable: false },
   ];
 
-  test("🔑 a not-applied, NOT re-runnable migration halts — this is the 0006 case", () => {
-    const b = blockers(judge(W, answers({ safe: false, unsafe: false })));
-    expect(b.map((x) => x.tag)).toEqual(["unsafe"]);
+  test("🔑 ONLY `needs-human` halts the seed — it is the one nothing else can answer", () => {
+    // An unjudgeable witness means *we do not know whether this migration ran*, and nothing downstream can
+    // be trusted after that.
+    expect(seedHalts(judge(W, answers({ safe: null, unsafe: true }))).map((x: WitnessResult) => x.tag)).toEqual([
+      "safe",
+    ]);
   });
 
-  test("a not-applied but re-runnable migration does NOT halt — db:migrate can handle it", () => {
-    expect(blockers(judge(W, answers({ safe: false, unsafe: true })))).toHaveLength(0);
+  test("🔻 a not-applied, NOT re-runnable migration WARNS — it no longer halts", () => {
+    // The reversal, stated as a pair so the change is visible in one place: the same input, the two answers.
+    const results = judge(W, answers({ safe: false, unsafe: false }));
+    expect(seedHalts(results)).toHaveLength(0);
+    expect(seedWarnings(results).map((x: WitnessResult) => x.tag)).toEqual(["unsafe"]);
   });
 
-  test("needs-human always halts, even when re-runnable", () => {
-    expect(blockers(judge(W, answers({ safe: null, unsafe: true }))).map((x) => x.tag)).toEqual(["safe"]);
+  test("a not-applied but re-runnable migration is neither — `db:migrate` can handle it", () => {
+    const results = judge(W, answers({ safe: false, unsafe: true }));
+    expect(seedHalts(results)).toHaveLength(0);
+    expect(seedWarnings(results)).toHaveLength(0);
   });
 
-  test("everything applied → nothing halts", () => {
-    expect(blockers(judge(W, answers({ safe: true, unsafe: true })))).toHaveLength(0);
+  test("everything applied → neither halt nor warning", () => {
+    const results = judge(W, answers({ safe: true, unsafe: true }));
+    expect(seedHalts(results)).toHaveLength(0);
+    expect(seedWarnings(results)).toHaveLength(0);
+  });
+
+  test("🚫 `needs-human` is NOT also a warning — one entry, one place, never counted twice", () => {
+    // The operator reads two lists; an entry appearing in both would make the second look like a second
+    // problem.
+    const results = judge(W, answers({ safe: null, unsafe: false }));
+    expect(seedHalts(results).map((x: WitnessResult) => x.tag)).toEqual(["safe"]);
+    expect(seedWarnings(results).map((x: WitnessResult) => x.tag)).toEqual(["unsafe"]);
   });
 });
 
