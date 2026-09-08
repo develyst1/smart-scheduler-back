@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { zValidator } from "../lib/validate";
 import { z } from "zod";
 import * as jobs from "../services/jobs.service";
 import * as attention from "../services/attention.service";

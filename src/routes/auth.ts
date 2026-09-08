@@ -3,7 +3,7 @@
 // A users table can replace this later without changing the token contract.
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { zValidator } from "../lib/validate";
 import * as v from "../validation";
 import { signToken } from "../lib/jwt";
 import { ApiException } from "../lib/http";

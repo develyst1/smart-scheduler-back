@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { zValidator } from "../lib/validate";
 import * as v from "../validation";
 import { assertMayDiscount } from "../lib/discount-plan";
 import * as svc from "../services/scheduler.service";
