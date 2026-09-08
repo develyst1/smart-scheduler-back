@@ -241,10 +241,15 @@ describe("guards for the applier (TASK-093)", () => {
   });
 
   test("exceedsExtensionCeiling — a size-6 lands exactly on week 8; week 9 is refused", () => {
+    // TASK-299 — the predicate now takes the course's own stored ceiling rather than re-deriving one from the
+    // purchase date. 🔑 The RULE this test protects is unchanged and still asserted: week 8 for a size-6 is
+    // owner-confirmed, the comparison is inclusive, and `courseExpiry` is what computes it. Only the SOURCE
+    // moved — a stored column and a re-derived value both claimed to be the ceiling, and they disagreed the
+    // moment a plan stopped being uniform. `extension-ceiling.test.ts` owns the three faces of that.
     const start = "2026-08-01";
     const ceiling = courseExpiry(start, 6); // start + MAX_WEEK(6)=8 weeks
-    expect(exceedsExtensionCeiling(ceiling, start, 6)).toBe(false); // week 8 allowed (owner-confirmed)
-    expect(exceedsExtensionCeiling(addDays(ceiling, 7), start, 6)).toBe(true); // week 9 refused
+    expect(exceedsExtensionCeiling(ceiling, ceiling)).toBe(false); // week 8 allowed (owner-confirmed)
+    expect(exceedsExtensionCeiling(addDays(ceiling, 7), ceiling)).toBe(true); // week 9 refused
   });
 });
 

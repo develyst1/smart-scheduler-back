@@ -52,6 +52,17 @@ app.use("/api/*", authMiddleware);
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
 const routes = app.route("/api", api);
 
+// 🔴 TASK-297 — there was no `notFound` handler at all, so an unknown path answered with Hono's
+// plain-text `404 Not Found`. **A client calling `res.json()` on that gets a parse error, not an envelope** —
+// the failure reads as a broken server rather than a wrong URL.
+//
+// 🔑 It is the same shape as DEF-5 and it is the reason this one is worth fixing: `onError` exists, is
+// correct, and **is not on this path** — a 404 is not a thrown error, so nothing ever routed here.
+// 📌 Read by a developer typo or a stale client, never by an admin, so the message is English and short.
+app.notFound((c) =>
+  c.json({ error: { code: "NOT_FOUND", message: "route not found" } }, 404),
+);
+
 app.onError((err, c) => {
   if (err instanceof ApiException) {
     return c.json(

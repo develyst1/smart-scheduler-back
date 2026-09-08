@@ -11,11 +11,19 @@ import { findBookingsForCalendarToken } from "../services/calendar.service";
  * response is `private, no-store` so it isn't cached by proxies.
  */
 export const publicCalendar = new Hono().get("/calendar/:file", async (c) => {
+  // ⚪ TASK-297 — this route KEEPS a plain-text 404, and that is a decision rather than an oversight.
+  //
+  // The reader is a calendar client (Google, Apple), which reads the STATUS and never our envelope; a JSON
+  // body would be noise it has to ignore. 🚫 Changed only because it had to be: `c.notFound()` dispatches
+  // to the APP's handler, and TASK-297 gave the app one — so leaving `c.notFound()` here would have silently
+  // switched this route to the envelope. **Written out to preserve the behaviour, not to match the others.**
+  const plain404 = () => c.text("404 Not Found", 404);
+
   const token = tokenFromIcsFilename(c.req.param("file"));
-  if (!token) return c.notFound();
+  if (!token) return plain404();
 
   const found = await findBookingsForCalendarToken(token);
-  if (!found) return c.notFound();
+  if (!found) return plain404();
 
   const ics = buildCalendar(
     found.rows.map((b: any) => ({

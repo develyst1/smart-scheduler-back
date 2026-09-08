@@ -29,8 +29,12 @@ describe("LINE webhook route (C.4)", () => {
       body: '{"events":[]}',
     });
     // No Bearer → would be UNAUTHORIZED from JWT if guard caught it; signature check runs instead.
+    // 🔑 The property this test protects is WHICH refusal answers — the signature check, not the JWT guard —
+    // and it is unchanged. TASK-297 only reshaped the body: `error` was a bare STRING, so a reader doing
+    // `body.error.code` got `undefined`. The status stays 401 and the check itself is untouched.
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body.error).toBe("invalid signature");
+    const body = (await res.json()) as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe("INVALID_SIGNATURE");
+    expect(body.error?.message).toBe("invalid signature");
   });
 });

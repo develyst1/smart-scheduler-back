@@ -87,6 +87,7 @@ import {
   isCancelledByPause,
   replanExpiry,
   deriveLiveEndDate,
+  courseBornCeiling,
   exceedsExtensionCeiling,
   isCoursePlanRow,
   isDelivered,
@@ -1634,19 +1635,6 @@ export async function createCoursePackage(input: any) {
     // reject the generated sessions anyway, but incidental enforcement stops being enforcement the moment
     // someone reorders this or adds a course type that books no sessions.
     await assertHouseholdNotSuspended(tx, studentId);
-    const [course] = await tx
-      .insert(coursePackages)
-      .values({
-        studentId,
-        size: input.size,
-        subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
-        startDate: input.startDate,
-        weekday: weekdayOf(input.startDate),
-        startTime: input.startTime,
-        expiryDate: courseExpiry(input.startDate, input.size),
-      })
-      .returning({ id: coursePackages.id });
-
     // TASK-095 — an optional per-session plan (purchase-time modal). Each row overrides teacher/subject/time;
     // absent ⇒ today's uniform weekly chain (back-compat). Either way it commits in this one clash-aborts-all tx.
     const plannedSessions: Array<{ teacherId: string; subjectId: string; date: string; startTime: string }> =
@@ -1674,6 +1662,35 @@ export async function createCoursePackage(input: any) {
     // 1-based week numbers against `plannedSessions`; each becomes a `SICK_LEAVE` row flagged
     // `plannedAtCreation`, and the reconcile engine below appends the make-up so live sessions == size.
     const absentWeeks = new Set<number>((input.absentWeeks ?? []) as number[]);
+
+    // 🔑 TASK-299 (REQ-085 §10) — **the PLAN sets the ceiling.** Computed BEFORE the insert, from the plan
+    // that is about to be drawn, because a course must never be born behind its own last session.
+    //
+    // 🔻 This stored `courseExpiry(startDate, size)` — the MAX_WEEK rule, computed with no knowledge of the
+    // plan. A 4-session course with three declared absences was therefore born with its plan running to
+    // week 7 and its ceiling at week 5, and the reconcile below refused the create outright. Deleting that
+    // gate would have been worse: the course would exist with its ceiling BEHIND its last session, and the
+    // first post-creation leave would be refused. **That is DEF-4's shape, at creation time.**
+    // 🚫 Nothing is skipped — `courseExpiry` is still the floor, and the reconcile still refuses anything
+    // past this boundary. A drawn plan is a deliberate act; a later leave is automatic growth.
+    const bornCeiling = courseBornCeiling(
+      courseExpiry(input.startDate, input.size),
+      plannedSessions.reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
+      absentWeeks.size,
+    );
+
+    const [course] = await tx
+      .insert(coursePackages)
+      .values({
+        studentId,
+        size: input.size,
+        subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
+        startDate: input.startDate,
+        weekday: weekdayOf(input.startDate),
+        startTime: input.startTime,
+        expiryDate: bornCeiling,
+      })
+      .returning({ id: coursePackages.id });
 
     for (const [i, s] of plannedSessions.entries()) {
       const absent = absentWeeks.has(i + 1);
@@ -2015,16 +2032,26 @@ export async function previewCoursePackage(input: {
     sessions.push({ date, ...ref, absent: false, makeup: true });
   }
   const live = sessions.filter((s) => !s.absent);
+  // The same rule the SAVE will store (TASK-299), computed from the same plan — so the preview's
+  // `exceedsCeiling` and the create's refusal can never disagree about where the boundary is.
+  const previewCeiling = courseBornCeiling(
+    courseExpiry(input.startDate, input.size),
+    sessions.filter((s) => !s.makeup).reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
+    absent.size,
+  );
   return {
     size: input.size,
     startDate: input.startDate,
     startTime: input.startTime,
-    expiryDate: courseExpiry(input.startDate, input.size), // the MAX_WEEK ceiling
+    // 🔴 TASK-299 (REQ-085 §10) — the ceiling the course would be BORN with: the MAX_WEEK rule STRETCHED to
+    // cover the plan being drawn. This reported the unstretched rule, and the line below then compared the
+    // plan against it — which is what disabled the owner's `Create plan` at week 5 with three absences.
+    expiryDate: previewCeiling,
     absentWeeks: [...absent].sort((a, b) => a - b),
     liveCount: live.length,
     endDate: live[live.length - 1]?.date ?? input.startDate,
     // AC-3: the same ceiling the save enforces — the FE can refuse before the user commits.
-    exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, input.startDate, input.size)),
+    exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling)),
     sessions,
   };
 }
@@ -2195,8 +2222,12 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
       const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
       if (!template) break;
       const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate);
-      // SPEC-028 §5 #2 (TASK-093): the extension is HARD-bounded by the course's MAX_WEEK ceiling.
-      if (exceedsExtensionCeiling(extDate, course.startDate, course.size)) {
+      // SPEC-028 §5 #2 (TASK-093): the extension is HARD-bounded by the course's ceiling.
+      // 🔴 TASK-299 — that ceiling is the course's own stored `expiryDate`, not one re-derived from the
+      // PURCHASE date. `startDate` deliberately stays the purchase date across a re-plan (TASK-282), so
+      // measuring from it refused a legitimate make-up on any course that had been paused for long enough.
+      // 🔑 The gate is still here and still refuses: this is the AUTOMATIC growth the boundary exists to stop.
+      if (exceedsExtensionCeiling(extDate, course.expiryDate)) {
         throw conflict(
           "EXTENSION_CEILING",
           `คอร์สขยายเกินสัปดาห์ที่ ${MAX_WEEK_BY_SIZE[course.size] ?? "?"} ไม่ได้`,

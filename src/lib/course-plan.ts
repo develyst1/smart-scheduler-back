@@ -10,6 +10,7 @@ export const COURSE_DELIVERED = new Set(["ATTENDED", "NO_SHOW"]);
 // SICK_LEAVE earns a replacement (neither live nor delivered); CANCELLED is out of the plan.
 
 import { courseExpiry } from "./recurring";
+import { addDays } from "./time";
 
 export interface PlanSession {
   id: string;
@@ -75,16 +76,51 @@ export function canInsert(sessions: PlanSession[], size: number): boolean {
 }
 
 /**
- * Does an appended/extended date exceed the course's HARD ceiling — **the date of week `MAX_WEEK_BY_SIZE`**,
- * i.e. `courseExpiry` = start + (that week number − 1) weeks? The append refuses past it (SPEC-028 §5 #2 — a
- * leave could otherwise extend a course indefinitely). Week 8 for a size-6 is owner-confirmed and load-bearing.
+ * Does an appended/extended date exceed the course's HARD ceiling? The append refuses past it (SPEC-028 §5 #2
+ * — a leave could otherwise extend a course indefinitely).
  *
- * (TASK-197: this said "startDate + MAX_WEEK_BY_SIZE weeks", which is the off-by-one the owner caught. Week 1
- * is the start week — the ceiling is a week NUMBER, not a duration, and every course was getting seven days
- * more than it bought.)
+ * 🔴 **TASK-299 — the ceiling is the course's own stored `expiryDate`, not one re-derived from the purchase
+ * date.** This read `date > courseExpiry(startDate, size)`, so it **never consulted the column that
+ * `courseExpiry`'s own doc calls *"only the MAX_WEEK ceiling"*** — the code did not read the column that says
+ * it is the answer. One line, three faces:
+ * 1. a 4-session course with three declared absences could not be CREATED — its plan ran to week 7 and the
+ *    re-derived ceiling sat at week 5;
+ * 2. a course resumed after a long pause was at or past its ceiling the moment it came back, because
+ *    `startDate` correctly stays the PURCHASE date (TASK-282) and this measured from it;
+ * 3. **an admin moved the expiry so an extra session would fit, and nothing happened at all** — which is the
+ *    entire reason the owner asked for that control.
+ *
+ * 🔑 **The rule, and @Porter's *"what still bounds a course?"* answered: the ceiling refuses AUTOMATIC growth
+ * and yields to a DELIBERATE act.** A leave-driven auto-extend still cannot pass the agreed boundary; an
+ * admin editing the expiry, or a plan being drawn at creation, sets that boundary on purpose.
+ * 🚫 So this is NOT a check that got skipped — `courseExpiry`, `maxWeekFor` and `MAX_WEEK_BY_SIZE` are
+ * untouched and still COMPUTE the boundary a course is born with. **Only the SOURCE changed.**
+ *
+ * The comparison stays inclusive: a date landing exactly ON the ceiling is allowed (week 8 for a size-6 is
+ * owner-confirmed and load-bearing).
  */
-export function exceedsExtensionCeiling(date: string, startDate: string, size: number): boolean {
-  return date > courseExpiry(startDate, size);
+export function exceedsExtensionCeiling(date: string, ceiling: string): boolean {
+  return date > ceiling;
+}
+
+/**
+ * 🔑 **REQ-085 §10 — the ceiling a course is BORN with: the MAX_WEEK rule, STRETCHED to cover the plan the
+ * admin actually drew.**
+ *
+ * ⚠️ **This is why §10 is not "skip the check at creation".** The course row stores
+ * `courseExpiry(startDate, size)`, computed with no knowledge of the plan — so a 4-session course with three
+ * declared absences was born with its plan running to week 7 and its ceiling at week 5. Deleting the gate
+ * would let it be created and then refuse its FIRST post-creation leave: **a course sitting behind its own
+ * last session, which is DEF-4's exact shape re-created at creation time.**
+ *
+ * Each declared absence earns one make-up, appended a week after the plan's last session, so the boundary a
+ * drawn plan needs is `lastPlanned + absences` weeks.
+ * 🚫 **It never SHRINKS the ceiling.** A course whose plan ends early still owes the family the leave window
+ * they bought, so `courseExpiry` stays the floor.
+ */
+export function courseBornCeiling(base: string, lastPlanned: string, absences: number): string {
+  const stretched = addDays(lastPlanned, absences * 7);
+  return stretched > base ? stretched : base;
 }
 
 /**
