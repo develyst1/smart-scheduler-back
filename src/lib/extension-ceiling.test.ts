@@ -55,10 +55,11 @@ describe("TASK-299 (a) — §10: the PLAN sets the ceiling at creation", () => {
     const base = courseExpiry(START, 4); // week 5 = size 4 + quota 1
     expect(base).toBe(week(5));
     const lastPlanned = week(4); // four weekly sessions
-    const born = courseBornCeiling(base, lastPlanned, 3);
+    const born = courseBornCeiling(base, lastPlanned, 3, 1);
 
-    // The three make-ups land on weeks 5, 6 and 7 — and the stored ceiling now covers the last of them.
-    expect(born).toBe(week(7));
+    // The three make-ups land on weeks 5, 6 and 7, so the PLAN ends at week 7 — and the ceiling sits a
+    // quota-week beyond it (TASK-301), which is what the base ceiling gives an absence-free course.
+    expect(born).toBe(week(8));
     expect(exceedsExtensionCeiling(week(7), born)).toBe(false);
     // 🔑 Both halves, because either alone is the bug: it CREATES, and its stored expiry covers its own
     // last session.
@@ -66,15 +67,19 @@ describe("TASK-299 (a) — §10: the PLAN sets the ceiling at creation", () => {
   });
 
   test("a course with NO absences is born with exactly the old ceiling — the common path is untouched", () => {
+    // 🔑 And this is the check that the TASK-301 term is the RIGHT one rather than merely more room: with no
+    // absences the formula is `lastPlanned + quota weeks`, which IS `courseExpiry`. The two agree by
+    // arithmetic, not by coincidence — week 6 + 2 = week 8 = the base.
     const base = courseExpiry(START, 6);
-    expect(courseBornCeiling(base, week(6), 0)).toBe(base);
+    expect(base).toBe(week(8));
+    expect(courseBornCeiling(base, week(6), 0, 2)).toBe(base);
   });
 
   test("🚫 the ceiling never SHRINKS to the plan — a short plan keeps the MAX_WEEK window", () => {
     // The stretch is one-directional. A course whose plan ends early still owes the family the leave window
     // they bought, so `courseExpiry` remains the floor.
     const base = courseExpiry(START, 10); // week 13
-    expect(courseBornCeiling(base, week(3), 0)).toBe(base);
+    expect(courseBornCeiling(base, week(3), 0, 3)).toBe(base);
   });
 });
 
@@ -138,5 +143,79 @@ describe("TASK-299 — the wiring, because the pure rule alone would not catch a
     // The stretch is the ONLY new arithmetic; nothing here re-implements the week rule.
     expect(plan).not.toContain("MAX_WEEK_BY_SIZE");
     expect(plan).not.toContain("maxWeekFor");
+  });
+});
+
+// ═══ TASK-301 — the stretched ceiling left NO room for the quota leave the card promises ═══
+//
+// 🔴 Screen-verified by the owner on `sid`, on the deployed TASK-299. **TASK-299 is correct; its arithmetic was
+// one term short.** `courseBornCeiling` stretched from `lastPlanned` by the ABSENCES only, so the quota's week
+// — which the base ceiling has always included — was dropped.
+// ⇒ §10 handed the admin unlimited absences at creation and **silently took away the one leave the family had
+// afterwards.** The card said `Leave 0/1` and the course could not use it.
+describe("🔑 TASK-301 — a course can still take the quota leave its card promises", () => {
+  const QUOTA_4 = 1; // LEAVE_QUOTA_BY_SIZE[4]
+
+  test("🔴 the owner's `มิลล่า`: 4 sessions, 3 declared absences, then its quota leave FITS", () => {
+    // The plan ends at week 7 (four booked + three make-ups). The leave marked afterwards needs a make-up in
+    // week 8 — which is the one the card was already promising.
+    const born = courseBornCeiling(courseExpiry(START, 4), week(4), 3, QUOTA_4);
+    expect(exceedsExtensionCeiling(week(8), born)).toBe(false);
+  });
+
+  test("🔑 …and a SECOND leave is still REFUSED — the boundary must still exist", () => {
+    // ⚠️ The assertion that stops a fix for "no room" becoming "no ceiling". The quota is ONE; the room is one
+    // week; the second make-up would need week 9 and does not get it.
+    const born = courseBornCeiling(courseExpiry(START, 4), week(4), 3, QUOTA_4);
+    expect(exceedsExtensionCeiling(week(9), born)).toBe(true);
+  });
+
+  test("🚫 this grants no EXTRA leave — the room equals the quota, exactly", () => {
+    // A size-6 (quota 2) with one absence: plan ends week 7, and the room is two weeks, not three.
+    const born = courseBornCeiling(courseExpiry(START, 6), week(6), 1, 2);
+    expect(born).toBe(week(9));
+    expect(exceedsExtensionCeiling(week(9), born)).toBe(false); // both quota leaves fit
+    expect(exceedsExtensionCeiling(week(10), born)).toBe(true); // a third does not
+  });
+
+  test("🔑 the property, stated once: the ceiling always leaves the quota's room beyond the plan", () => {
+    // @Sober's Question. Nobody had tested *"can a course still use the quota it is shown?"* — we tested that
+    // the ceiling stretched, that it still refused, and that an admin edit worked.
+    for (const [size, quota] of [
+      [4, 1],
+      [6, 2],
+      [10, 3],
+    ] as const) {
+      for (const absences of [0, 1, 2, 3]) {
+        const lastPlanned = week(size);
+        const born = courseBornCeiling(courseExpiry(START, size), lastPlanned, absences, quota);
+        const planEnd = addDays(lastPlanned, absences * 7);
+        // Room beyond the plan's own end, in weeks, is never less than the quota.
+        expect({ size, absences, ok: born >= addDays(planEnd, quota * 7) }).toEqual({
+          size,
+          absences,
+          ok: true,
+        });
+      }
+    }
+  });
+});
+
+describe("🔴 TASK-301 — the refusal names the boundary the CHECK used", () => {
+  const SVC2 = code(readSrc(readFileSync(resolve(import.meta.dir, "..", "services", "scheduler.service.ts"), "utf8")));
+
+  test("🔑 it prints the course's OWN ceiling, not a constant from the size", () => {
+    // The check reads `course.expiryDate`; the message printed `MAX_WEEK_BY_SIZE[size]`. A course refused at
+    // week 7 was told the limit was week 5 — and that sentence sent @Porter to the wrong diagnosis.
+    expect(SVC2).toContain("`คอร์สขยายเกินวันสิ้นสุดของคอร์ส (${course.expiryDate}) ไม่ได้`");
+  });
+
+  test("⚠️ …and it can no longer print a week number derived from the SIZE", () => {
+    // Asserted as an absence on the refusal itself: this is the exact thing that misled us, and a week number
+    // from anything but the ceiling would bring the defect back with different digits.
+    const block = SVC2.slice(SVC2.indexOf('"EXTENSION_CEILING",'));
+    const refusal = block.slice(0, block.indexOf("\n"));
+    expect(SVC2).not.toContain("MAX_WEEK_BY_SIZE[course.size]");
+    expect(refusal).not.toContain("5");
   });
 });

@@ -115,11 +115,31 @@ export function exceedsExtensionCeiling(date: string, ceiling: string): boolean 
  *
  * Each declared absence earns one make-up, appended a week after the plan's last session, so the boundary a
  * drawn plan needs is `lastPlanned + absences` weeks.
+ * 🔴 **TASK-301 — the arithmetic was one term short, and the owner found it on his own course.** The stretch
+ * was computed from the ABSENCES alone, so a 4-session course with three of them ended at week 7 with a
+ * ceiling of week 7: **the card said `Leave 0/1` and the course could not take it.** §10 had handed the admin
+ * unlimited absences at creation and silently removed the one leave the family had afterwards.
+ * ⇒ **The base ceiling always encoded *plan end + quota weeks*** — an absence-free size-4 ends week 4 and
+ * expires week 5 — **and the stretch has to preserve that promise, not just the plan's length.**
+ *
  * 🚫 **It never SHRINKS the ceiling.** A course whose plan ends early still owes the family the leave window
  * they bought, so `courseExpiry` stays the floor.
  */
-export function courseBornCeiling(base: string, lastPlanned: string, absences: number): string {
-  const stretched = addDays(lastPlanned, absences * 7);
+export function courseBornCeiling(
+  base: string,
+  lastPlanned: string,
+  absences: number,
+  quota: number,
+): string {
+  // 🔑 THE PROMISE, in words, because a bare `+ 7` is a number nobody can check:
+  //
+  //     the ceiling is **the plan's end plus the leave quota**, in weeks.
+  //
+  // Each declared absence earns one make-up a week after the plan, so the PLAN ends `absences` weeks after
+  // its last booked session. The quota's weeks then sit BEYOND that end — which is exactly what the base
+  // ceiling already gives an absence-free course, and the term TASK-301 found missing.
+  const planEnd = addDays(lastPlanned, absences * 7);
+  const stretched = addDays(planEnd, quota * 7);
   return stretched > base ? stretched : base;
 }
 

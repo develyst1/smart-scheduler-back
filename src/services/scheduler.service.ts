@@ -1677,6 +1677,9 @@ export async function createCoursePackage(input: any) {
       courseExpiry(input.startDate, input.size),
       plannedSessions.reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
       absentWeeks.size,
+      // 🔑 TASK-301 — the quota's weeks, through the ONE accessor rather than the card's table, so an
+      // off-card size answers with its own allowance instead of falling through to zero.
+      courseLeaveQuota({ size: input.size }),
     );
 
     const [course] = await tx
@@ -2038,6 +2041,7 @@ export async function previewCoursePackage(input: {
     courseExpiry(input.startDate, input.size),
     sessions.filter((s) => !s.makeup).reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
     absent.size,
+    courseLeaveQuota({ size: input.size }),
   );
   return {
     size: input.size,
@@ -2212,8 +2216,23 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
     const liveAfterCancel = rows.filter(
       (r: any) => COURSE_LIVE.has(r.status) && !cancelledSet.has(r.id),
     );
-    // Append after the last still-live session date (fall back to the course start).
-    let fromDate: string = liveAfterCancel.reduce(
+    // 🔴 TASK-300 — append after the last PLANNED session, not the last LIVE one.
+    //
+    // This read `liveAfterCancel`, and `SICK_LEAVE` is not in `COURSE_LIVE` ⇒ **a declared absence was
+    // invisible to the anchor**, so the search started before it. And `SICK_LEAVE` IS in
+    // `SLOT_INACTIVE_STATUSES` ⇒ **that week read as a FREE slot** ⇒ the search filled it.
+    // ⇒ on a 4-session course with weeks 2–4 declared absent, all three make-ups landed on weeks 2, 3 and 4:
+    // **a lesson booked on each of the days the family had told us they would be away.**
+    //
+    // 🔑 The two conditions are both correct on their own — that is why this survived. A student on leave
+    // DOES free the teacher's slot for **someone else** (UC-004), and `SICK_LEAVE` is rightly not "live".
+    // 🚫 So neither list changes. **The bug was this course reusing its OWN absent week**, and the anchor is
+    // where that is decided.
+    //
+    // 📌 And it is the same anchor the PREVIEW has always used (`previewCoursePackage`), so the two paths now
+    // answer the same question with the same input — the third symptom of that split, after §10 and §11.2.
+    const plannedRows = rows.filter((r: any) => !cancelledSet.has(r.id) && r.status !== "CANCELLED");
+    let fromDate: string = plannedRows.reduce(
       (m: string, r: any) => (r.date > m ? r.date : m),
       course.startDate,
     );
@@ -2228,9 +2247,16 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
       // measuring from it refused a legitimate make-up on any course that had been paused for long enough.
       // 🔑 The gate is still here and still refuses: this is the AUTOMATIC growth the boundary exists to stop.
       if (exceedsExtensionCeiling(extDate, course.expiryDate)) {
+        // 🔴 TASK-301 — the message must name the boundary the CHECK used. It printed
+        // `MAX_WEEK_BY_SIZE[size]` while the check read `course.expiryDate`, so a course refused at week 7
+        // was told the limit was week 5 — **a value with two sources, the same class as DEF-3 and the two
+        // `startTime` formats.** ⚠️ It cost more than an admin's confusion: it sent @Porter to the wrong
+        // diagnosis and nearly earned a task for a defect that was not there.
+        // 📌 A DATE, deliberately: the admin can compare it to the plan in front of them without counting weeks,
+        // and a week number derived from anything but the ceiling would bring this defect back with new digits.
         throw conflict(
           "EXTENSION_CEILING",
-          `คอร์สขยายเกินสัปดาห์ที่ ${MAX_WEEK_BY_SIZE[course.size] ?? "?"} ไม่ได้`,
+          `คอร์สขยายเกินวันสิ้นสุดของคอร์ส (${course.expiryDate}) ไม่ได้`,
         );
       }
       const [ext] = await tx
