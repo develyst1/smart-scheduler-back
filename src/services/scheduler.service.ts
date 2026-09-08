@@ -11,8 +11,10 @@ import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
-// TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?", read by
-// the expiry edit's warning, the resume's warning and the resume's `EXPIRY_REQUIRED` gate.
+// TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
+// 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
+// gate are both gone — a re-plan DERIVES the expiry from the sessions it lays out, so there is nothing to warn
+// about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
 import { expiryImpact } from "../lib/course-expiry-impact";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
 import { firstFreeWeeklySlot } from "../lib/extension-slot";
@@ -81,6 +83,8 @@ import {
   COURSE_LIVE_STATUSES,
   canInsert,
   courseCurrent,
+  COURSE_PAUSE_NOTE,
+  isCancelledByPause,
   replanExpiry,
   deriveLiveEndDate,
   exceedsExtensionCeiling,
@@ -1780,6 +1784,9 @@ const toSessionRow = (b: any): PlanSessionRow => ({
   teacher: teacherRef(b.teacher),
   subject: subjectRef(b.subject),
   attendeeNote: b.attendeeNote ?? null,
+  // 🔴 TASK-290 — the FACT, derived here; the note stays server-side. ⚠️ Not `attendeeNote`, which is
+  // REQ-068's *who is bringing the child* — a different question, one keystroke away in a grep.
+  cancelledByPause: isCancelledByPause(b),
 });
 
 export async function getEntitlementPlan(id: string) {
@@ -3739,7 +3746,7 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
     for (const b of paused) {
       await tx
         .update(bookings)
-        .set({ status: "CANCELLED", note: "พักคอร์สชั่วคราว" })
+        .set({ status: "CANCELLED", note: COURSE_PAUSE_NOTE })
         .where(eq(bookings.id, b.id));
     }
 

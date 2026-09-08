@@ -194,6 +194,37 @@ export const isCourseEnded = (c: EndableCourse): boolean => c.endedAt != null;
  */
 export const isCourseDropped = (c: { droppedAt?: Date | string | null }): boolean => c.droppedAt != null;
 
+/**
+ * SPEC-065 / TASK-290 — the note `dropCourse` stamps on every session a pause cancels, and **the only thing
+ * that tells those rows apart from a session an admin cancelled by hand.**
+ *
+ * 🔴 It is a named constant because it is now COMPARED as well as written: `toSessionRow` derives
+ * `cancelledByPause` from it. **Two inline copies of one Thai sentence, in one file, checked against each
+ * other, is the drift this field exists to prevent — one layer down.**
+ * 📌 It was here before, deleted with TASK-282 §5's withdrawn design: correct then, because nothing read
+ * it. Something reads it now.
+ *
+ * 🚫 **The sentence itself never crosses the wire** (TASK-290 §2, @Fern's ruling): the client would then
+ * hold a second copy of a UI-language literal in another repo, and **a string comparison across the wire is
+ * no safer than the date heuristic we just removed.** The client gets a fact; the Thai stays here.
+ */
+export const COURSE_PAUSE_NOTE = "พักคอร์สชั่วคราว";
+
+/**
+ * 🔑 Was this session cancelled BY A PAUSE, as opposed to by a person?
+ *
+ * **The distinction is the whole point of the field.** A hand-cancelled session is a decision somebody took
+ * about the plan; a pause-cancelled one is the plan being replaced. That is why the plan view does not simply
+ * hide every `CANCELLED` row — it would hide the first kind along with the second.
+ *
+ * ⚠️ **Tests for ONE value, deliberately.** Three other paths leave a `CANCELLED` row carrying text — the
+ * reconciler trimming an appended make-up, an early course ending, and a hand cancel with the admin's own
+ * reason. **Widening this to `note !== null` would fold all three into "paused" and the field would start
+ * lying.** If a second pause-like sentence is ever needed, add a value to a list here; do not loosen the test.
+ */
+export const isCancelledByPause = (b: { status: string; note?: string | null }): boolean =>
+  b.status === "CANCELLED" && b.note === COURSE_PAUSE_NOTE;
+
 /** An ended course owes nothing; otherwise the plan size is REQ-064's `size − priorSessions`. */
 export const courseOwedTarget = (c: EndableCourse): number =>
   isCourseEnded(c) ? 0 : coursePlanSize(c);

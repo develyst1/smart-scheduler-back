@@ -162,6 +162,15 @@ export interface PlanSessionRow {
   subject: { id: string; name: string } | null;
   /** SPEC-063 / TASK-178 — the attendee note for this session, or `null`. */
   attendeeNote: string | null;
+  /**
+   * SPEC-065 / TASK-290 — was this session cancelled by a course PAUSE, rather than by a person?
+   *
+   * 🔴 A derived FACT, never the note it is derived from. The plan modal showed 8 rows for a 4-session
+   * course because nothing on the wire could tell the two kinds of `CANCELLED` apart.
+   * 🚫 The server's Thai sentence deliberately does NOT ship: the client matching on it would be a second
+   * copy of a UI-language literal in another repo.
+   */
+  cancelledByPause: boolean;
 }
 /** A discount as captured on a booking (TASK-171). The `value`'s unit follows `kind`: PERCENT = a percentage,
  *  BAHT = whole baht — never satang, so the wire carries no second unit conversion (TASK-168). */
