@@ -1130,6 +1130,32 @@ async function handleMessage(ev: LineWebhookEvent) {
     // Leaving the flow entirely, at any step. AC-12: the draft dies with the session and **no student row was
     // ever created**, because the row is written at confirm and nowhere else.
     if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME") {
+      // 🔴 REQ-085 §6 (TASK-307) — **a parent with NO child yet may not skip.**
+      //
+      // 🔑 The owner named two moments — *"จังหวะเพิ่มลูกคนแรก และ แรกเริ่มที่ไม่มีลูก"* — and they are ONE
+      // branch: the step is identical for the first child and the fifth, so the question that decides it is
+      // not WHICH STEP but **whether this parent has a child at all.** Both moments reduce to `kids.length`.
+      //
+      // ⚠️ His reason is the acceptance criterion, not tidiness: **a parent account with no child can do
+      // NOTHING in this product** ⇒ skipping produced an account that exists, cannot be used, and gave the
+      // parent no way to know that was why. **A dead end that looks like a completed sign-up.**
+      //
+      // 🚫 The reply is the EXISTING prompt that asked for the name in the first place — **re-ask, do not
+      // explain.** No new sentence was written: an engineer inventing what a parent reads is how
+      // `Date : อังคาร` shipped after REQ-079 §18 had already ruled.
+      //
+      // 🔻 It renders in the session's OWN language, not `both()`. TASK-307 first wrapped it bilingually on the
+      // reading that a conversation must be — but **`REQ-079 §18` is satisfied here a different way: this flow
+      // KNOWS the session's `lang` and answers in it** (39 `t(…, lang)` against 13 `both()`). `both()` is for a
+      // reader whose language is unknown; inside a session it is known. ⇒ **the re-ask now renders exactly the
+      // string the first ask does**, which is the point of reusing it.
+      // 📌 The session is deliberately NOT cleared: the flow stays where it was and asks again.
+      const skipParent = await findParentByLineUserId(lineUserId);
+      const kids = skipParent ? await listStudentsOfParent(skipParent.id) : [];
+      if (!kids.length) {
+        return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+      }
+      // ✅ A LATER child stays skippable — a parent who already has one is not in a dead end.
       await clearSession(lineUserId);
       return reply(replyToken, both((l) => `${t("skip_done", l)}\n\n${t("menu_body", l)}`));
     }

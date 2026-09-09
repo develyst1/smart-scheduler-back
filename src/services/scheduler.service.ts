@@ -2922,8 +2922,9 @@ export async function updateBookingStatus(
       // `notify_on_leave` setting, which defaults to `admin_only`.** ⇒ the teacher branch never ran on a
       // default install, which is why the owner raised this twice and why it read as *not built*.
       // 🔑 The owner's ruling is unconditional — *"เฉพาะแชทครู / แอดมิน"* — so the setting no longer gates it.
-      // ⚠️ `notify_on_leave` is now UNREAD on this path; whether it is deleted or repurposed is @Sober's,
-      // and it is named in the report rather than removed here.
+      // ✅ `notify_on_leave` was REMOVED in TASK-306 — registry row and settings field both. 🔻 This line used
+      // to say the decision was pending; it was made the same day, and **a comment describing a decision that
+      // has since been taken is the week's own lesson**, so it says what happened instead.
       //
       // 🚫 The PARENT is deliberately not a recipient: they are the one who declared it, and the
       // product already confirms the leave to them. Telling them what they just did is noise.
