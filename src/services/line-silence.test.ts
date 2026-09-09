@@ -175,7 +175,9 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // reply too.** "Free-text steps have no unrecognised to detect" was true of a name the bot accepts — it was
     // never true of a birthdate the bot refuses, and that gap is where the owner got stuck. The name step joins
     // them because it can now reject: a reserved word.
-    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(7); // the declaration + six call sites
+    // TASK-313 §2 — a SEVENTH call site: the inline `add <reserved word>` door now refuses through the same
+    // handover rule as the name prompt. It was the one door TASK-245 never reached.
+    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(8); // the declaration + seven call sites
     // 🔻 TASK-310 — the sixth argument is no longer a PICKER: `REQ-079 §17c`'s screen 2 offers one path
     // (type `Next`) so that a parent never learns the other roles exist, and a role picker is a role list
     // you cannot look away from. ✅ **The wiring this test guards is unchanged either way** — the role

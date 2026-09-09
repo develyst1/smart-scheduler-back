@@ -61,13 +61,16 @@ describe("🔴 AC-10 — the summary shows what will be written, and nothing is 
   test("🔴 the roster write happens ONLY in the confirm branch", () => {
     // The whole of AC-12 in one assertion: if `createStudentForParent` were called anywhere earlier in this
     // flow, an abandoned conversation would leave a child in a roster with no delete.
-    expect(beforeConfirm()).not.toContain("createStudentForParent(");
-    expect(code(FLOW)).toContain("createStudentForParent(");
-    expect(code(FLOW).indexOf("isConfirm(text)")).toBeLessThan(code(FLOW).indexOf("createStudentForParent("));
+    // 🔻 TASK-314 — the wizard writes through `createStudentFromLine` (the one LINE-side creator, shared with the
+    // inline door), which is where `createStudentForParent` is now called. The claim is unchanged: nothing is
+    // written before confirm.
+    for (const w of ["createStudentForParent(", "createStudentFromLine("]) expect(beforeConfirm()).not.toContain(w);
+    expect(code(FLOW)).toContain("createStudentFromLine(");
+    expect(code(FLOW).indexOf("isConfirm(text)")).toBeLessThan(code(FLOW).indexOf("createStudentFromLine("));
   });
 
   test("every step before confirm writes to the DRAFT only", () => {
-    for (const w of ["insert(students", "createStudentForParent(", "notifyAdmins("]) {
+    for (const w of ["insert(students", "createStudentForParent(", "createStudentFromLine(", "notifyAdmins("]) {
       expect(beforeConfirm()).not.toContain(w);
     }
     expect(beforeConfirm()).toContain("setDraft(");
@@ -128,8 +131,11 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
   });
 
   test("the duplicate check runs on the NAME step only — the detail step is the answer, not a second question", () => {
-    expect(FLOW).toContain('if (session.step === "AWAIT_STUDENT_NAME") {');
-    expect(FLOW).toContain("decideDuplicate(");
+    expect(FLOW).toContain('if (session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {');
+    // 🔻 TASK-314 — the decision is reached through `duplicateOutcomeFor`, the helper both doors call; the pure
+    // `decideDuplicate` is called exactly once, inside it.
+    expect(FLOW).toContain("duplicateOutcomeFor(parent.id, name)");
+    expect(body("async function duplicateOutcomeFor")).toContain("decideDuplicate(");
     expect(nextStep("AWAIT_STUDENT_NAME", "more-detail")).toBe("AWAIT_STUDENT_DETAIL");
     expect(nextStep("AWAIT_STUDENT_DETAIL")).toBe("AWAIT_STUDENT_BIRTHDATE");
   });
@@ -203,13 +209,18 @@ describe("🔴 AC-11 — an admin is notified on success", () => {
   test("it reuses `notifyAdmins`, not a second recipient list", () => {
     // `notifyAdmins` writes a loud SKIPPED row when no admin is configured (TASK-152's lesson), so a
     // mis-configured environment is visible instead of silently dropping the hand-off.
-    expect(FLOW).toContain("await notifyAdmins(");
-    expect(FLOW).not.toContain("getAdminLineUserIds(");
-    expect(FLOW).toContain('kind: "student_registered"');
+    // 🔻 TASK-314 — the notification moved into `createStudentFromLine`, the creator BOTH doors call, so the
+    // inline add tells the admin too. The wizard reaches it through that helper; the claim is the same.
+    const CREATOR = body("async function createStudentFromLine");
+    expect(FLOW).toContain("createStudentFromLine(");
+    expect(CREATOR).toContain("await notifyAdmins(");
+    expect(CREATOR).not.toContain("getAdminLineUserIds(");
+    expect(CREATOR).toContain('kind: "student_registered"');
   });
 
   test("the notification happens only AFTER the row exists", () => {
-    expect(FLOW.indexOf("createStudentForParent(")).toBeLessThan(FLOW.indexOf("notifyAdmins("));
+    const CREATOR = body("async function createStudentFromLine");
+    expect(CREATOR.indexOf("createStudentForParent(")).toBeLessThan(CREATOR.indexOf("notifyAdmins("));
   });
 });
 
@@ -252,7 +263,7 @@ describe("🔴 the per-parent cap is asked at the NAME step, not at the write", 
   });
 
   test("a parent at the cap is refused BEFORE the first question, and the session is cleared", () => {
-    const early = code(FLOW).slice(0, code(FLOW).indexOf("decideDuplicate("));
+    const early = code(FLOW).slice(0, code(FLOW).indexOf("duplicateOutcomeFor("));
     expect(early).toContain("assertCanAddStudent(parent.id)");
     expect(early).toContain("clearSession(lineUserId)");
   });

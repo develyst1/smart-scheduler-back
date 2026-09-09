@@ -217,7 +217,7 @@ const TABLE: Record<string, Entry> = {
   // 🚫 Deliberately NOT a new rich-menu cell: that needs an image the owner has not asked for (task scope).
   menu_body: {
     TH: "คำสั่งที่ใช้ได้:\n· เพิ่มนักเรียน — เพิ่มลูกเข้าระบบ (สูงสุด 5 คน)\n· นักเรียน — ดูรายชื่อลูกของคุณ\n· เช็คอิน — เช็คอินคาบวันนี้\n· ลา — แจ้งลาคาบวันนี้\n· qr — รับลิงก์เช็คอิน\n· เมนู — แสดงคำสั่งนี้อีกครั้ง\n\nหรือพิมพ์คำถามเข้ามาได้เลยค่ะ เดี๋ยวแอดมินมาตอบนะคะ 🙏",
-    EN: "Available commands:\n· add child — register a child (up to 5)\n· children — list your children\n· check-in — check in today's class\n· leave — report sick leave today\n· qr — get a check-in link\n· menu — show this again\n\nOr just type your question — an admin will read it and reply. 🙏",
+    EN: "Available commands:\n· Add Student — register a child (up to 5)\n· children — list your children\n· check-in — check in today's class\n· leave — report sick leave today\n· qr — get a check-in link\n· menu — show this again\n\nOr just type your question — an admin will read it and reply. 🙏",
   },
 
   btn_checkin: { TH: "เช็คอิน", EN: "Check-in" },

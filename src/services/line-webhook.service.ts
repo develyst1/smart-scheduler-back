@@ -45,6 +45,7 @@ import {
   isCancel,
   isConfirm,
   isSkip,
+  parseAddCommand,
   parseBirthDate,
   summaryLines,
   type StudentDraft,
@@ -579,14 +580,10 @@ async function handleAddStudentStep(
     // 🔴 AC-9 — a duplicate asks for MORE DETAIL. It never demands a rename: two real children can share a
     // name, and a rename demand would also confirm to whoever typed the phone that such a child exists.
     // Only checked on the first pass; the detail step is the answer to it, not a second question.
-    if (session.step === "AWAIT_STUDENT_NAME") {
-      const siblings = await listStudentsOfParent(parent.id);
-      if (decideDuplicate(siblings.map((s: any) => s.name), name) === "more-detail") {
-        await setDraft(lineUserId, "AWAIT_STUDENT_DETAIL", { ...draft, name });
-        // 🚫 NOT a strike: the parent answered the question correctly and is being asked a further one. Counting
-        // it would hand a two-child family over to a human for having two children.
-        return reply(replyToken, withExit(t("add_dup_detail", lang), lang));
-      }
+    // 🔻 TASK-314 — the check and the question moved OUT of this step into `duplicateOutcomeFor` /
+    // `askMoreDetail`, so the inline door reaches the same rule. Behaviour here is unchanged.
+    if (session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
+      return askMoreDetail(lineUserId, draft, name, replyToken, lang);
     }
     await resetStrikes(lineUserId); // a valid answer clears the count (`strikeOrPrompt`).
     await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", { ...draft, name });
@@ -654,7 +651,9 @@ async function handleAddStudentStep(
       return strikeOrPrompt(lineUserId, session, replyToken, withExit(t("add_summary_confirm", lang), lang), lang);
     }
     try {
-      const { student, count } = await createStudentForParent(parent.id, {
+      // 🔻 TASK-314 — the write AND the admin notification (AC-11) moved into `createStudentFromLine`, the one
+      // LINE-side creator both doors call. Same call, same order, same content; only the home changed.
+      const { student, count } = await createStudentFromLine(parent, {
         name: draft.name!,
         birthDate: draft.birthDate ?? null,
       });
@@ -662,10 +661,6 @@ async function handleAddStudentStep(
       if (draft.province) {
         await db.update(parents).set({ province: draft.province }).where(eq(parents.id, parent.id));
       }
-      // 🔴 AC-11 — the admin is told. Reuses `notifyAdmins`, which writes a loud SKIPPED row when no admin is
-      // configured, so a mis-configured environment is visible instead of silent (TASK-152's lesson). Without
-      // this, the hand-off depends on somebody remembering to look.
-      await notifyAdmins({ kind: "student_registered", studentName: student.name, parentPhone: parent.phone });
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;
       const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
@@ -689,6 +684,49 @@ async function handleAddStudentStep(
   return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
 }
 
+/**
+ * 🔴 TASK-314 — AC-9's duplicate rule, where BOTH doors reach it.
+ *
+ * It lived inline in the wizard's name step; the inline add (`add น้องเอ`) never saw it, so a second `น้องเอ` in
+ * one household was written without a question — in a roster with no delete. ⚠️ It is a HANDLER helper and not
+ * a service precondition on purpose: the rule's whole content is *"ask for MORE DETAIL, never demand a rename"*,
+ * and only a handler can ask. The decision itself stays the pure `decideDuplicate`, unchanged.
+ */
+async function duplicateOutcomeFor(parentId: string, name: string) {
+  const siblings = await listStudentsOfParent(parentId);
+  return decideDuplicate(siblings.map((s: any) => s.name), name);
+}
+
+/**
+ * The further question. Parks the name and asks for a surname/nickname; the answer arrives at
+ * `AWAIT_STUDENT_DETAIL`, which is the wizard's own next step — so an inline add that hits a duplicate simply
+ * joins the wizard from there. 🚫 NOT a strike: the parent answered correctly and is being asked a further
+ * one. Counting it would hand a two-child family over to a human for having two children.
+ */
+async function askMoreDetail(lineUserId: string, draft: StudentDraft, name: string, replyToken: string, lang: Lang) {
+  await setDraft(lineUserId, "AWAIT_STUDENT_DETAIL", { ...draft, name });
+  return reply(replyToken, withExit(t("add_dup_detail", lang), lang));
+}
+
+/**
+ * 🔴 TASK-314 — the ONE LINE-side student creator, and AC-11 lives in it: **the admin is told, on every door.**
+ *
+ * The notification sat in the wizard's confirm; a child added inline was a child no admin was told about.
+ * ⚠️ It moved HERE and not into `createStudentForParent`, because that service function is also the staff
+ * screen's write (`routes/api.ts`, `parent.service.createStudent`) — an admin adding a student would then be
+ * notified of their own act. The rule is *"a parent registered a child over LINE"*, and this is the LINE side.
+ * Reuses `notifyAdmins`, which writes a loud SKIPPED row when no admin is configured (TASK-152's lesson), so a
+ * mis-configured environment is visible instead of silent. Order unchanged: the row first, then the message.
+ */
+async function createStudentFromLine(
+  parent: { id: string; phone: string },
+  input: { name: string; birthDate?: string | null },
+) {
+  const created = await createStudentForParent(parent.id, input);
+  await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone });
+  return created;
+}
+
 async function addStudentAndReply(
   lineUserId: string,
   name: string,
@@ -701,8 +739,13 @@ async function addStudentAndReply(
     await clearSession(lineUserId);
     return reply(replyToken, t("add_no_parent", lang));
   }
+  // 🔴 TASK-314 — AC-9 on the inline door: the same question the wizard asks, and the parent continues in the
+  // wizard from its detail step. Before this, `add น้องเอ` twice wrote two `น้องเอ`.
+  if ((await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
+    return askMoreDetail(lineUserId, {}, name, replyToken, lang);
+  }
   try {
-    const { student, count } = await createStudentForParent(parent.id, { name });
+    const { student, count } = await createStudentFromLine(parent, { name });
     const atMax = count >= MAX_STUDENTS_PER_PARENT;
     if (opts.continueSession && !atMax) {
       return reply(replyToken, t("added_more", lang, { name: student.name, count }));
@@ -1025,9 +1068,23 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
   if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang);
 
   // Add a student — inline ("เพิ่มนักเรียน น้องเอ") or start a name prompt.
-  const addMatch = raw.match(/^(?:เพิ่มนักเรียน|เพิ่มลูก|add)\s*(.*)$/i);
+  // 🔴 TASK-312 §1 — parsed by `parseAddCommand`, where the rule and its reasons live. The bare `add` prefix
+  // that stood here created a child named `in` when a parent typed `admin`. 🚫 The check stays ABOVE
+  // `CMD_ADMIN` on purpose: the fix is the PATTERN, and moving it would only have hidden `admin`.
+  const addMatch = parseAddCommand(raw);
   if (addMatch) {
-    const name = (addMatch[1] ?? "").trim();
+    const name = addMatch.name;
+    // 🔴 TASK-313 §2 — THE SAME GUARD AS THE PROMPT (`isReservedWord`) AND THE SAME REFUSAL (`strikeOrPrompt`).
+    // TASK-245 closed *"`เมนู` stored as a child's NAME"* at the name prompt, and this door — `add เมนู` —
+    // never called the guard it wrote. ⚠️ Not a second check: the one definition, applied to the sibling door.
+    // 📌 The refusal drops the parent INTO the name prompt first, exactly where bare `add` would have put
+    // them: that gives `strikeOrPrompt` a session row to count on, so the second reserved word hands over
+    // to a person here too — the escape the owner was reaching for when he typed `เมนู` twice.
+    if (name && isReservedWord(name)) {
+      await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
+      const session = (await getSession(lineUserId)) ?? {};
+      return strikeOrPrompt(lineUserId, session, replyToken, t("add_name_reserved", lang, { word: name }), lang);
+    }
     if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
     return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));

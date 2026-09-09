@@ -15,6 +15,8 @@
 //
 // Pure — no DB, no i18n, no clock.
 
+import { parseAddCommand } from "./line-add-student";
+
 /** Restart registration. Works from any state, which is why it is checked before the route is computed. */
 export const CMD_REGISTER = ["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"] as const;
 export const CMD_MENU = ["เมนู", "menu", "help", "ช่วยเหลือ"] as const;
@@ -64,9 +66,17 @@ export const RESERVED_WORDS: readonly string[] = [
   ...CMD_SKIP,
 ];
 
-/** Case- and space-insensitive, matching how the router already compares (`text.trim().toLowerCase()`). */
+/**
+ * Case- and space-insensitive, matching how the router already compares (`text.trim().toLowerCase()`).
+ *
+ * 🔴 TASK-313 §3(2) — **and the add PHRASE itself is reserved**, in every form `parseAddCommand` accepts
+ * (`เพิ่มนักเรียน` · `Add Student` · `addstudent` · `add`). It is a regex rather than a list entry (TASK-312 §2.3
+ * kept it that way), so the ONE definition is consulted instead of copying the words here: a bare add
+ * command — `name: null` — is a word the product prints, and a word the product prints may not become a
+ * child's name. `add child` is NOT bare (its name is `child`), so it is not reserved and still adds.
+ */
 export const isReservedWord = (text: string): boolean =>
-  RESERVED_WORDS.includes(text.trim().toLowerCase());
+  RESERVED_WORDS.includes(text.trim().toLowerCase()) || parseAddCommand(text)?.name === null;
 
 export const isCancelWord = (text: string): boolean =>
   (CMD_CANCEL as readonly string[]).includes(text.trim().toLowerCase());

@@ -235,9 +235,13 @@ describe("🔴 3 — the invariant: no rejection bypasses the strike counter", (
     // Counting it would hand a two-child family over to a human for having two children. AC-9's more-detail
     // question is a further question, not a rejection.
     // Bounded at `resetStrikes` — the duplicate branch ends where the accepted-name path begins.
-    const dup = WIZARD.slice(WIZARD.indexOf("decideDuplicate"), WIZARD.indexOf("await resetStrikes"));
-    expect(dup).toContain('t("add_dup_detail", lang)');
+    // 🔻 TASK-314 — the question is asked by `askMoreDetail`, shared with the inline door; the wizard's branch
+    // reaches it through `duplicateOutcomeFor`. Neither counts a strike.
+    const dup = WIZARD.slice(WIZARD.indexOf("duplicateOutcomeFor"), WIZARD.indexOf("await resetStrikes"));
+    expect(dup).toContain("askMoreDetail(");
     expect(dup).not.toContain("strikeOrPrompt");
+    expect(fn("async function askMoreDetail")).toContain('t("add_dup_detail", lang)');
+    expect(fn("async function askMoreDetail")).not.toContain("strikeOrPrompt");
   });
 });
 
