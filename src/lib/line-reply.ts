@@ -42,40 +42,16 @@ export function bookingPicker(
 }
 
 /**
- * 🔴 TASK-251 (REQ-079 §16) — the role step, as buttons.
+ * 🔻 TASK-310 (`REQ-085 §5` via `REQ-079 §17c`) — **`rolePicker` is DELETED, and the deletion is the point.**
  *
- * The third picker in this file, and the same shape as its two siblings on purpose: **a tap replaces "type
- * 1/2"**, which is what `bookingPicker`'s own comment says it exists for. The role step was the one that never
- * got one.
- *
- * ✅ **Postbacks, not text quick-replies:** a postback is OUR payload on OUR namespace, so it cannot be confused
- * with whatever the customer's own OA numbers on its account. The collision stops being discouraged and becomes
- * **impossible** — the difference between fixing the copy and fixing the cause.
+ * TASK-251 built it to replace *"type 1 / 2 / 3"*, and that reasoning still holds for the two pickers left in
+ * this file. ⚠️ **A role picker is different from its siblings**: `bookingPicker` and `childPicker` show you
+ * YOUR OWN bookings and YOUR OWN children, while this one showed every reader a list of the roles the product
+ * has. ⇒ **the customer's screen 2 offers exactly one path — type `Next` — precisely so a parent never
+ * learns the others exist**, and no arrangement of buttons can offer one choice and hide two.
+ * ✅ Nothing it protected is lost: the postback namespace is still ours, no digit is asked for anywhere, and a
+ * typed word still reaches the same transition (`parseRoleChoice`). 🚫 Do not re-add it without §5 changing.
  */
-export function rolePicker(
-  prompt: string,
-  labels: { customer: string; teacher: string; admin: string },
-  lang: Lang,
-): LineMessage {
-  const items: LineQuickReply["items"] = (
-    [
-      ["customer", labels.customer],
-      ["teacher", labels.teacher],
-      ["admin", labels.admin],
-    ] as const
-  ).map(([role, label]) => ({
-    type: "action",
-    action: {
-      type: "postback",
-      label: clampLabel(label),
-      data: `action=role&role=${role}`,
-      displayText: label,
-    },
-  }));
-  items.push(backToMenuItem(lang));
-  return { type: "text", text: prompt, quickReply: { items } };
-}
-
 /**
  * TASK-135 (AC-3): "which child?" step — one tappable button per child, carrying the studentId so the next
  * step filters to that child's sessions. Same shape as `bookingPicker`, different payload key.

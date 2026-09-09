@@ -81,7 +81,12 @@ export function parsePostback(data: string): { action: string; params: Record<st
  */
 export function parseRoleChoice(text: string): "customer" | "teacher" | "admin" | null {
   const t = text.trim().toLowerCase();
-  if (["ลูกค้า", "customer", "นักเรียน", "ผู้ปกครอง", "พ่อ", "แม่", "parent"].includes(t)) return "customer";
+  // 🔴 TASK-310 (REQ-079 §17c screen 2) — `next` is the CUSTOMER'S word, and the only one a parent is ever
+  // shown: *"กรุณาพิมพ์ “Next” เพื่อเข้าใช้งานค่ะ"*. ⚠️ The older words stay ACCEPTED — a parent who
+  // learned `ผู้ปกครอง` from the retired picker must not be met by a refusal — they are simply never
+  // advertised again. 🚫 `CEO` is absent BY RULING (`§17e-1`): the word lives in the customer's copy and in
+  // the REQ and becomes no code path. **Adding it would be building a role the owner struck out.**
+  if (["next", "ลูกค้า", "customer", "นักเรียน", "ผู้ปกครอง", "พ่อ", "แม่", "parent"].includes(t)) return "customer";
   if (["ครู", "teacher"].includes(t)) return "teacher";
   if (["แอดมิน", "admin"].includes(t)) return "admin";
   return null;

@@ -54,7 +54,10 @@ describe("🚫 TASK-307 §3 — an EXISTING string, and no new copy", () => {
     // shipped after REQ-079 §18 had already ruled otherwise.
     // 🔑 The re-ask and the FIRST ask are now the identical expression, so they cannot drift into two
     // wordings of one question.
-    const ask = 'withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang)';
+    // 🔻 TASK-310 — the `{max}` argument is gone: `REQ-079 §17c`'s screen 4 is *"กรุณาระบุชื่อนักเรียน เช่น
+    // ส้ม"* and carries no cap sentence for it to fill. ✅ **The property this test exists for is untouched** —
+    // the re-ask and the first ask are still the identical expression, so they cannot drift into two wordings.
+    const ask = 'withExit(t("add_student_name_prompt", lang), lang)';
     expect(guard).toContain(ask);
     expect((WEBHOOK.match(new RegExp(ask.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBeGreaterThan(1);
   });
@@ -77,29 +80,33 @@ describe("🚫 TASK-307 §3 — an EXISTING string, and no new copy", () => {
     // always bilingual. §4 protects other steps' skip behaviour, so only the re-ask moved.
     const noChild = guard.slice(guard.indexOf("if (!kids.length) {"), guard.indexOf("await clearSession"));
     expect(noChild).not.toContain("both(");
-    expect(noChild).toContain('t("add_student_name_prompt", lang, ');
-    // …and the string still genuinely differs by language, so answering in the session's one says something.
-    expect(t("add_student_name_prompt", "TH", { max: 5 })).not.toBe(
-      t("add_student_name_prompt", "EN", { max: 5 }),
-    );
+    expect(noChild).toContain('t("add_student_name_prompt", lang)');
+    // 🔻 TASK-310 — this used to add *"and the string still genuinely differs by language"*. **It no longer
+    // does, and that is the point of §17c**: the customer wrote Thai and English into one block, so the
+    // re-ask is bilingual through its STRING rather than through its helper. ⇒ the assertion is replaced
+    // rather than left red, and what it was protecting — the re-ask and the first ask being one wording —
+    // is asserted above and is now true in a stronger way: **every reader gets the identical screen.**
+    expect(t("add_student_name_prompt", "TH")).toBe(t("add_student_name_prompt", "EN"));
+    expect(t("add_student_name_prompt", "TH")).toContain("Please enter the student's name");
   });
 });
 
-describe("🚫 TASK-307 §4 — `REQ-085 §5`'s copy is UNTOUCHED (the customer is holding it)", () => {
-  test("the role prompt and its three buttons are byte-identical", () => {
-    // ⚠️ A diff here would be invisible to us and visible to them. Pinned as values, not as a promise.
-    expect(t("role_btn_customer", "TH")).toBe("ผู้ปกครอง");
-    expect(t("role_btn_teacher", "TH")).toBe("ครู");
-    expect(t("role_btn_admin", "TH")).toBe("แอดมิน");
-    expect(t("role_btn_customer", "EN")).toBe("Parent");
-    expect(t("role_btn_teacher", "EN")).toBe("Teacher");
-    expect(t("role_btn_admin", "EN")).toBe("Admin");
+describe("🔻 TASK-307 §4 — `REQ-085 §5`'s copy ARRIVED, and this is what happened to it", () => {
+  test("🔴 the three role BUTTONS are gone — the customer is no longer holding the copy", () => {
+    // ⏸️ TASK-307 §4 pinned these as untouched *while the customer wrote the words*. **They wrote them**
+    // (`REQ-079 §17c`, 2026-09-08) and their screen 2 offers ONE path — type `Next` — so that a parent
+    // never learns the other roles exist. ⇒ the buttons are not edited, they are DELETED, and the keys
+    // with them. 🔑 Asserted as an absence, because a leftover label is a role word waiting for a caller.
+    for (const key of ["role_btn_customer", "role_btn_teacher", "role_btn_admin"]) {
+      for (const lang of ["TH", "EN"] as const) {
+        expect({ key, lang, rendered: t(key, lang) }).toEqual({ key, lang, rendered: key }); // no such key
+      }
+    }
   });
 
-  test("…and the entry prompt still renders in both languages", () => {
-    const prompt = tb("role_prompt");
-    expect(prompt).toContain(t("role_prompt", "TH"));
-    expect(prompt).toContain(t("role_prompt", "EN"));
+  test("…and the entry prompt is ONE bilingual block, not two renderings", () => {
+    expect(tb("role_prompt")).toBe(t("role_prompt", "TH"));
+    expect(t("role_prompt", "TH")).toBe(t("role_prompt", "EN"));
   });
 
   test("🚫 `SKIP_WORDS` / `CMD_SKIP` themselves are unchanged", () => {

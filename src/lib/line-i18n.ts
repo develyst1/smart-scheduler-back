@@ -102,15 +102,101 @@ const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
 const ATTENTION_LABEL_ENTRIES = Object.fromEntries(
   Object.entries(ATTENTION_LABELS).map(([key, entry]) => [`att_${key}`, entry]),
 ) as Record<string, Entry>;
+
+/**
+ * 🔴 TASK-310 (REQ-079 §17c) — **THE CUSTOMER'S REGISTRATION COPY, VERBATIM.** Their words are the spec:
+ * *"ลูกค้าส่งมาให้ทำตามเลย"*. 🚫 Nothing here is paraphrased, shortened or "improved".
+ *
+ * ## 🔑 Why these are a table of their own, and not ordinary `TH` / `EN` entries
+ * Every other string in this file is *"the Thai one **or** the English one"*, and `both()` stacks a whole
+ * Thai body above a whole English one. **The customer's screens are not shaped like that — they alternate
+ * LINE BY LINE**: a Thai sentence, its English sentence, the next pair, and on screen 4 a `TH / EN: value`
+ * line in the middle of them. ⇒ **there is no pair of `TH`/`EN` values `both()` could join to produce their
+ * screen.** Each of these is ONE block that is the same in either language.
+ * ⚠️ **So they must never be wrapped in `both()` / `tb()`** — that prints the block twice. `tb()` refuses,
+ * by construction rather than by convention (see its definition below).
+ * 📌 This is what `TASK-310 §1` means by *"the registration screens are BILINGUAL"*: the STRING is, so the
+ * call site keeps `t(key, lang)` and every site renders the identical screen. **`both()` is for a reader
+ * whose language is not yet known; during registration it is not known, and the customer already wrote the
+ * answer into the copy.**
+ *
+ * 🚫 **NONE of §17c's eight numbered headings appears here** — `§17f`: *"they are a table of contents, not
+ * copy"*, and screen 2's *"เลือกบทบาท / Select Your Role"* would tell a parent both that roles exist and
+ * that they were not offered a choice — **the exact thing `REQ-085 §5` removes.**
+ */
+export const REGISTRATION_COPY = {
+  /** §17c screen 1 — the entry keyword is `สมัคร` / `register`, and it is the whole message. */
+  welcome: 'กรุณาพิมพ์ "สมัคร" เพื่อลงทะเบียนค่ะ\nPlease type "register" to start.',
+  /**
+   * §17c screen 2 — 🔴 **`REQ-085 §5` lives in this string.** It offers ONE path: type `Next`, and `Next` is
+   * a PARENT. 🚫 No role list, no role words, no buttons — a teacher or an admin types their own word
+   * without being told to. ⚠️ The words `ครู` / `แอดมิน` are still ACCEPTED (`parseRoleChoice`); they are
+   * simply never advertised, which is what §5 asks for (`§17e`: the owner accepted knowingly that a parent
+   * CAN guess `ครู`). 🚫 `CEO` is skipped entirely — it stays a word in the REQ and is no code path.
+   */
+  role_prompt: 'กรุณาพิมพ์ "Next" เพื่อเข้าใช้งานค่ะ\nPlease type "Next" to continue.',
+  /** §17c screen 3. 🚫 `code_teacher` / `code_admin` are NOT §17c screens — no parent ever reads them. */
+  code_customer: "กรุณาระบุเบอร์โทรศัพท์ค่ะ\nPlease enter your phone number.",
+  /**
+   * §17c screen 4, first half. ⚠️ Their `082-503-1502` is `{phone}` — `§17d-4`, ruled by the owner: the
+   * screen shows **the number the person just typed**, so a literal would have shipped their example.
+   * (`formatPhoneForDisplay` renders it in their shape; the stored value stays digits.)
+   */
+  verify_parent_ok_new: "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
+  /**
+   * §17c screen 4, second half — asked as one body with the line above it.
+   * 🔻 **Their sentence carries neither the `{max}` cap nor the `ข้าม` escape our wording had.** The cap is
+   * still enforced (`assertCanAddStudent`) and `ข้าม` is still ACCEPTED — but `REQ-085 §6` refuses a skip at
+   * the FIRST child, so this screen was advertising a way out the flow now declines to take. **Reported.**
+   */
+  add_student_prompt: 'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
+  /** The same question, asked again — one string, so the re-ask and the first ask cannot drift (TASK-307 §3). */
+  add_student_name_prompt: 'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
+  /** §17c screen 5. ⚠️ `(วัน-เดือน-ปีค.ศ. )` is their spacing, kept — Gregorian, day-first, the owner's ruling. */
+  add_birthdate_prompt: "กรุณาระบุวันเกิดของนักเรียนค่ะ\n(วัน-เดือน-ปีค.ศ. )\nPlease enter the date of birth in (DD-MM-YYYY)",
+  /**
+   * §17c screen 6. 🚫 **The FIELD does not change** (`§17e`'s correction): the prompt names District /
+   * Sub-district / Province as GUIDANCE and the answer is, and stays, one free-text value.
+   * ⚠️ Their English block is wrapped in a `"` … `"` pair in the source document. **Not reproduced** — a
+   * quotation mark opening one line and closing another reads as a typo on a phone, and by `§17f`'s own
+   * reasoning it is document punctuation rather than copy. **Reported; it is the only byte I changed.**
+   */
+  add_province_prompt:
+    "กรุณาระบุ เขต แขวง จังหวัด เช่น พระโขนงเหนือ วัฒนา กทม\nPlease enter your address: District, Sub-district, Province\nEg. Prakanueng Nuea, Wattana, BKK",
+  /** §17c screen 7, head. */
+  add_summary_head: "กรุณาตรวจสอบข้อมูลก่อนบันทึกค่ะ\nPlease check your information before saving.",
+  /**
+   * §17c screen 7, foot. 🚫 Their last two lines — *"พิมพ์ ยกเลิก เพื่อออกจากการลงทะเบียน / Type "Cancel" to
+   * exit."* — are NOT here: `withExit` (TASK-245) already appends the exit to every question, and putting
+   * them back inside this string prints the exit TWICE on the one step that used to carry it inline.
+   * **TASK-278 §4.1 ruled this and the ruling is unchanged.**
+   */
+  add_summary_confirm: 'ข้อมูลถูกต้องหรือไม่คะ?\nIs this information correct?\nกรุณาพิมพ์ "ยืนยัน" เพื่อบันทึก\nPlease Type "Confirm" to save.',
+  /** §17c screen 7's three labels. 🚫 `ที่อยู่ / Address` is a LABEL change only — the column is still `province`. */
+  add_l_name: "ชื่อ / Name",
+  add_l_birthdate: "วันเดือนปีเกิด / Date of Birth",
+  add_l_province: "ที่อยู่ / Address",
+  add_l_none: "ไม่ระบุ / not given",
+  /** §17c screen 8. Their `"Nong DC"` is the example child in a copy document, so it is `{name}`. */
+  added_done: 'เพิ่ม "{name}" สำเร็จแล้วค่ะ\n"{name}" has been added successfully. ✅{note}',
+  /**
+   * §17c screen 8's tail. ⚠️ A separate key because it is CONDITIONAL: a household at `MAX_STUDENTS_PER_PARENT`
+   * must not be invited to add another. **Their words, not new copy** — the condition is ours, the sentence
+   * is theirs.
+   */
+  add_another_hint:
+    'หากต้องการเพิ่มนักเรียนเข้าระบบ\nกรุณาพิมพ์ "เพิ่มนักเรียน" ค่ะ\nIf you would like to add another student,\nplease type "Add Student".',
+} as const;
+
+/** The i18n keys whose value is the customer's own bilingual block. Used by `tb()` and by the §17c tests. */
+export const REGISTRATION_KEYS = Object.keys(REGISTRATION_COPY) as Array<keyof typeof REGISTRATION_COPY>;
+/** 🔑 One block, two identical language slots — so `t(key, lang)` renders their screen whichever way it is called. */
+const REGISTRATION_ENTRIES = Object.fromEntries(
+  Object.entries(REGISTRATION_COPY).map(([key, body]) => [key, { TH: body, EN: body }]),
+) as Record<string, Entry>;
+
 const TABLE: Record<string, Entry> = {
-  welcome: {
-    TH: "สวัสดีค่ะ ยินดีต้อนรับสู่ Smart Scheduler\n\nพิมพ์ สมัคร เพื่อผูกบัญชี LINE\nหลังผูกแล้ว (ผู้ปกครอง): เพิ่มนักเรียน · เช็คอิน · ลา · qr",
-    // 🔴 TASK-275 (REQ-079 §17) — the register sentence is the CUSTOMER'S, verbatim: "Please type 'register'
-    // to start." Their words for their customers. ⚠️ It is the ONLY English string of theirs that exists in
-    // the repo — §17 is @Porter's ANALYSIS of their 8 screens, not a transcript — so the greeting and the
-    // command hints on this line are still OURS, and so is every other key. Listed in the TASK-275 report.
-    EN: "Welcome to Smart Scheduler 👋\n\nPlease type 'register' to start.\nOnce linked (parent): add child · check-in · leave · qr",
-  },
+  ...REGISTRATION_ENTRIES,
   // SPEC-071 / TASK-231 — AC-18: two unexpected replies inside a flow and the bot stops trying. The apology
   // matters: the parent has just failed twice and the next voice they hear should be a person.
   // 🔴 TASK-246 / AC-24 — the message that MUTES the chat is the message that must name the way back in. A way
@@ -120,33 +206,9 @@ const TABLE: Record<string, Entry> = {
     TH: "ขอโทษค่ะ ขอส่งให้แอดมินช่วยดูนะคะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
     EN: "Sorry about that — I am passing this to an admin to help you. 🙏\n(To use the bot again, type: reopen)",
   },
-  // 🔴 TASK-251 (REQ-079 §16) — **no digits.** `1 / 2 / 3` collided with numbered replies the customer's own OA
-  // owns, on a live account. The buttons carry the choices now, so the text stops listing them as a numbered
-  // menu; the three words below are also what a PC user can still TYPE, which is why they are named in the
-  // prompt rather than left only on the buttons.
-  role_prompt: {
-    TH: "คุณเป็นใครคะ? แตะปุ่มด้านล่าง หรือพิมพ์ ผู้ปกครอง · ครู · แอดมิน",
-    EN: "Who are you? Tap a button below, or type: parent · teacher · admin",
-  },
-  // The button labels — short, because LINE clamps a quick-reply label at 20 characters.
-  role_btn_customer: { TH: "ผู้ปกครอง", EN: "Parent" },
-  role_btn_teacher: { TH: "ครู", EN: "Teacher" },
-  role_btn_admin: { TH: "แอดมิน", EN: "Admin" },
-  // 🔴 TASK-278 (REQ-079 §17b screen 3) — the customer's English, verbatim. The TH keeps its example; their
-  // sentence has none and we are not removing a hint they simply did not write.
-  code_customer: { TH: "กรุณาพิมพ์เบอร์โทรของผู้ปกครอง (เช่น 0812345678)", EN: "Please enter your phone number to continue." },
   code_teacher: { TH: "กรุณาพิมพ์ชื่อเล่นครูตามที่ลงทะเบียนในระบบ", EN: "Please type the teacher nickname as registered" },
   code_admin: { TH: "กรุณาพิมพ์รหัสแอดมิน (เช่น 229)", EN: "Please type the admin code (e.g. 229)" },
 
-  // 🔴 TASK-278 (§17b screen 4) — their two sentences, in their order: the name prompt then the cap.
-  // ⚠️ `{max}` stays a VARIABLE. Their copy hardcodes 5; the cap is `MAX_STUDENTS_PER_PARENT` and a literal
-  // here would be a second place to change it — and the one nobody would remember.
-  // ⚠️ `skip` stays: their copy has no escape from this step and ours must keep one.
-  add_student_prompt: {
-    TH: 'ต้องการเพิ่มนักเรียน (ลูก) ไหมคะ?\nพิมพ์ชื่อนักเรียน เช่น "น้องพีพี" (เพิ่มได้สูงสุด {max} คนต่อเบอร์)\nหรือพิมพ์ "ข้าม" หากยังไม่เพิ่มตอนนี้',
-    EN: 'Please enter the student\'s name, e.g. "Emily".\nYou can add up to {max} students per phone number.\nOr type "skip" to do it later.',
-  },
-  add_student_name_prompt: { TH: "พิมพ์ชื่อนักเรียนที่ต้องการเพิ่ม (สูงสุด {max} คนต่อเบอร์)", EN: 'Please enter the student\'s name, e.g. "Emily". You can add up to {max} students per phone number.' },
 
   menu_title: { TH: "เมนูหลัก — แตะเพื่อใช้งาน", EN: "Main menu — tap to use" },
   // 🔴 TASK-245 "Face 2" — the last line is the half of AC-16's trade that was missing from the live product.
@@ -248,29 +310,10 @@ const TABLE: Record<string, Entry> = {
     TH: "มีน้องชื่อนี้อยู่แล้ว รบกวนใส่นามสกุลหรือชื่อเล่นเพิ่ม เพื่อไม่ให้สลับกันนะคะ",
     EN: "There is already a child with that name. Please add a surname or nickname so they are not mixed up.",
   },
-  // 🔴 TASK-277 (REQ-079 §17) — the OWNER'S sentences, verbatim, with `หรือพิมพ์ ข้าม` kept on the end.
-  // ⚠️ His sentences do not mention the escape; ours did. **Dropping the way out of a wizard step is not a
-  // wording change**, so it stays — added after his words, not woven through them.
-  // 📌 The EN side is OURS for now; TASK-278 replaces it with the customer's, plus the format their copy omits.
-  add_birthdate_prompt: {
-    TH: "กรุณาพิมพ์วันเกิดของนักเรียนค่ะ (วัน-เดือน-ปี เช่น 02-12-2024) หรือพิมพ์ ข้าม",
-    // §17b screen 5 is *"Please enter the date of birth."* — their sentence, PLUS the format and the skip,
-    // which their copy omits. ⚠️ TASK-277's format is an owner RULING; a copy pass does not get to drop it.
-    EN: "Please enter the date of birth. (DD-MM-YYYY, e.g. 02-12-2024), or type skip.",
-  },
   add_birthdate_bad: {
     TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น วัน-เดือน-ปี เช่น 02-12-2024 หรือพิมพ์ ข้าม",
     EN: "That date format is not valid. Please use DD-MM-YYYY, e.g. 02-12-2024, or type skip.",
   },
-  add_province_prompt: { TH: "จังหวัดที่อยู่ หรือพิมพ์ ข้าม ค่ะ", EN: "Please enter your current province, or type skip." },
-  add_summary_head: { TH: "ตรวจสอบข้อมูลก่อนบันทึกนะคะ", EN: "Please check your information before saving." },
-  // The trailing "หรือ ยกเลิก" moved OUT of this string in TASK-245: the exit is now appended to every question
-  // by `withExit`, and leaving it here too would print it twice on the one step that already had it.
-  // 🔴 TASK-278 §4.1 — their screen 7 has THREE lines and only two of them belong here. The third,
-  // *"Type "Cancel" to exit."*, is NOT applied: `withExit` already appends the exit to every question
-  // (TASK-245), so putting it back inside this string prints it TWICE — on the one step that used to have
-  // it inline, which is the exact bug TASK-245's comment above records.
-  add_summary_confirm: { TH: "ถูกต้องไหมคะ? พิมพ์ ยืนยัน เพื่อบันทึก", EN: 'Is this information correct? Please type "Confirm" to save.' },
   // 🔴 TASK-245 — the exit, appended to EVERY question the wizard asks. One string, one append site, because
   // "the flow has an exit" is only true if it is true at every step: the owner's trap was three questions that
   // each looked like the only thing he was allowed to answer.
@@ -281,10 +324,6 @@ const TABLE: Record<string, Entry> = {
     TH: "「{word}」 เป็นคำสั่งของระบบค่ะ ถ้าเป็นชื่อน้องจริง ๆ รบกวนแจ้งแอดมินนะคะ",
     EN: "「{word}」 is a system command. If that really is the child's name, please tell an admin and they will add them.",
   },
-  add_l_name: { TH: "ชื่อ", EN: "Name" },
-  add_l_birthdate: { TH: "วันเกิด", EN: "Date of birth" },
-  add_l_province: { TH: "จังหวัด", EN: "Province" },
-  add_l_none: { TH: "ไม่ระบุ", EN: "not given" },
   // TASK-245 — now reachable from EVERY step, not only the summary, so it says what happened to the answers
   // already given: they are gone. The one thing a parent must not be left wondering is whether half of it was
   // saved anyway — an unknown half-record in a roster with no delete.
@@ -306,13 +345,8 @@ const TABLE: Record<string, Entry> = {
     TH: "รหัสไม่ถูกต้องค่ะ กรุณาลองใหม่อีกครั้ง",
     EN: "That code is not correct. Please try again.",
   },
-  // §17b screen 4, same sentence — this is the new-parent branch of the same moment.
-  verify_parent_ok_new: { TH: "ลงทะเบียนผู้ปกครองสำเร็จ ✅ (เบอร์ {phone})", EN: "Registration completed ✅ (phone {phone})" },
 
   added_more: { TH: 'เพิ่ม "{name}" สำเร็จ ✅ (ตอนนี้มี {count} คน)\nพิมพ์ชื่อคนถัดไป หรือพิมพ์ "ข้าม" เพื่อจบ', EN: 'Added "{name}" ✅ (now {count})\nType the next name, or "skip" to finish' },
-  // §17b screen 8 — their sentence with OUR `{name}`. Their literal `"Nong DC"` is the example child in a
-  // copy document, not a string we send.
-  added_done: { TH: 'เพิ่ม "{name}" สำเร็จ ✅{note}', EN: '"{name}" has been added successfully. ✅{note}' },
   added_atmax_note: { TH: " (ครบ {max} คนแล้ว)", EN: " (reached {max})" },
   add_no_parent: { TH: "ไม่พบบัญชีผู้ปกครอง พิมพ์ สมัคร เพื่อเริ่มใหม่", EN: "No parent account found. Type 'register' to start over" },
   add_generic_err: { TH: "ไม่สามารถเพิ่มนักเรียนได้", EN: "Couldn't add the student" },
@@ -525,10 +559,25 @@ export function t(key: string, lang: Lang = "TH", vars?: Record<string, string |
  * copy puts the English plainly under the Thai.
  */
 export function both(build: (lang: Lang) => string): string {
-  return `${build("TH")}\n${build("EN")}`;
+  const th = build("TH");
+  const en = build("EN");
+  // 🔴 TASK-310 (REQ-079 §17c) — **`both()` never prints the same text twice.**
+  // The customer's registration screens carry Thai and English INTERLEAVED, exactly as they wrote them, so
+  // `t(key, "TH")` and `t(key, "EN")` are the identical block. ⚠️ Joining them would send their whole screen
+  // TWICE. 🔑 The rule lives HERE, in the joiner, rather than in a list of keys every call site must know:
+  // **a body that is the same in both languages is already both languages** — true of any such body, not
+  // only theirs. 📌 It is also what keeps §17c's screens safe inside COMPOSED bodies.
+  return th === en ? th : `${th}\n${en}`;
 }
 
-/** The one-key body. `both()`'s common case, so the joining rule lives in exactly one place. */
+/**
+ * The one-key body. `both()`'s common case, so the joining rule lives in exactly one place.
+ *
+ * 🔴 TASK-310 (REQ-079 §17c) — **it does not double the customer's own screens**, because `both()` above
+ * refuses to. ⚠️ That guard belongs to the JOINER and not here, nor at the call sites: `` tb(`code_${role}`) ``
+ * renders a §17c screen for a parent and one of OURS for a teacher **from one expression** — there is no
+ * call site that could carry the rule.
+ */
 export const tb = (key: string, vars?: Record<string, string | number>): string =>
   both((lang) => t(key, lang, vars));
 /** Seed a language from a LINE profile locale string (e.g. "en", "th-TH"). Non-EN → TH. */

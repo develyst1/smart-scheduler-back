@@ -172,17 +172,22 @@ describe("TASK-275 — what LANDED, by name", () => {
   // scattered strings. These are the bodies a new parent meets, in order, and they are asserted by call site
   // rather than by spot-check.
   test("🔑 the registration bodies are bilingual", () => {
+    // 🔻 TASK-310 (REQ-079 §17c) — **three of these call sites changed shape, and the PROPERTY did not.**
+    // The customer's screens carry Thai and English interleaved line by line, so those bodies are bilingual
+    // in the STRING and `both()` would send them twice. ⇒ they are rendered once, with `t(key, lang)`.
+    // 🔑 `both()` itself now refuses to double a body that is identical in both languages, which is why the
+    // sites that still use it (`code_${role}`, `res.message`, `welcome`) are correct for BOTH kinds.
     for (const site of [
       'textReply(tb("welcome"), lang)',
       'reply(replyToken, tb("welcome"))',
-      'tb("role_prompt")',
+      't("role_prompt", lang)',
       "reply(replyToken, tb(`code_${role}`))",
       'tb("twofa_bad"), lang)',
       "both(res.message)",
       'both((l) => `${t("add_cancelled", l)}',
-      'both((l) => `${t("added_done", l, { name: student.name, note })}',
+      't("added_done", lang, { name: student.name, note })',
       'both((l) => `${t("skip_done", l)}',
-      'both((l) => `${t("add_summary_head", l)}',
+      't("add_summary_head", lang)',
     ]) {
       expect({ site, present: SVC.includes(site) }).toEqual({ site, present: true });
     }

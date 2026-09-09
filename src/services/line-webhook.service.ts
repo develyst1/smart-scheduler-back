@@ -18,7 +18,7 @@ import {
   type LineWebhookEvent,
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
-import { bookingPicker, childPicker, childrenFlex, rolePicker, textReply } from "../lib/line-reply";
+import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
 import { leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
 import { getSetting } from "./settings.service";
@@ -207,25 +207,18 @@ async function clearSession(lineUserId: string) {
 const MUTED_STEP = "MUTED";
 
 /**
- * 🔴 TASK-251 (REQ-079 §16) — the role question, asked ONE way.
+ * 🔴 TASK-251 (REQ-079 §16) — the role question, asked ONE way. **Still one way; no longer a PICKER.**
  *
- * Every place that asks it builds the message here, so the prompt and its buttons cannot drift apart: a picker
- * on one path and a bare text on another is how a customer meets the retired numbered version months later.
+ * 🔻 TASK-310 (`REQ-085 §5` via `REQ-079 §17c`) — **the three role buttons are GONE, and so is the role list
+ * in the text.** TASK-251 replaced `1 / 2 / 3` with buttons and that reasoning was right about the collision;
+ * what it could not know is that the customer's own screen 2 offers **one** path — *type `Next`* — precisely
+ * so that a parent never learns the other roles exist. ⚠️ **A picker is a role list you cannot look away
+ * from**, so the fix for §16 and the requirement of §5 cannot both be buttons.
+ * ✅ What TASK-251 was protecting survives untouched: **no digit is asked for anywhere**, and a typed word
+ * still reaches the same `acceptRole` transition. **A teacher or an admin types their own word without
+ * being told to — that is the whole mechanism, and it is made of copy rather than code.**
  */
-// 🔴 TASK-275 (REQ-079 §18) — the PROMPT is bilingual, the BUTTON LABELS are not.
-// LINE caps a quick-reply label at 20 characters, and `ผู้ปกครอง / Parent` does not fit. That limit is why
-// §2 splits the rule at all: bodies get `tb()`, labels keep `t(key, lang)`. 📌 The signatures carry it —
-// `tb` cannot take a language, `t` must.
-const askRole = (lang: Lang) =>
-  rolePicker(
-    tb("role_prompt"),
-    {
-      customer: t("role_btn_customer", lang),
-      teacher: t("role_btn_teacher", lang),
-      admin: t("role_btn_admin", lang),
-    },
-    lang,
-  );
+const askRole = (lang: Lang) => textReply(t("role_prompt", lang), lang);
 
 /**
  * 🔴 …and the role ANSWER is accepted one way, whether it arrived as a tap or as a typed word.
@@ -561,7 +554,7 @@ async function handleAddStudentStep(
 
   if (session.step === "AWAIT_STUDENT_NAME" || session.step === "AWAIT_STUDENT_DETAIL") {
     const name = text.trim();
-    if (!name) return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+    if (!name) return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
     // 🔴 TASK-245 — a word the bot advertises can never become data. `เมนู` was stored as a child's NAME, in a
     // roster with no delete, by a bot that had just told him `เมนู` was a command. The refusal counts as a
     // strike like every other rejection: two of them and a person takes over — which is exactly the escape the
@@ -637,9 +630,13 @@ async function handleAddStudentStep(
       province: t("add_l_province", lang),
       none: t("add_l_none", lang),
     });
+    // 🔴 TASK-310 (§17c screen 7) — head, the three labelled lines and the confirm are the customer's
+    // OWN block, so the whole screen renders ONCE. ⚠️ Their last two lines (*"พิมพ์ ยกเลิก เพื่อออกจาก
+    // การลงทะเบียน / Type "Cancel" to exit."*) are NOT in the string: `withExit` already appends the exit
+    // to every question, and TASK-278 §4.1 ruled that putting them back prints it TWICE on this one step.
     return reply(
       replyToken,
-      both((l) => `${t("add_summary_head", l)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", l), l)}`),
+      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
     );
   }
 
@@ -672,7 +669,14 @@ async function handleAddStudentStep(
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;
       const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
-      return reply(replyToken, both((l) => `${t("added_done", l, { name: student.name, note })}\n\n${t("menu_body", l)}`));
+      return reply(
+        replyToken,
+        // 🔴 TASK-310 (§17c screen 8) — their success line, then their *"add another"* sentence, then OUR menu.
+        // ⚠️ The invitation is CONDITIONAL and their copy could not know it: a household already at
+        // `MAX_STUDENTS_PER_PARENT` must not be invited to add a sixth. **The words are theirs; the condition
+        // is ours.** 📌 `menu_body` stays bilingual through `both()` — it is ours, and it is not a §17c screen.
+        `${t("added_done", lang, { name: student.name, note })}${atMax ? "" : "\n" + t("add_another_hint", lang)}\n\n${both((l) => t("menu_body", l))}`,
+      );
     } catch (e: any) {
       const msg = e?.message ?? t("add_generic_err", lang);
       await clearSession(lineUserId);
@@ -682,7 +686,7 @@ async function handleAddStudentStep(
 
   // Unknown step inside this flow — treat as the start rather than answering unpredictably.
   await setDraft(lineUserId, "AWAIT_STUDENT_NAME", {});
-  return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+  return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
 }
 
 async function addStudentAndReply(
@@ -705,7 +709,14 @@ async function addStudentAndReply(
     }
     await clearSession(lineUserId);
     const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
-    return reply(replyToken, both((l) => `${t("added_done", l, { name: student.name, note })}\n\n${t("menu_body", l)}`));
+    return reply(
+      replyToken,
+      // 🔴 TASK-310 (§17c screen 8) — their success line, then their *"add another"* sentence, then OUR menu.
+      // ⚠️ The invitation is CONDITIONAL and their copy could not know it: a household already at
+      // `MAX_STUDENTS_PER_PARENT` must not be invited to add a sixth. **The words are theirs; the condition
+      // is ours.** 📌 `menu_body` stays bilingual through `both()` — it is ours, and it is not a §17c screen.
+      `${t("added_done", lang, { name: student.name, note })}${atMax ? "" : "\n" + t("add_another_hint", lang)}\n\n${both((l) => t("menu_body", l))}`,
+    );
   } catch (e: any) {
     // createStudentForParent throws a Thai validation message (shared with the REST API — out of the LINE
     // reply layer's i18n scope); surface it, and drop the session on the "over max" case.
@@ -1019,7 +1030,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     const name = (addMatch[1] ?? "").trim();
     if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-    return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+    return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
   }
 
   // TASK-234 / AC-19 — every choice has a typed twin, because LINE on PC cannot tap a rich menu at all.
@@ -1153,7 +1164,7 @@ async function handleMessage(ev: LineWebhookEvent) {
       const skipParent = await findParentByLineUserId(lineUserId);
       const kids = skipParent ? await listStudentsOfParent(skipParent.id) : [];
       if (!kids.length) {
-        return reply(replyToken, withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang));
+        return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
       }
       // ✅ A LATER child stays skippable — a parent who already has one is not in a dead end.
       await clearSession(lineUserId);
@@ -1203,7 +1214,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     // ⚠️ TASK-251: a bare `1`/`2`/`3` now lands here, and that is deliberate — the strike path ends at a person,
     // with the picker still on screen.
     if (!role)
-      return strikeOrPrompt(lineUserId, session, replyToken, tb("role_prompt"), lang, askRole(lang));
+      return strikeOrPrompt(lineUserId, session, replyToken, t("role_prompt", lang), lang, askRole(lang));
     return acceptRole(lineUserId, role, replyToken, lang);
   }
 
@@ -1223,7 +1234,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
     return reply(
       replyToken,
-      `${parentChildrenNames(kids.map((k: any) => k.nickname ?? k.name), lang)}\n\n${t("add_student_prompt", lang, { max: MAX_STUDENTS_PER_PARENT })}`.trim(),
+      `${parentChildrenNames(kids.map((k: any) => k.nickname ?? k.name), lang)}\n\n${t("add_student_prompt", lang)}`.trim(),
     );
   }
 
@@ -1261,10 +1272,12 @@ async function handleMessage(ev: LineWebhookEvent) {
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
       // Composed: the verify line and the add-student prompt are ONE body, so they are built together per
       // language rather than glued from two already-bilingual halves.
-      return reply(
-        replyToken,
-        both((l) => `${res.message(l)}\n\n${t("add_student_prompt", l, { max: MAX_STUDENTS_PER_PARENT })}`),
-      );
+      // 🔴 TASK-310 (§17c screen 4) — the verify line and the name prompt are ONE screen, joined by a
+      // SINGLE newline because that is how the customer wrote it.
+      // ⚠️ The prompt is appended ONCE, OUTSIDE `both()`: it is already their bilingual block, while the
+      // line above it is theirs only for a NEW parent — a returning family still gets OURS, in two
+      // languages. 📌 That is the whole reason this composition could not stay inside one `both()`.
+      return reply(replyToken, `${both(res.message)}\n${t("add_student_prompt", lang)}`);
     }
     await clearSession(lineUserId);
     return reply(replyToken, both(res.message));
@@ -1329,6 +1342,9 @@ async function handlePostback(ev: LineWebhookEvent) {
   // tap and a typed `ครู` cannot come to mean two different things, and neither can skip the strike reset.
   // ⚠️ Dispatched here, before `detectLinkedRole`, because whoever answers it is by definition not yet
   // recognised as anything.
+  // 🔻 TASK-310 — the picker that EMITTED this postback is GONE (`REQ-085 §5`: a parent is never shown
+  // the roles). ✅ The branch STAYS: a quick reply already sitting in a chat when the deploy lands is still
+  // tappable, and answering it correctly for one more conversation costs six lines. It emits nothing new.
   if (action === "role") {
     const role = params.role;
     if (role === "customer" || role === "teacher" || role === "admin") {
@@ -1387,7 +1403,7 @@ async function handlePostback(ev: LineWebhookEvent) {
       return doMyCourses(lineUserId, replyToken, lang);
     case "register":
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-      return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang, { max: MAX_STUDENTS_PER_PARENT }), lang), lang)]);
+      return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang), lang), lang)]);
     default: // menu / help / unknown → the menu
       return doMenu(replyToken, lang);
   }

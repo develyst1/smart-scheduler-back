@@ -18,10 +18,13 @@ const root = resolve(import.meta.dir, "..", "..");
 const src = (p: string) => readSrc(readFileSync(resolve(root, p), "utf8"));
 
 describe("TASK-277 — the owner's strings, verbatim, with the escape kept", () => {
-  test("🔑 the prompt is his sentence", () => {
-    // Verbatim from §17: `กรุณาพิมพ์วันเกิดของนักเรียนค่ะ (วัน-เดือน-ปี เช่น 02-12-2024)`
+  test("🔻 the prompt is the CUSTOMER'S sentence now — his RULING survives inside it", () => {
+    // 🔻 TASK-310 (`REQ-079 §17c` screen 5) — this pinned the owner's own sentence. **The customer has since
+    // sent finished copy for the same screen and the owner ruled it the spec** (*"ลูกค้าส่งมาให้ทำตามเลย"*).
+    // 🔑 What was HIS — day-first, Gregorian — is carried by their sentence too (*"วัน-เดือน-ปีค.ศ."* /
+    // *"(DD-MM-YYYY)"*), so the ruling is not dropped; only the wording around it is theirs.
     const th = t("add_birthdate_prompt", "TH");
-    expect(th.startsWith("กรุณาพิมพ์วันเกิดของนักเรียนค่ะ (วัน-เดือน-ปี เช่น 02-12-2024)")).toBe(true);
+    expect(th).toBe("กรุณาระบุวันเกิดของนักเรียนค่ะ\n(วัน-เดือน-ปีค.ศ. )\nPlease enter the date of birth in (DD-MM-YYYY)");
     expect(th).not.toContain("ปปปป-ดด-วว"); // the overruled format is gone from the copy, not only from the parser
   });
 
@@ -31,22 +34,27 @@ describe("TASK-277 — the owner's strings, verbatim, with the escape kept", () 
     expect(th).not.toContain("ปปปป-ดด-วว");
   });
 
-  test("⚠️ `ข้าม` survives in BOTH strings — his sentences do not mention it, ours must", () => {
-    // Dropping the way out of a wizard step is not a wording change. Added AFTER his words rather than woven
-    // through them, so the verbatim sentence stays verbatim.
-    expect(t("add_birthdate_prompt", "TH")).toContain("ข้าม");
+  test("🔻 `ข้าม` is no longer ADVERTISED on the prompt — and it still WORKS, and the rejection still says so", () => {
+    // 🔴 **The one thing §17c costs us, named rather than discovered.** Their screen 5 has no escape in it,
+    // and TASK-310 §2 says use their words. ⇒ the prompt stops OFFERING `ข้าม`. 🔑 Two things keep this
+    // from being a trap, and both are asserted here: **the parser still accepts it**, and the REJECTION —
+    // which is OURS, not a §17c screen — still names it and still carries the example. ⇒ a parent who does
+    // not know the birthdate types anything, is refused ONCE, and is told both the format and the way past.
+    expect(t("add_birthdate_prompt", "TH")).not.toContain("ข้าม");
     expect(t("add_birthdate_bad", "TH")).toContain("ข้าม");
-    expect(t("add_birthdate_prompt", "EN").toLowerCase()).toContain("skip");
     expect(t("add_birthdate_bad", "EN").toLowerCase()).toContain("skip");
-    // …and the parser still honours it, in both languages' words.
+    expect(t("add_birthdate_bad", "TH")).toContain("02-12-2024");
+    expect(t("add_birthdate_bad", "EN")).toContain("02-12-2024");
+    // …and the parser still honours it, in both languages' words. 🚫 **Behaviour unchanged; only the ad.**
     expect(parseBirthDate("ข้าม")).toEqual({ ok: true, value: null });
     expect(parseBirthDate("skip")).toEqual({ ok: true, value: null });
   });
 
-  test("both strings carry the EXAMPLE — a format without one is a format someone guesses at", () => {
-    for (const key of ["add_birthdate_prompt", "add_birthdate_bad"] as const) {
-      for (const lang of ["TH", "EN"] as const) expect(t(key, lang)).toContain("02-12-2024");
-    }
+  test("the customer's own prompt still carries the FORMAT — the part that was the owner's ruling", () => {
+    // 📌 An example is a nicety; the ORDER is the correctness question TASK-277 existed for, and §17c
+    // spells it out in both languages. **That is why losing the example is a cost and not a regression.**
+    expect(t("add_birthdate_prompt", "TH")).toContain("DD-MM-YYYY");
+    expect(t("add_birthdate_prompt", "TH")).toContain("วัน-เดือน-ปี");
   });
 });
 
@@ -96,7 +104,10 @@ describe("TASK-277 — the confirm step is now load-bearing, and the code says s
     const svc = src("src/services/line-webhook.service.ts");
     expect(svc).toContain("LOAD-BEARING FOR CORRECTNESS");
     expect(svc).toContain("const lines = summaryLines(next, {");
-    expect(svc).toContain('t("add_summary_head", l)');
+    // 🔻 TASK-310 — the summary is the customer's own bilingual block now (`§17c` screen 7), so it renders
+    // ONCE in the session's language instead of per language inside `both()`. **The guard is the same guard**:
+    // the confirm step still prints the date back before anything is written.
+    expect(svc).toContain('t("add_summary_head", lang)');
     expect(svc).toContain("birthDate: t(\"add_l_birthdate\", lang)");
   });
 });

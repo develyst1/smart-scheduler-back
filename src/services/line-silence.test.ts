@@ -176,10 +176,12 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // never true of a birthdate the bot refuses, and that gap is where the owner got stuck. The name step joins
     // them because it can now reject: a reserved word.
     expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(7); // the declaration + six call sites
-    // TASK-251: the role branch now hands `strikeOrPrompt` a SIXTH argument — the picker — so the re-ask
-    // carries buttons instead of only naming them (LINE drops a quick reply as soon as the user replies).
-    // The wiring this test guards is unchanged: the role branch still goes through the one handover rule.
-    expect(SVC).toContain('tb("role_prompt"), lang, askRole(lang))');
+    // 🔻 TASK-310 — the sixth argument is no longer a PICKER: `REQ-079 §17c`'s screen 2 offers one path
+    // (type `Next`) so that a parent never learns the other roles exist, and a role picker is a role list
+    // you cannot look away from. ✅ **The wiring this test guards is unchanged either way** — the role
+    // branch still goes through the one handover rule, and `askRole` is still the one builder.
+    expect(SVC).toContain('t("role_prompt", lang), lang, askRole(lang))');
+    expect(SVC).toContain("const askRole = (lang: Lang) => textReply(");
     // TASK-275: the verify failure is handed to `strikeOrPrompt` already rendered in BOTH languages —
     // `both(res.message)` — because `message` became a per-language builder. The wiring this guards is
     // unchanged: the verify branch still goes through the one handover rule.

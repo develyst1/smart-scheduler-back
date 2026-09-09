@@ -9,10 +9,25 @@
 // ⚠️ The second thing guarded here is that a TAP and a TYPED word reach ONE transition. Two paths would be two
 // places to forget `resetStrikes`, and the symptom — a parent handed to a human after answering correctly —
 // would look like the strike rule misbehaving rather than like a duplicated transition.
+//
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// 🔻 **TASK-310 (`REQ-085 §5` via `REQ-079 §17c`, 2026-09-09) — THE BUTTONS ARE GONE. The parser is not.**
+//
+// 🔑 **The two halves of TASK-251 came apart, and only one of them was wrong.**
+// · ✅ **The digits** — the live collision, the actual defect — are still gone, from the parser AND the copy,
+//   and every assertion about them below is UNCHANGED and still passing. That work stands.
+// · 🔻 **The buttons** are deleted. The customer's own screen 2 offers ONE path — *type `Next`* — precisely so
+//   that a parent never learns the other roles exist (`REQ-085 §5`: *"ไม่ให้ลูกค้ารู้ว่ามี role อื่นด้วย"*).
+//   ⚠️ **A role picker is a role list you cannot look away from**, so no arrangement of buttons could offer
+//   one choice and hide two. ⇒ `rolePicker` is deleted rather than edited.
+//
+// 📌 **What TASK-251 was actually protecting survives intact**, and that is why this file keeps most of its
+// assertions: no digit is asked for or accepted anywhere; a typed word still reaches ONE transition; and the
+// postback namespace is still ours. **Nothing about §16's collision is reopened by removing the buttons.**
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 import { describe, expect, test } from "bun:test";
 import { readSrc } from "../lib/read-src";
 import { t, type Lang } from "../lib/line-i18n";
-import { rolePicker } from "../lib/line-reply";
 import { parsePostback, parseRoleChoice } from "../lib/line-webhook";
 
 const SVC = readSrc(await Bun.file("src/services/line-webhook.service.ts").text());
@@ -25,17 +40,6 @@ const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const LANGS: Lang[] = ["TH", "EN"];
 /** ASCII digits AND Thai digits ๐-๙ — the TH copy is the one the customer reads. */
 const ANY_DIGIT = /[0-9๐-๙]/;
-
-const picker = (lang: Lang) =>
-  rolePicker(
-    t("role_prompt", lang),
-    {
-      customer: t("role_btn_customer", lang),
-      teacher: t("role_btn_teacher", lang),
-      admin: t("role_btn_admin", lang),
-    },
-    lang,
-  );
 
 describe("TASK-251 — the bare number is gone from the PARSER", () => {
   test("1 / 2 / 3 no longer resolve to a role", () => {
@@ -52,8 +56,9 @@ describe("TASK-251 — the bare number is gone from the PARSER", () => {
     // ⚠️ SYSTEM-FACTS (corrected 2026-09-02): quick-reply chips ARE tappable on LINE PC, but they vanish the
     // moment the user types, and PC has no rich menu to bring them back. A PC user therefore ends up typing,
     // so the words below are not a nicety — for that user they are the only door.
-    for (const w of ["ลูกค้า", "ผู้ปกครอง", "นักเรียน", "พ่อ", "แม่", "customer", "parent"]) {
-      expect(parseRoleChoice(w)).toBe("customer");
+    // 🔑 TASK-310 makes this the ONLY door for everyone, which is why the list matters more than it did.
+    for (const w of ["next", "Next", "ลูกค้า", "ผู้ปกครอง", "นักเรียน", "พ่อ", "แม่", "customer", "parent"]) {
+      expect({ w, role: parseRoleChoice(w) }).toEqual({ w, role: "customer" });
     }
     for (const w of ["ครู", "teacher"]) expect(parseRoleChoice(w)).toBe("teacher");
     for (const w of ["แอดมิน", "admin"]) expect(parseRoleChoice(w)).toBe("admin");
@@ -78,102 +83,75 @@ describe("TASK-251 — the bare number is gone from the COPY", () => {
     for (const lang of LANGS) expect(t("role_prompt", lang)).not.toMatch(ANY_DIGIT);
   });
 
-  test("the three button labels are digit-free too", () => {
+  test("🔻 the three button labels are gone entirely — there is nothing left to keep digit-free", () => {
+    // TASK-310: the keys are deleted with the picker. `t()` returns the KEY on a miss, so a surviving label
+    // would show up here as its own Thai/English word rather than as the key name.
     for (const lang of LANGS) {
       for (const key of ["role_btn_customer", "role_btn_teacher", "role_btn_admin"] as const) {
-        expect(t(key, lang)).not.toMatch(ANY_DIGIT);
+        expect({ key, lang, rendered: t(key, lang) }).toEqual({ key, lang, rendered: key });
       }
     }
   });
 
-  test("🔑 every label the user is SHOWN is a word the parser accepts", () => {
-    // The drift this closes: someone renames a button to a friendlier word, the chip still works (it is a
-    // postback), and only the PC user who copies the label by hand discovers it is not understood. Deriving
-    // the expectation from the i18n table means the two can never disagree silently.
+  test("🔴 the prompt names ONE word, and it is not a role", () => {
+    // 🔻 This test used to demand the opposite — *"the prompt still NAMES the typed words, in both languages"* —
+    // because a PC user who loses the chips must be told what to type. **The instruction survives; the LIST
+    // does not.** `REQ-085 §5` is satisfied by not ADVERTISING the roles, and `§17e` records the owner
+    // accepting knowingly that a parent CAN still guess `ครู`. ⇒ the assertion flips from presence to ABSENCE.
     for (const lang of LANGS) {
-      expect(parseRoleChoice(t("role_btn_customer", lang))).toBe("customer");
-      expect(parseRoleChoice(t("role_btn_teacher", lang))).toBe("teacher");
-      expect(parseRoleChoice(t("role_btn_admin", lang))).toBe("admin");
+      expect(t("role_prompt", lang)).toContain("Next");
+      expect(t("role_prompt", lang)).not.toContain("ครู");
+      expect(t("role_prompt", lang)).not.toContain("แอดมิน");
+      expect(t("role_prompt", lang).toLowerCase()).not.toContain("teacher");
+      expect(t("role_prompt", lang).toLowerCase()).not.toContain("admin");
     }
-  });
-
-  test("the prompt still NAMES the typed words, in both languages", () => {
-    // Removing the digits must not remove the instruction — otherwise a PC user is shown chips they will lose
-    // and never told what to type instead.
-    expect(t("role_prompt", "TH")).toContain("ครู");
-    expect(t("role_prompt", "TH")).toContain("แอดมิน");
-    expect(t("role_prompt", "EN").toLowerCase()).toContain("teacher");
-    expect(t("role_prompt", "EN").toLowerCase()).toContain("admin");
+    // 🔑 …and the word it DOES name is one the parser accepts — the property this file has always guarded,
+    // now pointed at the only word a parent is shown.
+    expect(parseRoleChoice("Next")).toBe("customer");
   });
 });
 
-describe("TASK-251 — rolePicker, the third sibling of bookingPicker / childPicker", () => {
-  test("three role buttons, each a POSTBACK on our own namespace", () => {
-    const msg = picker("TH") as { type: string; text: string; quickReply: { items: any[] } };
-    expect(msg.type).toBe("text");
-    expect(msg.text).toBe(t("role_prompt", "TH"));
-    // ✅ postback, never `message`: a text quick-reply would put OUR word back into the same text stream the
-    // customer's OA parses — the collision we are removing, re-introduced by the fix.
-    const roleItems = msg.quickReply.items.filter((i) => i.action.data.startsWith("action=role"));
-    expect(roleItems.length).toBe(3);
-    for (const i of roleItems) expect(i.action.type).toBe("postback");
-    expect(roleItems.map((i) => i.action.data)).toEqual([
-      "action=role&role=customer",
-      "action=role&role=teacher",
-      "action=role&role=admin",
-    ]);
-    expect(roleItems.map((i) => i.action.label)).toEqual([
-      t("role_btn_customer", "TH"),
-      t("role_btn_teacher", "TH"),
-      t("role_btn_admin", "TH"),
-    ]);
+describe("🔻 TASK-310 — `rolePicker` is DELETED, and its siblings are not", () => {
+  test("🔴 the builder is gone from the reply layer", () => {
+    // ⚠️ Asserted as an absence AND as a gravestone: a deleted builder with no note is one somebody re-adds.
+    expect(code(REPLY)).not.toContain("export function rolePicker(");
+    expect(REPLY).toContain("`rolePicker` is DELETED, and the deletion is the point");
   });
 
-  test("the back-to-menu item is preserved, and it is LAST", () => {
-    // Every reply in this file carries one so no reply is a dead end (`textReply`'s own rule). Last, because
-    // the three answers should read before the escape hatch.
-    for (const lang of LANGS) {
-      const items = (picker(lang) as any).quickReply.items;
-      expect(items.length).toBe(4);
-      expect(items[3].action.data).toBe("action=menu");
-      expect(items[3].action.label).toBe(t("btn_back", lang));
-    }
+  test("🚫 …and nothing sends role buttons any more", () => {
+    const c = code(SVC);
+    expect(c).not.toContain("rolePicker");
+    expect(c).not.toContain("role_btn_");
+    // The one builder that asks the question is now a plain text reply — one message, one path.
+    expect(c).toContain('const askRole = (lang: Lang) => textReply(t("role_prompt", lang), lang);');
   });
 
-  test("labels are clamped to LINE's 20-character limit", () => {
-    // SYSTEM-FACTS: quick-reply labels clamp at 20 characters. The i18n labels are short today; the guard is
-    // on the BUILDER, so a longer translation later cannot make LINE reject the whole message.
-    const long = "x".repeat(40);
-    const items = (rolePicker("p", { customer: long, teacher: long, admin: long }, "EN") as any).quickReply.items;
-    for (const i of items) expect(i.action.label.length).toBeLessThanOrEqual(20);
-  });
-
-  test("it is built like its two siblings, not like a new invention", () => {
-    const c = code(REPLY);
-    expect(c).toContain("export function rolePicker(");
-    // Same three ingredients the other pickers use: clampLabel, a postback data string, backToMenuItem.
-    const body = c.slice(c.indexOf("export function rolePicker("), c.indexOf("export function childPicker("));
-    expect(body).toContain("clampLabel(");
-    expect(body).toContain("backToMenuItem(lang)");
-    expect(body).toContain('type: "postback"');
+  test("✅ `bookingPicker` and `childPicker` are UNTOUCHED — the deletion is about role lists, not pickers", () => {
+    // 🔑 The difference is the whole argument: those two show a parent THEIR OWN bookings and THEIR OWN
+    // children. This one showed every reader the roles the product has.
+    expect(code(REPLY)).toContain("export function bookingPicker(");
+    expect(code(REPLY)).toContain("export function childPicker(");
   });
 });
 
 describe("TASK-251 — a tap and a typed word reach ONE transition", () => {
-  test("the postback the picker EMITS is the one the service dispatches", () => {
-    // Producer and consumer, tied together: the picker's own output is parsed with the service's own parser,
-    // so a rename on either side fails here instead of in a live chat.
-    const emitted = (picker("TH") as any).quickReply.items
-      .map((i: any) => i.action.data as string)
-      .filter((d: string) => d.startsWith("action=role"));
-    expect(emitted.length).toBe(3);
-    for (const data of emitted) {
-      const { action, params } = parsePostback(data);
-      const role = params.role as "customer" | "teacher" | "admin";
-      expect(action).toBe("role");
-      expect(parseRoleChoice(t(`role_btn_${role}`, "TH"))).toBe(role);
-    }
-    expect(code(SVC)).toContain('if (action === "role")');
+  test("🔻 the postback branch OUTLIVES the picker, on purpose", () => {
+    // ⚠️ A quick reply already sitting in a parent's chat when the deploy lands is still tappable. Nothing
+    // EMITS `action=role` any more, so this branch is a deploy-window courtesy rather than a path — and the
+    // reason is recorded next to it, because otherwise the next reader deletes it as dead code.
+    const c = code(SVC);
+    expect(c).toContain('if (action === "role")');
+    expect(SVC).toContain("the picker that EMITTED this postback is GONE");
+    // …and what it does with a payload it recognises is exactly what a typed word does.
+    const tap = c.slice(c.indexOf('if (action === "role")'), c.indexOf('if (action === "enter")'));
+    expect(tap).toContain('role === "customer" || role === "teacher" || role === "admin"');
+    expect(tap).toContain("acceptRole(lineUserId, role, replyToken, lang)");
+    expect(tap).toContain("send(replyToken, [askRole(lang)])");
+    // The payload shape is still ours, and still parsed by our own parser.
+    expect(parsePostback("action=role&role=teacher")).toEqual({
+      action: "role",
+      params: { action: "role", role: "teacher" },
+    });
   });
 
   test("🔴 both doors call acceptRole — the transition exists exactly once", () => {
@@ -194,28 +172,18 @@ describe("TASK-251 — a tap and a typed word reach ONE transition", () => {
     const body = c.slice(c.indexOf("async function acceptRole("), c.indexOf("const FLOW_CLEARED"));
     expect(body).toContain("resetStrikes(lineUserId)"); // AC-19 — a valid answer clears the count
     expect(body).toContain('setStep(lineUserId, "AWAIT_CODE", role)');
-    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
-    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
+    // TASK-275 (REQ-079 §18): the BODY is bilingual (`tb`/`both`); the property this line guards is unchanged.
+    // 🔑 TASK-310 — and this ONE expression now renders a §17c screen for a parent (`code_customer`) and one of
+    // OURS for a teacher, correctly, because `both()` refuses to double a body that is already both languages.
     expect(body).toContain("tb(`code_${role}`)");
+    expect(t("code_customer", "TH")).toBe(t("code_customer", "EN"));
+    expect(t("code_teacher", "TH")).not.toBe(t("code_teacher", "EN"));
   });
 
-  test("an unknown role in the payload re-asks instead of advancing", () => {
-    // A postback is ours, but it arrives over the network; a payload we do not recognise must not fall through
-    // to whatever branch comes next.
-    const c = code(SVC);
-    const tap = c.slice(c.indexOf('if (action === "role")'), c.indexOf('if (action === "enter")'));
-    expect(tap).toContain('role === "customer" || role === "teacher" || role === "admin"');
-    expect(tap).toContain("send(replyToken, [askRole(lang)])");
-  });
-
-  test("the picker is what the สมัคร door and the first-strike re-ask both send", () => {
-    // ⚠️ The re-ask matters more than it looks: LINE removes a quick reply as soon as the user types, and PC
-    // has no rich menu to bring it back. Re-prompting with text alone would offer the buttons exactly once —
-    // to everyone except the person who just proved they needed them.
+  test("the same builder answers the สมัคร door and the strike re-ask", () => {
+    // ⚠️ The re-ask still matters: a parent who mistyped must meet the SAME question, not a variant of it.
     const c = code(SVC);
     expect(c.match(/askRole\(lang\)/g)!.length).toBe(3); // the สมัคร door · the strike re-ask · the bad payload
-    // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
-    // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
-    expect(c).toContain('tb("role_prompt"), lang, askRole(lang))');
+    expect(c).toContain('t("role_prompt", lang), lang, askRole(lang))');
   });
 });
