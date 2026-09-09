@@ -33,7 +33,10 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
       'textReply(tb("empty_checkin"), lang)',
       'textReply(tb("qr_none"), lang)',
       'textReply(tb("checkin_notfound"), lang)',
-      'textReply(tb("empty_leave"), lang)',
+      // 🔻 TASK-316 — the leave "nothing to do" reply is built by `emptyLeaveReply`, which chooses between TWO
+      // sentences (nothing upcoming vs. every class inside the cut-off). **The property this file protects is
+      // unchanged and is now asserted where it lives**: both branches are `tb(…)`, so both are bilingual.
+      'textReply(upcoming.length ? tb("empty_leave_cutoff") : tb("empty_leave"), lang)',
       'textReply(e?.message ?? tb("leave_err"), lang)',
       'reply(replyToken, tb("num_notfound"))',
     ],

@@ -233,7 +233,17 @@ const TABLE: Record<string, Entry> = {
   // TASK-135 (REQ-046) / TASK-145 (REQ-050): leave AND check-in are per SESSION — the pickers say which one.
   pick_leave_child: { TH: "ลาให้ใครคะ 👇", EN: "Which child? 👇" },
   session_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
-  empty_leave: { TH: "วันนี้ไม่มีคาบที่แจ้งลาได้", EN: "No class eligible for leave today" },
+  // 🔴 TASK-316 §4(d) — the message had to become TRUE. `ลา` now looks at every UPCOMING session, so *"today"*
+  // was no longer what it had checked. ⚠️ And the two situations are DIFFERENT: nothing to cancel at all, and
+  // classes that exist but are all inside the cut-off. **A parent could be TOO EARLY and TOO LATE and read the
+  // same sentence.** 📌 The owner's own distinction: *"too late for tomorrow's class, call the school" is help;
+  // "no class eligible" is a shrug.* 🚫 The second key names no number — the cut-off is a per-teacher-type
+  // setting, and a sentence that hardcoded one would be a second copy of the rule.
+  empty_leave: { TH: "ไม่มีคาบที่จะแจ้งลาค่ะ", EN: "You have no upcoming classes to cancel" },
+  empty_leave_cutoff: {
+    TH: "คาบที่เหลือใกล้ถึงเวลาเรียนแล้ว แจ้งลาผ่านบอทไม่ทันค่ะ กรุณาติดต่อแอดมิน",
+    EN: "Your upcoming classes are too close to their start time to cancel here. Please contact the admin.",
+  },
 
   // SPEC-071 / TASK-234 (AC-15) — the parent-facing course view. Five fields, in the customer template.
   course_title: { TH: "คอร์สของคุณ", EN: "Your courses" },

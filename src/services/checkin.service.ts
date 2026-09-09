@@ -79,26 +79,56 @@ export async function checkinByToken(token: string) {
   return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN };
 }
 
-/** Parent LINE userId → today's CONFIRMED bookings for that parent's children. */
-export async function findTodayBookingsForParent(lineUserId: string, date: string) {
-  // 🔴 TASK-259 — through the ONE resolver, not a hand-rolled copy of it.
-  //
-  // 📌 This WAS the second copy of the two-step, written out by hand — which is exactly why a grep for
-  // `findParentByLineUserId` never counted it, and why it would have been the one site left behind when every
-  // other inbound path moved. A family's second account reaches its children through the same door as the
-  // first, or it reaches nothing.
+/**
+ * The student ids of the family behind a parent's LINE account. Empty when the account is not a parent's.
+ *
+ * 🔴 TASK-259 — through the ONE resolver, not a hand-rolled copy of it.
+ *
+ * 📌 This WAS the second copy of the two-step, written out by hand — which is exactly why a grep for
+ * `findParentByLineUserId` never counted it, and why it would have been the one site left behind when every
+ * other inbound path moved. A family's second account reaches its children through the same door as the
+ * first, or it reaches nothing.
+ * 🔑 TASK-316 — extracted the moment there were TWO windows over the same family. **The window is the only
+ * thing that differs between the two queries below; who the family IS must not be able to differ at all.**
+ */
+async function linkedStudentIds(lineUserId: string): Promise<string[]> {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return [];
   const linked = await db.query.students.findMany({
     where: (s, { eq: e }) => e(s.parentId, parent.id),
   });
-  if (!linked.length) return [];
-  const ids = linked.map((s) => s.id);
+  return linked.map((s) => s.id);
+}
+
+/** Parent LINE userId → today's CONFIRMED bookings for that parent's children. */
+export async function findTodayBookingsForParent(lineUserId: string, date: string) {
+  const ids = await linkedStudentIds(lineUserId);
+  if (!ids.length) return [];
   return db.query.bookings.findMany({
     where: (b, { and, eq, inArray }) =>
       and(eq(b.date, date), eq(b.status, "CONFIRMED"), inArray(b.studentId, ids)),
     with: { student: true, teacher: true, subject: true },
     orderBy: (b, { asc }) => asc(b.startTime),
+  });
+}
+
+/**
+ * 🔴 TASK-316 (`REQ-085 §14`) — parent LINE userId → every UPCOMING CONFIRMED booking, from `fromDate` on.
+ *
+ * The leave flow already scanned, asked which child and named the session; **the only thing wrong was that its
+ * window was one day wide** — *"a parent whose child has a class on THURSDAY is told, on Tuesday, that there is
+ * nothing to do"*. ⚠️ Today's window stays for check-in and `qr`, which really are about today.
+ * 🚫 No horizon: a course is finite and its sessions are the answer to *"what does this family have?"*. The
+ * caller trims to what LINE can show, and that limit is LINE's rather than one invented here.
+ */
+export async function findUpcomingBookingsForParent(lineUserId: string, fromDate: string) {
+  const ids = await linkedStudentIds(lineUserId);
+  if (!ids.length) return [];
+  return db.query.bookings.findMany({
+    where: (b, { and, eq, gte, inArray }) =>
+      and(gte(b.date, fromDate), eq(b.status, "CONFIRMED"), inArray(b.studentId, ids)),
+    with: { student: true, teacher: true, subject: true },
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });
 }
 

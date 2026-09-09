@@ -19,8 +19,8 @@ import {
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
-import { childrenWithSessions, sessionLabel, needsChildStep } from "../lib/line-leave";
-import { leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
+import { childrenWithSessions, sessionLabel, sessionPick, needsChildStep } from "../lib/line-leave";
+import { hasEnoughLeaveNotice, leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
 import { getSetting } from "./settings.service";
 import {
   formatDroppedPostback,
@@ -93,6 +93,7 @@ import {
   checkinByToken,
   findBookingsForTeacher,
   findTodayBookingsForParent,
+  findUpcomingBookingsForParent,
   getCheckinQr,
 } from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
@@ -839,14 +840,21 @@ function sessionPicker(
   // otherwise a two-child parent sees two times and can't tell whose is whose. That is Gap-A's whole point.
   withChild = false,
 ) {
-  const picks = rows.map((b) => ({
-    id: b.id,
-    label: withChild
-      ? `${b.student.nickname || b.student.name} · ${sessionLabel(b, lang)}`
-      : sessionLabel(b, lang),
-  }));
-  const body = [prompt, ...picks.map((p) => `· ${p.label}`)].join("\n");
-  return bookingPicker(body, action, picks, lang);
+  // 🔴 TASK-316 §3 — the BUTTON and the BODY are no longer the same string on the leave path. `sessionPick`
+  // carries the decision and its reasons; here the only thing that matters is that the body row and the button
+  // beside it describe the SAME session. ⚠️ check-in and `qr` are today-only lists and keep the old form: a
+  // date on them would be noise, not information.
+  const picks = rows.map((b) => {
+    const dated = action === "leave" ? sessionPick(b, lang) : null;
+    const label = withChild ? `${b.student.nickname || b.student.name} · ${sessionLabel(b, lang)}` : sessionLabel(b, lang);
+    return { id: b.id, label: dated?.button ?? label, body: dated?.body ?? label };
+  });
+  // 🔑 The body lists exactly the rows the buttons offer. `bookingPicker` slices to LINE's 12; listing more in
+  // the text than a parent can tap is a list with unreachable entries, and widening the window is what made
+  // that reachable.
+  const shown = picks.slice(0, 12);
+  const body = [prompt, ...shown.map((p) => `· ${p.body}`)].join("\n");
+  return bookingPicker(body, action, shown, lang);
 }
 
 async function doCheckin(lineUserId: string, replyToken: string, date: string, lang: Lang) {
@@ -896,15 +904,47 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
   }
 }
 
+/**
+ * 🔴 TASK-316 §4 (`REQ-085 §14`) — THE family's leavable sessions. **One source, every caller.**
+ *
+ * `doLeave`, `doLeaveBooking` and the typed `ลา <n>` twin each fetched their own window. ⇒ widening the picker
+ * alone would offer a session the NEXT step then refuses to authorize — *"nothing eligible"* after choosing,
+ * which is the sibling-window shape this week has been spent closing.
+ *
+ * 🔑 **Eligibility is the cut-off, resolved through `hasEnoughLeaveNotice` — the SAME helper the write throws
+ * `LEAVE_NOTICE_TOO_LATE` from.** 🚫 Not a second copy of the rule: `§12.2` keeps that refusal, and *offering a
+ * session the bot will then refuse is worse than not offering it.*
+ * ⚠️ Returns BOTH lists, because the difference between them is a message: **nothing upcoming at all** and
+ * **sessions exist but every one is inside the cut-off** are different situations, and a parent can currently
+ * be TOO EARLY and TOO LATE and read the same sentence.
+ */
+async function leavableSessions(lineUserId: string, date: string) {
+  const upcoming = await findUpcomingBookingsForParent(lineUserId, date);
+  const cutoffs = new Map<string, number>();
+  const eligible = [];
+  for (const b of upcoming) {
+    // Per teacher TYPE, like the write (SPEC-048): resolved once per type rather than once per row.
+    const type = (b as any).teacher?.type ?? "FULL_TIME";
+    if (!cutoffs.has(type)) cutoffs.set(type, Number((await getSetting(leaveCutoffKey(type))).value));
+    if (hasEnoughLeaveNotice(b.date, b.startTime, cutoffs.get(type)!)) eligible.push(b);
+  }
+  return { upcoming, eligible };
+}
+
+/** The right "nothing to do" sentence: 🔑 sessions that exist but are all inside the cut-off are NOT nothing. */
+const emptyLeaveReply = (upcoming: unknown[], lang: Lang) =>
+  textReply(upcoming.length ? tb("empty_leave_cutoff") : tb("empty_leave"), lang);
+
 /** TASK-135: leave is per session, so the flow names the session — and asks which child first when more than
- *  one has a class today. `studentId` is the answer to that step (arrives on the postback). */
+ *  one has an eligible class. `studentId` is the answer to that step (arrives on the postback).
+ *  🔴 TASK-316 — the window is UPCOMING now, not today; everything else about the flow already existed. */
 async function doLeave(lineUserId: string, replyToken: string, date: string, lang: Lang, studentId?: string) {
-  const today = await findTodayBookingsForParent(lineUserId, date);
-  let eligible = today.filter((b) => b.status === "CONFIRMED");
-  if (!eligible.length) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
+  const { upcoming, eligible: all } = await leavableSessions(lineUserId, date);
+  let eligible = all;
+  if (!eligible.length) return send(replyToken, [emptyLeaveReply(upcoming, lang)]);
   if (studentId) {
     eligible = eligible.filter((b) => b.studentId === studentId); // authorize: still this parent's own rows
-    if (!eligible.length) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
+    if (!eligible.length) return send(replyToken, [emptyLeaveReply(upcoming, lang)]);
   } else if (needsChildStep(eligible)) {
     return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible), lang)]);
   }
@@ -913,9 +953,11 @@ async function doLeave(lineUserId: string, replyToken: string, date: string, lan
 }
 
 async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken: string, date: string, lang: Lang) {
-  const today = await findTodayBookingsForParent(lineUserId, date);
-  const b = today.find((x) => x.id === bookingId && x.status === "CONFIRMED"); // authorize + eligible
-  if (!b) return send(replyToken, [textReply(tb("empty_leave"), lang)]);
+  // 🔴 TASK-316 §4(c) — the SAME window the picker offered from. This re-fetch is the authorization, and while
+  // it looked only at today, every pick outside today failed it AFTER the parent had chosen.
+  const { upcoming, eligible } = await leavableSessions(lineUserId, date);
+  const b = eligible.find((x) => x.id === bookingId); // authorize + eligible
+  if (!b) return send(replyToken, [emptyLeaveReply(upcoming, lang)]);
   // TASK-146: a refusal (LEAVE_NOTICE_TOO_LATE from the cut-off, LEAVE_LOCKED, …) used to propagate out of
   // this handler — the outer catch logged it and **the parent got no reply at all**. AC-7 wants them to read
   // the reason, so the server's message is surfaced instead of silence.
@@ -1155,8 +1197,9 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
 
   const leaveMatch = cmd.match(/^ลา\s*(\d+)$/);
   if (leaveMatch) {
-    const today = await findTodayBookingsForParent(lineUserId, date);
-    const eligible = today.filter((b) => b.status === "CONFIRMED");
+    // 🔴 TASK-316 — the THIRD caller of the old one-day window, and @Sober named two. The typed twin must index
+    // the SAME list the picker offered, or a number means one session on a phone and another on a PC.
+    const { eligible } = await leavableSessions(lineUserId, date);
     const b = eligible[Number(leaveMatch[1]) - 1];
     if (!b) return reply(replyToken, tb("num_notfound"));
     return doLeaveBooking(lineUserId, b.id, replyToken, date, lang);

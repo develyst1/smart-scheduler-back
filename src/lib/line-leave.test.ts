@@ -4,7 +4,11 @@
 import { describe, expect, test } from "bun:test";
 import { childrenWithSessions, sessionLabel, needsChildStep, type LeaveSession } from "./line-leave";
 
+// 🔑 TASK-316 — `date` joined a session's identity when the picker stopped being a today-only list. Defaulted
+// here so the AC-3/AC-5 cases below read exactly as they did; the date's own behaviour is asserted in
+// `leave-window-req085.test.ts`.
 const session = (over: Partial<LeaveSession> & { id: string; studentId: string; startTime: string }): LeaveSession => ({
+  date: "2026-09-10",
   student: { name: "น้องเอ" },
   teacher: { nickname: "ก้อง" },
   subject: { name: "Surfskate" },
