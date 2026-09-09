@@ -309,6 +309,22 @@ export function formatOutboxMessage(
     }
     // REQ-049 / TASK-136 — admin and teacher read the same event in their own language, each in the REQ's
     // wording. `-` rather than an empty gap when a field is missing (a deleted booking still sends).
+    // 🔴 REQ-085 §12 (TASK-309 §3) — the make-up the search had to place half a year out.
+    //
+    // `firstFreeWeeklySlot` scans 26 weeks and, finding nothing free, returns the last candidate ANYWAY. Its
+    // comment said the caller's ceiling refused that answer — and §12 deleted the ceiling, so for one day a
+    // make-up could land absurdly far in silence.
+    // 🔑 It is still not refused (`§12` forbids that) and it is no longer silent. 🚫 The PARENT is not told:
+    // they asked for a leave and got one; the date is our problem, not theirs.
+    case "makeup_far_out":
+      return (
+        t("ob_makeup_far", lang, {
+          weeks: String(payload.weeks ?? "-"),
+          replaces: (payload.replaces as string) ?? "-",
+          landedOn: (payload.landedOn as string) ?? "-",
+        }) +
+        (ctx.studentName ? `\n${t("ob_l_student", lang)}: ${ctx.studentName}` : "")
+      );
     case "sick_leave":
       return (
         t("ob_sick_title", lang) + "\n" +

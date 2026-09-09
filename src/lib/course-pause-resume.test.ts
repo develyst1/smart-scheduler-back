@@ -193,14 +193,14 @@ describe("TASK-282 §7 — resume is a RE-PLAN. Nothing is restored; the admin g
   test("🔑 the expiry is DERIVED and always covers the last planned session — the DEF-4 case", () => {
     // A re-plan that runs PAST the old expiry: the expiry follows the course, which is the owner's
     // *"วันหมดอายุก็งอกไปสิ เรื่องปกติ"* and the case a request-checking validator could never catch.
-    // 📌 TASK-302 added the REMAINING-quota term; a course with none spends nothing, so `0` is the reading
-    // that isolates DEF-4's own guarantee — that the expiry COVERS the last session. `makeup-quota-room`
-    // owns how far past it must reach.
-    expect(replanExpiry("2026-10-20", "2026-12-01", 0)).toBe("2026-12-01");
+    // 🔻 TASK-308 REVERTED TASK-302's remaining-quota term: with no ceiling left to refuse a leave there is
+    // this test protects is DEF-4's own guarantee — that the expiry COVERS the last session — and it is
+    // unchanged.
+    expect(replanExpiry("2026-10-20", "2026-12-01")).toBe("2026-12-01");
     // 🚫 …and it never SHRINKS: a re-plan finishing early must not take back a window the family already had.
-    expect(replanExpiry("2026-12-31", "2026-11-24", 0)).toBe("2026-12-31");
+    expect(replanExpiry("2026-12-31", "2026-11-24")).toBe("2026-12-31");
     // Nothing owed ⇒ no last session ⇒ nothing moves.
-    expect(replanExpiry("2026-12-31", null, 2)).toBe("2026-12-31");
+    expect(replanExpiry("2026-12-31", null)).toBe("2026-12-31");
   });
 
   test("the response carries the new last session AND the new expiry, for TASK-287 to state", () => {

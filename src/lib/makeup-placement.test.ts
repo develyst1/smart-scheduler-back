@@ -146,7 +146,8 @@ describe("TASK-300 — the two cases the fix must NOT break", () => {
     const SVC = src("src/services/scheduler.service.ts");
     // The make-up still mirrors teacher/subject/time from the absence it replaces…
     expect(SVC).toContain("const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null)");
-    // …and is still bounded by the course's own stored ceiling (TASK-299), not by a re-derived one.
-    expect(SVC).toContain("if (exceedsExtensionCeiling(extDate, course.expiryDate)) {");
+    // 🔻 TASK-308 — it is no longer BOUNDED at all: §12 deleted the refusal and the expiry stretches to fit.
+    // The MIRRORING is what this test is about, and that is unchanged.
+    expect(SVC).toContain("if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;");
   });
 });

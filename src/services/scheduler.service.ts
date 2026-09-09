@@ -17,7 +17,7 @@ import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
 import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
-import { firstFreeWeeklySlot } from "../lib/extension-slot";
+import { firstFreeWeeklySlot, searchExhausted, weeksBetween } from "../lib/extension-slot";
 import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
 import {
   COURSE_SUBJECT_LOCKED,
@@ -1677,10 +1677,11 @@ export async function createCoursePackage(input: any) {
     const bornCeiling = courseBornCeiling(
       courseExpiry(input.startDate, input.size),
       plannedSessions.reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
+      // 🔻 TASK-308 — TASK-301's quota term is REVERTED. It pre-allocated weeks for leave not yet taken,
+      // so the card's `expires` date claimed time the family had not used. With no ceiling left to refuse
+      // a leave, there is nothing to leave room FOR: the expiry stretches on demand instead.
+      // ✅ §10's stretch for DECLARED absences stays — those are real planned sessions.
       absentWeeks.size,
-      // 🔑 TASK-301 — the quota's weeks, through the ONE accessor rather than the card's table, so an
-      // off-card size answers with its own allowance instead of falling through to zero.
-      courseLeaveQuota({ size: input.size }),
     );
 
     const [course] = await tx
@@ -1718,9 +1719,10 @@ export async function createCoursePackage(input: any) {
     }
 
     // TASK-148: ONE behaviour — the same engine the plan editor uses appends the make-ups, so a course born
-    // with absences ends up with `size` live sessions and a later end date. It is also where the MAX_WEEK
-    // ceiling is enforced (`EXTENSION_CEILING`): if the declared absences push the course past its ceiling the
-    // whole create is refused with that reason and this transaction rolls back — nothing is trimmed silently.
+    // with absences ends up with `size` live sessions and a later end date.
+    // 🔻 TASK-308 — it used to say this is *"where the MAX_WEEK ceiling is enforced"* and that a create is
+    // refused past it. **It is not, and no longer can be:** §12 deleted that refusal, and `bornCeiling` above
+    // already stretches to cover the declared absences. Nothing is trimmed and nothing is refused.
     // `leaveUsed` is deliberately NOT touched: an absence declared at creation is free (owner decision B).
     if (absentWeeks.size) await reconcileCoursePlan(tx, course.id);
 
@@ -2036,13 +2038,28 @@ export async function previewCoursePackage(input: {
     sessions.push({ date, ...ref, absent: false, makeup: true });
   }
   const live = sessions.filter((s) => !s.absent);
-  // The same rule the SAVE will store (TASK-299), computed from the same plan — so the preview's
-  // `exceedsCeiling` and the create's refusal can never disagree about where the boundary is.
-  const previewCeiling = courseBornCeiling(
-    courseExpiry(input.startDate, input.size),
-    sessions.filter((s) => !s.makeup).reduce((m, s) => (s.date > m ? s.date : m), input.startDate),
-    absent.size,
-    courseLeaveQuota({ size: input.size }),
+  // 🔴 REQ-085 §12 (TASK-309 §2) — **the preview reports the boundary the plan actually NEEDS, and refuses
+  // nothing.**
+  //
+  // 🔻 It used to compare the plan against a PROJECTION of itself: `courseBornCeiling` assumes make-ups land
+  // at a weekly cadence, while `findFreeExtensionDate` **searches**, so a taken slot pushed a real make-up
+  // past the projected boundary and `exceedsCeiling` went true. ⇒ the owner was shown *"This course can only
+  // extend to week 5 — reduce the planned absences or pick a different start date"* **with `Create plan`
+  // disabled**: told to change what he wanted because a date could not move.
+  // 🔑 `§12` says the expiry stretches *"at creation AND after it, identically"*, so the last refusal goes
+  // with the rest.
+  //
+  // ✅ The boundary is the MAX_WEEK rule **widened to the sessions this preview actually laid out** — including
+  // the make-ups it placed with the real search. 📌 No second search: the preview has already run it, and the
+  // SAVE reaches the same number from the other side, because TASK-308 grows the stored expiry to cover the
+  // make-ups the reconcile appends. **Preview and save agree on the finished course, which is what matters.**
+  const previewCeiling = sessions.reduce(
+    (m, sn) => (sn.date > m ? sn.date : m),
+    courseBornCeiling(
+      courseExpiry(input.startDate, input.size),
+      sessions.filter((sn) => !sn.makeup).reduce((m, sn) => (sn.date > m ? sn.date : m), input.startDate),
+      absent.size,
+    ),
   );
   return {
     size: input.size,
@@ -2055,7 +2072,12 @@ export async function previewCoursePackage(input: {
     absentWeeks: [...absent].sort((a, b) => a - b),
     liveCount: live.length,
     endDate: live[live.length - 1]?.date ?? input.startDate,
-    // AC-3: the same ceiling the save enforces — the FE can refuse before the user commits.
+    // 🔻 TASK-309 §2 — **this can no longer be true**, by construction: `previewCeiling` is widened to the
+    // furthest session in `sessions`, so nothing in `sessions` can exceed it.
+    // 🚫 The field is KEPT rather than removed: the FE reads it to gate `Create plan`, and a removed field is
+    // a contract change. ⇒ **the FE gate goes first, then the field** — never both at once (@Sober, §2).
+    // 📌 Left as the computation rather than a literal `false`, so the day someone narrows the ceiling again
+    // this starts telling the truth instead of lying quietly.
     exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling)),
     sessions,
   };
@@ -2237,27 +2259,50 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
       (m: string, r: any) => (r.date > m ? r.date : m),
       course.startDate,
     );
+    // 🔑 TASK-308 (b) — the furthest date the appends reach. Collected across the loop and written once,
+    // so a course that earns three make-ups records ONE expiry change rather than three.
+    let expiryAfterAppends: string = course.expiryDate;
     for (const a of plan.append) {
       // Mirror the makeup's teacher/subject/time from the absence it replaces (or a live session).
       const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
       if (!template) break;
       const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate);
-      // SPEC-028 §5 #2 (TASK-093): the extension is HARD-bounded by the course's ceiling.
-      // 🔴 TASK-299 — that ceiling is the course's own stored `expiryDate`, not one re-derived from the
-      // PURCHASE date. `startDate` deliberately stays the purchase date across a re-plan (TASK-282), so
-      // measuring from it refused a legitimate make-up on any course that had been paused for long enough.
-      // 🔑 The gate is still here and still refuses: this is the AUTOMATIC growth the boundary exists to stop.
-      if (exceedsExtensionCeiling(extDate, course.expiryDate)) {
-        // 🔴 TASK-301 — the message must name the boundary the CHECK used. It printed
-        // `MAX_WEEK_BY_SIZE[size]` while the check read `course.expiryDate`, so a course refused at week 7
-        // was told the limit was week 5 — **a value with two sources, the same class as DEF-3 and the two
-        // `startTime` formats.** ⚠️ It cost more than an admin's confusion: it sent @Porter to the wrong
-        // diagnosis and nearly earned a task for a defect that was not there.
-        // 📌 A DATE, deliberately: the admin can compare it to the plan in front of them without counting weeks,
-        // and a week number derived from anything but the ceiling would bring this defect back with new digits.
-        throw conflict(
-          "EXTENSION_CEILING",
-          `คอร์สขยายเกินวันสิ้นสุดของคอร์ส (${course.expiryDate}) ไม่ได้`,
+      // 🔴 REQ-085 §12 (TASK-308) — **the QUOTA is the only gate on leave, and the expiry STRETCHES to fit.**
+      //
+      // 🔻 A refusal stood here. It was `EXTENSION_CEILING`, and it fired on the make-up a legitimate leave
+      // had just earned: the family had quota, took it, and the system said no. **The owner reported that
+      // three times.** TASK-299 made the refusal read the right boundary and TASK-301 made it name the right
+      // date — 🔑 **but an accurate refusal is still a refusal**, and the requirement was never a better one.
+      //
+      // ✅ The owner, verbatim: *"quota ลา มี แต่การยืดเวลาไม่มี quota … ส่วนวันหมดอายุ ก็อย่างที่บอก ให้ยืดตามไปเลย"*
+      // ⇒ **if the family still has quota, the leave goes through and the dates move to make room.**
+      // 🚫 The ceiling was never a rule about leave — @Porter has withdrawn the two-rule reading as his own
+      // misreading. **It was a rule we invented for it**, and `SPEC-028 §5 #2`'s fear (*"a leave could extend a
+      // course indefinitely"*) was already answered by the QUOTA: at most `quota` make-ups, ever.
+      //
+      // 📌 The stretch is collected and written ONCE below, through `recordExpiryChange` — the same writer an
+      // admin edit and a re-plan use. 🚫 Not a second way to move an expiry.
+      if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;
+      // 🔴 TASK-309 §3 — the search gives up and answers anyway. Its comment used to say the caller's
+      // ceiling refused that answer; §12 deleted the ceiling, so for one day a make-up could land half a
+      // year out **in silence**.
+      // ✅ It still is not refused — `§12` forbids that — and it is no longer silent: **the leave succeeds
+      // and the ADMIN is told.** 🚫 Not the parent: they asked for a leave and got one; the date is our
+      // problem, not theirs.
+      // ⚠️ The trigger is EXHAUSTION, not a distance I picked. **It is the only line nobody invented** — a
+      // warning on a threshold of my own choosing would be the same mistake as the ceiling. 📌 The message
+      // carries HOW FAR, so @Porter can take a smaller number to the owner and this becomes one constant.
+      if (searchExhausted(fromDate, extDate)) {
+        await notifyAdmins(
+          {
+            kind: "makeup_far_out",
+            bookingId: template.id,
+            weeks: weeksBetween(template.date, extDate),
+            landedOn: extDate,
+            replaces: template.date,
+          },
+          tx,
+          template.id,
         );
       }
       const [ext] = await tx
@@ -2278,6 +2323,23 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         .returning({ id: bookings.id });
       appended.push(ext.id);
       fromDate = extDate;
+    }
+
+    // ✅ TASK-308 (b) — the expiry GROWS to cover what the leave earned. Never shrinks; identical in shape
+    // to `replanExpiry`, and it leans on TASK-282's guarantee that the expiry covers the plan.
+    // ⚠️ Through `recordExpiryChange`, so REQ-082's audit still answers *"why did this date move?"* — with a
+    // null actor, which is accurate: the system moved it, not a person.
+    if (expiryAfterAppends > course.expiryDate) {
+      await tx
+        .update(coursePackages)
+        .set({ expiryDate: expiryAfterAppends })
+        .where(eq(coursePackages.id, courseId));
+      await recordExpiryChange(tx, {
+        courseId,
+        from: course.expiryDate,
+        to: expiryAfterAppends,
+        actor: null,
+      });
     }
   }
 
@@ -2777,20 +2839,14 @@ export async function updateBookingStatus(
       // cancel before TASK-105. The money hold releases below (CANCELLED is releasing); the makeup draws on its
       // own confirm — so a cancel nets zero freelance hours until the makeup is taught.
       if (current.courseId) {
-        try {
-          await reconcileCoursePlan(tx, current.courseId);
-        } catch (e) {
-          // TASK-105 follow-up: on a cancel, the re-owe makeup can't fit within MAX_WEEK → reconcileCoursePlan
-          // throws EXTENSION_CEILING, whose "course extends past week N" wording is confusing on a CANCEL. Re-map to
-          // a cancel-specific reason (the extend paths keep the generic message). Fix rides REQ-036 (early termination).
-          if (e instanceof ApiException && e.code === "EXTENSION_CEILING") {
-            throw conflict(
-              "CANCEL_AT_CEILING",
-              "ยกเลิกคาบนี้ไม่ได้: คอร์สเต็มกำหนดสัปดาห์สูงสุดแล้ว คาบชดเชยจึงไม่มีที่ลง — ใช้สิทธิ์แอดมิน (override) หรือจัดการแบบสิ้นสุดคอร์สก่อนกำหนด",
-            );
-          }
-          throw e;
-        }
+        // 🔻 TASK-308 (REQ-085 §12) — the `try/catch` here re-mapped `EXTENSION_CEILING` to a
+        // cancel-specific `CANCEL_AT_CEILING`, because a re-owed make-up could be refused by the ceiling.
+        // **The ceiling no longer refuses anything on this path**, so that catch became a handler for an
+        // exception that can never be thrown. 🔑 §4's own rule: *a gate that can never fire is a path nobody
+        // can test* — the same reason `EXPIRY_REQUIRED` went in TASK-287.
+        // ✅ The reconcile still runs, and still re-owes the make-up: **every course-session cancel is a
+        // reschedule, not a forfeit** (SPEC-028 §11.3). Only the refusal it could raise is gone.
+        await reconcileCoursePlan(tx, current.courseId);
       }
     } else if (action === "sick-leave" && current.status === "ATTENDED") {
       // ═══ SPEC-073 / TASK-258 (REQ-083) — UNDO an attendance. It sits here, beside the `attend` branch it
@@ -4007,8 +4063,7 @@ export async function resumeCourse(
     // 🔑 TASK-302 — the quota term is REMAINING, not full: a course that has spent its leave gets no
     // headroom, because it has none to take. Floored at 0 so a course somehow over its quota cannot pull the
     // expiry backwards — the never-shrink rule is `courseBornCeiling`'s `max`, and this must not fight it.
-    const remainingQuota = Math.max(0, courseLeaveQuota(course) - course.leaveUsed);
-    const expiryDate = replanExpiry(course.expiryDate, lastSession, remainingQuota);
+    const expiryDate = replanExpiry(course.expiryDate, lastSession);
 
     // Clear the pause FIRST: `insertBooking` runs through `assertCourseWritable`, and a course still marked
     // dropped would refuse its own resume. Doing it inside the same transaction means a clash below still

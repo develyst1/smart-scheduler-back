@@ -217,7 +217,10 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
   test("🔴 BOTH paths that move a course's expiry record it, through ONE writer", () => {
     const c = code(SVC);
     // Q1's sweep: `updateCourseExpiry` (new) and `resumeCourse` are the only two writers of a COURSE expiry.
-    expect(c.match(/recordExpiryChange\(/g)!.length).toBe(3); // the declaration + the edit + the resume
+    // 🔻 TASK-308 — a FOURTH: the reconcile now grows the expiry when a leave's make-up lands past it, and it
+    // does so through this same writer. 🔑 That is the point — §12 said the expiry stretches, and the audit
+    // still answers *"why did this date move?"* because no second way to move one was added.
+    expect(c.match(/recordExpiryChange\(/g)!.length).toBe(4);
     const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function endCourse("));
     // TASK-282 §7: `effectiveExpiry` was the admin's date-or-the-old-one; it is now `expiryDate`, DERIVED from
     // the last session the re-plan laid out. 🔑 The audit is unchanged and that is the point — **the trail did

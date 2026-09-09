@@ -402,6 +402,15 @@ const TABLE: Record<string, Entry> = {
   ob_course_title: { TH: "📅CONFIRMED SCHEDULE:", EN: "📅CONFIRMED SCHEDULE:" },
   // 🔴 REQ-085 §9.1 (TASK-305) — ENGLISH in both languages, by the owner's §9 ruling. 🔻 The Thai `แจ้งลา`
   // in §7.4's earlier block is SUPERSEDED by it.
+  // 🔑 REQ-085 §12 (TASK-309 §3) — an ADMIN alert, in the admin-alert convention (Thai, like `ob_leave_admin`
+  // beside it) rather than the §7 templates' English: this is our own operational warning, not one of the
+  // customer's messages.
+  // ⚠️ **The wording is mine and the NUMBER is not.** §3 asked for the FACT reported and the threshold left
+  // to @Porter — so the sentence states how far, and decides nothing.
+  ob_makeup_far: {
+    TH: "⚠️ คาบชดเชยถูกจัดไปไกลกว่าปกติ: {weeks} สัปดาห์หลังคาบที่ลา ({replaces} → {landedOn}) — ตารางครูช่วงนี้เต็ม",
+    EN: "⚠️ A make-up landed further out than usual: {weeks} weeks after the session it replaces ({replaces} → {landedOn}) — that coach's slot is fully booked.",
+  },
   ob_leave_notice_title: { TH: "LEAVE NOTICE", EN: "LEAVE NOTICE" },
   ob_l_start: { TH: "เริ่ม", EN: "Starts" },
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },

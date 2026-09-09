@@ -125,12 +125,7 @@ export function exceedsExtensionCeiling(date: string, ceiling: string): boolean 
  * 🚫 **It never SHRINKS the ceiling.** A course whose plan ends early still owes the family the leave window
  * they bought, so `courseExpiry` stays the floor.
  */
-export function courseBornCeiling(
-  base: string,
-  lastPlanned: string,
-  absences: number,
-  quota: number,
-): string {
+export function courseBornCeiling(base: string, lastPlanned: string, absences: number): string {
   // 🔑 THE PROMISE, in words, because a bare `+ 7` is a number nobody can check:
   //
   //     the ceiling is **the plan's end plus the leave quota**, in weeks.
@@ -138,8 +133,7 @@ export function courseBornCeiling(
   // Each declared absence earns one make-up a week after the plan, so the PLAN ends `absences` weeks after
   // its last booked session. The quota's weeks then sit BEYOND that end — which is exactly what the base
   // ceiling already gives an absence-free course, and the term TASK-301 found missing.
-  const planEnd = addDays(lastPlanned, absences * 7);
-  const stretched = addDays(planEnd, quota * 7);
+  const stretched = addDays(lastPlanned, absences * 7);
   return stretched > base ? stretched : base;
 }
 
@@ -368,22 +362,18 @@ export const courseNote = (sessions: Array<{ attendeeNote?: string | null }>): s
  * 📌 `null` when the re-plan lays out nothing (a course that owes zero): there is no last session to
  * cover, so there is nothing to move.
  *
- * 🔴 **TASK-302 — it must reach past the last session by the REMAINING quota, not stop on it.**
- * This returned `lastSession` exactly, and TASK-299 then made that value the extension ceiling ⇒ **a resumed
- * course had ZERO headroom and its next leave was refused.** A pause of a few weeks almost always ends later
- * than the original expiry, so this fired on the ordinary path: **the family paused, came back, and lost the
- * leave they had not used.** 🔑 TASK-301's defect, one verb over.
+ * 🔻 **TASK-302's REMAINING-quota term is REVERTED here (TASK-308 §12).** It reached past the last session so a
+ * resumed course would have room for a leave the ceiling would otherwise refuse. ⇒ **with nothing left to
+ * refuse there is nothing to leave room FOR**, and a pre-allocated week made the card's `expires` date claim
+ * time the family had not used. **Stretch on demand is simpler and more honest.**
+ * 📌 TASK-302's term was the right fix for the rule as we then understood it; `§12` removes the need for it,
+ * not the reasoning behind it. ⚠️ Reverted here as well as in `courseBornCeiling` **because the argument is
+ * identical** — leaving it would pre-allocate on the re-plan path only, which is the inconsistency this task
+ * exists to end.
  *
- * ⚠️ **REMAINING, not full.** A course that has spent its quota gets no headroom, and that is correct — it
- * has no leave left to take. **That is what keeps this a promise rather than a gift.**
- * ✅ **Same arithmetic as `courseBornCeiling`, deliberately reused rather than restated:** a re-plan has no
- * declared absences, so it is that function with `absences = 0`. 🚫 **Two arithmetics for one sentence is the
- * class this whole week has been about.**
+ * ✅ Still the same arithmetic as `courseBornCeiling`: a re-plan has no declared absences, so it is that
+ * function with `absences = 0`. 🚫 Two arithmetics for one sentence is the class this week has been about.
  */
-export const replanExpiry = (
-  currentExpiry: string,
-  lastSession: string | null,
-  remainingQuota: number,
-): string =>
-  lastSession ? courseBornCeiling(currentExpiry, lastSession, 0, remainingQuota) : currentExpiry;
+export const replanExpiry = (currentExpiry: string, lastSession: string | null): string =>
+  lastSession ? courseBornCeiling(currentExpiry, lastSession, 0) : currentExpiry;
 
