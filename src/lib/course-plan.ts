@@ -333,6 +333,29 @@ export const endableSessions = <T extends { status: string; bookingType?: string
   sessions.filter((s) => isCoursePlanRow(s) && COURSE_LIVE.has(s.status));
 
 /**
+ * 🔴 TASK-284 (REQ-085 §3) — **the COURSE's note: the first NON-EMPTY one, in date order.**
+ *
+ * 🔻 The payload read `rows[0]?.attendeeNote` — the EARLIEST session's note — and I recorded that as a known
+ * limitation in TASK-269 §2 and chose not to fix it. The owner then put a note on a session that was not the
+ * earliest, confirmed the course, and `CONFIRMED SCHEDULE` printed no `Remark` at all.
+ * **The record was accurate and the decision was wrong**: I optimised for not inventing an answer and
+ * shipped a field that renders nothing on the path a human actually takes.
+ *
+ * 🔑 The difference from `rows[0]` is small and it is the whole defect: `rows[0]` answers *"the earliest
+ * session's note"*; this answers *"the course's note, if it has one"* — **and only the second is what a
+ * reader of `CONFIRMED SCHEDULE` would take it to mean.**
+ *
+ * ✅ On the normal path the two are identical: TASK-178 puts one note at creation onto EVERY session.
+ * ⚠️ When a course carries DIFFERENT notes it returns the earliest. 🚫 Not several, not joined, no
+ * "and 2 more": **a course summary has no true answer to "which session's note", and the earliest is at
+ * least a RULE rather than an accident.**
+ * 📌 Date order is the CALLER's guarantee — `loadCourseForEnd` orders `asc(date), asc(startTime)`. Passing
+ * unordered rows would make "earliest" mean "whichever the database returned first".
+ */
+export const courseNote = (sessions: Array<{ attendeeNote?: string | null }>): string | null =>
+  sessions.find((s) => s.attendeeNote?.trim())?.attendeeNote ?? null;
+
+/**
  * SPEC-065 / TASK-282 §7.1(2) — **the expiry a RE-PLAN produces.** An OUTPUT, never a request.
  *
  * 🔴 This is the fix for DEF-4, and the reason is structural rather than a tightening: that
@@ -344,7 +367,23 @@ export const endableSessions = <T extends { status: string; bookingType?: string
  * as a side effect of an admin rescheduling — which nobody asked for and nobody would be told about.
  * 📌 `null` when the re-plan lays out nothing (a course that owes zero): there is no last session to
  * cover, so there is nothing to move.
+ *
+ * 🔴 **TASK-302 — it must reach past the last session by the REMAINING quota, not stop on it.**
+ * This returned `lastSession` exactly, and TASK-299 then made that value the extension ceiling ⇒ **a resumed
+ * course had ZERO headroom and its next leave was refused.** A pause of a few weeks almost always ends later
+ * than the original expiry, so this fired on the ordinary path: **the family paused, came back, and lost the
+ * leave they had not used.** 🔑 TASK-301's defect, one verb over.
+ *
+ * ⚠️ **REMAINING, not full.** A course that has spent its quota gets no headroom, and that is correct — it
+ * has no leave left to take. **That is what keeps this a promise rather than a gift.**
+ * ✅ **Same arithmetic as `courseBornCeiling`, deliberately reused rather than restated:** a re-plan has no
+ * declared absences, so it is that function with `absences = 0`. 🚫 **Two arithmetics for one sentence is the
+ * class this whole week has been about.**
  */
-export const replanExpiry = (currentExpiry: string, lastSession: string | null): string =>
-  lastSession && lastSession > currentExpiry ? lastSession : currentExpiry;
+export const replanExpiry = (
+  currentExpiry: string,
+  lastSession: string | null,
+  remainingQuota: number,
+): string =>
+  lastSession ? courseBornCeiling(currentExpiry, lastSession, 0, remainingQuota) : currentExpiry;
 

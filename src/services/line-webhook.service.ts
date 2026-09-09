@@ -85,6 +85,7 @@ import {
 } from "./parent.service";
 import { hhmm, weekRange } from "../lib/time";
 import { renderSchedule } from "../lib/line-schedule";
+import { TEMPLATE_LANG } from "../lib/line-message-fields";
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
 import { toCourseSummary } from "../lib/leave";
 import {
@@ -982,7 +983,14 @@ async function doTeacherSchedule(
   // ⚠️ Measured, not assumed: 20 rows (the composer's own cap) with long names and a note on every row is
   // 3,848 characters doubled — inside LINE's 5,000 cap. **The cap is what bounds it, not the data.**
   return send(replyToken, [
-    textReply(both((l) => renderSchedule(rows, l, range)), lang, [toggle, calendarBtn]),
+    // 🔴 REQ-085 §4 / §7.2 (TASK-304) — ONE language. *"แบบคำสั่งให้เป็นภาษาเดียวพอ"*: this was wrapped in
+    // `both()`, so a teacher asking for their schedule received the WHOLE thing twice, once per language.
+    // 🔑 The narrowing matters and the next reader will meet the wider version first: **AUTO is explicitly
+    // NOT in scope** — *"Format แจ้งเตือน Auto โอเคแล้วค่ะ"* — and keeps its language untouched. Only the
+    // COMMAND version loses one.
+    // 📌 `TEMPLATE_LANG`, the same constant every §7 format renders in, rather than a fourth answer to
+    // *"which language is a notification in?"*.
+    textReply(renderSchedule(rows, TEMPLATE_LANG, range), lang, [toggle, calendarBtn]),
   ]);
 }
 

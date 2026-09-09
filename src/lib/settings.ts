@@ -34,7 +34,6 @@ const oneOf =
   (raw: unknown): string | null =>
     typeof raw === "string" && options.includes(raw) ? raw : null;
 
-export const NOTIFY_ON_LEAVE_OPTIONS = ["admin_only", "admin_and_teacher"] as const;
 
 /** SPEC-071 Amendment #2 / TASK-232 — the LINE parent 2FA step. Shipped `off`; see the entry below. */
 export const LINE_PARENT_2FA_OPTIONS = ["off", "on"] as const;
@@ -74,17 +73,19 @@ export const SETTINGS = {
     label: "แจ้งลาล่วงหน้า — ครูฟรีแลนซ์ (ชั่วโมง)",
     parse: intInRange(0, 72),
   },
-  // SPEC-044 / REQ-049. Default `admin_only` = today's behaviour, so enabling the teacher push is a deliberate
-  // opt-in and no real coach is messaged by an upgrade.
-  notify_on_leave: {
-    key: "notify_on_leave",
-    type: "enum",
-    default: "admin_only",
-    unit: "option",
-    options: NOTIFY_ON_LEAVE_OPTIONS,
-    label: "แจ้งเตือนเมื่อมีการลา",
-    parse: oneOf(NOTIFY_ON_LEAVE_OPTIONS),
-  },
+  // 🔻 REQ-085 §9 (TASK-306) — **`notify_on_leave` was REMOVED, and this line is here so nobody adds it back.**
+  //
+  // It chose who is told when a student takes leave: `admin_only` (the default) or `admin_and_teacher`.
+  // 🔴 The owner's instruction is unconditional — *"เฉพาะแชทครู / แอดมิน"* — so **a setting offering that
+  // choice can only ever be wrong**, and an admin who set it would believe they had changed something.
+  //
+  // 📌 The finding underneath it is worth keeping: the teacher notification was never un-built. It sat behind
+  // `if (notifyOnLeave === "admin_and_teacher")` with the default `admin_only`, so **on a default install
+  // that branch never ran** — and the owner reported the feature as missing, twice.
+  // 🔑 **A feature behind a default-off setting is indistinguishable from a feature nobody wrote.**
+  //
+  // 🚫 No stored row was deleted and no migration was written: a value nothing reads is inert, and a DELETE
+  // is irreversible and buys nothing.
   // SPEC-071 Amendment #2 / TASK-232 (REQ-079 §2) — the 6-digit step between "the parent typed a phone" and
   // "here are your children".
   //

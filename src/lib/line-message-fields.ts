@@ -18,8 +18,48 @@ export type NotifyType = "COURSE" | "VOUCHER" | "ONE_HOUR" | "FIRST_TRIAL" | "OT
 
 export type Audience = "parent" | "teacher";
 
+/**
+ * 🔴 REQ-085 §8.2 / REQ-079 §18 — **the language of the customer's templates, in ONE place.**
+ *
+ * Their messages are written in a single convention: **labels and SYSTEM-GENERATED values are English, in
+ * both languages.** `Date : Tuesday`, never `Date : อังคาร`; `(-)`, never `ไม่มี`. That is why the labels in
+ * `FIELD_LABEL` already read the same in TH and EN — this names the rule the rest of the message follows.
+ *
+ * 🚫 **It stops at the labels and the values WE generate.** Content a human typed is reproduced exactly as
+ * typed: a student's Thai nickname, and an admin's own `Remark`. ⚠️ Read literally, *"eng ล้วน"* would
+ * romanise `น้องดีซี` and translate `เตรียมเฉพาะ Freeskate ให้น้อง` — **and the customer's own examples keep
+ * both in Thai.** **Translating a Remark is putting words in an admin's mouth.**
+ *
+ * 📌 Named here rather than at the call sites because `REQ-086` will hand the customer these templates to
+ * edit, and this is the line that becomes a column then. 🚫 Not a template store — one constant.
+ */
+export const TEMPLATE_LANG: Lang = "EN";
+
+/**
+ * 🔑 REQ-085 §7.1(c) — what a template field prints when there is NOTHING, on the fields that always print.
+ *
+ * **The owner's reason is the acceptance criterion: a field that vanishes when empty is indistinguishable
+ * from a field that was never sent.** `(-)` is the parent being told *we checked, and there is none*.
+ * ⚠️ It applies to `**Advance Leave Notice` and NOT to `Remark` — see §8.1's trap table. **Two opposite
+ * rules, both fields at the bottom of the same message**, and they are not arbitrary: a missing leave notice
+ * is something a parent must be able to trust we CHECKED; an absent `Remark` is an admin with nothing to say.
+ */
+export const TEMPLATE_NONE = "(-)";
+
 /** The three templates that carry a field block (REQ-077 "THE TEMPLATES — final, for build"). */
-export type TemplateKey = "confirmed_schedule" | "todays_schedule" | "course_deduction";
+export type TemplateKey =
+  | "confirmed_schedule"
+  | "todays_schedule"
+  | "course_deduction"
+  // 🔴 REQ-085 §7.3 (TASK-303) — the PER-SESSION confirmation. A separate key from `confirmed_schedule`
+  // even though the customer gave both the same header, because they are different messages with
+  // different field lists: this one has no `Start`, no `Coach`, no `*Expiry date` and — the part that
+  // matters — **no `**Advance Leave Notice`**, so §8.1’s `(-)` rule has nothing to attach to here.
+  | "session_confirmed"
+  // 🔴 REQ-085 §9.1 (TASK-305) — the LEAVE NOTICE. The only §7 format that ADDS a message rather than
+  // re-wording one: a parent declares leave, the parent is told, and **the teacher is not** — so a coach
+  // can arrive for a session the student cancelled.
+  | "leave_notice";
 
 export type FieldKey =
   | "student"
@@ -59,6 +99,13 @@ export const TEMPLATE_FIELDS: Record<TemplateKey, readonly FieldKey[]> = {
   todays_schedule: ["student", "program", "date", "time", "coach", "remaining", "expiry"],
   // Parent 3 · COURSE DEDUCTION (TASK-254) — `remaining` here is the balance AFTER the deduction.
   course_deduction: ["student", "program", "date", "time", "coach", "remaining", "expiry"],
+  // §7.3 · CONFIRMED SCHEDULE, per session. Four fields; `Remark` is appended below the block by the
+  // composer, exactly as `confirmed_schedule` does, so the two share one rule instead of two.
+  session_confirmed: ["student", "program", "date", "time"],
+  // §9.1 · LEAVE NOTICE. 🔑 `Coach` earns its line for the ADMIN, not the teacher: the teacher receives
+  // this in their OWN chat and already knows it is theirs, while the admin receives every coach's — and
+  // without it, three leaves from three teachers in one day arrive looking identical.
+  leave_notice: ["student", "program", "date", "time", "coach"],
 };
 
 /**

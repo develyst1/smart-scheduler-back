@@ -119,6 +119,11 @@ export const api = new Hono()
   // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
   // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and
   // for the same reason: an audit row whose author the caller can choose records nothing.
+  // 🔴 TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked BEFORE it is chosen. Writes nothing, and
+  // reuses the PATCH's own schema: one field, one question, so the two cannot drift apart.
+  .post("/courses/:id/expiry/preview", zValidator("json", v.updateCourseExpiry), async (c) =>
+    c.json(await svc.previewCourseExpiry(c.req.param("id"), c.req.valid("json"))),
+  )
   .patch("/courses/:id/expiry", zValidator("json", v.updateCourseExpiry), async (c) =>
     c.json(await svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
   )

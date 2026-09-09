@@ -20,6 +20,7 @@
 //
 // Pure — no DB, no clock.
 import { t, type Lang } from "./line-i18n";
+import { TEMPLATE_LANG } from "./line-message-fields";
 import {
   fieldLines,
   notifyTypeOf,
@@ -48,6 +49,8 @@ export interface TodayRow {
   expiryDate?: string | null;
   /** Every assigned teacher, joined — REQ-078 allows several. */
   coach?: string | null;
+  /** 🔴 REQ-085 §7.2 (TASK-304) — this entry's own `Remark`, or nothing. Per BOOKING. */
+  attendeeNote?: string | null;
 }
 
 /** Fields that MAY move to the header. `date` is constant by construction; `coach` only when the data agrees. */
@@ -59,6 +62,18 @@ const dash = (v: string | null | undefined) => (v && String(v).trim() ? String(v
  * REQ-077 Parent 2. One class ⇒ the customer's template, verbatim. Several ⇒ Decision 6's numbered blocks under
  * whatever header the data actually supports.
  */
+/**
+ * 🔑 REQ-085 §7.2 (TASK-304) — the `Remark` line for ONE entry, or nothing.
+ *
+ * The `*ถ้ามี` rule, identical to the one §7.1 and §7.3 use — 🚫 **not a third copy of it, and never `(-)`**:
+ * that placeholder belongs only to §7.1's `**Advance Leave Notice`, and this is the third message in a row
+ * where the risk was carrying a rule across rather than forgetting one.
+ * 📌 Per BOOKING: the customer's own example shows two entries with DIFFERENT remarks, so a per-message note
+ * would be visibly wrong.
+ */
+const remarkLine = (r?: TodayRow): string[] =>
+  r?.attendeeNote?.trim() ? [`${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`] : [];
+
 export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audience = "parent"): string {
   const title = t("ob_today_title", lang);
   if (!rows.length) return `${title}\n${t("tsched_empty", lang)}`;
@@ -86,7 +101,9 @@ export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audi
   // Their common case must be untouched by a layout that exists for the uncommon one.
   if (blocks.length === 1) {
     const b = blocks[0]!;
-    return [title, ...fieldLines(b.fields, b.facts, lang)].join("\n");
+    // 🔴 TASK-304 — AUTO gains `Remark` and NOTHING else: *"Format แจ้งเตือน Auto โอเคแล้วค่ะ"*. Its
+    // language, layout and field order are untouched; one field is added to each entry.
+    return [title, ...fieldLines(b.fields, b.facts, lang), ...remarkLine(ordered[0])].join("\n");
   }
 
   // Otherwise: hoist a field only when EVERY block agrees on it — and only when every block would have printed
@@ -102,8 +119,10 @@ export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audi
     // `Time` leads each block: it is what a coach scans for, and it is the field that always differs.
     const rest = b.fields.filter((f) => f !== "time" && !hoisted.includes(f));
     const [head, ...tail] = fieldLines(["time", ...rest], b.facts, lang);
+    // TASK-304 — indented with its siblings, so the numbered block's shape does not move.
+    const remark = remarkLine(ordered[i]).map((l) => `   ${l}`);
     // The customer's labels, indented under the number so the blocks read as a list rather than a wall.
-    return [`${i + 1}) ${head}`, ...tail.map((l) => `   ${l}`)].join("\n");
+    return [`${i + 1}) ${head}`, ...tail.map((l) => `   ${l}`), ...remark].join("\n");
   });
 
   return [title, ...header, "", body.join("\n\n")].join("\n");

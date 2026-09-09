@@ -93,9 +93,9 @@ describe("🔴 ONE payload, TWO renderings — the same object, projected", () =
     // 🔴 TASK-257 §2 — `Date` is the weekday ALONE and `Time` is a RANGE, which is what `COURSE DEDUCTION`
     // always printed. The two messages disagreeing about what `Time` means is the difference a customer reads
     // as an error rather than a preference; asserted here so they cannot drift apart again.
-    expect(parent).toContain("Date : อาทิตย์");
+    expect(parent).toContain("Date : Sunday");
     expect(parent).toContain("Time : 10:00-11:00");
-    expect(parent).not.toContain("Date : อาทิตย์ 10:00");
+    expect(parent).not.toContain("Date : Sunday 10:00");
   });
 
   test("⚠️ the count and the note survive BELOW the block — one line each to delete", () => {
@@ -253,8 +253,8 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
     expect(timeLine(confirmed)).toBe("Time : 10:00-11:00");
     expect(timeLine(deduction)).toBe(timeLine(confirmed));
     // …and `Date` no longer repeats the time it used to carry.
-    expect(confirmed).toContain("Date : อาทิตย์");
-    expect(confirmed.split("\n").find((l) => l.startsWith("Date : "))).toBe("Date : อาทิตย์");
+    expect(confirmed).toContain("Date : Sunday");
+    expect(confirmed.split("\n").find((l) => l.startsWith("Date : "))).toBe("Date : Sunday");
   });
 
   test("§2 — the +1h rule lives ONCE, where the payload is built", () => {
@@ -277,23 +277,45 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
 describe("🚫 the four lesson types' `booking_confirmed` is BYTE-IDENTICAL — owner-verified (TASK-228 / AC-16)", () => {
   const ctx = { studentName: "น้องเอ", subject: "Surfskate", date: "2026-09-06", startTime: "10:00", endTime: "11:00" };
 
+  const session = { kind: "booking_confirmed", bookingType: "SINGLE_SESSION" };
+
   test("the shipped text, asserted in full rather than eyeballed", () => {
-    // 🔴 This is the message the owner read on a phone and approved. It is in the blast radius of TASK-253 and
-    // it must not shift by a byte — including its `: ` separator, which the new block deliberately does not use.
-    expect(formatOutboxMessage({ kind: "booking_confirmed" }, ctx, "TH")).toBe(
-      "📅 ยืนยันตารางสอน\nนักเรียน: น้องเอ\nวิชา: Surfskate\nเวลา: 2026-09-06 10:00-11:00",
+    // 🔻 TASK-303 (REQ-085 §7.3) — **REWRITTEN, not deleted.** The customer REPLACED this message: every label
+    // changed and `เวลา: 2026-09-06 10:00-11:00` split into `Date` (a WEEKDAY) + `Time`. It used to read
+    //
+    //     📅 ยืนยันตารางสอน · นักเรียน: น้องเอ · วิชา: Surfskate · เวลา: 2026-09-06 10:00-11:00
+    //
+    // 🔑 §4 — this is the highest-volume notification in the product: a parent, per booking, on the ordinary
+    // path. A break here is not a wrong label on a screen someone can re-read; it is a wrong message in a
+    // family's LINE, unrecallable. **So the pin stays a pin — to the new text.**
+    // 📌 An assertion that changes because a requirement changed is correct; one deleted because it failed is
+    // how this class of defect ships.
+    expect(formatOutboxMessage(session, ctx, "TH")).toBe(
+      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 1 HR\nDate : Sunday\nTime : 10:00-11:00\n",
     );
   });
 
+  test("🔑 the calendar DATE appears NOWHERE — that absence is what the split actually did", () => {
+    // `เวลา` carried `2026-09-06 10:00-11:00`; `Date` now names the weekday and `Time` the range, so the date
+    // itself is gone from the message. Asserted as an absence, because that is the part a reader would miss.
+    expect(formatOutboxMessage(session, ctx, "TH")).not.toContain("2026-09-06");
+  });
+
   test("…and the audience does not change it — this template has no family-only line", () => {
-    const parent = formatOutboxMessage({ kind: "booking_confirmed" }, ctx, "TH", "parent");
-    const teacher = formatOutboxMessage({ kind: "booking_confirmed" }, ctx, "TH", "teacher");
+    const parent = formatOutboxMessage(session, ctx, "TH", "parent");
+    const teacher = formatOutboxMessage(session, ctx, "TH", "teacher");
     expect(parent).toBe(teacher);
   });
 
-  test("an อื่นๆ booking still leads with the typed title, on its own line", () => {
-    const out = formatOutboxMessage({ kind: "booking_confirmed" }, { ...ctx, title: "ประชุมผู้ปกครอง" }, "TH");
-    expect(out.split("\n")[1]).toBe("ประชุมผู้ปกครอง");
+  test("an อื่นๆ booking is still named by the typed title — now as its `Program`", () => {
+    // 🔻 TASK-303 — it used to lead on its own unlabelled line. `programLabel` names it now, which is what
+    // §7.1 does for an อื่นๆ course: one rule across both messages.
+    const out = formatOutboxMessage(
+      { kind: "booking_confirmed", bookingType: "OTHER" },
+      { ...ctx, studentName: undefined, subject: undefined, title: "ประชุมผู้ปกครอง" },
+      "TH",
+    );
+    expect(out.split("\n")[1]).toBe("Program : ประชุมผู้ปกครอง");
   });
 
   test("the other three live kinds are unchanged by the audience too", () => {

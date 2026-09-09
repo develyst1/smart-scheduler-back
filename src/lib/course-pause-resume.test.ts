@@ -193,11 +193,14 @@ describe("TASK-282 §7 — resume is a RE-PLAN. Nothing is restored; the admin g
   test("🔑 the expiry is DERIVED and always covers the last planned session — the DEF-4 case", () => {
     // A re-plan that runs PAST the old expiry: the expiry follows the course, which is the owner's
     // *"วันหมดอายุก็งอกไปสิ เรื่องปกติ"* and the case a request-checking validator could never catch.
-    expect(replanExpiry("2026-10-20", "2026-12-01")).toBe("2026-12-01");
+    // 📌 TASK-302 added the REMAINING-quota term; a course with none spends nothing, so `0` is the reading
+    // that isolates DEF-4's own guarantee — that the expiry COVERS the last session. `makeup-quota-room`
+    // owns how far past it must reach.
+    expect(replanExpiry("2026-10-20", "2026-12-01", 0)).toBe("2026-12-01");
     // 🚫 …and it never SHRINKS: a re-plan finishing early must not take back a window the family already had.
-    expect(replanExpiry("2026-12-31", "2026-11-24")).toBe("2026-12-31");
+    expect(replanExpiry("2026-12-31", "2026-11-24", 0)).toBe("2026-12-31");
     // Nothing owed ⇒ no last session ⇒ nothing moves.
-    expect(replanExpiry("2026-12-31", null)).toBe("2026-12-31");
+    expect(replanExpiry("2026-12-31", null, 2)).toBe("2026-12-31");
   });
 
   test("the response carries the new last session AND the new expiry, for TASK-287 to state", () => {
@@ -215,8 +218,10 @@ describe("TASK-282 §7 — resume is a RE-PLAN. Nothing is restored; the admin g
     // §7.2: do not leave a throw nothing can trigger. Checked across the whole service, not just this body,
     // so a copy surviving elsewhere fails here.
     expect(SVC).not.toContain("EXPIRY_REQUIRED");
-    // The edit keeps `expiryImpact` — it is still the warning there, and only the resume's GATE was removed.
-    expect(SVC).toContain("const impact = expiryImpact(");
+    // The EDIT keeps `expiryImpact` — it is still the warning there, and only the resume's GATE was removed.
+    // 📌 TASK-298 moved the call into `expiryDecision`, the one answer the edit and the new preview share, so
+    // the assertion follows it. The property is the same: the warning survives on the path that still needs it.
+    expect(SVC).toContain("impact: expiryImpact(expiryDate, candidates),");
   });
 
   test("`recordExpiryChange` still fires, in the same transaction, before the writes", () => {

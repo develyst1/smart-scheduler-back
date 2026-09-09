@@ -10,6 +10,7 @@
 // TIME (what a teacher scans for), the student on that same line, and program · status indented underneath.
 // A blank line separates days. Long lists are still capped so the message cannot exceed LINE's size limit.
 import { t, type Lang } from "./line-i18n";
+import { TEMPLATE_LANG } from "./line-message-fields";
 import { hhmm } from "./time";
 
 export interface SchedRow {
@@ -72,7 +73,14 @@ export function renderSchedule(rows: SchedRow[], lang: Lang, range: "today" | "w
     // reads it as part of that class rather than as another line of schedule. A session without a note is
     // byte-identical to before (AC-5): almost every session has none, and a "note: —" placeholder on all of
     // them would cost more attention than the feature is worth.
-    if (r.attendeeNote?.trim()) blocks.push(`   📝 ${r.attendeeNote.trim()}`);
+    // 🔴 REQ-085 §7.2 (TASK-304) — the customer's own label. It was `📝 <note>`; their block reads
+    // `Remark : …`, which is the label §7.1 and §7.3 already print, so the word means one thing across
+    // every message they receive.
+    // ⚠️ Still the `*ถ้ามี` kind — 🚫 never `(-)`. That placeholder belongs only to §7.1's leave notice.
+    // 📌 Per BOOKING, indented under the session it belongs to: their example shows two entries with
+    // DIFFERENT remarks.
+    if (r.attendeeNote?.trim())
+      blocks.push(`   ${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`);
   }
 
   const more = rows.length > cap ? `\n\n${t("tsched_more", lang, { count: rows.length - cap })}` : "";

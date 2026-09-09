@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { both, t } from "./line-i18n";
+import { both, t, tb } from "./line-i18n";
 import { renderSchedule } from "./line-schedule";
 import { formatOutboxMessage } from "./line-message";
 import { readSrc } from "./read-src";
@@ -39,7 +39,12 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
     ],
     "children list": ['both((l) => `${t("children_title", l)}', 'textReply(tb("children_none"), lang)'],
     "teacher ตาราง": [
-      "both((l) => renderSchedule(rows, l, range))",
+      // 🔻 TASK-304 (REQ-085 §4 / §7.2) — the SCHEDULE itself is no longer bilingual. The owner ruled the
+      // COMMAND version *"ภาษาเดียวพอ"*, and it had been sent whole, twice, once per language.
+      // 🔑 The property this file protects — a CONVERSATION reply is bilingual — is unchanged, and the two
+      // entries below still carry it. This one now asserts the opposite for the one message that was ruled out
+      // of it, rather than being dropped.
+      "renderSchedule(rows, TEMPLATE_LANG, range)",
       "both((l) => renderMyCourses(view, l))",
       'textReply(tb("cal_not_teacher"), lang)',
     ],
@@ -150,10 +155,24 @@ describe("TASK-276 §4 — the boundaries held", () => {
       plannedLeaveDates: ["2026-09-14"],
       note: "แพ้ถั่ว",
     };
+    // 🔻 TASK-284 (REQ-085 §7.1) — this asserted `th !== en` on `course_confirmed`, and that is no longer
+    // true: the owner ruled the whole template English — labels AND system values — so `Date : Sunday` and
+    // `(-)` render the same in both languages, and everything else in it is a human's own words, which are
+    // never translated. **The message is now language-INVARIANT by ruling.**
+    // 🔑 `th !== en` was a PROXY for *the switch still switches*; the real property is that no notification
+    // renders BOTH languages. Both are kept — the proxy moved to a message that still has something to
+    // translate (`booking_confirmed`, whose `ob_l_*` labels are bilingual and byte-frozen).
     const th = formatOutboxMessage(COURSE, {}, "TH", "parent");
     const en = formatOutboxMessage(COURSE, {}, "EN", "parent");
-    expect(th).not.toBe(en);
-    expect(th).not.toContain(en);
+    expect(th).toBe(en);
+    // 🔑 TASK-304 §5 — RETIRED from notifications. It moved twice in one night because every notification is
+    // English-by-ruling and each §7 format makes one more invariant; a notification-based proxy was guaranteed
+    // to move again. ⇒ measured on a CONVERSATION reply, where bilingual is the RULE — and measured DIRECTLY:
+    // `tb()` composes one string carrying both languages. 🚫 Not deleted; the property is real.
+    const bilingual = tb("children_none");
+    expect(bilingual).toContain(t("children_none", "TH"));
+    expect(bilingual).toContain(t("children_none", "EN"));
+    expect(t("children_none", "TH")).not.toBe(t("children_none", "EN"));
     expect(code(src("src/lib/line-message.ts"))).not.toMatch(/\btb\(|\bboth\(/);
     expect(code(src("src/lib/ics.ts"))).not.toMatch(/\btb\(|\bboth\(/);
   });

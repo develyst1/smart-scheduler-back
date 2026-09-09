@@ -422,6 +422,8 @@ export async function runDailyReminderJob(date?: string) {
       expiryDate: r.course?.expiryDate ?? r.voucher?.expiryDate ?? null,
       // The same joiner the outbox worker uses — one definition of `Coach` (TASK-256 pulled it into a lib).
       coach: joinCoaches(r.teacher, r.additionalTeachers ?? []) ?? null,
+      // 🔴 REQ-085 §7.2 (TASK-304) — the booking's OWN note reaches its own entry.
+      attendeeNote: r.attendeeNote ?? null,
     })),
   );
 

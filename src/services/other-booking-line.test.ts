@@ -17,39 +17,53 @@ const SVC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta
 const JOBS = readSrc(await Bun.file(new URL("./jobs.service.ts", import.meta.url)).text());
 const OUTBOX = readSrc(await Bun.file(new URL("./outbox.service.ts", import.meta.url)).text());
 
+// 🔻 TASK-303 (REQ-085 §7.3) — the customer REPLACED this message: every label changed and `เวลา` split into
+// `Date` (a weekday) + `Time`. **Every property AC-16 protects is unchanged and still asserted below** — the
+// title names the booking, no empty label is printed, and the words "อื่นๆ" / "Other" never appear. What moved
+// is only the text they are asserted against, and where the title lands: it is now `Program`, which is exactly
+// what §7.1 does for an อื่นๆ course. 🔑 One rule across both messages instead of two.
+// 📌 `bookingType: "OTHER"` is now on the payload — `programLabel` needs the type to name the booking at all.
 const confirmed = { kind: "booking_confirmed", bookingId: "b1", attendeeNote: null };
+/** 📌 TASK-303 — `programLabel` needs the TYPE to name an อื่นๆ booking at all, so these tests say which. */
+const other = { ...confirmed, bookingType: "OTHER" };
 
 describe("🔴 AC-16 — the admin's title names it, and no empty label is printed", () => {
   test("a STUDENTLESS อื่นๆ confirmation shows the title and NO student / program label", () => {
-    const msg = formatOutboxMessage(confirmed, {
+    const msg = formatOutboxMessage(other, {
       title: "ประชุมทีม",
       date: "2026-09-10",
       startTime: "10:00",
       endTime: "11:00",
     });
     expect(msg).toContain("ประชุมทีม");
-    // The two labels must be absent entirely — not present with nothing after them.
-    expect(msg).not.toContain("นักเรียน");
-    expect(msg).not.toMatch(/:\s*$/m); // no line ends in a bare colon
-    expect(msg).not.toMatch(/:\s*\n/); // …nor in a colon followed by a newline
+    // The label must be absent entirely — not present with nothing after it.
+    expect(msg).not.toContain("Student");
+    // 🔻 TASK-303 — checked on the FIELD lines only. The customer's own header is `CONFIRMED SCHEDULE:`, which
+    // ends in a colon by their design, so a whole-message regex would now fail on the TITLE rather than on the
+    // thing this test is about: **a label printed with nothing after it.**
+    for (const l of msg.split("\n").slice(1)) expect(l).not.toMatch(/:\s*$/);
   });
 
   test("🔴 the message never says “อื่นๆ” or “Other” — being asked to type a real name is the whole point", () => {
     for (const lang of ["TH", "EN"] as const) {
-      const msg = formatOutboxMessage(confirmed, { title: "ปิดปรับปรุงลาน", date: "2026-09-10", startTime: "10:00" }, lang);
+      const msg = formatOutboxMessage(other, { title: "ปิดปรับปรุงลาน", date: "2026-09-10", startTime: "10:00" }, lang);
       expect(msg).not.toContain("อื่นๆ");
       expect(msg).not.toMatch(/\bOther\b/);
       expect(msg).toContain("ปิดปรับปรุงลาน");
     }
   });
 
-  test("the title stands on its OWN line, with no label — it is not a student", () => {
-    const msg = formatOutboxMessage(confirmed, { title: "ประชุมทีม", date: "2026-09-10", startTime: "10:00" });
-    expect(msg.split("\n").some((l) => l.trim() === "ประชุมทีม")).toBe(true);
+  test("the title NAMES the booking — through `Program`, since it is not a student", () => {
+    // 🔻 TASK-303 — it used to stand on its own unlabelled line. `programLabel` now names an อื่นๆ booking by
+    // the admin's title, which is exactly what §7.1 does for an อื่นๆ course: **one rule, not two.**
+    const msg = formatOutboxMessage(other, { title: "ประชุมทีม", date: "2026-09-10", startTime: "10:00" });
+    expect(msg.split("\n").some((l) => l === "Program : ประชุมทีม")).toBe(true);
+    // 🚫 …and never behind `Student`, which would state something false about an อื่นๆ booking.
+    expect(msg).not.toContain("Student : ประชุมทีม");
   });
 
   test("an อื่นๆ booking WITH a student shows both — the title names it, the student is a real fact", () => {
-    const msg = formatOutboxMessage(confirmed, {
+    const msg = formatOutboxMessage(other, {
       title: "ประชุมกับผู้ปกครอง",
       studentName: "เด็กชายเอ",
       date: "2026-09-10",
@@ -69,22 +83,28 @@ describe("🔴 the four existing types' messages are byte-identical", () => {
     endTime: "11:00",
   };
 
+  // 📌 TASK-303 — typed, because `Program` is now rendered from the booking's own type and size.
+  const lesson = { ...confirmed, bookingType: "SINGLE_SESSION" };
+
   test("a lesson confirmation with no title renders exactly as before", () => {
-    // `title` is absent for every lesson type, so the new line renders to "" and the output is unchanged.
-    const msg = formatOutboxMessage(confirmed, ctx);
+    const msg = formatOutboxMessage(lesson, ctx);
     expect(msg).toContain("น้องเอ");
     expect(msg).toContain("Surfskate");
     expect(msg).not.toContain("undefined");
-    // The title line contributes nothing: the body starts at the student label.
+    // 🔻 TASK-303 — the unlabelled title line went with the old format. The property is unchanged: a lesson
+    // type renders no title artefact at all, so the body starts at `Student`.
     const lines = msg.split("\n");
-    expect(lines[1]).toContain("น้องเอ");
+    expect(lines[1]).toBe("Student : น้องเอ");
   });
 
-  test("the title is the ONLY thing added to the confirm template", () => {
-    // A diff check in test form: everything else in the template is untouched.
-    const before = formatOutboxMessage(confirmed, ctx);
-    const withTitle = formatOutboxMessage(confirmed, { ...ctx, title: "ประชุม" });
-    expect(withTitle.replace("ประชุม\n", "")).toBe(before);
+  test("🔻 a title on a LESSON type changes NOTHING — it is not a name for a booking that has a student", () => {
+    // 🔻 TASK-303 — this asserted the title added exactly one line. That line is gone: `programLabel` names an
+    // อื่นๆ booking by its title and a lesson booking by its subject, so a stray title on a lesson type is now
+    // IGNORED rather than printed. **The property — a title cannot disturb the four lesson types' text — is
+    // the same one, and it is stronger stated this way.**
+    const before = formatOutboxMessage(lesson, ctx);
+    const withTitle = formatOutboxMessage(lesson, { ...ctx, title: "ประชุม" });
+    expect(withTitle).toBe(before);
   });
 
   test("a lesson row still renders program · status on the indented line", () => {

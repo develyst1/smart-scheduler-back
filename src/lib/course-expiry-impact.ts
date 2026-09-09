@@ -28,6 +28,8 @@ import type { CourseStatus } from "./course-status";
  * sessions nobody was told about. `PAUSED` (TASK-260) is deliberately NOT here: a paused booking keeps its date
  * and is still owed to the family, so a boundary moving in front of it is exactly what an admin needs told.
  */
+import { addDays } from "./time";
+
 export const EXPIRY_SETTLED_STATUSES = ["ATTENDED", "SICK_LEAVE", "NO_SHOW", "CANCELLED"] as const;
 
 const isSettled = (status: string | null | undefined): boolean =>
@@ -65,4 +67,56 @@ export function expiryImpact(expiryDate: string, sessions: readonly ExpiryCandid
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return { expiryDate, warn: outside.length > 0, outside, outsideCount: outside.length };
+}
+
+/**
+ * 🔴 TASK-298 §5 — **what an expiry costs the family's UNUSED LEAVE**, alongside what it costs their sessions.
+ *
+ * `expiryImpact` answers *"which sessions fall outside?"*. It says nothing about the leave the family still
+ * has — and since TASK-299 made the stored expiry the extension ceiling, **an admin can spend a course's
+ * remaining quota by moving one date.** The first sign is a leave refused weeks later, with a message that
+ * names the course's end date (TASK-301): honest, and still no explanation of where the room went.
+ *
+ * 🔑 **Numbers, not a verdict.** The wire carries how much room the date leaves and how much the family needs;
+ * the sentence is the screen's, which is the same division that lets `ExpiryWarningAlert` compute nothing.
+ * 🚫 **Not a gate** — REQ-082 AC-4 and §11.3 both say warn-and-save, and TASK-299's rule is that a deliberate
+ * act sets the boundary. **The admin may spend the quota; they may not spend it blind.**
+ *
+ * ⚠️ Measured with the SAME `EXPIRY_SETTLED_STATUSES` the session impact uses, and the same inclusive boundary
+ * (a date ON the expiry is inside it) — a boundary meaning one thing here and another there is worse than no
+ * warning at all.
+ */
+export interface ExpiryLeaveRoom {
+  /** Leaves the family still has. **0 ⇒ nothing to lose, and nothing to warn about.** */
+  remainingLeave: number;
+  /** The last session still owed — what the quota's weeks are measured FROM. `null` when none is left. */
+  planEnd: string | null;
+  /** The date the promise needs: `planEnd + remainingLeave` weeks. `null` when there is no plan left. */
+  neededFor: string | null;
+  /** How many of the remaining leaves this date leaves room for. */
+  roomFor: number;
+  /** 🔑 The one fact the screen turns on — and it is false only when there is something to say. */
+  roomForAll: boolean;
+}
+
+export function expiryLeaveRoom(
+  expiryDate: string,
+  sessions: readonly ExpiryCandidate[],
+  remainingLeave: number,
+): ExpiryLeaveRoom {
+  const owed = sessions.filter((s) => !isSettled(s.status)).map((s) => s.date);
+  const planEnd = owed.length ? owed.reduce((m, d) => (d > m ? d : m)) : null;
+  if (!planEnd) {
+    // Nothing still owed ⇒ no make-up can be appended ⇒ the date takes nothing away.
+    return { remainingLeave, planEnd: null, neededFor: null, roomFor: remainingLeave, roomForAll: true };
+  }
+  let roomFor = 0;
+  while (roomFor < remainingLeave && addDays(planEnd, (roomFor + 1) * 7) <= expiryDate) roomFor++;
+  return {
+    remainingLeave,
+    planEnd,
+    neededFor: addDays(planEnd, remainingLeave * 7),
+    roomFor,
+    roomForAll: roomFor >= remainingLeave,
+  };
 }

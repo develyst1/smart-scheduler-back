@@ -35,7 +35,8 @@ describe("resolveSetting — override-or-default-with-notice (TASK-101, AC #4)",
 });
 
 describe("registry shape (TASK-101)", () => {
-  // TASK-136 added the first non-numeric rule (`notify_on_leave`), so the shape check now covers both kinds.
+  // TASK-136 added the first non-numeric rule, so the shape check covers both kinds. 🔻 TASK-306 removed that
+  // rule (`notify_on_leave`); `line_parent_2fa` is the enum the check now rests on.
   test("the registered keys, each with type/default/unit/label/parse", () => {
     expect(Object.keys(SETTINGS).sort()).toEqual([
       "checkin_early_minutes",
@@ -44,7 +45,10 @@ describe("registry shape (TASK-101)", () => {
       // TASK-232 (REQ-079 §2) — the LINE parent 2FA step, shipped `off` by the owner's recorded choice. It is
       // a SETTING and not a stub precisely so switching it on is never a rebuild.
       "line_parent_2fa",
-      "notify_on_leave",
+      // 🔻 TASK-306 §3 — `notify_on_leave` was REMOVED from here. It chose who is told when a student takes
+      // leave, and the owner's ruling is unconditional, so that choice could only ever be wrong.
+      // 🔑 This list is the registry's own census, so a control removed on a ruling leaves a VISIBLE gap here
+      // rather than a silent one. The whole reason lives in `notify-on-leave.test.ts`.
       "teacher_change_notice_days",
     ]);
     for (const spec of Object.values(SETTINGS)) {

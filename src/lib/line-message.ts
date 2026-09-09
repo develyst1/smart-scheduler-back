@@ -3,12 +3,15 @@
 // and passes the recipient's language; everything is optional so a deleted booking still sends. Default TH.
 
 import { t, type Lang } from "./line-i18n";
+import { weekdayOf } from "./recurring";
 import { buildDigestMessage } from "./attention";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
   notifyTypeOf,
   programLabel,
   renderFieldBlock,
+  TEMPLATE_LANG,
+  TEMPLATE_NONE,
   type Audience,
   type FieldKey,
   type NotifyType,
@@ -66,45 +69,92 @@ export function formatOutboxMessage(
 ): string {
   switch (payload?.kind) {
     case "booking_confirmed": {
-      const when =
-        ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
+      // 🔴 REQ-085 §7.3 (TASK-303) — **REPLACED, not edited.** Every label changed and `เวลา` split in two:
+      //
+      //   FROM  ยืนยันตารางสอน · นักเรียน: · วิชา: · เวลา: 2026-09-08 10:00-11:00
+      //   TO    CONFIRMED SCHEDULE: · Student : · Program : · Date : Tuesday · Time : 11:00-12:00 · Remark :
+      //
+      // 🔑 **The calendar DATE disappears from the message entirely** — `Date` names a WEEKDAY, as §7.1 does,
+      // so it is the product's convention rather than one message's quirk. That absence is the whole of what
+      // the split did, and it is asserted as an absence.
+      //
+      // ⚠️ §3's trap, and it points the other way from the message finished an hour before this one: §7.1 has
+      // TWO opposite empty-field rules; **§7.3 has only ONE.** There is no `Advance Leave Notice` here and
+      // **no `(-)` to inherit** — `Remark` is `*ถ้ามี`, absent entirely when there is none.
+      //
+      // 📌 §4 — this is the highest-volume notification in the product: a parent, per booking, on the
+      // ordinary path. A break here is not a wrong label on a screen someone can re-read; it is a wrong
+      // message in a family's LINE, unrecallable. Its byte-for-byte pin was REWRITTEN to this text, never
+      // deleted.
+      const sessionType = notifyTypeOf(payload.bookingType as string);
       return (
-        t("ob_confirmed_title", lang) + "\n" +
-        // 🔴 SPEC-070 / TASK-228 (AC-16) — an อื่นๆ booking is named by the title the admin typed, and the
-        // title stands on its OWN LINE with no label. It is not a student, so putting it behind
-        // `ob_l_student` would state something false; and it is never the words "อื่นๆ" / "Other" — being
-        // asked to type a real name is the entire point of the field (REQ-078 📌).
-        //
-        // Absent for the four lesson types, so their messages are byte-identical: this line renders to "".
-        (ctx.title ? `${ctx.title}\n` : "") +
-        // `line()` already omits a field with no value, which is what makes a studentless / programless
-        // booking come out with no empty labels — TASK-219's lesson: a blank label reads as information that
-        // went missing, not as information that does not exist.
-        line(t("ob_l_student", lang), ctx.studentName) +
-        line(t("ob_l_subject", lang), ctx.subject) +
-        line(t("ob_l_time", lang), when) +
-        // 🔴 TASK-219 (REQ-007's missing half) — the note reaches the teacher on the day's own booking.
-        // `course_confirmed` has carried it since TASK-201; this template did not, so a note typed at booking
-        // ("แพ้ถั่ว", "มาสาย 10 นาที") went to the one message the teacher actually reads and vanished.
-        //
-        // It comes from the PAYLOAD, not `ctx`: the worker enriches `ctx` from the booking row it references,
-        // and the note must survive even for a row that has since been edited or deleted — the same reason
-        // `sick_leave` carries its own student name.
-        //
-        // Omitted when there is none. An empty "note:" line is a defect, not a blank: it reads as a note the
-        // teacher failed to receive.
-        line(t("ob_l_note", lang), (payload.attendeeNote as string) || undefined)
-      ).trimEnd();
+        t("ob_course_title", lang) + "\n" +
+        renderFieldBlock(
+          "session_confirmed",
+          {
+            student: ctx.studentName,
+            // 🚫 Not a second program string: `programLabel` is what §7.1 prints, and for an อื่นๆ booking it
+            // returns the title the admin typed — which is how that booking keeps its name now that the
+            // unlabelled title line is gone with the old format (TASK-228 AC-16's rule, one label over).
+            program: programLabel(sessionType, {
+              subject: ctx.subject,
+              size: payload.size as number,
+              title: ctx.title,
+            }),
+            // 🔑 The weekday, through the SAME lookup and the SAME `TEMPLATE_LANG` §7.1 uses. 🚫 Not a second
+            // dow table and not a second English rule.
+            date: ctx.date ? t(`ob_dow_${weekdayOf(ctx.date)}`, TEMPLATE_LANG) : undefined,
+            time: ctx.startTime
+              ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
+              : undefined,
+          },
+          { type: sessionType, audience: recipientType, lang },
+        ) +
+        // 🔑 The SAME `ob_f_note` label and the SAME appended-`extra` shape §7.1 uses, so `Remark` means one
+        // thing across both messages and the omit-empty rule is not written twice.
+        // 📌 It comes from the PAYLOAD, not `ctx`: the worker enriches `ctx` from the booking row it points
+        // at, and the note must survive a row that has since been edited or deleted.
+        extra(t("ob_f_note", lang), (payload.attendeeNote as string) || undefined)
+      );
     }
-    // SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push.
+    // 🔴 REQ-085 §2 / §7.4 / §9.1 (TASK-305) — **the message that did not exist.** The owner raised it
+    // twice: *"ของแจ้งเตือนครูเด็กลายังไม่ขึ้น"*. A parent declares leave, the parent is told, and the coach
+    // is not — so a coach can arrive for a session the student cancelled, and the admin who covers every
+    // coach learns nothing either.
     //
-    // 🔴 SPEC-072 / TASK-256 — re-cut to REQ-077 Parent 2 (@Porter's Decision 6): the customer's own block, once
-    // per class, under a header carrying whatever is genuinely constant. One class renders EXACTLY as their
-    // template, which is the common case.
+    // 🔑 `Coach` is on it for the ADMIN, not the teacher: the teacher reads this in their own chat and
+    // already knows the class is theirs; the admin reads every coach's, and without the line three leaves
+    // from three teachers in one day arrive looking identical.
     //
-    // 🚫 `renderSchedule` — the owner-verified `ตารางวันนี้` composer — is deliberately NOT deleted: it still
-    // serves the teacher's `ตาราง` command, and it is the fallback if the customer prefers what they have been
-    // reading for weeks. This change is in @Porter's review batch with the other five decisions.
+    // ⚠️ `Remark` is the `*ถ้ามี` kind and this message has **no `(-)` rule at all** — §9.1 says so in as
+    // many words, and it is the fourth message running where the risk was carrying a rule across rather
+    // than forgetting one. 📌 Its value here is specific: a Remark is usually about PREPARATION
+    // (*"เตรียมเฉพาะ Freeskate ให้น้อง"*), so a coach who learns of a leave also learns there is nothing to
+    // prepare.
+    case "leave_notice": {
+      const leaveType = notifyTypeOf(payload.bookingType as string);
+      return (
+        t("ob_leave_notice_title", lang) + "\n" +
+        renderFieldBlock(
+          "leave_notice",
+          {
+            student: ctx.studentName ?? ((payload.studentName as string) || undefined),
+            program: programLabel(leaveType, {
+              subject: ctx.subject,
+              size: payload.size as number,
+              title: ctx.title,
+            }),
+            date: ctx.date ? t(`ob_dow_${weekdayOf(ctx.date)}`, TEMPLATE_LANG) : undefined,
+            time: ctx.startTime
+              ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
+              : undefined,
+            coach: ctx.coach,
+          },
+          { type: leaveType, audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_note", lang), (payload.attendeeNote as string) || undefined)
+      );
+    }
     case "daily_reminder":
       return renderTodaySchedule((payload.rows as TodayRow[]) ?? [], lang, recipientType);
     // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
@@ -122,7 +172,12 @@ export function formatOutboxMessage(
       // 📌 The range is built from `endTime` on the payload, derived ONCE where the payload is built
       // (`addHour`, the same derivation `insertBooking` uses). Deriving +1h here would put that rule in two
       // places, and the next duration change would fix only one of them.
-      const dow = payload.weekday != null ? t(`ob_dow_${payload.weekday}`, lang) : undefined;
+      // 🔴 REQ-085 §7.1(b) — `Date` is an ENGLISH WEEKDAY, in both languages. It rendered `Date : อังคาร`,
+      // which is `REQ-079 §18`'s ruling (notification labels are English) simply never applied to a value.
+      // 🔑 The weekday is a value WE generate, so it follows the template's convention; the student's name
+      // and the admin's `Remark` are a human's words and never do.
+      const dow =
+        payload.weekday != null ? t(`ob_dow_${payload.weekday}`, TEMPLATE_LANG) : undefined;
       const when = payload.startTime
         ? `${payload.startTime}${payload.endTime ? `-${payload.endTime}` : ""}`
         : undefined;
@@ -155,10 +210,13 @@ export function formatOutboxMessage(
             start: (payload.startDate as string) || undefined,
             coach: (payload.coach as string) || undefined,
             expiry: (payload.expiryDate as string) || undefined,
-            // 🔴 Resolved to `ไม่มี` HERE, before the block sees it, precisely so the omit-empty rule cannot
-            // swallow it: a parent reading this to check whether their leave was recorded must be answered,
-            // and an absent line does not answer.
-            advanceLeave: plannedDates.length ? plannedDates.join(", ") : t("ob_f_none", lang),
+            // 🔴 Resolved HERE, before the block sees it, precisely so the omit-empty rule cannot swallow it:
+            // a parent reading this to check whether their leave was recorded must be answered, and an absent
+            // line does not answer.
+            // 📌 REQ-085 §7.1(c) — `(-)`, not `ไม่มี`: a system-generated value, so it follows the template's
+            // convention like the weekday above. ⚠️ `Remark` two lines down obeys the OPPOSITE rule and is
+            // absent entirely when empty — §8.1's trap, and the two need separate assertions.
+            advanceLeave: plannedDates.length ? plannedDates.join(", ") : TEMPLATE_NONE,
           },
           { type, audience: recipientType, lang },
         ) +

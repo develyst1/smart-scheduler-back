@@ -400,6 +400,9 @@ const TABLE: Record<string, Entry> = {
   // 🔴 TASK-257 §1 — the customer's own heading, the one `COURSE DEDUCTION` and `TODAY'S SCHEDULE` already use.
   // The emoji stays: they put `⏱️` and `💡` on their own two, so it is their convention, not ours.
   ob_course_title: { TH: "📅CONFIRMED SCHEDULE:", EN: "📅CONFIRMED SCHEDULE:" },
+  // 🔴 REQ-085 §9.1 (TASK-305) — ENGLISH in both languages, by the owner's §9 ruling. 🔻 The Thai `แจ้งลา`
+  // in §7.4's earlier block is SUPERSEDED by it.
+  ob_leave_notice_title: { TH: "LEAVE NOTICE", EN: "LEAVE NOTICE" },
   ob_l_start: { TH: "เริ่ม", EN: "Starts" },
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },
   ob_l_sessions: { TH: "จำนวนคาบที่ยืนยัน", EN: "Sessions confirmed" },

@@ -44,6 +44,27 @@ const TIME_OWNER: Record<TemplateKey, { kind: string; file: string; start: strin
     start: "startTime: hhmm(b.startTime),",
     end: "endTime: hhmm(b.endTime),",
   },
+  // 🔑 TASK-303 — this entry did not exist an hour ago, and the `Record<TemplateKey, …>` above REFUSED TO
+  // COMPILE until it did. **That is this file's control doing its job on a real fourth template**, rather than
+  // on a hypothetical one: §7.3's per-session `CONFIRMED SCHEDULE` prints a `Time`, so it had to declare where
+  // both ends are formatted before the build would pass.
+  // 📌 Its times come from the same `bookingContext` enrichment `course_deduction` uses — the message is new,
+  // the formatting owner is not.
+  session_confirmed: {
+    kind: "booking_confirmed",
+    file: "src/services/outbox.service.ts",
+    start: "startTime: hhmm(b.startTime),",
+    end: "endTime: hhmm(b.endTime),",
+  },
+  // 🔑 TASK-305 — the FIFTH, and the `Record` refused to compile again. §9.1's LEAVE NOTICE prints a `Time`,
+  // and it reads the same `bookingContext` enrichment as the two above: one owner for the format, four
+  // messages using it.
+  leave_notice: {
+    kind: "leave_notice",
+    file: "src/services/outbox.service.ts",
+    start: "startTime: hhmm(b.startTime),",
+    end: "endTime: hhmm(b.endTime),",
+  },
   todays_schedule: {
     kind: "daily_reminder",
     // 🔴 The fix. This was `src/services/jobs.service.ts` for the END and NOWHERE for the START — the two ends
@@ -78,6 +99,12 @@ describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", 
       { key: "confirmed_schedule", printsTime: true, declared: true, start: true, end: true },
       { key: "todays_schedule", printsTime: true, declared: true, start: true, end: true },
       { key: "course_deduction", printsTime: true, declared: true, start: true, end: true },
+      // 🔑 TASK-303 — the FOURTH, and it arrived here the way this file was designed for: the `Record` above
+      // refused to compile until §7.3's template declared where both ends of its `Time` are formatted.
+      { key: "session_confirmed", printsTime: true, declared: true, start: true, end: true },
+      // …and TASK-305's is the FIFTH, arriving the same way one task later. 📌 Two new templates in two tasks,
+      // each caught by the compiler before a test ran: the control is not theoretical any more.
+      { key: "leave_notice", printsTime: true, declared: true, start: true, end: true },
     ]);
   });
 
@@ -156,7 +183,7 @@ describe("TASK-283 — the rendered messages", () => {
       note: "แพ้ถั่ว",
     };
     expect(formatOutboxMessage(COURSE as any, {}, "TH", "parent")).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : อาทิตย์\n" +
+      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : Sunday\n" +
         "Time : 10:00-11:00\nStart : 2026-09-06\nCoach : ครูหนึ่ง\n*Expiry date : 2026-12-31\n" +
         "**Advance Leave Notice : 2026-09-14\nSessions : 6\nRemark : แพ้ถั่ว",
     );

@@ -168,9 +168,12 @@ describe("TASK-264 — AC-4 / (ข): ONE computation, and it warns rather than r
 
   test("🔴 the edit WARNS and still SAVES — it does not refuse", () => {
     // The owner's rule: warn, do not act. The write is unconditional; only the response's warning varies.
-    expect(EDIT).toContain("const impact = expiryImpact(");
-    // No throw between computing the impact and writing it.
-    const afterImpact = EDIT.slice(EDIT.indexOf("const impact = expiryImpact("));
+    // 📌 TASK-298 moved the computation itself into `expiryDecision`, the ONE answer the new preview and this
+    // PATCH both read — so the edit now RECEIVES the impact rather than computing it. **The property this test
+    // protects is untouched and still asserted: nothing throws between having the warning and writing.**
+    expect(EDIT).toContain("await expiryDecision(id, input.expiryDate)");
+    // No throw between obtaining the impact and writing it.
+    const afterImpact = EDIT.slice(EDIT.indexOf("await expiryDecision("));
     expect(afterImpact.slice(0, afterImpact.indexOf(".update(coursePackages)"))).not.toContain("throw");
     expect(EDIT).toContain("expiryWarning: impact");
   });

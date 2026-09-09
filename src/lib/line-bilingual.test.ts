@@ -130,12 +130,27 @@ describe("TASK-275 §5 — the six notifications are BYTE-IDENTICAL", () => {
   };
 
   test("🔴 a notification renders ONE language — not both", () => {
+    // 🔻 TASK-284 (REQ-085 §7.1) — this asserted `th !== en` on `course_confirmed`, and that is no longer
+    // true: the owner ruled the whole template English — labels AND system values — so `Date : Sunday` and
+    // `(-)` render the same in both languages, and everything else in it is a human's own words, which are
+    // never translated. **The message is now language-INVARIANT by ruling.**
+    // 🔑 `th !== en` was a PROXY for *the switch still switches*; the real property is that no notification
+    // renders BOTH languages. Both are kept — the proxy moved to a message that still has something to
+    // translate (`booking_confirmed`, whose `ob_l_*` labels are bilingual and byte-frozen).
     const th = formatOutboxMessage(COURSE, {}, "TH", "parent");
     const en = formatOutboxMessage(COURSE, {}, "EN", "parent");
-    expect(th).not.toBe(en); // the switch still switches
-    // …and neither contains the other, which is what "bilingual" would mean.
-    expect(th).not.toContain(en);
-    expect(en).not.toContain(th);
+    expect(th).toBe(en); // language-invariant, and asserted so a translation creeping back in fails here
+    // 🔑 TASK-304 §5 — the proxy is RETIRED from notifications, by @Sober's ruling and for the reason I gave:
+    // it moved TWICE in one night (TASK-284 onto `course_confirmed`, TASK-303 onto `booking_confirmed`),
+    // because **every notification is English-by-ruling and each §7 format makes one more of them invariant**
+    // ⇒ a notification-based proxy is guaranteed to move again.
+    // ⇒ It now sits on a CONVERSATION reply, where bilingual is the RULE rather than a leftover — and it
+    // measures the property DIRECTLY instead of by proxy: `tb()` composes ONE string carrying BOTH languages.
+    // 🚫 Not deleted: the property is real. It was being measured in the one place that is disappearing.
+    const bilingual = tb("children_none");
+    expect(bilingual).toContain(t("children_none", "TH"));
+    expect(bilingual).toContain(t("children_none", "EN"));
+    expect(t("children_none", "TH")).not.toBe(t("children_none", "EN"));
   });
 
   test("🚫 `line-message.ts` uses no body helper at all", () => {

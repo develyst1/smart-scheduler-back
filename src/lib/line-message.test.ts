@@ -7,10 +7,15 @@ describe("LINE outbox message formatting (B.3)", () => {
       { kind: "booking_confirmed" },
       { studentName: "น้องเอ", subject: "คณิต", date: "2026-07-01", startTime: "13:00", endTime: "14:00" },
     );
-    expect(msg).toContain("ยืนยันตารางสอน");
+    // 🔻 TASK-303 (REQ-085 §7.3) — the customer REPLACED this message. The property is unchanged — the details
+    // reach the reader — but the labels are new and `เวลา`'s combined value SPLIT into a weekday and a range,
+    // so the calendar date is deliberately no longer in it.
+    expect(msg).toContain("CONFIRMED SCHEDULE:");
     expect(msg).toContain("น้องเอ");
     expect(msg).toContain("คณิต");
-    expect(msg).toContain("2026-07-01 13:00-14:00");
+    expect(msg).toContain("Time : 13:00-14:00");
+    expect(msg).toContain("Date : Wednesday"); // 2026-07-01
+    expect(msg).not.toContain("2026-07-01");
   });
 
   test("reschedule_requested → parent message with old + proposed slot", () => {
@@ -26,7 +31,9 @@ describe("LINE outbox message formatting (B.3)", () => {
   test("missing context lines are omitted (no 'undefined')", () => {
     const msg = formatOutboxMessage({ kind: "booking_confirmed" }, {});
     expect(msg).not.toContain("undefined");
-    expect(msg).toContain("ยืนยันตารางสอน");
+    // 🔻 TASK-303 — the header the customer chose. The property — an enrichment that found nothing still
+    // produces a message rather than a wall of `undefined` — is exactly the same.
+    expect(msg).toContain("CONFIRMED SCHEDULE:");
   });
 
   test("sick_leave → admin alert", () => {
@@ -84,7 +91,7 @@ describe("course_confirmed (TASK-201)", () => {
     const out = formatOutboxMessage(payload, {}, "TH");
     expect(out).toContain("📅CONFIRMED SCHEDULE:");
     expect(out).toContain("น้องเอ");
-    expect(out).toContain("Date : อาทิตย์");
+    expect(out).toContain("Date : Sunday");
     expect(out).not.toContain("Date : 0");
   });
 
@@ -114,7 +121,7 @@ describe("course_confirmed (TASK-201)", () => {
     expect(out).toContain("2026-09-14, 2026-09-28");
   });
 
-  test("🔴 the empty case prints `ไม่มี` — for the parent AND, since 2026-09-07, the teacher", () => {
+  test("🔴 the empty case prints `(-)` — for the parent AND, since 2026-09-07, the teacher", () => {
     // The history matters here because this line has now been reversed twice, in opposite directions.
     // TASK-206: absent for a teacher — *an empty leave line reads as a problem to a coach scanning a
     // schedule.* TASK-253: `ไม่มี` for a parent — *silence cannot be told from a missing feature*, and the
@@ -126,13 +133,17 @@ describe("course_confirmed (TASK-201)", () => {
     // 🔴 Pinned as its OWN case, deliberately, because it reverses TASK-206 and must not arrive as a side
     // effect of an omissions table going empty.
     const none = { ...payload, plannedLeaveDates: [] };
-    expect(formatOutboxMessage(none, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");
-    expect(formatOutboxMessage(none, {}, "EN", "parent")).toContain("**Advance Leave Notice : None");
-    expect(formatOutboxMessage(none, {}, "TH", "teacher")).toContain("**Advance Leave Notice : ไม่มี");
-    expect(formatOutboxMessage(none, {}, "EN", "teacher")).toContain("**Advance Leave Notice : None");
+    expect(formatOutboxMessage(none, {}, "TH", "parent")).toContain("**Advance Leave Notice : (-)");
+    // 🔻 TASK-284 (REQ-085 §7.1c) — `(-)`, and the SAME in both languages. It was `ไม่มี` / `None`; the owner
+    // ruled the template's system-generated values English, and `(-)` is neither language's word. **The
+    // property this test protects — that the line PRINTS rather than vanishing — is unchanged and is the
+    // whole reason it exists.**
+    expect(formatOutboxMessage(none, {}, "EN", "parent")).toContain("**Advance Leave Notice : (-)");
+    expect(formatOutboxMessage(none, {}, "TH", "teacher")).toContain("**Advance Leave Notice : (-)");
+    expect(formatOutboxMessage(none, {}, "EN", "teacher")).toContain("**Advance Leave Notice : (-)");
     // A payload that never carried the field at all must behave the same, not crash.
     const { plannedLeaveDates: _d, ...missing } = payload;
-    expect(formatOutboxMessage(missing, {}, "TH", "parent")).toContain("**Advance Leave Notice : ไม่มี");
+    expect(formatOutboxMessage(missing, {}, "TH", "parent")).toContain("**Advance Leave Notice : (-)");
   });
 
   test("everything it needs is in the PAYLOAD — it renders with no booking context at all", () => {
@@ -204,7 +215,9 @@ describe("booking_confirmed carries the attendee note (TASK-219)", () => {
 
   test("🔴 the note is rendered when there is one", () => {
     const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "แพ้ถั่ว" }, ctx, "TH");
-    expect(out).toContain("หมายเหตุ");
+    // TASK-303 — the label is `Remark` now (REQ-085 §7.3). The property — the note REACHES the reader — is
+    // unchanged, and it is why this test exists.
+    expect(out).toContain("Remark");
     expect(out).toContain("แพ้ถั่ว");
   });
 
@@ -220,7 +233,7 @@ describe("booking_confirmed carries the attendee note (TASK-219)", () => {
       { kind: "booking_confirmed", attendeeNote: "" },
     ]) {
       const out = formatOutboxMessage(payload, ctx, "TH");
-      expect(out).not.toContain("หมายเหตุ");
+      expect(out).not.toContain("Remark");
       expect(out).not.toContain("undefined");
     }
   });
@@ -233,9 +246,14 @@ describe("booking_confirmed carries the attendee note (TASK-219)", () => {
   });
 
   test("the fields the message already had are unchanged (regression)", () => {
+    // 🔻 TASK-303 — the note must not displace the rest of the message, which is what this guards and still
+    // does. `เวลา: 2026-09-05 10:00` became `Date` + `Time`, so the combined value is asserted as its two
+    // halves — and the calendar date is deliberately gone.
     const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "x" }, ctx, "TH");
-    expect(out).toContain("ยืนยันตารางสอน");
+    expect(out).toContain("CONFIRMED SCHEDULE:");
     expect(out).toContain("น้องเอ");
-    expect(out).toContain("2026-09-05 10:00");
+    expect(out).toContain("Date : Saturday"); // 2026-09-05
+    expect(out).toContain("Time : 10:00");
+    expect(out).not.toContain("2026-09-05");
   });
 });

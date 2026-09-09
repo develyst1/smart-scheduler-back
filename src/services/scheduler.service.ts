@@ -15,7 +15,7 @@ import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
 // gate are both gone — a re-plan DERIVES the expiry from the sessions it lays out, so there is nothing to warn
 // about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
-import { expiryImpact } from "../lib/course-expiry-impact";
+import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
 import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
 import { firstFreeWeeklySlot } from "../lib/extension-slot";
 import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
@@ -83,6 +83,7 @@ import {
   COURSE_LIVE_STATUSES,
   canInsert,
   courseCurrent,
+  courseNote,
   COURSE_PAUSE_NOTE,
   isCancelledByPause,
   replanExpiry,
@@ -2318,6 +2319,52 @@ async function planPreviewResult(tx: any, courseId: string, applied: any) {
 }
 
 /**
+ * 🔴 REQ-085 §2 / §9.1 (TASK-305, TASK-306) — **the LEAVE NOTICE, and the ONLY place it is built.**
+ *
+ * 🔑 Two doors set a FUTURE session to `SICK_LEAVE`: the per-session action and the plan editor's
+ * `mark-absence`. **They are the same act through different screens**, so they send the same message from
+ * the same builder — ⚠️ **not two constructions of one message.** A coach and an admin must never read
+ * different versions of one leave, and neither must two admins who used different screens.
+ *
+ * 🚫 The PARENT is deliberately not a recipient: they declared it, and the product already confirms it to
+ * them. Telling them what they just did is noise.
+ * ✅ **Non-throwing.** `enqueueLine` writes a SKIPPED row when a coach has no LINE link ⇒ **a leave — or a
+ * plan edit — never fails because of a notification.**
+ */
+async function sendLeaveNotice(
+  tx: any,
+  booking: { id: string; studentId: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null },
+  opts: { size: number | null; via: string },
+) {
+  const student = booking.studentId
+    ? await tx.query.students.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.studentId) })
+    : null;
+  const teacher = booking.teacherId
+    ? await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.teacherId) })
+    : null;
+  const payload = {
+    kind: "leave_notice",
+    bookingId: booking.id,
+    studentName: student?.name ?? "",
+    // The two facts `Program` needs: `MessageContext` carries neither, and without them a COURSE session
+    // reads `1 HR` (the same reason TASK-303 put them on the confirm payload).
+    bookingType: booking.bookingType ?? null,
+    size: opts.size,
+    attendeeNote: booking.attendeeNote ?? null,
+    via: opts.via,
+  };
+  await notifyAdmins(payload, tx, booking.id);
+  await enqueueLine(
+    {
+      recipientType: "teacher",
+      recipientLineUserId: teacher?.lineUserId ?? null,
+      bookingId: booking.id,
+      payload,
+    },
+    tx,
+  );
+}
+/**
  * SPEC-028 §3 (TASK-093) — the ONE shared, ATOMIC plan-edit applier (calendar / course screen / purchase-time
  * all call it, so the rule has a single implementation). Opens a tx, applies the booking mutation, runs the
  * `size`-reconcile (TASK-092) + the freelance-hold reconcile (TASK-091), and commits or rolls back with a
@@ -2390,6 +2437,15 @@ export async function applyPlanChange(
         }
         const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
+        // 🔴 TASK-306 §1 — **the hole.** This cancels a FUTURE session exactly as the per-session action
+        // does; an admin using the plan editor is doing the same thing by a different door, and the coach
+        // was told by one door and not the other. ⇒ **a coach arriving for a cancelled class, with the
+        // notification working.**
+        // 📌 ONE message per SESSION, not per edit: the notice names a specific class (`Date`, `Time`,
+        // `Coach`, `Remark`), so a single message for several sessions could not say WHICH. Each
+        // `mark-absence` carries one `bookingId`, so this fires once per marked session — three absences in
+        // one edit send three notices, which is defensible and a surprise only if left unstated.
+        await sendLeaveNotice(tx, b, { size: course.size, via: "staff" });
         return await finalize({ change: "mark-absence" as const, ...moves });
       }
 
@@ -2570,6 +2626,14 @@ export async function updateBookingStatus(
           kind: "booking_confirmed",
           bookingId: id,
           attendeeNote: current.attendeeNote ?? null,
+          // 🔴 TASK-303 (REQ-085 §7.3) — the two facts `Program` needs, and the ONLY thing this task adds
+          // outside the message itself. §7.3 asks for the booking's own program string *as §7.1 prints it*
+          // (`Private Freeskate 1 Hr`), and `programLabel` needs the TYPE and the SIZE to produce one.
+          // ⚠️ `MessageContext` carries neither, and the worker's enrichment is out of scope — so without
+          // these the message would print `1 HR` on every COURSE session, **a false statement about the
+          // package on the majority of bookings.** Additive, and exactly what `course_confirmed` already does.
+          bookingType: current.bookingType ?? null,
+          size: current.course?.size ?? current.voucher?.totalHours ?? null,
         };
         for (const t of teachers) {
           const res = await enqueueLine(
@@ -2852,35 +2916,22 @@ export async function updateBookingStatus(
         where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
       });
       const via = reason?.includes("LINE") ? "line" : "staff";
-      await notifyAdmins(
-        {
-          kind: "sick_leave",
-          bookingId: id,
-          studentName: student?.name ?? "",
-          via,
-        },
-        tx,
-        id, // TASK-136: the outbox row now carries the booking, so the worker can enrich date/teacher/program
-      );
-      // SPEC-044 / TASK-136 (AC-1/AC-2/AC-3): the teacher of THIS session is told the slot is free — but only
-      // when the school has opted in. Default `admin_only` ⇒ nothing here fires, so no coach is messaged by an
-      // upgrade. Additive and non-throwing: `enqueueLine` writes a SKIPPED row when the teacher has no LINE
-      // link (AC-4), so a leave never fails because of a notification.
-      const { value: notifyOnLeave } = await getSetting("notify_on_leave", tx);
-      if (notifyOnLeave === "admin_and_teacher") {
-        const leaveTeacher = await tx.query.teachers.findFirst({
-          where: (t, { eq }) => eq(t.id, current.teacherId),
-        });
-        await enqueueLine(
-          {
-            recipientType: "teacher",
-            recipientLineUserId: leaveTeacher?.lineUserId ?? null,
-            bookingId: id,
-            payload: { kind: "leave_teacher", bookingId: id, studentName: student?.name ?? "", via },
-          },
-          tx,
-        );
-      }
+      // 🔴 REQ-085 §2 / §9.1 (TASK-305) — **the LEAVE NOTICE, to the teacher AND the admin.**
+      //
+      // 🔻 What was here: an admin-only `sick_leave` alert, plus a teacher one **gated on the
+      // `notify_on_leave` setting, which defaults to `admin_only`.** ⇒ the teacher branch never ran on a
+      // default install, which is why the owner raised this twice and why it read as *not built*.
+      // 🔑 The owner's ruling is unconditional — *"เฉพาะแชทครู / แอดมิน"* — so the setting no longer gates it.
+      // ⚠️ `notify_on_leave` is now UNREAD on this path; whether it is deleted or repurposed is @Sober's,
+      // and it is named in the report rather than removed here.
+      //
+      // 🚫 The PARENT is deliberately not a recipient: they are the one who declared it, and the
+      // product already confirms the leave to them. Telling them what they just did is noise.
+      // 🔑 TASK-306 — through the ONE builder, so this door and the plan editor's cannot drift apart.
+      await sendLeaveNotice(tx, current, {
+        size: current.course?.size ?? current.voucher?.totalHours ?? null,
+        via,
+      });
     } else {
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }
@@ -3530,7 +3581,19 @@ export async function confirmCourse(id: string) {
         .filter((r: any) => r.status === "SICK_LEAVE")
         .map((r: any) => r.date)
         .sort(),
-      note: rows[0]?.attendeeNote ?? null,
+      // 🔴 TASK-284 — the FIRST NON-EMPTY note, in date order. This read `rows[0]?.attendeeNote`, the
+      // EARLIEST session's note, and I documented that as a known limitation in TASK-269 §2 and chose not to
+      // fix it. The owner then put a note on a session that was not the earliest, confirmed the course, and
+      // got no `Remark` at all. **The record was accurate and the decision was wrong.**
+      //
+      // 🔑 The difference is small and it is the whole defect: `rows[0]` answers *"the earliest session's
+      // note"*; this answers *"the course's note, if it has one"* — and only the second is what a reader of
+      // `CONFIRMED SCHEDULE` takes it to mean.
+      // ✅ On the normal path the two are identical: TASK-178 puts one note at creation onto EVERY session.
+      // ⚠️ When a course carries DIFFERENT notes it prints the earliest. 🚫 Not several, not joined, no
+      // "and 2 more": **a course summary has no true answer to "which session's note", and the earliest is at
+      // least a RULE rather than an accident.**
+      note: courseNote(rows),
     };
     const notification = confirmed
       ? await enqueueLine(
@@ -3725,6 +3788,59 @@ async function recordExpiryChange(
 }
 
 /**
+ * 🔑 TASK-298 — **ONE answer to "what does this expiry cost?", asked by two callers.**
+ *
+ * The PREVIEW asks before the admin acts; the PATCH reports after it writes. **Two derivations of one
+ * question are two answers that can disagree** — this file's header calls three copies of one answer this
+ * project's most frequent defect — so both read this, and their agreement is true by construction rather
+ * than by two implementations being kept in step.
+ *
+ * 🚫 **Writes nothing.** The `bookings` are read only to be measured (REQ-082 AC-3).
+ */
+async function expiryDecision(id: string, expiryDate: string) {
+  const course = await db.query.coursePackages.findFirst({ where: (c, { eq: e }) => e(c.id, id) });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+
+  // The warning's inputs are computed HERE, on the server (SPEC-076 §3): a second derivation on the screen
+  // is how the warning and the truth come apart.
+  const rows = await db.query.bookings.findMany({
+    where: (b, { and: a, eq: e }) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
+    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+  });
+  const candidates = rows.map((r) => ({ id: r.id, date: r.date, status: r.status, startTime: r.startTime }));
+  return {
+    course,
+    impact: expiryImpact(expiryDate, candidates),
+    // 🔴 §5 — the SAME rows and the SAME course row answer both questions, which is why this folds in here
+    // instead of becoming its own task: the leave room needs nothing the session impact had not already loaded.
+    leaveRoom: expiryLeaveRoom(
+      expiryDate,
+      candidates,
+      Math.max(0, courseLeaveQuota(course) - course.leaveUsed),
+    ),
+  };
+}
+
+/**
+ * SPEC-076 / TASK-298 (REQ-085 §11.3) — **what an expiry WOULD cost, asked before it is chosen.**
+ *
+ * 🔴 The gap this closes is one word wide: **BEFORE.** The edit dialog's own comment said it — *"the warning
+ * only exists after the save"* — so an admin learned what they had done rather than deciding it.
+ * 🔑 @Porter's reason is the acceptance criterion, not the rule: **DEF-4 was an expiry preceding the course's
+ * own last session, and it reached the owner because NOTHING SAID SO. The date was not wrong; it was SILENT.**
+ * A warning after the write is not silence — but it is the admin learning what they did, not deciding it.
+ *
+ * 🚫 **Not a gate, and it returns no `problem`.** REQ-082 AC-4 and §11.3 both say warn-and-save:
+ * *the admin may still do it; they may not do it BLIND.*
+ * 🚫 **Writes nothing** — the property that matters most here, since this sits one letter from a PATCH that
+ * legitimately does.
+ */
+export async function previewCourseExpiry(id: string, input: { expiryDate: string }) {
+  const { impact, leaveRoom } = await expiryDecision(id, input.expiryDate);
+  return { expiryWarning: impact, leaveRoom };
+}
+
+/**
  * 🔴 SPEC-076 / TASK-264 (REQ-082) — **change one date, and nothing else.**
  *
  * ## AC-3 is an ABSENCE, and it is the whole point
@@ -3754,17 +3870,9 @@ export async function updateCourseExpiry(
   input: { expiryDate: string },
   actor?: string | null,
 ) {
-  const course = await db.query.coursePackages.findFirst({ where: (c, { eq: e }) => e(c.id, id) });
-  if (!course) throw notFound("ไม่พบคอร์ส");
-
-  // The warning's inputs are computed HERE, on the server (SPEC-076 §3): a second derivation on the screen
-  // is how the warning and the truth come apart. `bookings` are read only to be COUNTED — nothing is written
-  // to them, which is AC-3.
-  const rows = await db.query.bookings.findMany({
-    where: (b, { and: a, eq: e }) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
-    orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
-  });
-  const impact = expiryImpact(input.expiryDate, rows.map((r) => ({ id: r.id, date: r.date, status: r.status, startTime: r.startTime })));
+  // 🔑 TASK-298 — through the SHARED answer, so the preview and this PATCH cannot report different warnings
+  // for the same date. The response below is unchanged; only where `impact` comes from moved.
+  const { course, impact } = await expiryDecision(id, input.expiryDate);
 
   const from = course.expiryDate;
   await db.transaction(async (tx: any) => {
@@ -3891,10 +3999,15 @@ export async function resumeCourse(
     const dates = owed > 0 ? courseSessionDates(input.startDate, owed) : [];
     const lastSession = dates[dates.length - 1] ?? null;
 
-    // 🔴 The expiry, DERIVED — always covering the last planned session, and never shrinking. A re-plan that
-    // finishes before the old expiry leaves it alone; `recordExpiryChange` then writes nothing, because it
-    // guards on `from === to`.
-    const expiryDate = replanExpiry(course.expiryDate, lastSession);
+    // 🔴 The expiry, DERIVED — covering the last planned session **plus the leave the family still has**, and
+    // never shrinking. A re-plan that finishes before the old expiry leaves it alone; `recordExpiryChange`
+    // then writes nothing, because it guards on `from === to`.
+    //
+    // 🔑 TASK-302 — the quota term is REMAINING, not full: a course that has spent its leave gets no
+    // headroom, because it has none to take. Floored at 0 so a course somehow over its quota cannot pull the
+    // expiry backwards — the never-shrink rule is `courseBornCeiling`'s `max`, and this must not fight it.
+    const remainingQuota = Math.max(0, courseLeaveQuota(course) - course.leaveUsed);
+    const expiryDate = replanExpiry(course.expiryDate, lastSession, remainingQuota);
 
     // Clear the pause FIRST: `insertBooking` runs through `assertCourseWritable`, and a course still marked
     // dropped would refuse its own resume. Doing it inside the same transaction means a clash below still

@@ -100,6 +100,13 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // become `guarded` and this line is where that shows up.
   "POST /bookings/:id/pause": "unrelated",
   "POST /bookings/:id/resume": "unrelated",
+  // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
+  // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,
+  // which `expiry-preview.test.ts` asserts as an absence across both the route and the shared computation it
+  // reads. An ended course is not reachable from it because nothing is reachable from it — there is no write.
+  // 📌 Classified deliberately: this guard is exactly why the route could not slip past unnoticed, and it
+  // caught mine on the first run.
+  "POST /courses/:id/expiry/preview": "unrelated",
 };
 
 describe("every write route is classified against the ended-course rule (TASK-185)", () => {

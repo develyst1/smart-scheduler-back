@@ -31,6 +31,9 @@ export interface ReminderSession {
   remaining?: string | null;
   expiryDate?: string | null;
   coach?: string | null;
+  /** 🔴 REQ-085 §7.2 (TASK-304) — the entry's OWN note. Per BOOKING, never the course's: the customer's
+   *  example shows two entries with DIFFERENT remarks, so a per-message note would be visibly wrong. */
+  attendeeNote?: string | null;
   teacherId: string | null;
   teacherLineUserId: string | null;
   /**
@@ -107,6 +110,7 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       remaining: s.remaining ?? null,
       expiryDate: s.expiryDate ?? null,
       coach: s.coach ?? null,
+      attendeeNote: s.attendeeNote ?? null,
     };
     // TASK-228 (AC-16): EVERY assigned teacher, not just the first. Built as one list so the grouping below
     // is a single loop — a second `if` block for the extras is how one of the two ends up missing a rule the
