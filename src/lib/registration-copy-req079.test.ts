@@ -258,8 +258,12 @@ describe("🔑 TASK-310 — the screens as ASSEMBLED, not only as strings", () =
       'ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: 082-503-1502\n' +
         'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
     );
-    // …and the service builds it exactly that way.
-    expect(SVC).toContain('`${both(res.message)}\\n${t("add_student_prompt", lang)}`');
+    // …and the service builds it exactly that way — 🔻 TASK-315 through `afterParentLink`, which returns this
+    // tail WITH its single leading newline for a family with NO children. **Screen 4 is the new-parent screen,
+    // and a new parent has no children**, so the byte-for-byte pin above is the one that still applies here;
+    // a RETURNING family is not on this screen at all (`§6.1`).
+    expect(SVC).toContain("`${both(res.message)}${await afterParentLink(lineUserId, lang)}`");
+    expect(SVC).toContain('return `\\n${t("add_student_prompt", lang)}`;');
   });
 
   test("🔑 screen 7 renders ONCE, with the labels inside it", () => {

@@ -685,6 +685,44 @@ async function handleAddStudentStep(
 }
 
 /**
+ * 🔴 TASK-315 (`REQ-085 §6.1`) — what follows a successful parent link, decided ONCE for both doors.
+ *
+ * ## The defect
+ * Every linked customer was dropped into *"กรุณาระบุชื่อนักเรียน"*. The owner linked a phone with **four**
+ * children, was greeted by name — and then made to add a fifth, with `ยกเลิก` the only way out. *"เหมือนบังคับ
+ * เลยมั้ย"*.
+ *
+ * ## The rule, and why it is a BOUNDARY rather than a new behaviour
+ * `§6`'s justification for the mandatory prompt is *"a parent account with no child can do NOTHING in this
+ * product"*. ⇒ **a family that already has children can do everything, so the rule never reached them.**
+ * · **ZERO children → the mandatory prompt, unchanged.** The step is set and the wizard owns the next word.
+ * · **ONE OR MORE → no prompt.** The screen-8 invitation and the menu, and 🔑 **no session step is left set**,
+ *   so a returning parent's next word is not read as a child's name.
+ * 🚫 Not fixed by adding a skip: **the prompt should not be there, and a skip on a prompt that should not
+ * exist is a second wrong thing.**
+ *
+ * ⚠️ Returns the tail WITH its own leading separator: a single newline keeps `§17c` screen 4 byte-for-byte for
+ * the new-parent case (TASK-310), and the returning family — who are not on that screen — get a blank line.
+ * 📌 No new copy: `add_another_hint` is the customer's own screen-8 sentence, and since TASK-313 the phrase it
+ * names is the phrase the parser accepts.
+ */
+async function afterParentLink(lineUserId: string, lang: Lang, known?: unknown[]): Promise<string> {
+  const kids = known ?? (await childrenOfLineParent(lineUserId));
+  if (!kids.length) {
+    await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
+    return `\n${t("add_student_prompt", lang)}`;
+  }
+  await clearSession(lineUserId);
+  return `\n\n${t("add_another_hint", lang)}\n\n${both((l) => t("menu_body", l))}`;
+}
+
+/** The linked family's children, or none when this LINE account is not a parent's. */
+async function childrenOfLineParent(lineUserId: string): Promise<unknown[]> {
+  const parent = await findParentByLineUserId(lineUserId);
+  return parent ? await listStudentsOfParent(parent.id) : [];
+}
+
+/**
  * 🔴 TASK-314 — AC-9's duplicate rule, where BOTH doors reach it.
  *
  * It lived inline in the wizard's name step; the inline add (`add น้องเอ`) never saw it, so a second `น้องเอ` in
@@ -1288,11 +1326,11 @@ async function handleMessage(ev: LineWebhookEvent) {
     const parent = await findParentByLineUserId(lineUserId);
     const kids = parent ? await listStudentsOfParent(parent.id) : [];
     // Verified — NOW the names. This is TASK-047's rule intact: the gate exists, so it is honoured.
-    await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-    return reply(
-      replyToken,
-      `${parentChildrenNames(kids.map((k: any) => k.nickname ?? k.name), lang)}\n\n${t("add_student_prompt", lang)}`.trim(),
-    );
+    // 🔴 TASK-315 §3 — the SAME decision the link-success door reaches, through the one function. This branch
+    // is unreachable while `line_parent_2fa` is off; fixing only the other door would bring the defect back
+    // the day someone flips that setting, certain they had changed nothing else.
+    const tail = await afterParentLink(lineUserId, lang, kids);
+    return reply(replyToken, `${parentChildrenNames(kids.map((k: any) => k.nickname ?? k.name), lang)}${tail}`.trim());
   }
 
   if (session.step === "AWAIT_CODE" && session.pendingRole) {
@@ -1325,16 +1363,14 @@ async function handleMessage(ev: LineWebhookEvent) {
       return reply(replyToken, both(res.message));
     }
     if (role === "customer") {
-      // Linked — now offer to add children (multi-turn).
-      await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
-      // Composed: the verify line and the add-student prompt are ONE body, so they are built together per
+      // Composed: the verify line and whatever follows it are ONE body, so they are built together per
       // language rather than glued from two already-bilingual halves.
-      // 🔴 TASK-310 (§17c screen 4) — the verify line and the name prompt are ONE screen, joined by a
-      // SINGLE newline because that is how the customer wrote it.
-      // ⚠️ The prompt is appended ONCE, OUTSIDE `both()`: it is already their bilingual block, while the
-      // line above it is theirs only for a NEW parent — a returning family still gets OURS, in two
-      // languages. 📌 That is the whole reason this composition could not stay inside one `both()`.
-      return reply(replyToken, `${both(res.message)}\n${t("add_student_prompt", lang)}`);
+      // 🔴 TASK-310 (§17c screen 4) — for a family with NO children the verify line and the name prompt are ONE
+      // screen, joined by a SINGLE newline because that is how the customer wrote it.
+      // ⚠️ The tail is appended ONCE, OUTSIDE `both()`: it is already a bilingual block, while the line above
+      // it is theirs only for a NEW parent — a returning family still gets OURS, in two languages.
+      // 🔴 TASK-315 — and WHICH tail is `afterParentLink`'s decision, not this branch's.
+      return reply(replyToken, `${both(res.message)}${await afterParentLink(lineUserId, lang)}`);
     }
     await clearSession(lineUserId);
     return reply(replyToken, both(res.message));
