@@ -79,7 +79,7 @@ export function formatOutboxMessage(
   // it without knowing it exists.**
   // 🚫 The five per-branch trims are GONE — a redundant trim is a second writer that agrees today (TASK-314),
   // and their absence is asserted so a new branch cannot re-add its own.
-  return buildOutboxMessage(payload, ctx, lang, recipientType); // MUTATED
+  return buildOutboxMessage(payload, ctx, lang, recipientType).trimEnd();
 }
 
 /** The per-kind bodies. 🚫 Nothing here trims: that is `formatOutboxMessage`'s job, once, above. */
