@@ -15,7 +15,10 @@ const row = (o: Partial<SchedRow> = {}): SchedRow => ({
 describe("renderSchedule (REQ-016 / TASK-043 · reshaped by REQ-067 Part B)", () => {
   test("today: time leads, no date heading, translated status (TH)", () => {
     const out = renderSchedule([row()], "TH", "today");
-    expect(out).toContain("🗓️ ตารางวันนี้");
+    // 🔻 TASK-323 (`§16g`) — the COMMAND header is the customer's own form now: we had drifted from
+    // `§7.2`'s example, which already read `TODAY'S SCHEDULE:` with the clock. 🚫 The BODY below is
+    // untouched, which is what the rest of this test asserts and why it is the interesting half.
+    expect(out).toContain("⏱️TODAY'S SCHEDULE:");
     expect(out).toContain("09:00  น้องเอ");
     expect(out).toContain("Surfskate · ยืนยันแล้ว");
     expect(out).not.toContain("2026-07-30"); // today view never repeats today's date

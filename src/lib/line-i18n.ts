@@ -392,8 +392,27 @@ const TABLE: Record<string, Entry> = {
   teacher_linked: { TH: "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ", EN: "Teacher account linked — you'll get schedule notifications" },
   teacher_linked_menu: { TH: "บัญชีครูผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ You'll be notified when a schedule is confirmed" },
   // Teacher "my schedule" (REQ-016 / TASK-043).
-  tsched_title_today: { TH: "🗓️ ตารางวันนี้", EN: "🗓️ Today's schedule" },
-  tsched_title_week: { TH: "🗓️ ตารางสัปดาห์นี้", EN: "🗓️ This week's schedule" },
+  //
+  // 🔴 TASK-323 (`REQ-085 §16g`) — the COMMAND headers, restored to the customer's own form. 🔑 **This is not a
+  // change to their spec; it is a failure to have matched it:** `§7.2`'s COMMAND example already reads
+  // `TODAY'S SCHEDULE:` with the clock, and `ob_today_title` has carried exactly that for the AUTO message all
+  // along. **We drifted; we are going back.**
+  // 🚫 HEADERS ONLY. The compact COMMAND body is untouched — @Porter's standing instruction that AUTO and
+  // COMMAND are different SHAPES by design still stands, and `§16f`'s "unify them" reading was withdrawn.
+  //
+  // ## ❓ Reuse `ob_today_title`, or its own key? — **its own key, and the coincidence is ASSERTED.**
+  // Reuse would make a future edit to their AUTO header move the COMMAND one SILENTLY, which is the thing to
+  // avoid. A second copy would let the two drift silently, which is equally bad. ⇒ **separate keys, and a test
+  // pins `tsched_title_today` EQUAL to `ob_today_title`** — so the day either moves, a human is told and
+  // decides, instead of one of the two failure modes happening quietly. 📌 It also keeps the two COMMAND
+  // headers side by side, which is where anyone editing one will look for the other.
+  tsched_title_today: { TH: "⏱️TODAY'S SCHEDULE:", EN: "⏱️TODAY'S SCHEDULE:" },
+  // 📖 **PLACEHOLDER — @PORTER'S, and the customer has NOT seen it.** Their four messages contain no weekly
+  // schedule, so nothing specifies this header; matching the daily one is the only choice that does not invent
+  // a third style. ⚠️ **This is NOT a ratified string.** ⇒ its test pins the FORM it must keep (the clock, upper
+  // case, the trailing colon, the same shape as its daily twin) and **deliberately does not byte-freeze the
+  // words** — the convention `PENDING_RESCHEDULE` already uses, applied the moment we write copy ahead of them.
+  tsched_title_week: { TH: "⏱️THIS WEEK'S SCHEDULE:", EN: "⏱️THIS WEEK'S SCHEDULE:" },
   tsched_empty: { TH: "ไม่มีคาบสอนในช่วงนี้", EN: "No classes in this range" },
   tsched_more: { TH: "…และอีก {count} คาบ", EN: "…and {count} more" },
   btn_week: { TH: "สัปดาห์นี้", EN: "This week" },

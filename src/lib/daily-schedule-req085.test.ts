@@ -102,7 +102,10 @@ describe("🔑 TASK-304 — COMMAND: one language, and the same `Remark`", () =>
 
   test("the entry, pinned in full", () => {
     expect(renderSchedule([row], "EN", "today")).toBe(
-      "🗓️ Today's schedule\n10:00  Aiwa\n   Private Freeskate · Confirmed\n" +
+      // 🔻 TASK-323 (`§16g`) — only the HEADER moved, to the customer's own form. **The rest of this pin is
+      // byte-identical**, which is the point: `§16f`'s *unify the shapes* reading was withdrawn, and this
+      // assertion is what proves the body did not follow the header.
+      "⏱️TODAY'S SCHEDULE:\n10:00  Aiwa\n   Private Freeskate · Confirmed\n" +
         "   Remark : เตรียมเฉพาะ Freeskate ให้น้อง",
     );
   });

@@ -588,7 +588,13 @@ async function handleAddStudentStep(
     }
     await resetStrikes(lineUserId); // a valid answer clears the count (`strikeOrPrompt`).
     await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", { ...draft, name });
-    return reply(replyToken, withExit(t("add_birthdate_prompt", lang), lang));
+    // 🔻 TASK-323 (`REQ-085 §16.2`) — NO `withExit` here. The customer asked for the hint off the birthdate and
+    // province screens: *"เอา Type cancel to exit ออกทั้งการแจ้งวันเกิดและจังหวัดค่ะ"*. ⚠️ TWO screens, not
+    // twelve — the other nine sites keep it and are pinned.
+    // 🔑 **The WAY OUT is untouched: `isCancelWord` is checked at the top of this function, before any step
+    // reads the text as an answer.** *"Remove the hint" is one edit from "remove the exit", and only one of
+    // those was asked for.* ⇒ an unadvertised way out is still a way out.
+    return reply(replyToken, t("add_birthdate_prompt", lang));
   }
 
   if (session.step === "AWAIT_STUDENT_BIRTHDATE") {
@@ -599,10 +605,19 @@ async function handleAddStudentStep(
     // 🔴 TASK-245 — through `strikeOrPrompt`, not a bare re-ask. THIS is the branch where rule 5 failed the
     // owner: he typed `เมนู`, was told the date format was wrong, and the counter never moved — so the second
     // failure re-asked instead of fetching a person. A rejection IS an unexpected reply.
+    // 🔑 TASK-323 §2 — the RE-ASK KEEPS the hint, and this is the decision the copy did not state.
+    // `§16.2` names the birthdate and province SCREENS; it is silent about the screen a parent reaches after
+    // being REFUSED. ⚠️ Same shape as `§6`: specified for the population it was about, silent about the one it
+    // would also reach. 🔴 **The evidence is three lines above this one:** *THIS is the branch where rule 5
+    // failed the owner — he typed `เมนู` to escape, was told the date format was wrong, and could not leave.*
+    // ⇒ **the bad-birthdate re-ask is the exact screen TASK-245 exists because of**, and taking the exit off it
+    // would re-open that defect in COPY the day after closing it in behaviour. 📌 Their complaint is clutter on
+    // a screen read for the first time; a parent who has just been refused is not on that screen any more.
     if (!parsed.ok) return strikeOrPrompt(lineUserId, session, replyToken, withExit(t("add_birthdate_bad", lang), lang), lang);
     await resetStrikes(lineUserId);
     await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
-    return reply(replyToken, withExit(t("add_province_prompt", lang), lang));
+    // 🔻 TASK-323 (`§16.2`) — the second of the two named screens. The exit still works; see the birthdate note.
+    return reply(replyToken, t("add_province_prompt", lang));
   }
 
   if (session.step === "AWAIT_STUDENT_PROVINCE") {

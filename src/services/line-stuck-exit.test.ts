@@ -78,15 +78,24 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
     expect(t("add_cancelled", "EN")).toContain("nothing was saved");
   });
 
-  test("🔴 EVERY question the wizard asks advertises the exit — asserted as a net, not four cases", () => {
+  test("🔻 every question the wizard asks advertises the exit — EXCEPT the two `§16.2` named", () => {
     // A question that does not say so is a step the parent has no reason to believe they can leave, which is
     // exactly how someone finishes a registration they did not want.
+    //
+    // 🔻 TASK-323 (`REQ-085 §16.2`) — **the customer asked for the hint OFF the birthdate and province
+    // prompts**: *"เอา Type cancel to exit ออกทั้งการแจ้งวันเกิดและจังหวัดค่ะ"*. ⚠️ The net is now a net with
+    // two stated holes, and **the holes are listed here rather than the test being deleted** — an exception
+    // nobody can see is how the other nine would follow it next month.
+    // 🔑 **What this test was actually protecting is UNCHANGED and is asserted in `copy-scope-req085-16.test.ts`:
+    // `ยกเลิก` still works on both screens.** `isCancelWord` is checked at the top of the wizard, before any
+    // step reads the text as an answer, so the WAY OUT never depended on the advertisement.
     const QUESTIONS = [
       "add_student_name_prompt",
       "add_dup_detail",
-      "add_birthdate_prompt",
+      // 🔻 `add_birthdate_prompt` and `add_province_prompt` were here — removed by `§16.2`, BY NAME.
+      // ✅ `add_birthdate_bad` stays: the RE-ASK keeps its hint (TASK-323 §2), because it is the exact screen
+      // TASK-245 exists because of — the owner typed `เมนู` there and could not leave.
       "add_birthdate_bad",
-      "add_province_prompt",
       "add_summary_confirm",
     ];
     for (const key of QUESTIONS) {
@@ -99,6 +108,12 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
         // `withExit(` sits immediately before the `t(` it wraps — one append site for the whole flow.
         expect(CODE.slice(m.index! - 9, m.index!)).toBe("withExit(");
       }
+    }
+    // 🚫 And the two exceptions are asserted as exceptions — so "the hint is gone" cannot quietly spread.
+    for (const key of ["add_birthdate_prompt", "add_province_prompt"]) {
+      const uses = [...CODE.matchAll(new RegExp('\\btb?\\("' + key + '"', "g"))];
+      expect(uses.length).toBeGreaterThan(0);
+      for (const m of uses) expect(CODE.slice(m.index! - 9, m.index!)).not.toBe("withExit(");
     }
   });
 
