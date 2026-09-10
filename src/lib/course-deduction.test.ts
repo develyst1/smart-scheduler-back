@@ -74,6 +74,28 @@ describe("🔴 `Remaining` is the balance AFTER the write, taken FROM the write"
     expect(attend.slice(0, 1400)).toContain("used,");
   });
 
+  test("🔻 TASK-338 — the doc-block is checked AGAINST THE FUNCTION, so THIS one cannot go stale silently", () => {
+    // ❓ @Sober asked whether anything cheap would have caught two comments that went stale within HOURS of
+    // the change that staled them. ✅ **For one narrow class, yes — and it is here rather than claimed.**
+    // 🔑 The doc-block quotes LITERALS the function produces, so the function can simply be ASKED.
+    // ⚠️ **It generalises no further, and that limit is the honest half of the answer:** a comment about WHY,
+    // about another file, or about intent has nothing to compare itself against.
+    // 📌 Offered, not assumed — if it is not wanted, delete it; the comment fix stands without it.
+    const doc = HELPER.slice(0, HELPER.indexOf("export function remainingLabel"));
+    const block = doc.slice(doc.lastIndexOf("/**"));
+    expect(block).toContain(`\`${remainingLabel("course", 2, 6)}\` for a course`);
+    expect(block).toContain(`\`${remainingLabel("voucher", 4, 6)}\` for a voucher`);
+    // 🚫 …and the word TASK-335 removed is not TAUGHT here. The note inside the function still records its
+    // removal, which is HISTORY and must stay — the distinction is TENSE, not the presence of the word.
+    // 🔻 CORRECTED BY THIS ASSERTION ITSELF: my first version demanded the word be absent from the WHOLE
+    // block — and it FAILED, because the block now carries a 🔻 line RECORDING the removal. **That line must
+    // stay: §3's rule is TENSE, and I had just written a history sentence and then asserted history away.**
+    // ⇒ scoped to the line that TEACHES, which is the only line a reader copies from.
+    const teaches = block.split("\n").find((l) => l.includes("for a voucher"))!;
+    expect(teaches).not.toContain("ครั้ง");
+    expect(block).toContain("TASK-335 removed the voucher"); // …and the history is still there
+  });
+
   test("🔻 the label: `2 HR` unchanged, and the voucher form is now `4/6` — no Thai", () => {
     // 🔻 TASK-335 (`REQ-087 §1c`) — `ครั้ง` is GONE: it was THAI inside a value the SYSTEM generates, which
     // `REQ-085 §4` rules out. **REMOVED rather than translated** — `14/15` beside `Remaining :` already says

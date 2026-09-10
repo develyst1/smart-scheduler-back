@@ -8,8 +8,11 @@
 // `(-)` reasoning pointed back at us. *A parent reading a receipt with no balance has no way to know a line is
 // missing.* ⚠️ **That is why this needed a test and not a report.**
 //
-// 🚫 It was LATENT — `remainingLabel` returns `"0 HR"` / `"0/6 ครั้ง"`, never a bare number — so nothing
+// 🚫 It was LATENT — `remainingLabel` returns `"0 HR"` / `"0/6"`, never a bare number — so nothing
 // @Tanya can produce changes. The fix is invisible on every message that exists today.
+// 🔻 TASK-338 — this header said `"0/6 ครั้ง"` until now: **a THIRD copy of the stale claim, in MY OWN file,
+// contradicting the assertion 100 lines below it that already reads `0/6`.** 📌 Found by the check §3 asked
+// for, not by a sweep.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

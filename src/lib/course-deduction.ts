@@ -18,10 +18,15 @@ import { familyLineUserIds } from "./family-link";
 export type DeductionKind = "course" | "voucher";
 
 /**
- * What is left, as the customer writes it: `2 HR` for a course, `4/6 ครั้ง` for a voucher.
+ * What is left, as the customer writes it: `2 HR` for a course, `4/6` for a voucher.
+ * 🔻 TASK-335 removed the voucher's `ครั้ง` and **this line went stale in the same change** — the note
+ * inside the function says why the word was removed rather than translated.
  *
- * 📌 The voucher form is `remaining/total`, matching `courseLine`'s owner-verified `เหลือ 6/10` (TASK-234) —
- * the same number in the same shape wherever a family reads it. Pure.
+ * 📌 The voucher form is `remaining/total` — **the same SHAPE the family sees on the card**
+ * (`courseLine`'s owner-verified `เหลือ 6/10`, TASK-234). ⚠️ **SHAPE ONLY: nothing is shared.**
+ * `line-course-view.ts` renders its own and imports nothing from this file, so a change here does not
+ * reach the card. 🔻 **This sentence used to say *matching*, and that one word read as *shared*** — it sent
+ * a reviewer looking for a dependency that does not exist. Pure.
  */
 export function remainingLabel(kind: DeductionKind, remaining: number, total: number): string {
   const left = Math.max(0, remaining);
@@ -58,7 +63,7 @@ export interface DeductionInput {
  * The payload — money facts only. Student, program, date, time and coach are enriched from `bookingId`.
  *
  * 🔑 TASK-332 half 2 — **the return type is DECLARED, not inferred.** `remaining` is a rendered LABEL
- * (`"0 HR"`, `"0/6 ครั้ง"`), never a bare number — and until now that was a fact we re-established by READING
+ * (`"0 HR"`, `"0/6"`), never a bare number — and until now that was a fact we re-established by READING
  * `remainingLabel`. ⇒ **the day someone changes it to return a count, this annotation fails HERE**, rather
  * than the number travelling to a renderer that used to drop a falsy `0` on the floor.
  * ⚠️ **It does NOT reach the renderer.** The payload crosses a JSON column and `row.payload as any` destroys
