@@ -28,13 +28,16 @@ const SCREEN = {
   1: 'กรุณาพิมพ์ "สมัคร" เพื่อลงทะเบียนค่ะ\nPlease type "register" to start.',
   2: 'กรุณาพิมพ์ "Next" เพื่อเข้าใช้งานค่ะ\nPlease type "Next" to continue.',
   3: "กรุณาระบุเบอร์โทรศัพท์ค่ะ\nPlease enter your phone number.",
-  "4a": "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
+  // 🔻 TASK-318 (batch 7b) — the ✅ is on the THAI success line too now. **Their document has it on both;
+  // ours had it in English only.** The pin is UPDATED with the change rather than relaxed.
+  "4a": "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
   "4b": 'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
   5: "กรุณาระบุวันเกิดของนักเรียนค่ะ\n(วัน-เดือน-ปีค.ศ. )\nPlease enter the date of birth in (DD-MM-YYYY)",
   6: "กรุณาระบุ เขต แขวง จังหวัด เช่น พระโขนงเหนือ วัฒนา กทม\nPlease enter your address: District, Sub-district, Province\nEg. Prakanueng Nuea, Wattana, BKK",
   "7a": "กรุณาตรวจสอบข้อมูลก่อนบันทึกค่ะ\nPlease check your information before saving.",
   "7b": 'ข้อมูลถูกต้องหรือไม่คะ?\nIs this information correct?\nกรุณาพิมพ์ "ยืนยัน" เพื่อบันทึก\nPlease Type "Confirm" to save.',
-  "8a": 'เพิ่ม "{name}" สำเร็จแล้วค่ะ\n"{name}" has been added successfully. ✅{note}',
+  // 🔻 TASK-318 (batch 7b) — the ✅ on the Thai line here too.
+  "8a": 'เพิ่ม "{name}" สำเร็จแล้วค่ะ ✅\n"{name}" has been added successfully. ✅{note}',
   "8b":
     'หากต้องการเพิ่มนักเรียนเข้าระบบ\nกรุณาพิมพ์ "เพิ่มนักเรียน" ค่ะ\nIf you would like to add another student,\nplease type "Add Student".',
 } as const;
@@ -255,7 +258,7 @@ describe("🔑 TASK-310 — the screens as ASSEMBLED, not only as strings", () =
     // string pin above. **This is the assertion that catches it.**
     const screen4 = `${both((l) => t("verify_parent_ok_new", l, { phone: "082-503-1502" }))}\n${t("add_student_prompt", "TH")}`;
     expect(screen4).toBe(
-      'ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: 082-503-1502\n' +
+      'ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: 082-503-1502\n' +
         'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
     );
     // …and the service builds it exactly that way — 🔻 TASK-315 through `afterParentLink`, which returns this

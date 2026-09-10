@@ -216,12 +216,13 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
     }
   });
 
-  test("…and the two kept lines print in the customer's convention", () => {
+  test("🔻 …and the ONE kept line prints in the customer's convention", () => {
     const parent = formatOutboxMessage(COURSE, {}, "TH", "parent");
-    // 🔴 TASK-269 §1/§2: `Sessions` is the course AS BOUGHT (`size`), not the count this confirm flipped
-    // (`confirmed`, 8 in this fixture), and the note's label is `Remark`.
-    expect(parent).toContain("Sessions : 6");
-    expect(parent).not.toContain("Sessions : 8");
+    // 🔻 TASK-318 (`§16.4`) — this asserted TWO kept lines. **`Sessions :` is gone, on the customer's own
+    // reasoning: the program name already carries the hours** (`Program : … 6 HR`). ⇒ rewritten to the line
+    // that remains, with the absence pinned beside it.
+    expect(parent).not.toContain("Sessions :");
+    expect(parent).toContain("Program : Private Freeskate 6 HR"); // where the 6 lives now
     expect(parent).toContain("Remark : แพ้ถั่ว");
     expect(parent).not.toContain("จำนวนคาบที่ยืนยัน");
     expect(parent).not.toContain("หมายเหตุ");
@@ -229,7 +230,7 @@ describe("🔴 TASK-257 — one message, ONE labelling convention (the cause, no
 
   test("the labels are English in BOTH languages — the customer's template, not a translation", () => {
     const en = formatOutboxMessage(COURSE, {}, "EN", "parent");
-    expect(en).toContain("Sessions : 6");
+    expect(en).toContain("Program : Private Freeskate 6 HR");
     expect(en).toContain("Remark : แพ้ถั่ว"); // the VALUE stays as typed; only the label is theirs
   });
 
@@ -344,30 +345,36 @@ describe("🔴 TASK-269 — the live `sid` message, and the three corrections it
     plannedLeaveDates: ["2026-09-14", "2026-09-28"],
   };
 
-  test("🔑 §1 — ONE message, and `Program` and `Sessions` agree because they read ONE field", () => {
+  test("🔻 §1 — the two derivations AGREED, and that is what made removing one safe (TASK-318)", () => {
     // The defect was not the number; it was two derivations of one fact disagreeing in front of a parent.
-    // Asserted on a SINGLE rendering, both lines together — pinning them in separate tests would let them
-    // drift to two new values and stay green.
+    // 🔻 `§16.4` now deletes the `Sessions` line entirely — the program name already carries the hours — so
+    // this is rewritten rather than dropped. 🔑 **TASK-269's fix is exactly what makes the deletion safe:**
+    // the two numbers had been made to agree, so nothing is lost with the line. Had they still disagreed,
+    // removing one would have HIDDEN a defect instead of closing it.
     const out = formatOutboxMessage(LIVE, {}, "TH", "parent");
-    expect(out).toContain("Program : Surfskate 10 HR");
-    expect(out).toContain("Sessions : 10");
-    expect(out).not.toContain("Sessions : 8");
+    expect(out).toContain("Program : Surfskate 10 HR"); // the course AS BOUGHT — now the only place it prints
+    expect(out).not.toContain("Sessions");
+    expect(out).not.toContain(" 8"); // 🚫 the count this confirm flipped reaches a parent by no route at all
     // …and the leaves are still there, which is what made the old number 8.
     expect(out).toContain("**Advance Leave Notice : 2026-09-14, 2026-09-28");
   });
 
-  test("🚫 §1 — `Sessions` is OMITTED when `size` is absent, never `Sessions : 0`", () => {
-    // `Sessions : 0` on a course is a false statement, not a blank.
+  test("🚫 §1 — with `size` absent, no count appears and nothing invents a zero", () => {
+    // 🔻 It read *"`Sessions` is OMITTED when `size` is absent, never `Sessions : 0`"*. There is no `Sessions`
+    // line to omit now; **the rule it protected — a course never states a size it does not know — lives on the
+    // program label**, which is where the number went.
     const { size: _s, ...noSize } = LIVE;
     const out = formatOutboxMessage(noSize, {}, "TH", "parent");
     expect(out).not.toContain("Sessions");
     expect(out).toContain("Program : Surfskate"); // the rest of the message is unaffected
+    expect(out).not.toContain("0 HR");
   });
 
-  test("🔴 §1 — a re-confirm still reads the course, not the zero rows it flipped", () => {
+  test("🔴 §1 — a re-confirm still reads the COURSE, not the zero rows it flipped", () => {
     // The second symptom the reported fix would have left: `confirmed + leaves` prints 2 on a re-confirm.
+    // 🔑 Still asserted, on the line that survived — `programLabel` reads `size`, so a re-confirm is unaffected.
     const reconfirm = { ...LIVE, confirmed: 0 };
-    expect(formatOutboxMessage(reconfirm, {}, "TH", "parent")).toContain("Sessions : 10");
+    expect(formatOutboxMessage(reconfirm, {}, "TH", "parent")).toContain("Program : Surfskate 10 HR");
   });
 
   test("🔑 §2 — the note renders as `Remark`, asserted with a note PRESENT", () => {

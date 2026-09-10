@@ -13,6 +13,7 @@
 //  3. **Abandon halfway ⇒ nothing is written.** The draft lives on the session; the row is created at CONFIRM.
 //
 // Pure — no DB, no clock, no i18n side effects.
+import { ddmmyyyy } from "./time";
 
 export type AddStudentStep =
   | "AWAIT_STUDENT_NAME"
@@ -142,8 +143,12 @@ export function parseBirthDate(text: string): { ok: true; value: string | null }
  * formatter: the display must not invent a shape for something it does not recognise.
  */
 export function formatBirthDateForDisplay(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso;
+  // 🔻 TASK-318 — the transformation itself moved to `time.ddmmyyyy` when the LEAVE NOTICE needed the SAME
+  // day-first format (`REQ-085 §16d`, the customer's own spec, matching their `§17c` date of birth).
+  // 🔑 This function stays: everything above is about the BIRTHDATE — why the echo exists, why it is not the
+  // parser's inverse, why `summaryLines` is its only caller — and none of that is true of a leave notice.
+  // ⇒ **one transformation, two contracts.**
+  return ddmmyyyy(iso);
 }
 /**
  * 🔴 AC-9 — what to do when the name already exists in THIS family.

@@ -4,6 +4,7 @@
 
 import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
+import { ddmmyyyy } from "./time";
 import { buildDigestMessage } from "./attention";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
@@ -144,7 +145,18 @@ export function formatOutboxMessage(
               size: payload.size as number,
               title: ctx.title,
             }),
-            date: ctx.date ? t(`ob_dow_${weekdayOf(ctx.date)}`, TEMPLATE_LANG) : undefined,
+            // 🔴 TASK-318 (`REQ-085 §16d`) — THE ACTUAL DATE, `DD-MM-YYYY`, and it is the whole point of this
+            // message. It rendered the WEEKDAY ALONE, so the owner marked two sessions absent and the coach
+            // received TWO BYTE-IDENTICAL notices: *"ครูจะไม่รู้ว่าแจ้งลา พฤ ไหน"*. **The sends were correct;
+            // the messages could not be told apart.**
+            // 🔑 `Date` means different things in a message about a COURSE and one about a SESSION. `§7.1`'s
+            // course-wide schedule KEEPS the weekday — it describes a RECURRING SLOT and a single date there
+            // would be wrong. **This message's only job is *do not turn up for THIS class*.**
+            // 🚫 NOT the picker's `อังคาร 22/09` (TASK-316): that is the parent's surface, this is the
+            // customer's own layout for the coach's. **Two surfaces, two audiences, two formats, both right.**
+            // 📌 `DD-MM-YYYY` is theirs, and it matches the date of birth they specified in `REQ-079 §17c` —
+            // we follow them rather than invent a third style.
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
             time: ctx.startTime
               ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
               : undefined,
@@ -229,18 +241,16 @@ export function formatOutboxMessage(
         // two labelling conventions is what put `จำนวนคาบที่ยืนยัน` and `หมายเหตุ` under eight English labels.
         // They cannot reuse `ob_l_*`: those are bilingual, and `ob_l_note` also renders `booking_confirmed`,
         // which is owner-verified and byte-frozen. **One message, one convention** — the cause, not the symptom.
-        // 🔴 TASK-269 §1 — `Sessions` is the course AS BOUGHT, and it reads **the same field `programLabel`
-        // reads**. It used to be `payload.confirmed`, the count of rows this confirm flipped — so a
-        // `Surfskate 10 HR` with two declared leaves printed `Program : Surfskate 10 HR` and
-        // `Sessions : 8` **in the same message**: two derivations of one fact, disagreeing, in front of a
-        // parent. An advance leave is `SICK_LEAVE` and was never `PENDING`.
-        //
-        // 🚫 NOT `confirmed + plannedLeaveDates.length`. That patches the reported symptom and leaves two:
-        // a re-confirm counts 0, and a session that failed on budget is subtracted with no sign. **A
-        // derived figure can disagree with the one printed beside it; a shared field cannot.**
-        //
-        // ⚠️ Omitted when `size` is absent — `Sessions : 0` on a course is a false statement, not a blank.
-        extra(t("ob_f_sessions", lang), payload.size != null ? String(payload.size) : undefined) +
+        // 🔻 TASK-318 (`REQ-085 §16.4`) — **`Sessions :` is GONE, on the customer's own reasoning: the program
+        // name already carries the hours** (*"Freeskate 6 HR"*). ⇒ the line restated what the line above it
+        // already said.
+        // 📌 TASK-269 §1 had made it read **the same field `programLabel` reads** — it used to be
+        // `payload.confirmed`, so a `Surfskate 10 HR` with two declared leaves printed `Program : Surfskate
+        // 10 HR` and `Sessions : 8` in one message: two derivations of one fact, disagreeing, in front of a
+        // parent. 🔑 **That fix is what makes deleting it safe now** — the two agreed, so nothing is lost with
+        // the line; had they still disagreed, removing one would have hidden a defect rather than closed it.
+        // 🚫 `Remaining` and `*Expiry date` STAY (`§9`'s conditional pair): they are what tells a coach a
+        // COURSE row from a one-off — the owner's *"ไม่งั้นมันจะแยกยังไง"* is their acceptance criterion.
         // TASK-269 §2 — the label is `Remark` (both languages; the house style is English labels for
         // everyone). 🚫 `ob_l_note` is a DIFFERENT key and is untouched: it renders `booking_confirmed`,
         // which is owner-verified and byte-frozen. Two keys is why this is a one-line change.

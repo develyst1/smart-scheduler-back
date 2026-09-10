@@ -92,8 +92,10 @@ describe("TASK-303 — a human's words are reproduced exactly as typed (§8.2)",
 describe("🚫 TASK-303 §5 — `§7.1`'s course-level message is UNCHANGED", () => {
   test("🔴 both now open with `CONFIRMED SCHEDULE`, so this is asserted rather than assumed", () => {
     // The next person to edit one of these will find the other. `§7.1` keeps its `Start`, `Coach`,
-    // `*Expiry date`, `**Advance Leave Notice` and `Sessions`; none of them may leak into `§7.3` and none of
+    // `*Expiry date` and `**Advance Leave Notice`; none of them may leak into `§7.3` and none of
     // `§7.3`'s brevity may leak back.
+    // 🔻 TASK-318 (`§16.4`) — `Sessions` was on that list and has been REMOVED from `§7.1` itself, so it is
+    // no longer one of the lines that must not leak: it is a line that must not exist.
     const course = formatOutboxMessage(
       {
         kind: "course_confirmed",
@@ -117,7 +119,8 @@ describe("🚫 TASK-303 §5 — `§7.1`'s course-level message is UNCHANGED", ()
     expect(course).toBe(
       "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : Sunday\n" +
         "Time : 10:00-11:00\nStart : 2026-09-06\nCoach : ครูหนึ่ง\n*Expiry date : 2026-12-31\n" +
-        "**Advance Leave Notice : (-)\nSessions : 6",
+        // 🔻 TASK-318 (`§16.4`) — `Sessions : 6` is gone from `§7.1`; the line above it is now the last.
+        "**Advance Leave Notice : (-)",
     );
     // 🔑 The two messages differ in every field but the header — which is the customer's choice, and the
     // reason the CODE has to be the thing that tells them apart.

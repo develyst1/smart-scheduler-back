@@ -234,7 +234,9 @@ describe("TASK-278 §5 — nothing else moved", () => {
     };
     const out = formatOutboxMessage(COURSE, {}, "TH", "parent");
     expect(out).toContain("📅CONFIRMED SCHEDULE:");
-    expect(out).toContain("Sessions : 6");
+    // 🔻 TASK-318 (`§16.4`) — the customer removed this line: the program name already carries the hours.
+    expect(out).not.toContain("Sessions : 6");
+    expect(out).toContain("Program : Private Freeskate 6 HR");
     expect(out).toContain("Remark : แพ้ถั่ว");
     // …and no customer copy leaked in.
     expect(out).not.toContain("Registration completed");

@@ -185,7 +185,10 @@ describe("TASK-283 — the rendered messages", () => {
     expect(formatOutboxMessage(COURSE as any, {}, "TH", "parent")).toBe(
       "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : Sunday\n" +
         "Time : 10:00-11:00\nStart : 2026-09-06\nCoach : ครูหนึ่ง\n*Expiry date : 2026-12-31\n" +
-        "**Advance Leave Notice : 2026-09-14\nSessions : 6\nRemark : แพ้ถั่ว",
+        // 🔻 TASK-318 (`§16.4`) — `Sessions : 6` came OUT between these two lines: the program name already
+        // carries the hours. **The pin is rewritten, not deleted** — this test exists to hold the message
+        // byte-for-byte, and a rewritten pin is what a changed requirement looks like.
+        "**Advance Leave Notice : 2026-09-14\nRemark : แพ้ถั่ว",
     );
   });
 

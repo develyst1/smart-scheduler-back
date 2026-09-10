@@ -28,6 +28,21 @@ export const addHour = (t: string) => {
 export const fmtDate = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/**
+ * 🔴 `2026-09-10` → `10-09-2026`. **Day-first: the format the CUSTOMER uses for every date a human reads.**
+ *
+ * They specified it twice, for two different messages — `REQ-079 §17c` for a date of birth and `REQ-085 §16d`
+ * for the LEAVE NOTICE — so it is ONE transformation with one home rather than a copy per surface.
+ * ⚠️ **A value that is not a well-formed ISO date passes through UNCHANGED.** Same rule as the phone
+ * formatter: a display must not invent a shape for something it does not recognise.
+ * 🚫 **Display only.** The stored value stays ISO — a display format reaching the database is the one way this
+ * can do harm — and it is deliberately NOT the inverse of any parser (see `parseBirthDate`'s own note).
+ */
+export const ddmmyyyy = (iso: string): string => {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso;
+};
+
 export const addDays = (iso: string, n: number) => {
   const d = new Date(`${iso}T00:00:00`);
   d.setDate(d.getDate() + n);

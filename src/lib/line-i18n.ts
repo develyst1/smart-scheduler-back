@@ -142,7 +142,7 @@ export const REGISTRATION_COPY = {
    * screen shows **the number the person just typed**, so a literal would have shipped their example.
    * (`formatPhoneForDisplay` renders it in their shape; the stored value stays digits.)
    */
-  verify_parent_ok_new: "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
+  verify_parent_ok_new: "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
   /**
    * §17c screen 4, second half — asked as one body with the line above it.
    * 🔻 **Their sentence carries neither the `{max}` cap nor the `ข้าม` escape our wording had.** The cap is
@@ -178,7 +178,7 @@ export const REGISTRATION_COPY = {
   add_l_province: "ที่อยู่ / Address",
   add_l_none: "ไม่ระบุ / not given",
   /** §17c screen 8. Their `"Nong DC"` is the example child in a copy document, so it is `{name}`. */
-  added_done: 'เพิ่ม "{name}" สำเร็จแล้วค่ะ\n"{name}" has been added successfully. ✅{note}',
+  added_done: 'เพิ่ม "{name}" สำเร็จแล้วค่ะ ✅\n"{name}" has been added successfully. ✅{note}',
   /**
    * §17c screen 8's tail. ⚠️ A separate key because it is CONDITIONAL: a household at `MAX_STUDENTS_PER_PARENT`
    * must not be invited to add another. **Their words, not new copy** — the condition is ours, the sentence
@@ -455,7 +455,18 @@ const TABLE: Record<string, Entry> = {
     TH: "⚠️ คาบชดเชยถูกจัดไปไกลกว่าปกติ: {weeks} สัปดาห์หลังคาบที่ลา ({replaces} → {landedOn}) — ตารางครูช่วงนี้เต็ม",
     EN: "⚠️ A make-up landed further out than usual: {weeks} weeks after the session it replaces ({replaces} → {landedOn}) — that coach's slot is fully booked.",
   },
-  ob_leave_notice_title: { TH: "LEAVE NOTICE", EN: "LEAVE NOTICE" },
+  // 🔴 TASK-318 (`REQ-085 §16e`) — the customer's own header, BILINGUAL. 🔻 This REVERSES the owner's `§9`
+  // English-header ruling, which he gave before the customer had asked for anything. **Superseded, not wrong.**
+  //
+  // 🔑 THE BOUNDARY, and it is why this survives the next reader — @Porter's words:
+  //     **`§4` governs values the system GENERATES. It never governed what a message is CALLED.**
+  // 📌 `§4` — *"eng ล้วน ไม่ควรไทยเลยแม้แต่ติด"* — was always about OUR OWN words: `Date : อังคาร` → `Tuesday`,
+  // `ไม่มี` → `(-)`. ⚠️ Without this sentence beside it, someone "fixes" the header back to English next month
+  // by citing `§4` — **which is exactly the shape that let `Date : อังคาร` ship after `REQ-079 §18` had already
+  // ruled labels English.** ***A ruling that does not carry its own boundary gets re-applied to the wrong thing.***
+  // ✅ And the audience is what makes it hold: this message reaches COACHES and ADMINS, never a parent. **The one
+  // notification with a Thai header is the one no parent ever sees.**
+  ob_leave_notice_title: { TH: "LEAVE NOTICE / แจ้งลา ‼️", EN: "LEAVE NOTICE / แจ้งลา ‼️" },
   ob_l_start: { TH: "เริ่ม", EN: "Starts" },
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },
   ob_l_sessions: { TH: "จำนวนคาบที่ยืนยัน", EN: "Sessions confirmed" },

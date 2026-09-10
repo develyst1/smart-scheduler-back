@@ -38,29 +38,42 @@ const payload = {
 const render = (o: Record<string, unknown> = {}, audience: "parent" | "teacher" = "teacher") =>
   formatOutboxMessage({ ...payload, ...o }, ctx as any, "TH", audience);
 
-describe("🔑 TASK-305 — the message, pinned BYTE-FOR-BYTE against §9.1's block", () => {
-  test("the owner's final shape", () => {
+describe("🔑 TASK-305 — the message, pinned BYTE-FOR-BYTE — 🔻 REWRITTEN to `§16d` by TASK-318", () => {
+  // 🔻 **Two of this block's three assertions asserted things the customer has since overturned**, and they are
+  // REWRITTEN here rather than deleted: an assertion that changes because the requirement changed is correct;
+  // one deleted because it failed is how this class ships. 📌 The full `§16d` pin lives in
+  // `leave-notice-req085-16d.test.ts`; what stays here is TASK-305's own subject — that the message EXISTS,
+  // reaches both recipients, and never the parent.
+  test("the shape, now the customer's own", () => {
     expect(render()).toBe(
-      "LEAVE NOTICE\n" +
+      "LEAVE NOTICE / แจ้งลา ‼️\n" +
         "Student : น้องดีซี\n" +
         "Program : Private Freeskate 6 HR\n" +
-        "Date : Tuesday\n" +
+        "Date : 08-09-2026\n" +
         "Time : 10:00-11:00\n" +
         "Coach : ครูหนึ่ง\n" +
         "Remark : เตรียมเฉพาะ Freeskate ให้น้อง\n",
     );
   });
 
-  test("`LEAVE NOTICE` is ENGLISH in both languages — the §9 ruling supersedes §7.4's Thai `แจ้งลา`", () => {
+  test("🔻 the header is BILINGUAL — `§16e` reverses the `§9` ruling this test used to assert", () => {
+    // ⚠️ It read *"`LEAVE NOTICE` is ENGLISH in both languages — the §9 ruling supersedes §7.4's Thai `แจ้งลา`"*.
+    // The owner gave that ruling before the customer had asked for anything; they asked, and he reversed it.
+    // 🔑 **The property this line always protected — the header does not vary by reader language — is UNCHANGED**
+    // and is what is asserted below. Only which single string it is changed.
     expect(formatOutboxMessage(payload as any, ctx as any, "EN", "teacher")).toBe(render());
-    expect(render()).not.toContain("แจ้งลา");
+    expect(render()).toContain("แจ้งลา");
   });
 
-  test("`Date` renders an ENGLISH WEEKDAY — asserted by the word", () => {
-    expect(render()).toContain("Date : Tuesday");
-    expect(formatOutboxMessage({ ...payload, kind: "leave_notice" } as any, { ...ctx, date: "2026-09-06" } as any, "TH", "teacher")).toContain(
-      "Date : Sunday",
-    );
+  test("🔻 `Date` renders the ACTUAL DATE — it asserted an ENGLISH WEEKDAY, which was the defect", () => {
+    // 🔴 The weekday was correct-looking and wrong: two sessions of one weekly course produced two identical
+    // messages. `§16d`: *"ครูจะไม่รู้ว่าแจ้งลา พฤ ไหน"*. ⚠️ `§7.1`'s course-wide `Date` is still the weekday —
+    // that message describes a RECURRING SLOT — so this is a per-message rule, not a global one.
+    expect(render()).toContain("Date : 08-09-2026");
+    expect(render()).not.toContain("Date : Tuesday");
+    expect(
+      formatOutboxMessage({ ...payload, kind: "leave_notice" } as any, { ...ctx, date: "2026-09-06" } as any, "TH", "teacher"),
+    ).toContain("Date : 06-09-2026");
   });
 });
 
@@ -105,8 +118,10 @@ describe("⚠️ TASK-305 §4 — `*ถ้ามี`, and this message has NO `(
   test("🔑 `Remark` is ABSENT — the whole line — when there is no note", () => {
     const out = render({ attendeeNote: null });
     expect(out).not.toContain("Remark");
+    // 🔻 TASK-318 — the header and the date follow `§16d` now; **the property this test is for is the ABSENT
+    // `Remark` line**, and it is unchanged.
     expect(out).toBe(
-      "LEAVE NOTICE\nStudent : น้องดีซี\nProgram : Private Freeskate 6 HR\nDate : Tuesday\n" +
+      "LEAVE NOTICE / แจ้งลา ‼️\nStudent : น้องดีซี\nProgram : Private Freeskate 6 HR\nDate : 08-09-2026\n" +
         "Time : 10:00-11:00\nCoach : ครูหนึ่ง\n",
     );
   });
