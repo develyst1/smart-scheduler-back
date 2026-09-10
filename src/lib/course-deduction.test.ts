@@ -74,20 +74,28 @@ describe("🔴 `Remaining` is the balance AFTER the write, taken FROM the write"
     expect(attend.slice(0, 1400)).toContain("used,");
   });
 
-  test("the label is what the customer writes: `2 HR` and `4/6 ครั้ง`", () => {
+  test("🔻 the label: `2 HR` unchanged, and the voucher form is now `4/6` — no Thai", () => {
+    // 🔻 TASK-335 (`REQ-087 §1c`) — `ครั้ง` is GONE: it was THAI inside a value the SYSTEM generates, which
+    // `REQ-085 §4` rules out. **REMOVED rather than translated** — `14/15` beside `Remaining :` already says
+    // *14 of 15 left*, and choosing an English unit word would invent a string that is the customer's to
+    // choose. 🚫 The COURSE form `2 HR` is untouched.
+
     expect(remainingLabel("course", 2, 6)).toBe("2 HR");
-    expect(remainingLabel("voucher", 4, 6)).toBe("4/6 ครั้ง");
+    expect(remainingLabel("voucher", 4, 6)).toBe("4/6");
     // The last session leaves zero, and zero is a number a parent must be told plainly.
     expect(remainingLabel("course", 0, 6)).toBe("0 HR");
     // Never negative: an over-attended course reads 0, not -1 — a negative on a money line reads as a fault.
-    expect(remainingLabel("voucher", -1, 6)).toBe("0/6 ครั้ง");
+    expect(remainingLabel("voucher", -1, 6)).toBe("0/6");
   });
 
   test("the payload computes remaining as total − used, from the post-value", () => {
-    expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 4, total: 6, expiryDate: null }))
-      .toMatchObject({ kind: "course_deduction", bookingType: "COURSE_PACKAGE", remaining: "2 HR" });
-    expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "voucher", used: 2, total: 6, expiryDate: "2026-12-31" }))
-      .toMatchObject({ bookingType: "VOUCHER", remaining: "4/6 ครั้ง", expiryDate: "2026-12-31" });
+    // 🔻 TASK-336 — a SECOND argument now: the session's own `attendeeNote`, read by `notifyCourseDeduction`
+    // from the `bookingId` it already takes. **No CALLER supplies it**, which is why it is a parameter and
+    // not a field on `DeductionInput` — an input field nobody sets reads as one somebody forgot.
+    expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 4, total: 6, expiryDate: null }, null))
+      .toMatchObject({ kind: "course_deduction", bookingType: "COURSE_PACKAGE", remaining: "2 HR", attendeeNote: null });
+    expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "voucher", used: 2, total: 6, expiryDate: "2026-12-31" }, "แพ้ถั่ว"))
+      .toMatchObject({ bookingType: "VOUCHER", remaining: "4/6", expiryDate: "2026-12-31", attendeeNote: "แพ้ถั่ว" });
   });
 });
 
@@ -191,10 +199,10 @@ describe("the rendered message — Parent 3, and the teacher does not get the fa
     expect(teacher).toBe(parent);
   });
 
-  test("a voucher renders its programme and its `n/N ครั้ง`", () => {
-    const v = { ...payload, bookingType: "VOUCHER", remaining: "4/6 ครั้ง" };
+  test("a voucher renders its programme and its `n/N` — no Thai in a generated value (TASK-335)", () => {
+    const v = { ...payload, bookingType: "VOUCHER", remaining: "4/6" };
     const out = formatOutboxMessage(v, ctx, "TH", "parent");
     expect(out).toContain("Program : Private Freeskate");
-    expect(out).toContain("Remaining : 4/6 ครั้ง");
+    expect(out).toContain("Remaining : 4/6");
   });
 });

@@ -511,8 +511,16 @@ const TABLE: Record<string, Entry> = {
   // 🔴 The one value that must PRINT rather than vanish — see `line-message.ts`. A parent may be reading the
   // message to check exactly this, and silence cannot be told from a missing feature.
   ob_f_none: { TH: "ไม่มี", EN: "None" },
-  // TASK-254 (REQ-077 Parent 3) — the customer's own heading, emoji included.
+  // TASK-254 (REQ-077 Parent 3) — the customer's own heading, emoji included. 🚫 Byte-frozen: it is theirs,
+  // and TASK-335 changed only WHEN it is used, never its text.
   ob_deduct_title: { TH: "💡COURSE DEDUCTION", EN: "💡COURSE DEDUCTION" },
+  // 📖 **PLACEHOLDER — MINE, and the customer has NOT seen it** (TASK-335, `REQ-087 §1a`). A VOUCHER deduction
+  // rendered `💡COURSE DEDUCTION` — **the wrong noun about the thing they bought**, and a family holding both
+  // read one header for two things they paid for separately. ⚠️ **This is NOT a ratified string:** @Porter is
+  // asking them for the word. ⇒ its test pins the FORM it must keep — the `💡`, upper case, no trailing colon
+  // (its course twin has none), and DIFFERENT from that twin — and **deliberately does not byte-freeze the
+  // words.** 📌 Same convention as `tsched_title_week` and `PENDING_RESCHEDULE`.
+  ob_deduct_title_voucher: { TH: "💡VOUCHER DEDUCTION", EN: "💡VOUCHER DEDUCTION" },
   // TASK-256 (REQ-077 Parent 2) — likewise theirs, emoji and colon included.
   ob_today_title: { TH: "⏱️TODAY'S SCHEDULE:", EN: "⏱️TODAY'S SCHEDULE:" },
   // SPEC-075 / TASK-260 (REQ-076) — the two teacher messages, @Porter's copy VERBATIM from the REQ.

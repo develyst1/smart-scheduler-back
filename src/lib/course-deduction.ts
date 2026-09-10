@@ -25,7 +25,22 @@ export type DeductionKind = "course" | "voucher";
  */
 export function remainingLabel(kind: DeductionKind, remaining: number, total: number): string {
   const left = Math.max(0, remaining);
-  return kind === "course" ? `${left} HR` : `${left}/${total} ครั้ง`;
+  // 🔴 TASK-335 (`REQ-087 §1c`) — `ครั้ง` is GONE. It was THAI inside a value the SYSTEM generates, which
+  // `REQ-085 §4` rules out: *"eng ล้วน ไม่ควรไทยเลยแม้แต่ติด"*. 🔑 **Nobody reported it — it is `Date : อังคาร`
+  // again, in the one message family nobody had swept.**
+  //
+  // 🔑 REMOVED rather than TRANSLATED, and that is the whole judgement: **`14/15` beside `Remaining :` already
+  // says "14 of 15 left"**, the `n/N` FORM carries the meaning that `HR` carries for a course, and the owner
+  // has already signed off that shape on the course card. ⇒ **a word would restate the label.** ⚠️ And
+  // *`sessions` · `times` · `classes`* is a COPY decision that belongs to the customer — **removing a Thai
+  // word applies a ruling; choosing an English one would invent a string.** 📌 If they want a unit, it is one
+  // constant here.
+  //
+  // ⚠️ TWO READERS, and BOTH are outbox messages: `deductionPayload` (COURSE DEDUCTION) and
+  // `jobs.service.ts` (the daily reminder's `Remaining`) ⇒ **`§4` governs both, so both are fixed by this
+  // line.** 🚫 The CARD's owner-verified `เหลือ 6/10` does NOT come through here — `line-course-view.ts`
+  // renders its own and imports nothing from this file. **There was nothing to un-share.**
+  return kind === "course" ? `${left} HR` : `${left}/${total}`;
 }
 
 export interface DeductionInput {
@@ -49,12 +64,25 @@ export interface DeductionInput {
  * ⚠️ **It does NOT reach the renderer.** The payload crosses a JSON column and `row.payload as any` destroys
  * every type on it. **Closing that is TASK-333, and it is why half 2 stops at this line.**
  */
-export function deductionPayload(input: DeductionInput): {
+export function deductionPayload(
+  input: DeductionInput,
+  /**
+   * 🔴 TASK-336 (`REQ-087 §1b`) — the SESSION'S OWN note, read by `notifyCourseDeduction` from the booking
+   * this deduction is about. **A second parameter rather than a field on `DeductionInput`** because no CALLER
+   * supplies it: an input field nobody sets reads as one somebody forgot.
+   * 🔑 On the PAYLOAD and not on `ctx`, for `§7.3`'s own stated reason — *"the note must survive a row that has
+   * since been edited or deleted"* — **and that reason is stronger here: a deduction is a RECEIPT for
+   * something that already happened, so if the booking is edited afterwards the receipt must still say what it
+   * said.**
+   */
+  attendeeNote: string | null,
+): {
   kind: "course_deduction";
   bookingType: "COURSE_PACKAGE" | "VOUCHER";
   remaining: string;
   total: number;
   expiryDate: string | null;
+  attendeeNote: string | null;
 } {
   return {
     kind: "course_deduction",
@@ -64,6 +92,7 @@ export function deductionPayload(input: DeductionInput): {
     remaining: remainingLabel(input.kind, input.total - input.used, input.total),
     total: input.total,
     expiryDate: input.expiryDate,
+    attendeeNote,
   };
 }
 
@@ -90,7 +119,20 @@ export async function notifyCourseDeduction(exec: any, input: DeductionInput): P
   // 🔴 TASK-259 — EVERY account the family has linked, through the one accessor. This used to read
   // `parents.line_user_id` directly, so the second parent received nothing and nothing said so.
   const accounts = await familyAccountsOfStudent(exec, input.studentId);
-  const payload = deductionPayload(input);
+  /**
+   * 🔴 TASK-336 — the note is read HERE, from the `bookingId` this function already takes, and **not passed in
+   * by the four call sites.** ONE decision instead of four copies — the shape that has bitten us all week.
+   * ⚠️ And the deciding fact is not tidiness: **the day-end's `select` is an explicit column list
+   * (`id · courseId · voucherId · studentId`) and does NOT carry `attendeeNote`** — so two of the four sites,
+   * *and they are the MAJORITY path since REQ-070*, would have needed their query widened to hand it over.
+   * ⇒ **reading it here needs nothing from any caller, and a deduction site added later inherits it.**
+   * 📌 One extra read per deduction, inside the same transaction as the write, so it sees exactly the row that
+   * was just attended.
+   */
+  const booking = await exec.query.bookings.findFirst({
+    where: (b: any, { eq: e }: any) => e(b.id, input.bookingId),
+  });
+  const payload = deductionPayload(input, booking?.attendeeNote ?? null);
 
   // An unlinked family still writes ONE SKIPPED row — that is `enqueueLine`'s job and it is how the reach is
   // counted; most `uat` parents were imported and have never linked. 🚫 Not one skipped row per nobody.

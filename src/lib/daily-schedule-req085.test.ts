@@ -34,7 +34,8 @@ const course: TodayRow = {
   studentName: "Bee",
   bookingType: "COURSE_PACKAGE",
   size: 6,
-  remaining: "4/6 ครั้ง",
+  // 🔻 TASK-335 — the daily reminder reads the SAME `remainingLabel`, so `ครั้ง` was in THIS message too.
+  remaining: "4/6",
   expiryDate: "2026-12-31",
   attendeeNote: "มาสาย 10 นาที",
 };
@@ -81,7 +82,7 @@ describe("🔴 TASK-304 §3 — `Remaining` and `*Expiry date` tell a COURSE row
   test("…and PRESENT on the course one, in the same render", () => {
     // Both in one message, because that is where a coach actually compares them.
     const out = renderTodaySchedule([hour, course], "TH", "teacher");
-    expect(out).toContain("   Remaining : 4/6 ครั้ง");
+    expect(out).toContain("   Remaining : 4/6");
     expect(out).toContain("   *Expiry date : 2026-12-31");
     // 🔑 …and the one-hour block above still carries neither — asserted on the BLOCK, not the message.
     const first = out.slice(out.indexOf("1) "), out.indexOf("2) "));

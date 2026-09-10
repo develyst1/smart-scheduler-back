@@ -70,10 +70,25 @@ const extra = (label: string, value?: string) => (value ? `${label} : ${value}\n
  * `Remaining` is **the only field whose absence removes the MESSAGE'S PURPOSE** — a `COURSE DEDUCTION` exists
  * to tell a parent what is left, and without that line it is a receipt with no balance. ⚠️ And omit-empty
  * makes the absence look DELIBERATE (the owner's own `(-)` reasoning, pointed at us) ⇒ **nobody would ever
- * report it.** 🚫 The other twelve `|| undefined` sites in this file are CORRECT and stay as they are: an
+ * report it.** 🚫 The other nine `|| undefined` sites in this file are CORRECT and stay as they are: an
  * absent `Remark` is the customer's `*ถ้ามี` rule, an absent `expiryDate` is a TRUE statement about a course
  * with no expiry, and an absent `studentName` is TASK-224's own decision about a studentless booking.
  * **Changing them "for consistency" would delete a rule the customer asked for.**
+ *
+ * ## 🔻 TASK-337 — the FOUR `Remark` sites also use it, and NOT for consistency
+ * 🔑 They moved because **their correctness lived in another file.** `(payload.attendeeNote as string) ||
+ * undefined` is TRUTHY for `"   "` ⇒ a bare `Remark :` label, TASK-219's *information that went missing*.
+ * It has never happened, and the reason it has never happened is upstream of this file:
+ * · `attendeeNote` — `validation.ts`'s `z.string().trim().max(200)`, and zod's `.trim()` TRANSFORMS, so a
+ *   whitespace-only note is STORED as `""`.
+ * · `note` (§7.1) — a different upstream, same effect:
+ *   `courseNote`, which rejects a whitespace-only note and returns `null`.
+ * ⚠️ **I first reported that hole as LIVE and was wrong** — I had read ONE layer (`setAttendeeNote` stores
+ * the note untrimmed) and reported on the PRODUCT. It is LATENT.
+ * 🔑 **So the property this buys is not "fixes a bug today" — it is *this guard does not depend on a layer it
+ * cannot see*.** That is DEFENCE IN DEPTH, deliberately. **Do not simplify it.** A reader who finds the zod
+ * `.trim()` and calls this dead has found the reason it exists, not a reason to delete it.
+ * 🚫 And the trim upstream is UNTOUCHED: two guards on one boundary is the point, not one traded for the other.
  */
 const fieldValue = (v: unknown): string | undefined => {
   if (v === null || v === undefined) return undefined;
@@ -161,7 +176,10 @@ function buildOutboxMessage(
         // thing across both messages and the omit-empty rule is not written twice.
         // 📌 It comes from the PAYLOAD, not `ctx`: the worker enriches `ctx` from the booking row it points
         // at, and the note must survive a row that has since been edited or deleted.
-        extra(t("ob_f_note", lang), (payload.attendeeNote as string) || undefined)
+        // 🔑 TASK-337 — `fieldValue`, not `||`. **Defence in depth, not a live-bug fix:** the old guard was
+        // correct only because `validation.attendeeNote`'s `z.string().trim()` cannot deliver whitespace —
+        // a fact in a file this one cannot see. 🚫 Do not simplify it back; see `fieldValue`'s note.
+        extra(t("ob_f_note", lang), fieldValue(payload.attendeeNote))
       );
     }
     // 🔴 REQ-085 §2 / §7.4 / §9.1 (TASK-305) — **the message that did not exist.** The owner raised it
@@ -210,7 +228,10 @@ function buildOutboxMessage(
           },
           { type: leaveType, audience: recipientType, lang },
         ) +
-        extra(t("ob_f_note", lang), (payload.attendeeNote as string) || undefined)
+        // 🔑 TASK-337 — `fieldValue`, not `||`. **Defence in depth, not a live-bug fix:** the old guard was
+        // correct only because `validation.attendeeNote`'s `z.string().trim()` cannot deliver whitespace —
+        // a fact in a file this one cannot see. 🚫 Do not simplify it back; see `fieldValue`'s note.
+        extra(t("ob_f_note", lang), fieldValue(payload.attendeeNote))
       );
     }
     case "daily_reminder":
@@ -307,7 +328,11 @@ function buildOutboxMessage(
         // the same string. ⚠️ `setAttendeeNote` edits ONE booking, so after a per-session edit only a note
         // on the earliest session reaches here. **Known and deliberately not fixed:** a course summary has
         // no true answer to "which session's note" when they differ, and inventing one is worse.
-        extra(t("ob_f_note", lang), (payload.note as string) || undefined)
+        // 🔑 TASK-337 — the FOURTH note rendering, and it moves for the SAME reason with a different
+        // upstream: `courseNote` (`course-plan.ts`) is what rejects a whitespace-only note here, not zod.
+        // 📌 Included deliberately: leaving one of four notes on a different guard would recreate the very
+        // question this task exists to answer — *which of these guards is load-bearing?*
+        extra(t("ob_f_note", lang), fieldValue(payload.note))
       );
     }
     // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.
@@ -320,7 +345,11 @@ function buildOutboxMessage(
       const type = notifyTypeOf(payload.bookingType as string);
       const when = ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
       return (
-        t("ob_deduct_title", lang) + "\n" +
+        // 🔴 TASK-335 (`REQ-087 §1a`) — the customer's report: a voucher deduction announced itself as
+        // `💡COURSE DEDUCTION`. 🚫 No new payload field — the branch already computes `type` from the
+        // `bookingType` `deductionPayload` DECLARES, so the title follows the fact that is already here.
+        // 📖 The voucher string is a PLACEHOLDER (@Porter is asking the owner) — pinned by FORM, not bytes.
+        t(type === "VOUCHER" ? "ob_deduct_title_voucher" : "ob_deduct_title", lang) + "\n" +
         renderFieldBlock(
           "course_deduction",
           {
@@ -336,7 +365,16 @@ function buildOutboxMessage(
             expiry: (payload.expiryDate as string) || undefined,
           },
           { type, audience: recipientType, lang },
-        )
+        ) +
+        // 🔑 TASK-336 (`REQ-087 §1b`) — the session's own `Remark`, owner: *"เพิ่มทั้งคู่เลยไม่ต้องถาม"*.
+        // ⚠️ It was NOT a rendering fix: the note reached neither the payload nor `ctx`, so this message has
+        // never carried one. **The plumbing was the task** — `notifyCourseDeduction` reads it from the
+        // `bookingId` it already takes. 📌 THE SESSION'S note, not `courseNote`'s earliest-in-date-order:
+        // a course summary has no true answer to *which session*; a deduction has exactly one.
+        // 🚫 Appended by the composer, NOT a template field — adding one would change the byte-pinned
+        // course message too. And `*ถ้ามี`: it appears only when a note exists, so no approved message
+        // becomes noisier.
+        extra(t("ob_f_note", lang), fieldValue(payload.attendeeNote))
       );
     }
     // SPEC-075 / TASK-260 (REQ-076 AC-7) — the two teacher messages for a hold and its return.
@@ -416,9 +454,25 @@ function buildOutboxMessage(
         line(t("ob_l_time", lang), when)
       );
     }
+    // 🔴 TASK-334 Part A (`REQ-087`) — an approved teacher is told what the payload already said.
+    //
+    // ⚠️ The failure was silent in the worst way: **the send happened and the message said nothing.** With no
+    // `case`, an approved teacher received the generic default — while every log recorded a successful send.
+    // *The promise was kept in form and broken in content.*
+    //
+    // 🚫 A SPECIFIC case, and NOT a general passthrough of the payload's message field — @Porter's reason is
+    // better than "one more way to make a message": a general one would make every future payload's field
+    // silently load-bearing, and **a field added for LOGGING becomes a message nobody meant to send.**
+    // 📌 A blank falls back to the default: a poor message must never become NO message.
+    case "teacher_link_approved":
+      return fieldValue(payload.text) ?? t("ob_default", lang);
     // REQ-023: the daily digest travels as its check results, so it renders in each admin's own language.
     case "daily_digest":
       return buildDigestMessage((payload.checks as any[]) ?? [], lang);
+    // ⛔ TASK-334 Part B — `student_registered` and `parent_asked_for_admin` still land here, and it is
+    // **BLOCKED ON COPY, not an oversight.** The facts are on their payloads; the WORDS are the owner's, and
+    // an admin alert is read under time pressure — the worst place to ship a string we invented. 🅿️ PARKED by
+    // the owner, LIVE on the board so it is not lost.
     default:
       return t("ob_default", lang);
   }

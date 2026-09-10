@@ -85,7 +85,11 @@ describe("🔑 TASK-332 — the expression, and why it is a HELPER rather than a
     // 🔴 They are CORRECT. An absent `Remark` is the customer's `*ถ้ามี` rule; an absent `expiryDate` is a TRUE
     // statement about a course with no expiry; an absent `studentName` is TASK-224's decision about a
     // studentless booking. **Changing them for consistency would delete a rule the customer asked for.**
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(12);
+    // 🔻 TASK-337 moved the THREE `Remark` sites to `fieldValue` as DEFENCE IN DEPTH ⇒ NINE remain.
+    // ⚠️ **The claim this line makes is unchanged and is the one that matters**: the survivors are correct
+    // and nobody may 'consistency-fix' them. The three that moved did NOT move for consistency — they moved
+    // because their correctness depended on a `.trim()` in a file the renderer cannot see.
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(9);
     expect(src("src/lib/line-message.ts")).toContain("Changing them \"for consistency\" would delete a rule the customer asked for.");
     // …and the three that fall through to `-` are still the safe shape: a `-` is visible, a missing line is not.
     expect(MSG).toContain('student: (payload.studentName as string) || ctx.studentName || "-",');
@@ -110,14 +114,18 @@ describe("✅ TASK-332 half 2 — the producer DECLARES what it sends", () => {
     // Until now it was inferred, i.e. a fact we re-established by reading `remainingLabel`. The annotation
     // makes a future change to that function fail at the producer instead of travelling.
     const DED = code(src("src/lib/course-deduction.ts"));
-    expect(DED).toContain("export function deductionPayload(input: DeductionInput): {");
+    // 🔻 TASK-336 gave it a second parameter (the session's note), so the signature spans lines. **The
+    // property this asserts is unchanged: the return type is DECLARED rather than inferred.**
+    expect(DED).toContain("export function deductionPayload(");
+    expect(DED).toContain("attendeeNote: string | null,");
     expect(DED).toContain("remaining: string;");
+    expect(DED).toContain("attendeeNote: string | null;"); // …and it is declared on the RETURN type too
   });
 
   test("📌 and what it actually sends at ZERO is a non-empty label — which is why this was LATENT", () => {
     expect(remainingLabel("course", 0, 6)).toBe("0 HR");
-    expect(remainingLabel("voucher", 0, 6)).toBe("0/6 ครั้ง");
-    const p = deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 6, total: 6, expiryDate: null });
+    expect(remainingLabel("voucher", 0, 6)).toBe("0/6"); // 🔻 TASK-335 removed the Thai unit word
+    const p = deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 6, total: 6, expiryDate: null }, null);
     expect(p.remaining).toBe("0 HR");
     // ⇒ the rendered message says zero today, and said zero before this task. **Nothing @Tanya can see changes.**
     expect(deduct(p.remaining)).toContain("Remaining : 0 HR");
