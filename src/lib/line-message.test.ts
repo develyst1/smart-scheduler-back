@@ -33,8 +33,13 @@ describe("LINE outbox message formatting (B.3)", () => {
       { studentName: "น้องบี", date: "2026-07-01", startTime: "13:00" },
     );
     expect(msg).toContain("แจ้งขอย้ายคาบเรียน");
-    expect(msg).toContain("คาบเดิม: 2026-07-01 13:00");
-    expect(msg).toContain("ปลายทางที่เสนอ: 2026-07-03 10:00");
+    // ⚪ TASK-344 — a DEAD branch (no producer), fixed anyway. ⚠️ **It carried the raw ISO TWICE and is NOT a
+    // `date:` field** — both dates are interpolated into COMBINED values, which is why every sweep that
+    // grepped the field name walked past it. 📌 Nothing observable changed: nothing sends this.
+    expect(msg).toContain("คาบเดิม: 01-07-2026 13:00");
+    expect(msg).toContain("ปลายทางที่เสนอ: 03-07-2026 10:00");
+    expect(msg).not.toContain("2026-07-01");
+    expect(msg).not.toContain("2026-07-03");
   });
 
   test("missing context lines are omitted (no 'undefined')", () => {
@@ -59,7 +64,11 @@ describe("LINE outbox message formatting (B.3)", () => {
     const assigned = formatOutboxMessage({ kind: "teacher_assigned" }, ctx);
     expect(assigned).toContain("ได้รับมอบหมาย");
     expect(assigned).toContain("น้องดี");
-    expect(assigned).toContain("2026-08-20 16:00-17:00");
+    // 🔴 TASK-344 — **LIVE, and the site neither @Sober's list nor my first sweep found.** This printed the
+    // raw ISO to a TEACHER. 🔑 It hid because the date is not in a `date:` field — it is interpolated into a
+    // combined `Time` value.
+    expect(assigned).toContain("20-08-2026 16:00-17:00");
+    expect(assigned).not.toContain("2026-08-20");
 
     const unassigned = formatOutboxMessage({ kind: "teacher_unassigned" }, ctx);
     expect(unassigned).toContain("ย้ายออกจากตาราง");

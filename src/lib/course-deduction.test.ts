@@ -204,7 +204,10 @@ describe("the rendered message — Parent 3, and the teacher does not get the fa
     expect(out).toContain("💡COURSE DEDUCTION");
     expect(out).toContain("Student : น้องเอ");
     expect(out).toContain("Program : Private Freeskate 6 HR");
-    expect(out).toContain("Date : 2026-09-06");
+    // 🔻 TASK-344 (`REQ-087 §7`) — `DD-MM-YYYY` here too. 📌 *The customer's SHAPE is what this test names
+    // and it is unchanged; the date's FORMAT is what moved.*
+    expect(out).toContain("Date : 06-09-2026");
+    expect(out).not.toContain("2026-09-06"); // 🚫 the ISO form reaches no reader
     expect(out).toContain("Time : 10:00-11:00");
     expect(out).toContain("Remaining : 2 HR");
     expect(out).toContain("*Expiry date : 2026-12-31");

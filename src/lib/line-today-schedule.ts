@@ -20,6 +20,7 @@
 //
 // Pure — no DB, no clock.
 import { t, type Lang } from "./line-i18n";
+import { ddmmyyyy } from "./time";
 import { TEMPLATE_LANG } from "./line-message-fields";
 import {
   fieldLines,
@@ -88,7 +89,11 @@ export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audi
       facts: <FieldFacts>{
         student: dash(r.studentName) ?? dash(r.title),
         program: programLabel(type, { subject: r.subjectName, size: r.size, title: r.title }),
-        date: dash(r.date),
+        // 🔴 TASK-344 (`REQ-087 §7`) — the instance the OWNER saw: this printed the raw ISO `2026-09-08` in
+        // the message a coach reads every morning. 📌 **`ddmmyyyy` INSIDE `dash`, deliberately:** it returns
+        // a non-ISO string unchanged, so a blank or whitespace date still falls to `dash`'s guard rather
+        // than becoming a bare label. 🚫 No second date function, and `dash` itself is unchanged.
+        date: dash(ddmmyyyy(r.date)),
         time: r.endTime ? `${r.startTime}-${r.endTime}` : r.startTime,
         coach: dash(r.coach),
         remaining: dash(r.remaining),

@@ -134,7 +134,7 @@ describe("TASK-283 — the rendered messages", () => {
     subjectName: "Surfskate",
     bookingType: "COURSE_PACKAGE",
     size: 6,
-    remaining: "4/6 ครั้ง",
+    remaining: "4/6 sessions", // 🔻 TASK-335/343 — stale input string, corrected here
     expiryDate: "2026-12-31",
     coach: "ครูหนึ่ง",
     ...o,
@@ -149,8 +149,12 @@ describe("TASK-283 — the rendered messages", () => {
 
   test("🔑 `TODAY'S SCHEDULE` prints `09:00-10:00` — the owner's exact line", () => {
     expect(today([session()])).toBe(
-      "⏱️TODAY'S SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 6 HR\nDate : 2026-09-08\n" +
-        "Time : 09:00-10:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 ครั้ง\n*Expiry date : 2026-12-31",
+      // 🔻 TASK-344 — the DATE moved to `DD-MM-YYYY`. ⚠️ **And `Remaining` was STALE HERE: this pin still
+      // carried `4/6 ครั้ง`, two tasks after TASK-335 removed the word and one after TASK-343 added the
+      // unit** — it stayed green because the value is an INPUT this test hard-codes. 📌 *TASK-338's class,
+      // found by running the suite rather than by looking for it.*
+      "⏱️TODAY'S SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 6 HR\nDate : 08-09-2026\n" +
+        "Time : 09:00-10:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 sessions\n*Expiry date : 2026-12-31",
     );
   });
 
@@ -203,14 +207,15 @@ describe("TASK-283 — the rendered messages", () => {
     };
     expect(
       formatOutboxMessage(
-        { kind: "course_deduction", bookingType: "COURSE_PACKAGE", total: 6, remaining: "4/6 ครั้ง" } as any,
+        { kind: "course_deduction", bookingType: "COURSE_PACKAGE", total: 6, remaining: "4/6 sessions" } as any,
         ctx as any,
         "TH",
         "parent",
       ),
     ).toBe(
-      "💡COURSE DEDUCTION\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : 2026-09-06\n" +
-        "Time : 10:00-11:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 ครั้ง",
+      // 🔻 TASK-344 — the date; and the same stale `ครั้ง` input as above.
+      "💡COURSE DEDUCTION\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : 06-09-2026\n" +
+        "Time : 10:00-11:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 sessions",
     );
   });
 });

@@ -105,11 +105,19 @@ describe("📌 TASK-327 — WHICH branches are safe, and HOW. Two mechanisms, an
       expect({ kind, present: KINDS.includes(kind) }).toEqual({ kind, present: true });
     }
     // The shape that makes them safe, asserted so its removal is visible.
-    expect(switchBody).toContain('date: ctx.date ?? "-",');
+    // 🔻 TASK-344 (`REQ-087 §7`) — **the three `date:` lines are now `ctx.date ? ddmmyyyy(ctx.date) : "-"`.**
+    // 🔑 **The CLAIM of this test is untouched and is the one that matters: these branches are safe BY
+    // REPETITION, a habit written out once per branch rather than a chokepoint.** ⚠️ *They are still the
+    // fragile ones; the fallback simply moved from `??` to the tail of a ternary.*
+    // 🚫 The `-` itself is UNCHANGED — a missing date still reads `-`, never a blank label.
+    expect(switchBody).toContain('date: ctx.date ? ddmmyyyy(ctx.date) : "-",');
+    expect(switchBody.match(/ddmmyyyy\(ctx\.date\) : "-"/g)!.length).toBe(3); // …in THREE branches, by hand
     expect(switchBody).toContain('weeks: String(payload.weeks ?? "-"),');
     expect(switchBody).toContain('student: (payload.studentName as string) || ctx.studentName || "-",');
-    // 🚫 And this task added none of them: the count is the count that was already there.
-    expect(switchBody.match(/\?\? "-"/g)!.length).toBe(12);
+    // 🔻 TASK-344 — **TWELVE became NINE**: three `date: ctx.date ?? "-"` became ternaries so the date could
+    // be formatted. 📌 *The number moving is this assertion working, not breaking — it is what makes a
+    // branch's fallback disappearing visible.*
+    expect(switchBody.match(/\?\? "-"/g)!.length).toBe(9);
   });
 
   test("🚫 ZERO product-code changes — the reason this is safe during a `uat` round", () => {

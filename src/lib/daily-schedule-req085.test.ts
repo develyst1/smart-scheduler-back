@@ -61,7 +61,8 @@ describe("🔻 TASK-343 (`REQ-087 §6a`) — the DAILY REMINDER carries the new 
 describe("🔑 TASK-304 — AUTO: one field added, nothing else", () => {
   test("the ONE-entry shape, pinned in full", () => {
     expect(renderTodaySchedule([hour], "TH", "teacher")).toBe(
-      "⏱️TODAY'S SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : 2026-09-08\n" +
+      // 🔻 TASK-344 — the instance the OWNER saw, in the message a coach reads every morning.
+      "⏱️TODAY'S SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : 08-09-2026\n" +
         "Time : 10:00-11:00\nRemark : เตรียมเฉพาะ Freeskate ให้น้อง",
     );
   });

@@ -364,7 +364,11 @@ function buildOutboxMessage(
           {
             student: ctx.studentName,
             program: programLabel(type, { subject: ctx.subject, size: payload.total as number, title: ctx.title }),
-            date: ctx.date,
+            // 🔴 TASK-344 (`REQ-087 §7`) — owner: *"เอา แก้ให้เป็น 08-09-2026 เหมือนกันทุกที่"*. This rendered
+            // the RAW ISO `2026-09-08`. ⚠️ **The third fix to this one message today** (TASK-335's header,
+            // TASK-336's `Remark`, now its date) — 📌 *which is the argument for the sweep rather than
+            // against it.* 🚫 `ddmmyyyy` from `time.ts`, never a second date function.
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
             time: when,
             coach: ctx.coach ?? ctx.teacherNickname,
             // 🔴 TASK-332 — `fieldValue`, not `||`: a balance of ZERO is the most important one this message
@@ -397,18 +401,22 @@ function buildOutboxMessage(
     case "booking_resumed":
       return t(payload.kind === "booking_paused" ? "ob_paused" : "ob_resumed", lang, {
         student: (payload.studentName as string) || ctx.studentName || ctx.title || "-",
-        date: ctx.date ?? "-",
+        // 🔻 TASK-344 — `DD-MM-YYYY`. 📌 ONE branch serving TWO live kinds: a pause AND a resume.
+        // 🚫 The `-` fallback is TASK-224's and is untouched: a missing date still reads `-`, not a blank.
+        date: ctx.date ? ddmmyyyy(ctx.date) : "-",
         time: ctx.startTime ?? "-",
       });
     case "reschedule_requested": {
       const target =
         payload.to?.date && payload.to?.startTime
-          ? `${payload.to.date} ${payload.to.startTime}`
+          // ⚪ TASK-344 — DEAD branch (no producer), fixed anyway. ⚠️ **NOT a `date:` field** — the date is
+          // interpolated into a COMBINED value, which is exactly why a sweep looking for `date:` missed it.
+          ? `${ddmmyyyy(payload.to.date as string)} ${payload.to.startTime}`
           : undefined;
       return (
         t("ob_reschedule_title", lang) + "\n" +
         line(t("ob_l_student", lang), ctx.studentName) +
-        line(t("ob_l_oldslot", lang), ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
+        line(t("ob_l_oldslot", lang), ctx.date && ctx.startTime ? `${ddmmyyyy(ctx.date)} ${ctx.startTime}` : undefined) +
         line(t("ob_l_target", lang), target) +
         t("ob_reschedule_foot", lang)
       );
@@ -436,7 +444,11 @@ function buildOutboxMessage(
         t("ob_sick_title", lang) + "\n" +
         t("ob_leave_admin", lang, {
           student: (payload.studentName as string) || ctx.studentName || "-",
-          date: ctx.date ?? "-",
+          // ⚪ TASK-344 — this branch is DEAD: `sick_leave` has no producer (TASK-333's inventory).
+          // ✅ **Fixed anyway, and that is deliberate:** a dead branch rendering the OLD format is a trap for
+          // whoever revives it — *they would ship the one message in the product that disagrees.*
+          // 🚫 Nothing observable changes here, because nothing sends it.
+          date: ctx.date ? ddmmyyyy(ctx.date) : "-",
           time: ctx.startTime ?? "-",
           teacher: ctx.teacherNickname ?? "-",
           program: ctx.subject ?? "-",
@@ -446,15 +458,20 @@ function buildOutboxMessage(
     case "leave_teacher":
       return t("ob_leave_teacher", lang, {
         student: (payload.studentName as string) || ctx.studentName || "-",
-        date: ctx.date ?? "-",
+        // ⚪ TASK-344 — DEAD too, same reason and same treatment as `sick_leave` above.
+        date: ctx.date ? ddmmyyyy(ctx.date) : "-",
         time: ctx.startTime ?? "-",
         program: ctx.subject ?? "-",
       });
     // TASK-094: teacher reassigned on a course session — same body as a confirmation, different title per side.
     case "teacher_assigned":
     case "teacher_unassigned": {
+      // 🔴 TASK-344 — **LIVE, and neither @Sober's candidate list nor my first sweep found it.** Both kinds
+      // are produced by `scheduler.service.ts`, and this printed `2026-09-08 10:00-11:00` to a TEACHER.
+      // 🔑 **It hid because the date is not in a `date:` field** — it is interpolated into a COMBINED `Time`
+      // value, so every sweep that grepped for the field name walked past it.
       const when =
-        ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
+        ctx.date && ctx.startTime ? `${ddmmyyyy(ctx.date)} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
       const title = payload.kind === "teacher_assigned" ? "ob_teacher_assigned_title" : "ob_teacher_unassigned_title";
       return (
         t(title, lang) + "\n" +

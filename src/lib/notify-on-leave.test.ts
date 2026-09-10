@@ -74,8 +74,11 @@ describe("🔻 TASK-306 — two message kinds that nothing sends any more", () =
   });
 
   test("…and their renderers still work, which is why nothing else notices", () => {
+    // ⚪ TASK-344 — **BOTH branches here are DEAD (no producer) and were fixed ANYWAY**, so that whoever
+    // revives one does not ship the single message in the product that disagrees about dates.
+    // 📌 *Nothing observable changed: this assertion moved because the RENDERER did, not the product.*
     expect(formatOutboxMessage({ kind: "leave_teacher", studentName: "น้องซี" }, ctx, "TH")).toBe(
-      "น้องซี ลาคาบ 2026-09-01 10:00 น. (Surfskate) — ช่วงเวลานี้ว่างแล้วค่ะ",
+      "น้องซี ลาคาบ 01-09-2026 10:00 น. (Surfskate) — ช่วงเวลานี้ว่างแล้วค่ะ",
     );
     expect(formatOutboxMessage({ kind: "sick_leave", studentName: "น้องซี", via: "line" }, ctx, "TH")).toContain(
       "แจ้งลา",
