@@ -39,8 +39,23 @@ export interface DeductionInput {
   expiryDate: string | null;
 }
 
-/** The payload — money facts only. Student, program, date, time and coach are enriched from `bookingId`. */
-export function deductionPayload(input: DeductionInput) {
+/**
+ * The payload — money facts only. Student, program, date, time and coach are enriched from `bookingId`.
+ *
+ * 🔑 TASK-332 half 2 — **the return type is DECLARED, not inferred.** `remaining` is a rendered LABEL
+ * (`"0 HR"`, `"0/6 ครั้ง"`), never a bare number — and until now that was a fact we re-established by READING
+ * `remainingLabel`. ⇒ **the day someone changes it to return a count, this annotation fails HERE**, rather
+ * than the number travelling to a renderer that used to drop a falsy `0` on the floor.
+ * ⚠️ **It does NOT reach the renderer.** The payload crosses a JSON column and `row.payload as any` destroys
+ * every type on it. **Closing that is TASK-333, and it is why half 2 stops at this line.**
+ */
+export function deductionPayload(input: DeductionInput): {
+  kind: "course_deduction";
+  bookingType: "COURSE_PACKAGE" | "VOUCHER";
+  remaining: string;
+  total: number;
+  expiryDate: string | null;
+} {
   return {
     kind: "course_deduction",
     // The renderer's per-type table is keyed on the booking type, and these two are the only types that reach

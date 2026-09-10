@@ -57,6 +57,31 @@ const line = (label: string, value?: string) => (value ? `${label}: ${value}\n` 
 const extra = (label: string, value?: string) => (value ? `${label} : ${value}\n` : "");
 
 /**
+ * 🔴 TASK-332 — a payload value as a FIELD: **keeps a legitimate ZERO, drops only true emptiness.**
+ *
+ * ## 🔑 THE FILE HAS BOTH BUGS, ONE PER IDIOM — and this is the sentence to read before "fixing" either
+ * ***`||` eats a legitimate `0`. `??` lets an empty string through.***
+ * · `(payload.x as string) || undefined` — `0` is falsy ⇒ the whole LINE disappears (omit-empty).
+ * · `String(payload.x ?? "-")` — `""` is neither `null` nor `undefined` ⇒ it renders a HALF-SENTENCE.
+ * ⚠️ **So swapping one operator for the other does not fix anything; it trades one failure for its mirror.**
+ * 🔑 That is why this is a helper and not an expression: **both conditions have to be stated together, once.**
+ *
+ * ## Why `Remaining` specifically needed it
+ * `Remaining` is **the only field whose absence removes the MESSAGE'S PURPOSE** — a `COURSE DEDUCTION` exists
+ * to tell a parent what is left, and without that line it is a receipt with no balance. ⚠️ And omit-empty
+ * makes the absence look DELIBERATE (the owner's own `(-)` reasoning, pointed at us) ⇒ **nobody would ever
+ * report it.** 🚫 The other twelve `|| undefined` sites in this file are CORRECT and stay as they are: an
+ * absent `Remark` is the customer's `*ถ้ามี` rule, an absent `expiryDate` is a TRUE statement about a course
+ * with no expiry, and an absent `studentName` is TASK-224's own decision about a studentless booking.
+ * **Changing them "for consistency" would delete a rule the customer asked for.**
+ */
+const fieldValue = (v: unknown): string | undefined => {
+  if (v === null || v === undefined) return undefined;
+  const s = String(v);
+  return s.trim() ? s : undefined; // `0` → `"0"` · `""` and `"   "` → absent, never a bare label
+};
+
+/**
  * @param recipientType WHO is reading this. The outbox row has always carried it and the worker simply never
  * forwarded it, which is why *"the teacher's copy loses the family's private lines"* could not be expressed.
  * Defaults to `parent` — the fuller message — so a caller that has not been updated cannot silently strip
@@ -304,7 +329,10 @@ function buildOutboxMessage(
             date: ctx.date,
             time: when,
             coach: ctx.coach ?? ctx.teacherNickname,
-            remaining: (payload.remaining as string) || undefined,
+            // 🔴 TASK-332 — `fieldValue`, not `||`: a balance of ZERO is the most important one this message
+            // ever carries, and `0 || undefined` deleted the line that says so. See the helper for why a bare
+            // `??` would not have been the fix either.
+            remaining: fieldValue(payload.remaining),
             expiry: (payload.expiryDate as string) || undefined,
           },
           { type, audience: recipientType, lang },
