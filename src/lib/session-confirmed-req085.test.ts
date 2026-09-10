@@ -33,7 +33,7 @@ describe("🔑 TASK-303 — the whole message, pinned BYTE-FOR-BYTE against §7.
         "Program : Private Freeskate 1 HR\n" +
         "Date : Tuesday\n" +
         "Time : 11:00-12:00\n" +
-        "Remark : เตรียมเฉพาะ Safety ให้น้อง\n",
+        "Remark : เตรียมเฉพาะ Safety ให้น้อง",
     );
   });
 
@@ -56,7 +56,7 @@ describe("🔴 TASK-303 §3 — ONE empty-field rule here, and the `(-)` must NO
     const out = render({ attendeeNote: null });
     expect(out).not.toContain("Remark");
     expect(out).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00\n",
+      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00",
     );
   });
 

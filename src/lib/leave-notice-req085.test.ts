@@ -52,7 +52,7 @@ describe("🔑 TASK-305 — the message, pinned BYTE-FOR-BYTE — 🔻 REWRITTEN
         "Date : 08-09-2026\n" +
         "Time : 10:00-11:00\n" +
         "Coach : ครูหนึ่ง\n" +
-        "Remark : เตรียมเฉพาะ Freeskate ให้น้อง\n",
+        "Remark : เตรียมเฉพาะ Freeskate ให้น้อง",
     );
   });
 
@@ -122,7 +122,7 @@ describe("⚠️ TASK-305 §4 — `*ถ้ามี`, and this message has NO `(
     // `Remark` line**, and it is unchanged.
     expect(out).toBe(
       "LEAVE NOTICE / แจ้งลา ‼️\nStudent : น้องดีซี\nProgram : Private Freeskate 6 HR\nDate : 08-09-2026\n" +
-        "Time : 10:00-11:00\nCoach : ครูหนึ่ง\n",
+        "Time : 10:00-11:00\nCoach : ครูหนึ่ง",
     );
   });
 
@@ -149,7 +149,7 @@ describe("🚫 TASK-305 §6 — the three shipped formats are untouched", () => 
       "TH",
     );
     expect(session).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00\n",
+      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00",
     );
     // …and the parent's own leave confirmation, which this task must not touch.
     const parentLeave = formatOutboxMessage(

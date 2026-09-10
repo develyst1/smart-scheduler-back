@@ -69,7 +69,7 @@ describe("🔑 TASK-318 §1 — pinned BYTE-FOR-BYTE against `§16d`", () => {
         "Program : Freeskate 6 HR\n" +
         "Date : 10-09-2026\n" +
         "Time : 12:00-13:00\n" +
-        "Coach : Ek\n",
+        "Coach : Ek",
     );
   });
 

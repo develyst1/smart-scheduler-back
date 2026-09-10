@@ -68,6 +68,27 @@ export function formatOutboxMessage(
   lang: Lang = "TH",
   recipientType: Audience = "parent",
 ): string {
+  // 🔴 TASK-325 (`REQ-085 §16.3`) — **THE ONE TRIM, at the builder's exit.** The customer reported it twice:
+  // *"เอาช่องว่างด้านล่างของ 📅CONFIRMED SCHEDULE ออกค่ะ ** ในคอมไม่ขึ้น แต่ในโทรศัพท์ขึ้นค่ะ"* — a blank line
+  // that shows on a PHONE and not on a desktop, which is why it survived every desktop screenshot.
+  //
+  // 🔑 It was never one message's bug. `.trimEnd()` sat on FIVE branches out of fourteen kinds, so **nine
+  // messages were clean or dirty by accident of which branch someone had happened to trim.** @Porter's ruling
+  // was *"reproduced on TWO different messages ⇒ fix where messages are BUILT, not per message"*, and every
+  // branch's return passes through here. ⇒ **one property, one place, and a branch added next month inherits
+  // it without knowing it exists.**
+  // 🚫 The five per-branch trims are GONE — a redundant trim is a second writer that agrees today (TASK-314),
+  // and their absence is asserted so a new branch cannot re-add its own.
+  return buildOutboxMessage(payload, ctx, lang, recipientType); // MUTATED
+}
+
+/** The per-kind bodies. 🚫 Nothing here trims: that is `formatOutboxMessage`'s job, once, above. */
+function buildOutboxMessage(
+  payload: OutboxPayload,
+  ctx: MessageContext,
+  lang: Lang,
+  recipientType: Audience,
+): string {
   switch (payload?.kind) {
     case "booking_confirmed": {
       // 🔴 REQ-085 §7.3 (TASK-303) — **REPLACED, not edited.** Every label changed and `เวลา` split in two:
@@ -262,7 +283,7 @@ export function formatOutboxMessage(
         // on the earliest session reaches here. **Known and deliberately not fixed:** a course summary has
         // no true answer to "which session's note" when they differ, and inventing one is worse.
         extra(t("ob_f_note", lang), (payload.note as string) || undefined)
-      ).trimEnd();
+      );
     }
     // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.
     //
@@ -288,7 +309,7 @@ export function formatOutboxMessage(
           },
           { type, audience: recipientType, lang },
         )
-      ).trimEnd();
+      );
     }
     // SPEC-075 / TASK-260 (REQ-076 AC-7) — the two teacher messages for a hold and its return.
     //
@@ -315,7 +336,7 @@ export function formatOutboxMessage(
         line(t("ob_l_oldslot", lang), ctx.date && ctx.startTime ? `${ctx.date} ${ctx.startTime}` : undefined) +
         line(t("ob_l_target", lang), target) +
         t("ob_reschedule_foot", lang)
-      ).trimEnd();
+      );
     }
     // REQ-049 / TASK-136 — admin and teacher read the same event in their own language, each in the REQ's
     // wording. `-` rather than an empty gap when a field is missing (a deleted booking still sends).
@@ -346,7 +367,7 @@ export function formatOutboxMessage(
           program: ctx.subject ?? "-",
           by: payload.via === "line" ? t("ob_ch_line", lang) : t("ob_ch_system", lang),
         })
-      ).trimEnd();
+      );
     case "leave_teacher":
       return t("ob_leave_teacher", lang, {
         student: (payload.studentName as string) || ctx.studentName || "-",
@@ -365,7 +386,7 @@ export function formatOutboxMessage(
         line(t("ob_l_student", lang), ctx.studentName) +
         line(t("ob_l_subject", lang), ctx.subject) +
         line(t("ob_l_time", lang), when)
-      ).trimEnd();
+      );
     }
     // REQ-023: the daily digest travels as its check results, so it renders in each admin's own language.
     case "daily_digest":

@@ -292,7 +292,7 @@ describe("🚫 the four lesson types' `booking_confirmed` is BYTE-IDENTICAL — 
     // 📌 An assertion that changes because a requirement changed is correct; one deleted because it failed is
     // how this class of defect ships.
     expect(formatOutboxMessage(session, ctx, "TH")).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 1 HR\nDate : Sunday\nTime : 10:00-11:00\n",
+      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 1 HR\nDate : Sunday\nTime : 10:00-11:00",
     );
   });
 
