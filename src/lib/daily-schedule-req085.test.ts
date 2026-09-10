@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
+import { remainingLabel } from "./course-deduction";
 import { renderSchedule } from "./line-schedule";
 import { readSrc } from "./read-src";
 
@@ -34,11 +35,28 @@ const course: TodayRow = {
   studentName: "Bee",
   bookingType: "COURSE_PACKAGE",
   size: 6,
-  // 🔻 TASK-335 — the daily reminder reads the SAME `remainingLabel`, so `ครั้ง` was in THIS message too.
-  remaining: "4/6",
+  // 🔻 TASK-335/343 — the daily reminder reads the SAME `remainingLabel`, so BOTH changes landed in THIS
+  // message too: `ครั้ง` was here, and so was the missing denominator.
+  remaining: "4/6 sessions",
   expiryDate: "2026-12-31",
   attendeeNote: "มาสาย 10 นาที",
 };
+
+describe("🔻 TASK-343 (`REQ-087 §6a`) — the DAILY REMINDER carries the new balance too", () => {
+  test("🔑 the helper's REAL output reaches this message — both kinds, `n/N unit`", () => {
+    // ⚠️ **This file pins a STRING it hard-codes**, so on its own it would have gone on saying `4/6` for a
+    // year after the producer changed. 🔑 **The helper is called HERE instead**, so the two cannot drift:
+    // `jobs.service.ts` builds this row's `remaining` with exactly this call.
+    // 📌 `Remaining` has now been wrong TWICE in this message and neither was reported by its reader.
+    const voucher = renderTodaySchedule([{ ...course, remaining: remainingLabel("voucher", 4, 6) }], "TH", "teacher");
+    const hours = renderTodaySchedule([{ ...course, remaining: remainingLabel("course", 4, 6) }], "TH", "teacher");
+    expect(voucher).toContain("Remaining : 4/6 sessions");
+    expect(hours).toContain("Remaining : 4/6 HR");
+    // 🚫 …and neither says a bare number or a bare unit — the two shapes this task exists to remove.
+    expect(hours).not.toContain("Remaining : 4 HR");
+    expect(voucher).not.toContain("Remaining : 4/6\n");
+  });
+});
 
 describe("🔑 TASK-304 — AUTO: one field added, nothing else", () => {
   test("the ONE-entry shape, pinned in full", () => {

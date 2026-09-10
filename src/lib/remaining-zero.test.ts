@@ -41,9 +41,11 @@ describe("🔴 TASK-332 — the assertion that did not exist, and is the whole t
   });
 
   test("🔑 …and `\"0 HR\"` still renders — the shape the producer actually sends today", () => {
-    expect(deduct("0 HR")).toContain("Remaining : 0 HR");
-    expect(deduct("3 HR")).toContain("Remaining : 3 HR");
-    expect(deduct("0/6 ครั้ง")).toContain("Remaining : 0/6 ครั้ง");
+    // 🔻 TASK-335/343 moved the producer's shape; these are RENDERER assertions and take whatever string
+    // arrives, so they are rewritten to today's forms rather than deleted.
+    expect(deduct("0/6 HR")).toContain("Remaining : 0/6 HR");
+    expect(deduct("3/6 HR")).toContain("Remaining : 3/6 HR");
+    expect(deduct("0/6 sessions")).toContain("Remaining : 0/6 sessions");
   });
 
   test("🔴 `remaining: \"\"` does NOT produce a bare label — THE TRAP", () => {
@@ -126,12 +128,15 @@ describe("✅ TASK-332 half 2 — the producer DECLARES what it sends", () => {
   });
 
   test("📌 and what it actually sends at ZERO is a non-empty label — which is why this was LATENT", () => {
-    expect(remainingLabel("course", 0, 6)).toBe("0 HR");
-    expect(remainingLabel("voucher", 0, 6)).toBe("0/6"); // 🔻 TASK-335 removed the Thai unit word
+    // 🔻 TASK-335 removed the Thai unit word; TASK-343 gave BOTH forms a denominator AND a unit.
+    // 🔑 **The claim this test makes is untouched and is the one that matters: at ZERO the producer sends a
+    // NON-EMPTY label**, which is why `||` deleting the line was LATENT rather than live.
+    expect(remainingLabel("course", 0, 6)).toBe("0/6 HR");
+    expect(remainingLabel("voucher", 0, 6)).toBe("0/6 sessions");
     const p = deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 6, total: 6, expiryDate: null }, null);
-    expect(p.remaining).toBe("0 HR");
+    expect(p.remaining).toBe("0/6 HR");
     // ⇒ the rendered message says zero today, and said zero before this task. **Nothing @Tanya can see changes.**
-    expect(deduct(p.remaining)).toContain("Remaining : 0 HR");
+    expect(deduct(p.remaining)).toContain("Remaining : 0/6 HR");
   });
 
   test("⚠️ …and the declaration does NOT reach the renderer — that gap is TASK-333", () => {

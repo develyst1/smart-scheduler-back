@@ -18,7 +18,7 @@ import { familyLineUserIds } from "./family-link";
 export type DeductionKind = "course" | "voucher";
 
 /**
- * What is left, as the customer writes it: `2 HR` for a course, `4/6` for a voucher.
+ * What is left: `2/6 HR` for a course, `4/6 sessions` for a voucher.
  * 🔻 TASK-335 removed the voucher's `ครั้ง` and **this line went stale in the same change** — the note
  * inside the function says why the word was removed rather than translated.
  *
@@ -45,7 +45,19 @@ export function remainingLabel(kind: DeductionKind, remaining: number, total: nu
   // `jobs.service.ts` (the daily reminder's `Remaining`) ⇒ **`§4` governs both, so both are fixed by this
   // line.** 🚫 The CARD's owner-verified `เหลือ 6/10` does NOT come through here — `line-course-view.ts`
   // renders its own and imports nothing from this file. **There was nothing to un-share.**
-  return kind === "course" ? `${left} HR` : `${left}/${total}`;
+  // 🔴 TASK-343 (`REQ-087 §6a`) — **ONE SHAPE, `n/N unit`, for both kinds.** The course form was `3 HR`:
+  // ⚠️ **a unit with no denominator, which does not say OF WHAT.** ***A parent cannot tell 3-of-4 from
+  // 3-of-10, and that is the only thing this line exists to say.*** The voucher form was the mirror —
+  // `9/10`, a fraction with no unit.
+  // 🚫 **The UNIT is deliberately NOT unified**: a voucher sells SESSIONS and a course sells HOURS, and
+  // that difference is real. ✅ **The SHAPE is unified and the unit is made explicit.**
+  // 📖 **WHOSE WORDS THESE ARE, and it matters later:** `sessions` and the `n/N` shape are @Porter's,
+  // **RATIFIED BY THE OWNER** — 🚫 *they are NOT the customer's.* ⇒ **stronger than a PLACEHOLDER, weaker
+  // than `§16d`'s verbatim copy.** 📌 If the customer ever writes their own, the boundary is already known
+  // and nobody has to re-argue it. 🚫 No i18n key: like `HR` before it, this is an English unit inside a
+  // value the SYSTEM generates (`REQ-085 §4`), so it is one constant here rather than a translated string.
+  // 🔑 `total` needed no plumbing — this function was ALREADY HANDED IT and the course branch ignored it.
+  return kind === "course" ? `${left}/${total} HR` : `${left}/${total} sessions`;
 }
 
 export interface DeductionInput {
@@ -63,7 +75,7 @@ export interface DeductionInput {
  * The payload — money facts only. Student, program, date, time and coach are enriched from `bookingId`.
  *
  * 🔑 TASK-332 half 2 — **the return type is DECLARED, not inferred.** `remaining` is a rendered LABEL
- * (`"0 HR"`, `"0/6"`), never a bare number — and until now that was a fact we re-established by READING
+ * (`"0/6 HR"`, `"0/6 sessions"`), never a bare number — and until now that was a fact we re-established by READING
  * `remainingLabel`. ⇒ **the day someone changes it to return a count, this annotation fails HERE**, rather
  * than the number travelling to a renderer that used to drop a falsy `0` on the floor.
  * ⚠️ **It does NOT reach the renderer.** The payload crosses a JSON column and `row.payload as any` destroys

@@ -149,7 +149,9 @@ describe("🚫 TASK-305 §6 — the three shipped formats are untouched", () => 
       "TH",
     );
     expect(session).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00",
+      // 🔻 TASK-343 (`REQ-087 §6b`) — `Date` is the real date now. This file asserts only that the leave work
+      // did not disturb its neighbours, and that claim is unchanged.
+      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : 08-09-2026\nTime : 11:00-12:00",
     );
     // …and the parent's own leave confirmation, which this task must not touch.
     const parentLeave = formatOutboxMessage(

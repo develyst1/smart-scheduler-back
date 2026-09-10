@@ -96,18 +96,24 @@ describe("🔴 `Remaining` is the balance AFTER the write, taken FROM the write"
     expect(block).toContain("TASK-335 removed the voucher"); // …and the history is still there
   });
 
-  test("🔻 the label: `2 HR` unchanged, and the voucher form is now `4/6` — no Thai", () => {
+  test("🔻 TASK-343 — the label is `n/N unit` for BOTH kinds: `2/6 HR` and `4/6 sessions`", () => {
     // 🔻 TASK-335 (`REQ-087 §1c`) — `ครั้ง` is GONE: it was THAI inside a value the SYSTEM generates, which
     // `REQ-085 §4` rules out. **REMOVED rather than translated** — `14/15` beside `Remaining :` already says
     // *14 of 15 left*, and choosing an English unit word would invent a string that is the customer's to
-    // choose. 🚫 The COURSE form `2 HR` is untouched.
+    // choose. 🔻 **TASK-335 left the COURSE form alone; TASK-343 changed BOTH** — see below.
+    // 🔻 TASK-343 (`REQ-087 §6a`) — ONE SHAPE, `n/N unit`, for BOTH kinds. The course form said `2 HR`:
+    // ⚠️ **a unit with no denominator, which does not say OF WHAT** — *3-of-4 and 3-of-10 read identically*.
+    // 🚫 The UNIT is deliberately NOT unified (a voucher sells SESSIONS, a course sells HOURS); the SHAPE is.
+    // 📖 `sessions` and the `n/N` shape are @Porter's words, RATIFIED BY THE OWNER — **not the customer's.**
 
-    expect(remainingLabel("course", 2, 6)).toBe("2 HR");
-    expect(remainingLabel("voucher", 4, 6)).toBe("4/6");
+    expect(remainingLabel("course", 2, 6)).toBe("2/6 HR");
+    expect(remainingLabel("voucher", 4, 6)).toBe("4/6 sessions");
+    // 🔑 The denominator needed NO plumbing: `remainingLabel` was already handed `total` and the course
+    // branch ignored it. Asserted here so that fact is visible rather than re-derived.
     // The last session leaves zero, and zero is a number a parent must be told plainly.
-    expect(remainingLabel("course", 0, 6)).toBe("0 HR");
+    expect(remainingLabel("course", 0, 6)).toBe("0/6 HR");
     // Never negative: an over-attended course reads 0, not -1 — a negative on a money line reads as a fault.
-    expect(remainingLabel("voucher", -1, 6)).toBe("0/6");
+    expect(remainingLabel("voucher", -1, 6)).toBe("0/6 sessions");
   });
 
   test("the payload computes remaining as total − used, from the post-value", () => {
@@ -115,9 +121,9 @@ describe("🔴 `Remaining` is the balance AFTER the write, taken FROM the write"
     // from the `bookingId` it already takes. **No CALLER supplies it**, which is why it is a parameter and
     // not a field on `DeductionInput` — an input field nobody sets reads as one somebody forgot.
     expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "course", used: 4, total: 6, expiryDate: null }, null))
-      .toMatchObject({ kind: "course_deduction", bookingType: "COURSE_PACKAGE", remaining: "2 HR", attendeeNote: null });
+      .toMatchObject({ kind: "course_deduction", bookingType: "COURSE_PACKAGE", remaining: "2/6 HR", attendeeNote: null });
     expect(deductionPayload({ bookingId: "b1", studentId: "s1", kind: "voucher", used: 2, total: 6, expiryDate: "2026-12-31" }, "แพ้ถั่ว"))
-      .toMatchObject({ bookingType: "VOUCHER", remaining: "4/6", expiryDate: "2026-12-31", attendeeNote: "แพ้ถั่ว" });
+      .toMatchObject({ bookingType: "VOUCHER", remaining: "4/6 sessions", expiryDate: "2026-12-31", attendeeNote: "แพ้ถั่ว" });
   });
 });
 

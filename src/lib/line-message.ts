@@ -163,9 +163,18 @@ function buildOutboxMessage(
               size: payload.size as number,
               title: ctx.title,
             }),
-            // 🔑 The weekday, through the SAME lookup and the SAME `TEMPLATE_LANG` §7.1 uses. 🚫 Not a second
-            // dow table and not a second English rule.
-            date: ctx.date ? t(`ob_dow_${weekdayOf(ctx.date)}`, TEMPLATE_LANG) : undefined,
+            // 🔴 TASK-343 (`REQ-087 §6b`) — **THE REAL DATE.** This said `Friday`, and `§7.1`'s course-wide
+            // block says `Friday` too ⇒ ***one conversation delivered `Date : Friday` and `Date : 2026-09-18`
+            // to the same parent.*** A per-session confirmation's only job is *THIS class, on THIS day*.
+            // 🔑 **`REQ-085 §15` still holds and this makes the product CONSISTENT with it rather than
+            // breaking it: WEEKDAY for a COURSE, DATE for a SESSION.** 🚫 `§7.1` is untouched — it reads
+            // `payload.weekday`, a different source, so it cannot follow by accident.
+            // 🔻 **THIS DEVIATES FROM THE CUSTOMER'S `§7.3`, and the owner is TELLING them, not asking.**
+            // 🚫 **Not a placeholder and not unsettled.** 📌 It is their own leave-notice argument —
+            // *"ครูจะไม่รู้ว่าแจ้งลา พฤ ไหน"* — applied to a message they had not looked at yet.
+            // 📌 `DD-MM-YYYY` via `ddmmyyyy` (TASK-318, `time.ts`), the same format `§9.1` uses and the one
+            // they specified for a date of birth in `REQ-079 §17c`. 🚫 No second date helper.
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
             time: ctx.startTime
               ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
               : undefined,

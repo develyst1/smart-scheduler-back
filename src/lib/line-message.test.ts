@@ -14,8 +14,17 @@ describe("LINE outbox message formatting (B.3)", () => {
     expect(msg).toContain("น้องเอ");
     expect(msg).toContain("คณิต");
     expect(msg).toContain("Time : 13:00-14:00");
-    expect(msg).toContain("Date : Wednesday"); // 2026-07-01
-    expect(msg).not.toContain("2026-07-01");
+    // 🔻 TASK-343 (`REQ-087 §6b`) — **`Date` is now the REAL DATE, `DD-MM-YYYY`.** TASK-303 split
+    // `เวลา: <date> <range>` into a WEEKDAY + a range, and the calendar date left the message entirely.
+    // 🔴 **That put `Date : Friday` and `§7.1`'s `Date : Friday` in the same conversation as two different
+    // facts** — *a per-session confirmation's only job is THIS class, on THIS day.*
+    // 🔑 `REQ-085 §15` still holds — **WEEKDAY for a COURSE, DATE for a SESSION** — so this makes the
+    // product CONSISTENT with the rule rather than breaking it. 🚫 `§7.1` is untouched.
+    // 🔻 **It DEVIATES from the customer's own `§7.3`, and the OWNER is TELLING them, not asking.**
+    // 🚫 Not a placeholder, not unsettled. 📌 Rewritten, never deleted.
+    expect(msg).toContain("Date : 01-07-2026");
+    expect(msg).not.toContain("Wednesday"); // the weekday is GONE from this message
+    expect(msg).not.toContain("2026-07-01"); // …and the ISO form never reaches a reader
   });
 
   test("reschedule_requested → parent message with old + proposed slot", () => {
@@ -252,8 +261,10 @@ describe("booking_confirmed carries the attendee note (TASK-219)", () => {
     const out = formatOutboxMessage({ kind: "booking_confirmed", attendeeNote: "x" }, ctx, "TH");
     expect(out).toContain("CONFIRMED SCHEDULE:");
     expect(out).toContain("น้องเอ");
-    expect(out).toContain("Date : Saturday"); // 2026-09-05
+    // 🔻 TASK-343 — `Date` carries the real date now; the note still must not displace it, which is what
+    // this regression actually guards.
+    expect(out).toContain("Date : 05-09-2026");
     expect(out).toContain("Time : 10:00");
-    expect(out).not.toContain("2026-09-05");
+    expect(out).not.toContain("2026-09-05"); // never the ISO form
   });
 });

@@ -59,14 +59,18 @@ describe("🔴 TASK-335 §1a — a VOUCHER deduction no longer calls itself a CO
 });
 
 describe("🔴 TASK-335 §1c — no Thai in a value the SYSTEM generates", () => {
-  test("🔑 the voucher balance is `14/15` — the word is GONE, not translated", () => {
-    expect(remainingLabel("voucher", 14, 15)).toBe("14/15");
-    expect(deduct("VOUCHER", remainingLabel("voucher", 14, 15))).toContain("Remaining : 14/15");
+  test("🔑 the voucher balance carries NO THAI — `14/15 sessions` after TASK-343", () => {
+    // 🔻 TASK-343 added the unit word. 🔑 **The claim `§1c` makes is unchanged and is what this guards: no
+    // THAI in a value the SYSTEM generates.** `sessions` is English and is @Porter's word ratified by the
+    // OWNER — 📌 *removing `ครั้ง` applied a ruling; adding `sessions` was a decision somebody made on the
+    // record, and the two are different acts.*
+    expect(remainingLabel("voucher", 14, 15)).toBe("14/15 sessions");
+    expect(deduct("VOUCHER", remainingLabel("voucher", 14, 15))).toContain("Remaining : 14/15 sessions");
   });
 
-  test("🚫 …and the COURSE form is untouched", () => {
-    expect(remainingLabel("course", 2, 6)).toBe("2 HR");
-    expect(remainingLabel("course", -1, 6)).toBe("0 HR"); // the clamp is unchanged
+  test("🔻 …and the COURSE form, which TASK-335 left alone and TASK-343 changed", () => {
+    expect(remainingLabel("course", 2, 6)).toBe("2/6 HR");
+    expect(remainingLabel("course", -1, 6)).toBe("0/6 HR"); // the clamp is unchanged
   });
 
   test("🔑 NO THAI in the generated `Remaining` value — asserted for BOTH types, so the rule is about the MESSAGE", () => {

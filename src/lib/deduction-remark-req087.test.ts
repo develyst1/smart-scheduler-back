@@ -136,11 +136,14 @@ describe("🔑 TASK-336 §3 — ONE decision, not four copies", () => {
 });
 
 describe("🚫 TASK-336 §5 — what this did not touch", () => {
-  test("TASK-335's headers and `Remaining` are unchanged", () => {
+  test("🔻 TASK-335's headers are unchanged; `Remaining` moved to `n/N unit` (TASK-343)", () => {
     expect(render("course", null)).toStartWith("💡COURSE DEDUCTION");
     expect(render("voucher", null)).toStartWith("💡VOUCHER DEDUCTION");
-    expect(render("course", null)).toContain("Remaining : 4 HR");
-    expect(render("voucher", null)).toContain("Remaining : 4/6");
+    // 🔻 TASK-343 (`REQ-087 §6a`) — the HEADERS are still TASK-335's and that is what this test guards.
+    // **The balance now says OF WHAT**, for both kinds. 📌 Rewritten, not deleted: an assertion that moves
+    // because a requirement moved is correct.
+    expect(render("course", null)).toContain("Remaining : 4/6 HR");
+    expect(render("voucher", null)).toContain("Remaining : 4/6 sessions");
   });
 
   test("🔻 the two existing `Remark` lines still render exactly as they did — TASK-337 changed the GUARD, not the output", () => {

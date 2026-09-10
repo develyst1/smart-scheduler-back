@@ -31,23 +31,39 @@ describe("🔑 TASK-303 — the whole message, pinned BYTE-FOR-BYTE against §7.
       "📅CONFIRMED SCHEDULE:\n" +
         "Student : Aiwa\n" +
         "Program : Private Freeskate 1 HR\n" +
-        "Date : Tuesday\n" +
+        "Date : 08-09-2026\n" +
         "Time : 11:00-12:00\n" +
         "Remark : เตรียมเฉพาะ Safety ให้น้อง",
     );
   });
 
-  test("🔑 the calendar DATE appears NOWHERE — asserted as an absence, because that is what the split did", () => {
-    // `เวลา: 2026-09-08 10:00-11:00` carried the date; `Date` names the WEEKDAY and `Time` the range. The date
-    // itself is gone, and that is the part a reader skimming the new format would not notice was missing.
-    expect(render()).not.toContain("2026-09-08");
-    expect(render()).not.toContain("2026");
+  test("🔻 TASK-343 REVERSED this — the calendar date is BACK, and this records the reversal", () => {
+    // 🔴 **This test used to assert the date appeared NOWHERE.** TASK-303's split named a WEEKDAY and the
+    // calendar date left the message; *that absence was the part a reader skimming the new format would not
+    // notice.* ⚠️ **It turned out to be the defect** — `Date : Friday` here and `Date : Friday` in `§7.1`
+    // meant one conversation delivered two different facts under one label.
+    // ✅ **Rewritten to assert the opposite, deliberately, with the reason** — 📌 *an assertion reversed by a
+    // requirement is correct; the wrong move would have been deleting the test that failed.*
+    // 🔻 The owner is TELLING the customer, not asking. 🚫 Not a placeholder.
+    expect(render()).toContain("Date : 08-09-2026");
+    expect(render()).not.toContain("2026-09-08"); // 🚫 the ISO form still never reaches a reader
+    expect(render()).not.toContain("Tuesday"); // …and the weekday is gone from THIS message
   });
 
-  test("`Date` is an ENGLISH WEEKDAY, in both languages", () => {
-    // Same convention as §7.1 — the product's, not this message's quirk.
-    expect(render({}, {}, "EN")).toContain("Date : Tuesday");
-    expect(render({}, { date: "2026-09-06" })).toContain("Date : Sunday");
+  test("🔻 `Date` is `DD-MM-YYYY`, in both languages — and `§7.1` STILL SHOWS THE WEEKDAY", () => {
+    // One format for both readers, the same way every §7 title is one string.
+    expect(render({}, {}, "EN")).toContain("Date : 08-09-2026");
+    expect(render({}, { date: "2026-09-06" })).toContain("Date : 06-09-2026");
+    // 🔴 **THE ASSERTION THAT KEEPS `REQ-085 §15` ALIVE.** `§7.1` reads `payload.weekday`, a DIFFERENT
+    // source, so it cannot follow this change by accident — ⚠️ **but *dates everywhere* is exactly the kind
+    // of thing that happens by drift, and the rule is the point:** ***WEEKDAY for a COURSE, DATE for a
+    // SESSION.*** 📌 Asserted HERE, next to the change, rather than left to §7.1's own file to notice.
+    const course = formatOutboxMessage(
+      { kind: "course_confirmed", studentName: "Aiwa", subject: "Private Freeskate", bookingType: "COURSE_PACKAGE", size: 6, weekday: 2, plannedLeaveDates: [] } as any,
+      {}, "TH", "parent",
+    );
+    expect(course).toContain("Date : Tuesday");
+    expect(course).not.toContain("-2026");
   });
 });
 
@@ -56,7 +72,7 @@ describe("🔴 TASK-303 §3 — ONE empty-field rule here, and the `(-)` must NO
     const out = render({ attendeeNote: null });
     expect(out).not.toContain("Remark");
     expect(out).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : Tuesday\nTime : 11:00-12:00",
+      "📅CONFIRMED SCHEDULE:\nStudent : Aiwa\nProgram : Private Freeskate 1 HR\nDate : 08-09-2026\nTime : 11:00-12:00",
     );
   });
 

@@ -291,8 +291,11 @@ describe("🚫 the four lesson types' `booking_confirmed` is BYTE-IDENTICAL — 
     // family's LINE, unrecallable. **So the pin stays a pin — to the new text.**
     // 📌 An assertion that changes because a requirement changed is correct; one deleted because it failed is
     // how this class of defect ships.
+    // 🔻 TASK-343 (`REQ-087 §6b`) — and it has now happened a SECOND time to the same pin: `Date` moved from
+    // a WEEKDAY to the real `DD-MM-YYYY`. **Rewritten again, for the same reason.** ⚠️ *Twice is not a sign
+    // the pin is wrong — it is the pin doing exactly its job, twice.*
     expect(formatOutboxMessage(session, ctx, "TH")).toBe(
-      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 1 HR\nDate : Sunday\nTime : 10:00-11:00",
+      "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 1 HR\nDate : 06-09-2026\nTime : 10:00-11:00",
     );
   });
 
