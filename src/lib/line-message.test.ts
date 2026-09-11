@@ -125,18 +125,23 @@ describe("course_confirmed (TASK-201)", () => {
     // ⚠️ TASK-253 renamed the label to the customer's own (`**Advance Leave Notice`); the RULE is unchanged.
     const out = formatOutboxMessage(payload, {}, "TH");
     expect(out).toContain("**Advance Leave Notice");
-    expect(out).toContain("2026-09-14");
-    expect(out).toContain("2026-09-28");
+    // 🔻 TASK-345 (`REQ-087 §7`) — `*Expiry date` / `Start` / the leave DATES are `DD-MM-YYYY` now. 📌 *The
+    // claim each of these tests makes is untouched; only the format of the date inside it moved.*
+    expect(out).toContain("14-09-2026");
+    expect(out).toContain("28-09-2026");
     // …and the leave line is never a bare tally: what follows the label is a date, not "2".
+    // 🔑 **The CLAIM is unchanged and it is the whole point of this line** — only the SHAPE it looks for
+    // moved, and it is now the shape a reader actually sees.
     const leaveLine = out.split("\n").find((l) => l.includes("Advance Leave"))!;
-    expect(leaveLine).toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(leaveLine).toMatch(/\d{2}-\d{2}-\d{4}/);
+    expect(leaveLine).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(leaveLine.trim().endsWith(": 2")).toBe(false);
   });
 
   test("dates render in order, comma-separated — a teacher reads it as a list of days", () => {
     const scrambled = { ...payload, plannedLeaveDates: ["2026-09-14", "2026-09-28"] };
     const out = formatOutboxMessage(scrambled, {}, "EN");
-    expect(out).toContain("2026-09-14, 2026-09-28");
+    expect(out).toContain("14-09-2026, 28-09-2026"); // 🔻 TASK-345 — order and separator untouched
   });
 
   test("🔴 the empty case prints `(-)` — for the parent AND, since 2026-09-07, the teacher", () => {
@@ -168,7 +173,7 @@ describe("course_confirmed (TASK-201)", () => {
     // A course summary is not a fact about any one session; enriching it from a booking would make the
     // message depend on which session happened to be referenced.
     const out = formatOutboxMessage(payload, {}, "TH");
-    expect(out).toContain("2026-09-06");
+    expect(out).toContain("06-09-2026"); // 🔻 TASK-345 — `Start`
     expect(out).toContain("Surfskate");
   });
 

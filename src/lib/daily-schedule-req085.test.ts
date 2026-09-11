@@ -102,7 +102,9 @@ describe("🔴 TASK-304 §3 — `Remaining` and `*Expiry date` tell a COURSE row
     // Both in one message, because that is where a coach actually compares them.
     const out = renderTodaySchedule([hour, course], "TH", "teacher");
     expect(out).toContain("   Remaining : 4/6");
-    expect(out).toContain("   *Expiry date : 2026-12-31");
+    // 🔻 TASK-345 (`REQ-087 §7`) — `*Expiry date` / `Start` / the leave DATES are `DD-MM-YYYY` now. 📌 *The
+    // claim each of these tests makes is untouched; only the format of the date inside it moved.*
+    expect(out).toContain("   *Expiry date : 31-12-2026");
     // 🔑 …and the one-hour block above still carries neither — asserted on the BLOCK, not the message.
     const first = out.slice(out.indexOf("1) "), out.indexOf("2) "));
     expect(first).not.toContain("Remaining");

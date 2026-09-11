@@ -154,7 +154,7 @@ describe("TASK-283 — the rendered messages", () => {
       // unit** — it stayed green because the value is an INPUT this test hard-codes. 📌 *TASK-338's class,
       // found by running the suite rather than by looking for it.*
       "⏱️TODAY'S SCHEDULE:\nStudent : น้องเอ\nProgram : Surfskate 6 HR\nDate : 08-09-2026\n" +
-        "Time : 09:00-10:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 sessions\n*Expiry date : 2026-12-31",
+        "Time : 09:00-10:00\nCoach : ครูหนึ่ง\nRemaining : 4/6 sessions\n*Expiry date : 31-12-2026",
     );
   });
 
@@ -188,11 +188,11 @@ describe("TASK-283 — the rendered messages", () => {
     };
     expect(formatOutboxMessage(COURSE as any, {}, "TH", "parent")).toBe(
       "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : Sunday\n" +
-        "Time : 10:00-11:00\nStart : 2026-09-06\nCoach : ครูหนึ่ง\n*Expiry date : 2026-12-31\n" +
+        "Time : 10:00-11:00\nStart : 06-09-2026\nCoach : ครูหนึ่ง\n*Expiry date : 31-12-2026\n" +
         // 🔻 TASK-318 (`§16.4`) — `Sessions : 6` came OUT between these two lines: the program name already
         // carries the hours. **The pin is rewritten, not deleted** — this test exists to hold the message
         // byte-for-byte, and a rewritten pin is what a changed requirement looks like.
-        "**Advance Leave Notice : 2026-09-14\nRemark : แพ้ถั่ว",
+        "**Advance Leave Notice : 14-09-2026\nRemark : แพ้ถั่ว",
     );
   });
 

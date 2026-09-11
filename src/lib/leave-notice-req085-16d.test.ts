@@ -155,7 +155,9 @@ describe("🔴 TASK-318 §4 (`§16.4`) — `Sessions :` is gone from the course-
   test("🚫 `Remaining` and `*Expiry date` STAY on a course row — `§9`'s conditional pair", () => {
     // ⚠️ They are what tells a coach a COURSE row from a one-off: the owner's *"ไม่งั้นมันจะแยกยังไง"* is the
     // acceptance criterion, and `§16.4` took only `Sessions`.
-    expect(course()).toContain("*Expiry date : 2026-12-31");
+    // 🔻 TASK-345 (`REQ-087 §7`) — `*Expiry date` / `Start` / the leave DATES are `DD-MM-YYYY` now. 📌 *The
+    // claim each of these tests makes is untouched; only the format of the date inside it moved.*
+    expect(course()).toContain("*Expiry date : 31-12-2026");
   });
 
   test("🚫 …and are ABSENT on a one-off, which is the pair's whole point", () => {

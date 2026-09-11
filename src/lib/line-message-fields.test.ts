@@ -64,8 +64,10 @@ describe("🔴 ONE payload, TWO renderings — the same object, projected", () =
     // 🔑 Rewritten as the REQUIREMENT, not as the table. `expect(AUDIENCE_OMITS.teacher).toEqual([])` would
     // prove the table equals itself; comparing the two RENDERINGS is what the customer actually asked for,
     // and it stays true however the projection is implemented.
-    expect(parent).toContain("*Expiry date : 2026-12-31");
-    expect(parent).toContain("**Advance Leave Notice : 2026-09-14");
+    // 🔻 TASK-345 (`REQ-087 §7`) — `*Expiry date` / `Start` / the leave DATES are `DD-MM-YYYY` now. 📌 *The
+    // claim each of these tests makes is untouched; only the format of the date inside it moved.*
+    expect(parent).toContain("*Expiry date : 31-12-2026");
+    expect(parent).toContain("**Advance Leave Notice : 14-09-2026");
     expect(teacher).toBe(parent);
   });
 
@@ -89,7 +91,7 @@ describe("🔴 ONE payload, TWO renderings — the same object, projected", () =
   test("the customer's labels and separator, so a rendered message diffs against their draft", () => {
     expect(parent).toContain("Student : น้องเอ");
     expect(parent).toContain("Program : Private Freeskate 6 HR");
-    expect(parent).toContain("Start : 2026-09-06");
+    expect(parent).toContain("Start : 06-09-2026"); // 🔻 TASK-345
     // 🔴 TASK-257 §2 — `Date` is the weekday ALONE and `Time` is a RANGE, which is what `COURSE DEDUCTION`
     // always printed. The two messages disagreeing about what `Time` means is the difference a customer reads
     // as an error rather than a preference; asserted here so they cannot drift apart again.
@@ -359,7 +361,9 @@ describe("🔴 TASK-269 — the live `sid` message, and the three corrections it
     expect(out).not.toContain("Sessions");
     expect(out).not.toContain(" 8"); // 🚫 the count this confirm flipped reaches a parent by no route at all
     // …and the leaves are still there, which is what made the old number 8.
-    expect(out).toContain("**Advance Leave Notice : 2026-09-14, 2026-09-28");
+    // 🔻 TASK-345 — **the LIST is formatted per ENTRY, and the separator is untouched.** 📌 *This is the
+    // only field that carries several dates, and it is the one a per-field sweep pictures least.*
+    expect(out).toContain("**Advance Leave Notice : 14-09-2026, 28-09-2026");
   });
 
   test("🚫 §1 — with `size` absent, no count appears and nothing invents a zero", () => {

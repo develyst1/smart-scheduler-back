@@ -97,7 +97,10 @@ export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audi
         time: r.endTime ? `${r.startTime}-${r.endTime}` : r.startTime,
         coach: dash(r.coach),
         remaining: dash(r.remaining),
-        expiry: dash(r.expiryDate),
+        // 🔴 TASK-345 — **the FIFTH site, and it was in NEITHER list.** The AUTO daily schedule's own
+        // `*Expiry date` — 📌 *invisible to any sweep of `line-message.ts`, because it is in another file
+        // that never goes through the switch.* 🔑 The check found it because the check reads OUTPUT.
+        expiry: dash(r.expiryDate ? ddmmyyyy(r.expiryDate) : undefined),
       },
     };
   });

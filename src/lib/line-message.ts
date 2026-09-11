@@ -97,6 +97,23 @@ const fieldValue = (v: unknown): string | undefined => {
 };
 
 /**
+ * 🔴 TASK-345 — a DATE as a field: `fieldValue`'s guard, then `time.ts`'s ONE formatter.
+ *
+ * 🚫 **This is NOT a second date function and must never become one:** it formats nothing itself, it calls
+ * `ddmmyyyy`. ⚠️ **If a second FORMAT is ever wanted it does not go here** — that is a product decision and
+ * `REQ-085 §15` is where those live.
+ * 🔑 **Why it exists:** `REQ-087 §7` was applied FIVE times in three days, each time to the field somebody
+ * was looking at, and every pass undercounted — **5 → 8 → 9+** — because every pass searched the SHAPE OF
+ * THE SOURCE. ⇒ ***the sites that leaked were the ones whose field is not called `date`***: `Start`,
+ * `*Expiry date`, a joined list of leave dates.
+ * 📌 The thing that FINDS them is `no-iso-date-leak.test.ts`, and it reads the OUTPUT, not this.
+ */
+const dateField = (v: unknown): string | undefined => {
+  const s = fieldValue(v);
+  return s ? ddmmyyyy(s) : undefined;
+};
+
+/**
  * @param recipientType WHO is reading this. The outbox row has always carried it and the worker simply never
  * forwarded it, which is why *"the teacher's copy loses the family's private lines"* could not be expressed.
  * Defaults to `parent` — the fuller message — so a caller that has not been updated cannot silently strip
@@ -295,16 +312,22 @@ function buildOutboxMessage(
             }),
             date: dow,
             time: when,
-            start: (payload.startDate as string) || undefined,
+            // 🔴 TASK-345 — **`Start : 2026-10-16`, and NOBODY had ever reported it.** 📌 *It has no `*` and
+            // it is not called `date` — which is exactly why three sweeps walked past it.*
+            start: dateField(payload.startDate),
             coach: (payload.coach as string) || undefined,
-            expiry: (payload.expiryDate as string) || undefined,
+            // 🔴 TASK-345 — `*Expiry date`, @Porter's second screenshot.
+            expiry: dateField(payload.expiryDate),
             // 🔴 Resolved HERE, before the block sees it, precisely so the omit-empty rule cannot swallow it:
             // a parent reading this to check whether their leave was recorded must be answered, and an absent
             // line does not answer.
             // 📌 REQ-085 §7.1(c) — `(-)`, not `ไม่มี`: a system-generated value, so it follows the template's
             // convention like the weekday above. ⚠️ `Remark` two lines down obeys the OPPOSITE rule and is
             // absent entirely when empty — §8.1's trap, and the two need separate assertions.
-            advanceLeave: plannedDates.length ? plannedDates.join(", ") : TEMPLATE_NONE,
+            // 🔴 TASK-345 — **the declared leave DATES, joined, RAW.** ⚠️ *A LIST of dates: the only site
+            // where one field carries several, and the one a per-field sweep is least likely to picture.*
+            // 🚫 `TEMPLATE_NONE` is untouched — `§7.1`'s `(-)` empty-field rule is not this task's business.
+            advanceLeave: plannedDates.length ? plannedDates.map(ddmmyyyy).join(", ") : TEMPLATE_NONE,
           },
           { type, audience: recipientType, lang },
         ) +
@@ -375,7 +398,10 @@ function buildOutboxMessage(
             // ever carries, and `0 || undefined` deleted the line that says so. See the helper for why a bare
             // `??` would not have been the fix either.
             remaining: fieldValue(payload.remaining),
-            expiry: (payload.expiryDate as string) || undefined,
+            // 🔴 TASK-345 — **@Porter's screenshot: `*Expiry date : 2027-03-11` three lines below
+            // `Date : 11-09-2026`** — ⚠️ *one message disagreeing with ITSELF, hours after TASK-344 made the
+            // line above right.*
+            expiry: dateField(payload.expiryDate),
           },
           { type, audience: recipientType, lang },
         ) +

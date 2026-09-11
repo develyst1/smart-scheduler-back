@@ -210,7 +210,9 @@ describe("the rendered message — Parent 3, and the teacher does not get the fa
     expect(out).not.toContain("2026-09-06"); // 🚫 the ISO form reaches no reader
     expect(out).toContain("Time : 10:00-11:00");
     expect(out).toContain("Remaining : 2 HR");
-    expect(out).toContain("*Expiry date : 2026-12-31");
+    // 🔻 TASK-345 (`REQ-087 §7`) — `*Expiry date` / `Start` / the leave DATES are `DD-MM-YYYY` now. 📌 *The
+    // claim each of these tests makes is untouched; only the format of the date inside it moved.*
+    expect(out).toContain("*Expiry date : 31-12-2026");
   });
 
   test("`Coach` names every assigned teacher, joined — one field, not two lines", () => {

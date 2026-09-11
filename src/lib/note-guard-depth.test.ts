@@ -132,6 +132,11 @@ describe("🔴 TASK-337 — the REASON is in the code, because the comment matte
   test("🚫 …and the NINE other `|| undefined` sites are still untouched", () => {
     // They are correct and their reason is the customer's rule — see `fieldValue`'s note. The three that moved
     // did NOT move for consistency.
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(9);
+    // 🔻 TASK-345 — **NINE became SIX**: `start` and the two `expiry` fields moved to `dateField`, which is
+    // `fieldValue`'s guard plus `time.ts`'s ONE formatter. ⚠️ **They did NOT move for consistency either** —
+    // they moved because they were emitting RAW ISO DATES to a reader.
+    // 🔑 **The claim this line makes is unchanged and is still the one that matters: the survivors are
+    // CORRECT and nobody may 'consistency-fix' them.**
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(6);
   });
 });

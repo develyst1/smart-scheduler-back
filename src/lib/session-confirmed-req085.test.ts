@@ -134,7 +134,7 @@ describe("🚫 TASK-303 §5 — `§7.1`'s course-level message is UNCHANGED", ()
     );
     expect(course).toBe(
       "📅CONFIRMED SCHEDULE:\nStudent : น้องเอ\nProgram : Private Freeskate 6 HR\nDate : Sunday\n" +
-        "Time : 10:00-11:00\nStart : 2026-09-06\nCoach : ครูหนึ่ง\n*Expiry date : 2026-12-31\n" +
+        "Time : 10:00-11:00\nStart : 06-09-2026\nCoach : ครูหนึ่ง\n*Expiry date : 31-12-2026\n" +
         // 🔻 TASK-318 (`§16.4`) — `Sessions : 6` is gone from `§7.1`; the line above it is now the last.
         "**Advance Leave Notice : (-)",
     );
