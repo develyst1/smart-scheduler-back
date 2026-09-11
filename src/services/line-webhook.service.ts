@@ -1530,7 +1530,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     if (action === "calendar") return doTeacherCalendar(lineUserId, replyToken, lang);
     return send(replyToken, [textReply(tb("teacher_linked"), lang)]);
   }
-  if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
+  // if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
   // Suspended household → refuse every postback too, not just typed commands (TASK-048).
   if (await isSuspendedLineParent(lineUserId)) {
     return send(replyToken, [textReply(tb("suspended_notice"), lang)]);
@@ -1583,8 +1583,9 @@ export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
     // even when it succeeds. Never logs the full userId or any token (see lib/line-log.ts).
     console.info(formatInboundEvent(ev));
     try {
-      if (ev.type === "follow") await handleFollow(ev);
-      else if (ev.type === "message") await handleMessage(ev);
+      // if (ev.type === "follow") await handleFollow(ev);
+      // else 
+      if (ev.type === "message") await handleMessage(ev);
       else if (ev.type === "postback") await handlePostback(ev);
     } catch (e) {
       console.error("[line-webhook] event error:", e);
