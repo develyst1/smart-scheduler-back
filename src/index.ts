@@ -10,6 +10,7 @@ import { authRoutes } from "./routes/auth";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
 import { publicCalendar } from "./routes/calendar";
+import { publicRegister } from "./routes/register";
 import { internalJobs } from "./routes/internal";
 import { apiDocs, rootDocs } from "./routes/docs";
 
@@ -41,6 +42,7 @@ app.route("/api/auth", authRoutes);
 app.route("/api/webhooks", lineWebhook); // POST /api/webhooks/line (LINE Developers URL)
 app.route("/api", publicCheckin);
 app.route("/api", publicCalendar); // GET /api/calendar/<token>.ics — token is the credential (REQ-017)
+app.route("/api", publicRegister); // POST /api/register/{lookup,link,create} — the LIFF ID token is the credential (REQ-088, TASK-347)
 // Legacy path without /api prefix (direct to BE port, local tunnel, etc.)
 app.route("/webhooks", lineWebhook);
 // Internal job trigger (UC-012) — secret-guarded, not JWT. Called by Task Scheduler exe.

@@ -19,6 +19,7 @@ import { needsChildStep } from "../lib/line-leave";
 import { t } from "../lib/line-i18n";
 
 const SVC = readSrc(await Bun.file(new URL("./line-webhook.service.ts", import.meta.url)).text());
+const REG = readSrc(await Bun.file(new URL("./line-register.service.ts", import.meta.url)).text()); // 🔻 TASK-347
 const MENU = readSrc(await Bun.file(new URL("../lib/line-rich-menu.ts", import.meta.url)).text());
 const VIEW = readSrc(await Bun.file(new URL("../lib/line-course-view.ts", import.meta.url)).text());
 /** Comments stripped — the repo convention for source assertions (Sober, 2026-09-02). */
@@ -84,7 +85,10 @@ describe("the two menu sets — unknown is the DEFAULT, known is the per-user li
   });
 
   test("a bound family chat gets the known menu", () => {
-    expect(SVC).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed)');
+    // 🔻 TASK-347 (`REQ-088`) — the menu link (`settleLinkedRole`) moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    expect(REG).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed)');
+    expect(SVC).toContain('await settleLinkedRole(lineUserId, role)');
   });
 
   test("every tap action the menus fire is a KNOWN postback action", () => {

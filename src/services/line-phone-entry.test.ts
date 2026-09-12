@@ -24,6 +24,10 @@ const SVC = readSrc(await Bun.file(new URL("./line-webhook.service.ts", import.m
 const PAIRING = readSrc(await Bun.file(new URL("../lib/line-pairing.ts", import.meta.url)).text());
 const TWOFA = readSrc(await Bun.file(new URL("../lib/line-2fa.ts", import.meta.url)).text());
 const FAMILY = readSrc(await Bun.file(new URL("../lib/family-link.ts", import.meta.url)).text());
+// 🔻 TASK-347 (`REQ-088`) — `verifyAndLink`'s customer WRITES are `linkFamilyByPhone` in the ONE home of the
+// registration decisions; the chat keeps the REPLIES. `LINK` is that function's body.
+const REG = readSrc(await Bun.file(new URL("./line-register.service.ts", import.meta.url)).text());
+const LINK = (() => { const rest = REG.slice(REG.indexOf("export async function linkFamilyByPhone")); return rest.slice(0, rest.indexOf("\n}\n") + 2); })();
 const body = (decl: string) => {
   const rest = SVC.slice(SVC.indexOf(decl));
   return rest.slice(0, rest.indexOf("\n}\n") + 2);
@@ -45,18 +49,24 @@ describe("🔴 the phone binds the chat — and can never re-bind it to another 
   });
 
   test("the refusal reaches the parent as a sentence, not a 23505", () => {
-    expect(VERIFY).toContain("const bind = await bindFamilyLine(existing.id, lineUserId)");
+    // 🔻 TASK-347 (`REQ-088`) — the bind moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    expect(LINK).toContain("const bind = await bindFamilyLine(existing.id, lineUserId)");
     // ⚠️ TASK-275: `message` is now a BUILDER `(lang) => string`, because the registration flow's replies
     // are composed and a composed body must be built once per language. The PROPERTY this test guards —
     // that the refusal is a sentence to the parent and not a raw `23505` — is unchanged; only the shape is.
-    expect(VERIFY).toContain('if (!bind.ok) return { ok: false, message: (l) => t("verify_parent_other_family", l) }');
+    // The refusal is a VALUE in the decision and a SENTENCE in the chat — the two halves of one rule.
+    expect(LINK).toContain('if (!bind.ok) return { outcome: "line-bound-to-other-family" }');
+    expect(VERIFY).toContain('if (r.outcome === "line-bound-to-other-family") return { ok: false, message: (l) => t("verify_parent_other_family", l) }');
     expect(t("verify_parent_other_family", "TH")).toContain("แอดมิน");
   });
 
   test("🔑 the bind is attempted BEFORE anything else is written", () => {
     // Otherwise a refused chat would still have moved the roster link and re-pointed `parents.line_user_id`.
-    expect(VERIFY.indexOf("bindFamilyLine")).toBeLessThan(VERIFY.indexOf("linkParentLine"));
-    expect(VERIFY.indexOf("bindFamilyLine")).toBeLessThan(VERIFY.indexOf("moveRosterLink"));
+    // 🔻 TASK-347 (`REQ-088`) — the write ORDER moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    expect(LINK.indexOf("bindFamilyLine")).toBeLessThan(LINK.indexOf("linkParentLine"));
+    expect(LINK.indexOf("bindFamilyLine")).toBeLessThan(LINK.indexOf("moveRosterLink"));
   });
 
   test("an unknown phone gives NO hint about whether that number is a customer", () => {
@@ -107,7 +117,9 @@ describe("🔀 the 2FA branch — BUILT, and switched by a setting", () => {
     // The task's words: "prove it with a test that flips the setting and gets different behaviour with no code
     // change. That test is the deliverable, not the branch." The switch is read from `app_settings` on every
     // use, so the same build behaves both ways — that is what makes turning it on a setting, not a rebuild.
-    expect(SVC).toContain('(await getSetting("line_parent_2fa")).value === "on"');
+    // 🔻 TASK-347 (`REQ-088`) — `twoFaEnabled`, so BOTH doors read the setting (Rule 3) moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    expect(REG).toContain('(await getSetting("line_parent_2fa")).value === "on"');
     // …and the branch it gates is a single `if` in the flow, not a second flow.
     expect(VERIFY).toContain("if (await twoFaEnabled())");
     expect(SVC).toContain('if (res.needs2fa && res.code)');
@@ -117,8 +129,10 @@ describe("🔀 the 2FA branch — BUILT, and switched by a setting", () => {
   });
 
   test("🔴 the switch is read EVERY time, never cached — a cached flag makes it a restart", () => {
-    const fn = body("async function twoFaEnabled");
+    const rest = REG.slice(REG.indexOf("export async function twoFaEnabled"));
+    const fn = rest.slice(0, rest.indexOf("\n}\n") + 2);
     expect(fn).toContain("await getSetting");
+    expect(REG).not.toMatch(/let\s+twoFaCached/);
     expect(SVC).not.toMatch(/let\s+twoFaCached/);
   });
 

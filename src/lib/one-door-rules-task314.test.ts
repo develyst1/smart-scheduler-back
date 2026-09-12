@@ -22,6 +22,14 @@ import { readSrc } from "./read-src";
 const src = (f: string) => readSrc(readFileSync(resolve(import.meta.dir, "..", "..", f), "utf8"));
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const SVC = code(src("src/services/line-webhook.service.ts"));
+// 🔻 TASK-347 (`REQ-088`) — the creator and the duplicate helper moved to the ONE home of the registration
+// decisions. `fnIn` reads them there; the two doors in THIS file (wizard, inline) still call them by name.
+const REG = code(src("src/services/line-register.service.ts"));
+const fnIn = (S: string, sig: string) => {
+  const i = S.indexOf(sig);
+  if (i < 0) throw new Error("no " + sig);
+  return S.slice(i, S.indexOf("\n}\n", i));
+};
 const fn = (sig: string) => {
   const i = SVC.indexOf(sig);
   if (i < 0) throw new Error("no " + sig);
@@ -29,8 +37,8 @@ const fn = (sig: string) => {
 };
 const WIZARD = fn("async function handleAddStudentStep(");
 const INLINE = fn("async function addStudentAndReply(");
-const CREATOR = fn("async function createStudentFromLine(");
-const DUP = fn("async function duplicateOutcomeFor(");
+const CREATOR = fnIn(REG, "export async function createStudentFromLine(");
+const DUP = fnIn(REG, "export async function duplicateOutcomeFor(");
 const ASK = fn("async function askMoreDetail(");
 
 describe("🔴 TASK-314 §2.1 — `add น้องเอ` twice behaves as the WIZARD does (AC-9)", () => {
@@ -38,8 +46,10 @@ describe("🔴 TASK-314 §2.1 — `add น้องเอ` twice behaves as the 
     expect(WIZARD).toContain('(await duplicateOutcomeFor(parent.id, name)) === "more-detail"');
     expect(INLINE).toContain('(await duplicateOutcomeFor(parent.id, name)) === "more-detail"');
     expect(DUP).toContain("decideDuplicate(siblings.map((s: any) => s.name), name)");
-    // …and nowhere else: the decision has exactly one caller in the handler.
-    expect(SVC.match(/decideDuplicate\(/g)!.length).toBe(1);
+    // …and nowhere else: the decision has exactly one caller, and 🔻 TASK-347 moved that caller to the ONE home
+    // of the registration decisions. The webhook no longer calls the pure decision at all.
+    expect(REG.match(/decideDuplicate\(/g)!.length).toBe(1);
+    expect(SVC).not.toContain("decideDuplicate(");
   });
 
   test("🔑 the inline door ASKS before it writes — and the question puts the parent into the wizard's detail step", () => {
@@ -68,8 +78,12 @@ describe("🔴 TASK-314 §2.2 — a child added INLINE notifies the admin (AC-11
     // The row first, then the message — the order AC-11 always had.
     expect(CREATOR.indexOf("createStudentForParent(")).toBeLessThan(CREATOR.indexOf("notifyAdmins("));
     // …and no door calls the service write directly any more: the notification cannot be skipped by construction.
-    expect(SVC.match(/createStudentForParent\(/g)!.length).toBe(1);
-    expect(SVC.match(/kind: "student_registered"/g)!.length).toBe(1);
+    // 🔻 TASK-347 — the ONE call to the service write and the ONE notification are in the register service now;
+    // the webhook has NEITHER. **That absence is the stronger form of the same claim.**
+    expect(REG.match(/createStudentForParent\(/g)!.length).toBe(1);
+    expect(REG.match(/kind: "student_registered"/g)!.length).toBe(1);
+    expect(SVC).not.toContain("createStudentForParent(");
+    expect(SVC).not.toContain('kind: "student_registered"');
   });
 
   test("🔑 the SKIPPED row when no admin is linked — TASK-152's rule, reached through the same `notifyAdmins`", () => {
@@ -104,7 +118,10 @@ describe("✅ TASK-314 — the wizard's BEHAVIOUR is byte-identical: a move, not
   test("the confirm branch still: writes, updates the household province, notifies, clears, replies screen 8", () => {
     // From the confirm word onward — the cancel branch above it has its own `clearSession`, which is not this one.
     const confirm = WIZARD.slice(WIZARD.indexOf("if (!isConfirm(text))"));
-    const order = ["isConfirm(text)", "createStudentFromLine(parent, {", "set({ province: draft.province })", "clearSession(lineUserId)", 't("added_done", lang'];
+    // 🔻 TASK-347 — the household `province` write rides INTO the one writer now (`province: draft.province`
+    // is an argument, not a second `db.update` beside it). The sequence the confirm branch performs is the
+    // same: write (student + province), notify, clear, reply screen 8.
+    const order = ["isConfirm(text)", "createStudentFromLine(parent, {", "province: draft.province ?? null", "clearSession(lineUserId)", 't("added_done", lang'];
     for (let i = 1; i < order.length; i++) expect(confirm.indexOf(order[i - 1])).toBeLessThan(confirm.indexOf(order[i]));
     expect(confirm).toContain("birthDate: draft.birthDate ?? null,");
   });

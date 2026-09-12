@@ -7,7 +7,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db";
 import { coursePackages, lineLinkSessions, parents, teachers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { getProfileLang, replyMessage, type LineMessage } from "../lib/line-client";
+import { replyMessage, type LineMessage } from "../lib/line-client";
 import {
   eventPostbackData,
   eventText,
@@ -27,7 +27,7 @@ import {
   formatInboundEvent,
   formatUnknownAction,
 } from "../lib/line-log";
-import { linkKnownRichMenu, linkRoleRichMenu } from "../lib/line-rich-menu";
+import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import { both, t, tb, type Lang } from "../lib/line-i18n";
 import { resolveBotLang as resolveLang } from "../lib/line-lang";
 import {
@@ -40,7 +40,6 @@ import { moveRosterLink } from "../lib/roster-link";
 import { parentChildrenNames, parentChildrenNote } from "../lib/line-pairing";
 import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa";
 import {
-  decideDuplicate,
   isAddStudentStep,
   isCancel,
   isConfirm,
@@ -50,7 +49,18 @@ import {
   summaryLines,
   type StudentDraft,
 } from "../lib/line-add-student";
-import { bindFamilyLine } from "../lib/family-link";
+// 🔻 TASK-347 (`REQ-088`) — the registration DECISIONS live in `line-register.service.ts` now, called by
+// this door AND the page. This file keeps only the REPLIES. `bindFamilyLine` is no longer called from here.
+import {
+  clearLinkSession as clearSession,
+  createStudentFromLine,
+  duplicateOutcomeFor,
+  linkFamilyByPhone,
+  setTwoFaChallenge,
+  settleLinkedRole,
+  twoFaCodeOf,
+  twoFaEnabled,
+} from "./line-register.service";
 import {
   CMD_ADMIN,
   CMD_CALENDAR,
@@ -76,11 +86,7 @@ import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
   MAX_STUDENTS_PER_PARENT,
   assertCanAddStudent,
-  createStudentForParent,
-  findOrCreateParentByPhone,
   findParentByLineUserId,
-  findParentByPhone,
-  linkParentLine,
   listStudentsOfParent,
   normalizePhone,
 } from "./parent.service";
@@ -197,9 +203,8 @@ async function setStep(lineUserId: string, step: string, pendingRole: string | n
     });
 }
 
-async function clearSession(lineUserId: string) {
-  await db.delete(lineLinkSessions).where(eq(lineLinkSessions.lineUserId, lineUserId));
-}
+// 🔻 TASK-347 — `clearSession` is `clearLinkSession` from `line-register.service.ts` (imported under its old
+// name so the thirteen call sites read as before). Both doors clear the same row on success — Rule 4.
 
 /**
  * The step a row carries when it exists only to hold a mute — no conversation is in progress. `doCallAdmin`
@@ -346,9 +351,7 @@ async function strikeOrPrompt(
  * 🔴 Read from `app_settings` on every use, never cached: **turning it on must be a setting, not a rebuild**,
  * and a cached flag would make it a restart. Default `off` is the owner's recorded choice, not a soft launch.
  */
-async function twoFaEnabled(): Promise<boolean> {
-  return (await getSetting("line_parent_2fa")).value === "on";
-}
+// 🔻 TASK-347 — `twoFaEnabled` moved to `line-register.service.ts`: BOTH doors read the setting (Rule 3).
 
 /**
  * TASK-232 — park the 2FA challenge on the session.
@@ -361,16 +364,9 @@ async function twoFaEnabled(): Promise<boolean> {
  * That was the SA's stated condition on TASK-232 (*"a proper column the next time a migration is open anyway"*),
  * and this is the moment it named. Cost today: nothing. Cost if skipped: permanent by habit.
  */
-async function setTwoFaChallenge(lineUserId: string, code: string) {
-  await db
-    .update(lineLinkSessions)
-    .set({ step: "AWAIT_2FA", draft: { twoFaCode: code }, updatedAt: new Date() })
-    .where(eq(lineLinkSessions.lineUserId, lineUserId));
-}
-
-/** The parked challenge, read back through one accessor so `draft`'s shape has a single reader. */
-const twoFaCodeOf = (session: { draft?: Record<string, unknown> | null }): string | null =>
-  typeof session.draft?.twoFaCode === "string" ? session.draft.twoFaCode : null;
+// 🔻 TASK-347 — `setTwoFaChallenge` and `twoFaCodeOf` moved to `line-register.service.ts`: ONE writer and ONE
+// reader of `draft.twoFaCode`, on both doors. (The write is an UPSERT there; for this door, which always has
+// a row at this point, that is the same UPDATE it always was.)
 
 /** AC-19 — a valid answer clears the strikes. Cheap, and it is what keeps the counter about THIS confusion. */
 async function resetStrikes(lineUserId: string) {
@@ -444,56 +440,47 @@ async function verifyAndLink(
   // uniqueness rule. Only the three message interpolations below wrap it in `formatPhoneForDisplay`, and
   // that function is display-only by contract. A formatted number reaching `findParentByPhone` is how a
   // family stops matching their own record.
-  const phone = normalizePhone(code);
-  if (phone.length < 9) return { ok: false, message: (l) => t("verify_parent_badphone", l) };
-  const existing = await findParentByPhone(phone);
-  if (existing) {
-    if (existing.lineUserId && existing.lineUserId !== lineUserId) {
-      return { ok: false, message: (l) => t("verify_parent_other", l) };
-    }
-    // 🔴 SPEC-071 / TASK-232 — the mirror of the check above, and the one the unique index enforces: this LINE
-    // ACCOUNT may already belong to a different family. Refused here so the parent gets a sentence they can
-    // act on instead of a `23505`, and refused at all because the alternative is silently re-pointing an
-    // account — a parent opening the app to **another family's children** (TASK-047's failure, other route).
-    const bind = await bindFamilyLine(existing.id, lineUserId);
-    if (!bind.ok) return { ok: false, message: (l) => t("verify_parent_other_family", l) };
+  // 🔻 TASK-347 (`REQ-088`) — **the DECISION left; the REPLIES stayed.** `linkFamilyByPhone` is the customer
+  // branch that used to be here — bad phone · phone bound elsewhere · account bound elsewhere · found · new —
+  // as a VALUE, and the page calls the same function. What follows maps each outcome to the SAME key it always
+  // produced, byte for byte. 🚫 No `findParentByPhone`, no `bindFamilyLine`, no `findOrCreateParentByPhone`
+  // here any more: a second copy of any of them is the drift this task exists to prevent.
+  const phone = normalizePhone(code); // display only, for the three interpolations below (TASK-278 §6)
+  const r = await linkFamilyByPhone(lineUserId, code);
+  if (r.outcome === "phone-invalid") return { ok: false, message: (l) => t("verify_parent_badphone", l) };
+  if (r.outcome === "phone-bound-to-other-line") return { ok: false, message: (l) => t("verify_parent_other", l) };
+  if (r.outcome === "line-bound-to-other-family") return { ok: false, message: (l) => t("verify_parent_other_family", l) };
+  if (r.isNew) return { ok: true, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
+  const kids = r.children;
 
-    await linkParentLine(existing.id, lineUserId);
-    await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
-    const kids = await listStudentsOfParent(existing.id);
-
-    // 🔴 REQ-079 §2 — the phone alone now returns the children BY NAME. TASK-047 withheld them, and that
-    // reasoning was NOT refuted: the owner put the danger to the customer in those words and **the customer
-    // chose the convenience**.
-    //
-    // 🔀 The 2FA branch is the whole switchable part. ON: the parent gets the COUNT and a prompt, and the
-    // names are gated behind the code — TASK-047's rule still applies wherever a gate exists. OFF (default,
-    // the owner's choice): the names come straight back. **Nothing below this line differs between the two
-    // except which note is built**, which is what makes turning it on a setting rather than a rebuild.
-    if (await twoFaEnabled()) {
-      const code = generate2faCode();
-      deliver2faCode(lineUserId, code); // throws loudly if delivery was never configured — see lib/line-2fa.ts
-      return {
-        ok: true,
-        needs2fa: true,
-        code,
-        // 📌 The composed case this change exists for: a verify line, a children note and the 2FA prompt.
-        // Built per language, so the parent reads a whole Thai message and then a whole English one.
-        message: (l) =>
-          t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNote(kids.length, l) }) +
-          "\n" +
-          t("twofa_prompt", l),
-      };
-    }
-    const names = kids.map((k: any) => k.nickname ?? k.name);
+  // 🔴 REQ-079 §2 — the phone alone now returns the children BY NAME. TASK-047 withheld them, and that
+  // reasoning was NOT refuted: the owner put the danger to the customer in those words and **the customer
+  // chose the convenience**.
+  //
+  // 🔀 The 2FA branch is the whole switchable part. ON: the parent gets the COUNT and a prompt, and the
+  // names are gated behind the code — TASK-047's rule still applies wherever a gate exists. OFF (default,
+  // the owner's choice): the names come straight back. **Nothing below this line differs between the two
+  // except which note is built**, which is what makes turning it on a setting rather than a rebuild.
+  if (await twoFaEnabled()) {
+    const code = generate2faCode();
+    deliver2faCode(lineUserId, code); // throws loudly if delivery was never configured — see lib/line-2fa.ts
     return {
       ok: true,
-      message: (l) => t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNames(names, l) }),
+      needs2fa: true,
+      code,
+      // 📌 The composed case this change exists for: a verify line, a children note and the 2FA prompt.
+      // Built per language, so the parent reads a whole Thai message and then a whole English one.
+      message: (l) =>
+        t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNote(kids.length, l) }) +
+        "\n" +
+        t("twofa_prompt", l),
     };
   }
-  await findOrCreateParentByPhone(phone, { lineUserId });
-  await moveRosterLink(lineUserId, "customer"); // role change moves the link (TASK-046)
-  return { ok: true, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
+  const names = kids.map((k: any) => k.nickname ?? k.name);
+  return {
+    ok: true,
+    message: (l) => t("verify_parent_ok_existing", l, { phone: formatPhoneForDisplay(phone), list: parentChildrenNames(names, l) }),
+  };
 }
 
 /** Create one student under the linked parent and craft the right reply. */
@@ -669,14 +656,13 @@ async function handleAddStudentStep(
     try {
       // 🔻 TASK-314 — the write AND the admin notification (AC-11) moved into `createStudentFromLine`, the one
       // LINE-side creator both doors call. Same call, same order, same content; only the home changed.
+      // 🔻 TASK-347 — the province (a HOUSEHOLD field, `parents.province`) rides INTO the one writer now,
+      // rather than as a second write beside it. Same rows, same values; one call on both doors.
       const { student, count } = await createStudentFromLine(parent, {
         name: draft.name!,
         birthDate: draft.birthDate ?? null,
+        province: draft.province ?? null,
       });
-      // The province is a HOUSEHOLD field (`parents.province`), not a per-student one — see §Questions.
-      if (draft.province) {
-        await db.update(parents).set({ province: draft.province }).where(eq(parents.id, parent.id));
-      }
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;
       const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
@@ -746,10 +732,7 @@ async function childrenOfLineParent(lineUserId: string): Promise<unknown[]> {
  * a service precondition on purpose: the rule's whole content is *"ask for MORE DETAIL, never demand a rename"*,
  * and only a handler can ask. The decision itself stays the pure `decideDuplicate`, unchanged.
  */
-async function duplicateOutcomeFor(parentId: string, name: string) {
-  const siblings = await listStudentsOfParent(parentId);
-  return decideDuplicate(siblings.map((s: any) => s.name), name);
-}
+// 🔻 TASK-347 — `duplicateOutcomeFor` moved to `line-register.service.ts`; the page reaches AC-9 through it too.
 
 /**
  * The further question. Parks the name and asks for a surname/nickname; the answer arrives at
@@ -772,14 +755,9 @@ async function askMoreDetail(lineUserId: string, draft: StudentDraft, name: stri
  * Reuses `notifyAdmins`, which writes a loud SKIPPED row when no admin is configured (TASK-152's lesson), so a
  * mis-configured environment is visible instead of silent. Order unchanged: the row first, then the message.
  */
-async function createStudentFromLine(
-  parent: { id: string; phone: string },
-  input: { name: string; birthDate?: string | null },
-) {
-  const created = await createStudentForParent(parent.id, input);
-  await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone });
-  return created;
-}
+// 🔻 TASK-347 — `createStudentFromLine` moved to `line-register.service.ts`, and the household `province`
+// write JOINED it there (it was written beside the student in the confirm step below; the page would
+// otherwise need a second call). One writer, one place, both doors.
 
 async function addStudentAndReply(
   lineUserId: string,
@@ -1398,22 +1376,10 @@ async function handleMessage(ev: LineWebhookEvent) {
     // session and re-prompted forever. Second failure now hands over to a human instead.
     if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, both(res.message), lang);
     await resetStrikes(lineUserId);
-    if (role !== "admin") {
-      // Seed the language from the LINE profile locale (best-effort), then link the role's rich menu.
-      const seed: Lang = (await getProfileLang(lineUserId)) ?? "TH";
-      await Promise.all([
-        db.update(teachers).set({ lineLang: seed }).where(eq(teachers.lineUserId, lineUserId)),
-        db.update(parents).set({ lineLang: seed }).where(eq(parents.lineUserId, lineUserId)),
-      ]).catch((e) => console.error("[line-webhook] seed lang failed:", e));
-      try {
-        await linkRoleRichMenu(lineUserId, role, seed);
-        // TASK-234 — a bound family chat also gets the รู้จักแล้ว menu. There is deliberately no unlink:
-        // ยังไม่รู้จัก is the DEFAULT, so an unbound chat lands on it with no code running.
-        if (role === "customer") await linkKnownRichMenu(lineUserId, seed);
-      } catch (e) {
-        console.error("[line-webhook] linkRoleRichMenu failed:", e);
-      }
-    }
+    // 🔻 TASK-347 — seed the language, then link the role's rich menu (and TASK-234's รู้จักแล้ว menu for a
+    // family): `settleLinkedRole`, the SAME sequence in the SAME order the page runs after `/link`, so a
+    // page-registered parent lands in exactly this door's end state. Best-effort, as it always was.
+    if (role !== "admin") await settleLinkedRole(lineUserId, role);
     // 🔀 TASK-232 — the ONE place the 2FA switch changes the flow. `needs2fa` is set only when the setting is
     // on, so with it off this branch never runs and the path below is byte-identical to before.
     if (res.needs2fa && res.code) {
@@ -1530,7 +1496,17 @@ async function handlePostback(ev: LineWebhookEvent) {
     if (action === "calendar") return doTeacherCalendar(lineUserId, replyToken, lang);
     return send(replyToken, [textReply(tb("teacher_linked"), lang)]);
   }
-  // if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
+  // 🔴 TASK-346 (`REQ-079 §17g`) — THE RECORD BEHIND THIS LINE, because the diff against `baa6015` must show a
+  // task. **The OWNER's commit `baa6015` commented this line out** to stop the unsolicited `welcome`.
+  // ✅ The ruling is met by the OTHER half of that commit (the `follow` dispatch below is dead).
+  // 🔴 **But this line did TWO jobs.** It was also the GUARD keeping an UNLINKED user out of the customer
+  // switch ⇒ with it gone, an unregistered parent tapping `เช็คอิน` / `นักเรียน` fell through to `doCheckin` /
+  // `doChildren` and was told *"you have no classes / no children"* instead of *"please register"*.
+  // ✅ **RESTORED. Both jobs.** The reply is `§17c` screen 1's text (`welcome`), and sending it HERE is
+  // SOLICITED — the parent TAPPED. `§17g` ruled *never unsolicited*, not *never*: 🔑 *"it remains the correct
+  // reply when a parent DOES need the hint."* 🚫 The `follow` push stays gone.
+  // 📌 ***A line that does two jobs cannot be commented out to remove one of them.***
+  if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
   // Suspended household → refuse every postback too, not just typed commands (TASK-048).
   if (await isSuspendedLineParent(lineUserId)) {
     return send(replyToken, [textReply(tb("suspended_notice"), lang)]);
@@ -1568,6 +1544,10 @@ async function handlePostback(ev: LineWebhookEvent) {
  * a human, and it is also how anyone learns that `สมัคร` is the way in. Silencing it would leave a new parent
  * with an empty chat and no idea what to type.
  */
+// ⚪ TASK-346 (`REQ-079 §17g`) — **DEAD BY RULING, KEPT BY DECISION.** `baa6015` removed the `follow` dispatch
+// (see `handleLineWebhookEvents`), so nothing calls this. 🔑 It stays, with this note, because the ruling is
+// the CUSTOMER's and may move again — the customer's own OA greeting is what made two voices; if they ever
+// drop theirs, this is the line that comes back. 🚫 Do NOT re-dispatch it without a task.
 async function handleFollow(ev: LineWebhookEvent) {
   const replyToken = ev.replyToken;
   const lineUserId = eventUserId(ev);
@@ -1583,8 +1563,8 @@ export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
     // even when it succeeds. Never logs the full userId or any token (see lib/line-log.ts).
     console.info(formatInboundEvent(ev));
     try {
-      // if (ev.type === "follow") await handleFollow(ev);
-      // else 
+      // 🚫 `follow` is NOT dispatched — `REQ-079 §17g`, the OWNER's own edit (`baa6015`), kept by TASK-346.
+      // `handleFollow` above is deliberately dead; see its note.
       if (ev.type === "message") await handleMessage(ev);
       else if (ev.type === "postback") await handlePostback(ev);
     } catch (e) {

@@ -202,7 +202,12 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     // `§17e`'s correction, in @Porter's own words. The prompt names District / Sub-district / Province as
     // GUIDANCE; the answer is and stays ONE free-text value on the household.
     expect(SVC).toContain('const province = isSkip(text) ? null : text.trim() || null;');
-    expect(SVC).toContain("await db.update(parents).set({ province: draft.province })");
+    // 🔻 TASK-347 (`REQ-088`) — the household `province` write moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    // 📌 It JOINED the one writer rather than sitting beside it: the page would otherwise need a second call.
+    // The storage is the same column and the value is the same draft field.
+    expect(SVC).toContain("province: draft.province ?? null,");
+    expect(src("src/services/line-register.service.ts")).toContain("await db.update(parents).set({ province: input.province })");
     expect(src("src/db/schema.ts")).toContain("province");
   });
 

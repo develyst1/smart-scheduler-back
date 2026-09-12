@@ -18,6 +18,8 @@ const FAMILY = readSrc(await Bun.file(new URL("./family-link.ts", import.meta.ur
 const TEACHER = readSrc(await Bun.file(new URL("../services/teacher-link.service.ts", import.meta.url)).text());
 const SVC = readSrc(await Bun.file(new URL("../services/line-webhook.service.ts", import.meta.url)).text());
 const ROSTER = readSrc(await Bun.file(new URL("./roster-link.ts", import.meta.url)).text());
+// 🔻 TASK-347 — the registration decisions' one home, read beside the chat.
+const REG = readSrc(await Bun.file(new URL("../services/line-register.service.ts", import.meta.url)).text());
 /** Comments stripped — the repo convention for source assertions (Sober, 2026-09-02). */
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const fn = (src: string, decl: string) => {
@@ -73,7 +75,10 @@ describe("🔴 every DB link-clear clears the menu link too — asserted as a PA
     // Unlinking here would blank the menu for a moment and then re-link it — churn on a real phone, and a
     // window where the chat has the wrong menu. Named so nobody "completes the set" later.
     expect(code(ROSTER)).not.toContain("unlinkRichMenuFromUser");
-    expect(code(SVC)).toContain("await moveRosterLink(lineUserId,");
+    // 🔻 TASK-347 (`REQ-088`) — the roster move moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    expect(code(REG)).toContain("await moveRosterLink(lineUserId,");
+    expect(code(SVC)).not.toContain("moveRosterLink("); // the chat no longer moves the link itself
   });
 });
 
@@ -82,12 +87,16 @@ describe("⚠️ the link ORDER at account-link — the known menu wins only bec
     // Swap them and every newly-linked parent lands on the old REQ-015 parent menu instead of menu B — a
     // regression nothing else in the suite would notice, because both calls would still be present and both
     // would still succeed. Same shape as the `สมัคร` ordering pinned in TASK-246.
-    const branch = code(SVC).slice(code(SVC).indexOf("await linkRoleRichMenu(lineUserId, role, seed)"));
+    // 🔻 TASK-347 (`REQ-088`) — the seed-then-menus sequence (`settleLinkedRole`) moved to `line-register.service.ts`, the ONE home of the registration
+    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
+    const branch = code(REG).slice(code(REG).indexOf("await linkRoleRichMenu(lineUserId, role, seed)"));
     expect(branch.indexOf("linkRoleRichMenu")).toBeLessThan(branch.indexOf("linkKnownRichMenu"));
     expect(branch.slice(0, 400)).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed)');
   });
 
   test("…and the known menu is only for customers — a teacher must not get the family menu", () => {
-    expect(code(SVC)).toContain('if (role === "customer") await linkKnownRichMenu');
+    expect(code(REG)).toContain('if (role === "customer") await linkKnownRichMenu');
+    // …and the chat reaches it through the ONE sequence, so both doors link the same menus in the same order.
+    expect(code(SVC)).toContain('if (role !== "admin") await settleLinkedRole(lineUserId, role);');
   });
 });

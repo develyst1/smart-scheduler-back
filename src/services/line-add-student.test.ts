@@ -23,6 +23,13 @@ const SVC = readSrc(await Bun.file(new URL("./line-webhook.service.ts", import.m
 const WIZARD = readSrc(await Bun.file(new URL("../lib/line-add-student.ts", import.meta.url)).text());
 const SQL = await Bun.file(new URL("../../drizzle/0031_line_session_draft.sql", import.meta.url)).text();
 const PARENT_SVC = readSrc(await Bun.file(new URL("./parent.service.ts", import.meta.url)).text());
+// 🔻 TASK-347 (`REQ-088`) — `duplicateOutcomeFor` and `createStudentFromLine` moved to the ONE home of the
+// registration decisions; `bodyIn` reads them there. The FLOW below still calls them by name.
+const REG = readSrc(await Bun.file(new URL("./line-register.service.ts", import.meta.url)).text());
+const bodyIn = (S: string, decl: string) => {
+  const rest = S.slice(S.indexOf(decl));
+  return rest.slice(0, rest.indexOf("\n}\n") + 2);
+};
 const body = (decl: string) => {
   const rest = SVC.slice(SVC.indexOf(decl));
   return rest.slice(0, rest.indexOf("\n}\n") + 2);
@@ -135,7 +142,7 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
     // 🔻 TASK-314 — the decision is reached through `duplicateOutcomeFor`, the helper both doors call; the pure
     // `decideDuplicate` is called exactly once, inside it.
     expect(FLOW).toContain("duplicateOutcomeFor(parent.id, name)");
-    expect(body("async function duplicateOutcomeFor")).toContain("decideDuplicate(");
+    expect(bodyIn(REG, "export async function duplicateOutcomeFor")).toContain("decideDuplicate(");
     expect(nextStep("AWAIT_STUDENT_NAME", "more-detail")).toBe("AWAIT_STUDENT_DETAIL");
     expect(nextStep("AWAIT_STUDENT_DETAIL")).toBe("AWAIT_STUDENT_BIRTHDATE");
   });
@@ -211,7 +218,7 @@ describe("🔴 AC-11 — an admin is notified on success", () => {
     // mis-configured environment is visible instead of silently dropping the hand-off.
     // 🔻 TASK-314 — the notification moved into `createStudentFromLine`, the creator BOTH doors call, so the
     // inline add tells the admin too. The wizard reaches it through that helper; the claim is the same.
-    const CREATOR = body("async function createStudentFromLine");
+    const CREATOR = bodyIn(REG, "export async function createStudentFromLine");
     expect(FLOW).toContain("createStudentFromLine(");
     expect(CREATOR).toContain("await notifyAdmins(");
     expect(CREATOR).not.toContain("getAdminLineUserIds(");
@@ -219,7 +226,7 @@ describe("🔴 AC-11 — an admin is notified on success", () => {
   });
 
   test("the notification happens only AFTER the row exists", () => {
-    const CREATOR = body("async function createStudentFromLine");
+    const CREATOR = bodyIn(REG, "export async function createStudentFromLine");
     expect(CREATOR.indexOf("createStudentForParent(")).toBeLessThan(CREATOR.indexOf("notifyAdmins("));
   });
 });
@@ -230,8 +237,13 @@ describe("🔴 the 2FA code moved OUT of `pending_role` into `draft`", () => {
     // The SA's stated condition on TASK-232 was "a proper column the next time a migration is open anyway".
     // `0031` was that moment — and still UNRUN, so the move costs nothing today. Skipping it would have made a
     // column named "what this step is waiting on" permanently hold a 2FA code AND a three-field wizard.
-    expect(SVC).toContain("draft: { twoFaCode: code }");
-    expect(SVC).toContain("const twoFaCodeOf =");
+    // 🔻 TASK-347 (`REQ-088`) — the writer and the accessor moved to `line-register.service.ts`: ONE writer and ONE
+    // reader of `draft.twoFaCode`, on BOTH doors (the page parks its challenge on the same row). The chat still
+    // reads it through the accessor at `AWAIT_2FA`. **The claim — written to `draft`, read through one accessor
+    // — is unchanged; the file is not.**
+    expect(REG).toContain("draft: { twoFaCode: code }");
+    expect(REG).toContain("export const twoFaCodeOf =");
+    expect(SVC).not.toContain("draft: { twoFaCode: code }"); // the webhook no longer writes it itself
     expect(SVC).toContain("matches2faCode(twoFaCodeOf(session), text)");
   });
 

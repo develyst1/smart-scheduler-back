@@ -177,9 +177,15 @@ describe("TASK-275 — what LANDED, by name", () => {
     // in the STRING and `both()` would send them twice. ⇒ they are rendered once, with `t(key, lang)`.
     // 🔑 `both()` itself now refuses to double a body that is identical in both languages, which is why the
     // sites that still use it (`code_${role}`, `res.message`, `welcome`) are correct for BOTH kinds.
+    // 🔻 TASK-346 (`REQ-079 §17g`) — **`welcome` has TWO call sites and only ONE is live.** The postback guard's
+    // `textReply(tb("welcome"), lang)` is the reply an unregistered parent gets when they TAP — solicited,
+    // so it stays. `handleFollow`'s `reply(replyToken, tb("welcome"))` is DEAD CODE: the owner's `baa6015`
+    // removed the `follow` dispatch and TASK-346 kept it removed. ⚠️ **This pin went VACUOUS on his tree**
+    // when the guard was commented out — the body was bilingual and nobody was sent it. It is asserted here
+    // against the LIVE site, and the dead one is named as dead so its presence is not mistaken for a send.
     for (const site of [
-      'textReply(tb("welcome"), lang)',
-      'reply(replyToken, tb("welcome"))',
+      'textReply(tb("welcome"), lang)', // the postback guard — LIVE
+      'reply(replyToken, tb("welcome"))', // `handleFollow` — DEAD by §17g, kept on purpose
       't("role_prompt", lang)',
       "reply(replyToken, tb(`code_${role}`))",
       'tb("twofa_bad"), lang)',
