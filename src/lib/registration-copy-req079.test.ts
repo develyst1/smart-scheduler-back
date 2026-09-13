@@ -206,8 +206,14 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
     // 📌 It JOINED the one writer rather than sitting beside it: the page would otherwise need a second call.
     // The storage is the same column and the value is the same draft field.
-    expect(SVC).toContain("province: draft.province ?? null,");
-    expect(src("src/services/line-register.service.ts")).toContain("await db.update(parents).set({ province: input.province })");
+    // 🔻 TASK-352 (`REQ-088 §9`) — the OWNER ruled: `parents.province` holds the PROVINCE only; the typed line goes
+    // into `parents.note`, APPENDED. 🔑 The claim this test makes is UNCHANGED and is the one that matters: the
+    // prompt names parts as GUIDANCE and the answer stays ONE free-text value — it is just that the value's home is
+    // now `note`, and the chat never writes `province` at all. Storage unchanged: no new column.
+    expect(SVC).toContain("address: draft.province ?? null,");
+    expect(SVC).not.toContain("province: draft.province");
+    const REG = src("src/services/line-register.service.ts");
+    expect(REG).toContain("householdPatch(row?.note ?? null, { province, address })"); // the rule is pure and unit-tested
     expect(src("src/db/schema.ts")).toContain("province");
   });
 

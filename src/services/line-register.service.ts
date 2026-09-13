@@ -21,6 +21,8 @@ import type { Lang } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { isReservedWord } from "../lib/line-commands";
 import { decideDuplicate, parseBirthDate } from "../lib/line-add-student";
+import { isThaiProvince } from "../lib/thai-provinces";
+import { badRequest } from "../lib/http";
 import { moveRosterLink } from "../lib/roster-link";
 import { getSetting } from "./settings.service";
 import {
@@ -183,13 +185,43 @@ export async function duplicateOutcomeFor(parentId: string, name: string) {
  * 🔻 TASK-347 — the household `province` write JOINS the writer. The chat wrote it beside the student in its
  * confirm step; the page would otherwise need a second call. **One writer, one place, both doors.**
  */
+/**
+ * 🔴 TASK-352 (`REQ-088 §9`) — THE RULE, pure, so it can be tested with values rather than pinned by source:
+ * PICKED ⇒ `province` ← the name and `note` ← the line. TYPED ⇒ `note` ← the line and `province` UNTOUCHED (not even
+ * cleared) — no guessing a province out of free text. 🔴 `note` is APPENDED on a new line, never overwritten:
+ * a staff note about allergies must not vanish because a parent re-registered. An empty patch means "write nothing".
+ */
+export function householdPatch(
+  existingNote: string | null | undefined,
+  input: { province?: string | null; address?: string | null },
+): { province?: string; note?: string } {
+  const patch: { province?: string; note?: string } = {};
+  const province = input.province?.trim() || null;
+  const address = input.address?.trim() || null;
+  if (province) patch.province = province;
+  if (address) patch.note = existingNote?.trim() ? `${existingNote}\n${address}` : address;
+  return patch;
+}
+
 export async function createStudentFromLine(
   parent: { id: string; phone: string },
-  input: { name: string; birthDate?: string | null; province?: string | null },
+  input: { name: string; birthDate?: string | null; province?: string | null; address?: string | null },
 ) {
+  // 🔴 TASK-352 (`REQ-088 §9`) — owner: *"เก็บจังหวัดลงจังหวัด และเอาจังหวัด อำเภอ ตำบล มาต่อกัน แล้วเซฟลง note แทน"*.
+  // `province` now means THE PICKED PROVINCE NAME (full form, one of the 77) and lands in `parents.province`,
+  // which the report groups on. `address` is the customer's joined line and lands in `parents.note`.
+  // 🚫 A TYPED address never touches `province`: no guessing a province out of free text — a wrong bucket is
+  // worse than an empty one. 🔑 The CHAT sends `address` only, so it changes by CONSTRUCTION, not by edit.
+  const province = input.province?.trim() || null;
+  const address = input.address?.trim() || null;
+  // Refused HERE, in the one writer, so no door and no future caller can split the column with a near-miss.
+  if (province && !isThaiProvince(province)) throw badRequest("จังหวัดไม่ถูกต้อง");
   const created = await createStudentForParent(parent.id, { name: input.name, birthDate: input.birthDate ?? null });
-  if (input.province) {
-    await db.update(parents).set({ province: input.province }).where(eq(parents.id, parent.id));
+  if (province || address) {
+    // Read the row's note NOW rather than trusting the `parent` handed in — the chat passes a row it loaded
+    // earlier, and a note a staff member wrote since must survive too.
+    const [row] = await db.select({ note: parents.note }).from(parents).where(eq(parents.id, parent.id)).limit(1);
+    await db.update(parents).set(householdPatch(row?.note ?? null, { province, address })).where(eq(parents.id, parent.id));
   }
   await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone });
   return created;
@@ -202,7 +234,8 @@ export type AddChild =
   | { outcome: "name-reserved"; word: string }
   | { outcome: "family-full"; max: number }
   | { outcome: "name-duplicate-needs-detail"; name: string }
-  | { outcome: "birthdate-invalid" };
+  | { outcome: "birthdate-invalid" }
+  | { outcome: "province-unknown"; province: string };
 
 /**
  * ✍️ The page's whole add-child sequence — **the chat's guards, in the chat's ORDER, through the chat's
@@ -215,7 +248,7 @@ export type AddChild =
  */
 export async function addChildForLineParent(
   lineUserId: string,
-  input: { name: string; birthDate?: string | null; province?: string | null; detailProvided?: boolean },
+  input: { name: string; birthDate?: string | null; province?: string | null; address?: string | null; detailProvided?: boolean },
 ): Promise<AddChild> {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return { outcome: "not-linked" };
@@ -237,7 +270,12 @@ export async function addChildForLineParent(
   const parsed = given ? parseBirthDate(given) : ({ ok: true, value: null } as const);
   if (!parsed.ok) return { outcome: "birthdate-invalid" };
   const province = (input.province ?? "").trim() || null;
-  const { student, count } = await createStudentFromLine(parent, { name, birthDate: parsed.value, province });
+  const address = (input.address ?? "").trim() || null;
+  // 🔴 TASK-352 — the PICKED province must be a REAL one, refused with a NAMED code before the write. The writer
+  // refuses it too (the same `isThaiProvince`) — this is the check that gives the page a code, that is the one
+  // that holds for every caller.
+  if (province && !isThaiProvince(province)) return { outcome: "province-unknown", province };
+  const { student, count } = await createStudentFromLine(parent, { name, birthDate: parsed.value, province, address });
   return {
     outcome: "created",
     student: { id: student.id, name: student.name },

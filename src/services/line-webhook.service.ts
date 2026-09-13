@@ -656,12 +656,14 @@ async function handleAddStudentStep(
     try {
       // 🔻 TASK-314 — the write AND the admin notification (AC-11) moved into `createStudentFromLine`, the one
       // LINE-side creator both doors call. Same call, same order, same content; only the home changed.
-      // 🔻 TASK-347 — the province (a HOUSEHOLD field, `parents.province`) rides INTO the one writer now,
-      // rather than as a second write beside it. Same rows, same values; one call on both doors.
+      // 🔻 TASK-352 (`REQ-088 §9`) — the screen-6 string is an ADDRESS (`ตำบล อำเภอ จังหวัด`, typed free-text) and
+      // lands in `parents.note`, APPENDED. 🚫 The chat NEVER writes `province`: `parents.province` holds the
+      // picked province only, and a typed line cannot pick one. (The draft field keeps its old name — it is a
+      // session key, not a column.) 🔑 One writer, so this door changed by CONSTRUCTION when the writer did.
       const { student, count } = await createStudentFromLine(parent, {
         name: draft.name!,
         birthDate: draft.birthDate ?? null,
-        province: draft.province ?? null,
+        address: draft.province ?? null,
       });
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;

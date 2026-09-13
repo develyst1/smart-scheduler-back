@@ -121,7 +121,9 @@ describe("✅ TASK-314 — the wizard's BEHAVIOUR is byte-identical: a move, not
     // 🔻 TASK-347 — the household `province` write rides INTO the one writer now (`province: draft.province`
     // is an argument, not a second `db.update` beside it). The sequence the confirm branch performs is the
     // same: write (student + province), notify, clear, reply screen 8.
-    const order = ["isConfirm(text)", "createStudentFromLine(parent, {", "province: draft.province ?? null", "clearSession(lineUserId)", 't("added_done", lang'];
+    // 🔻 TASK-352 (`REQ-088 §9`) — the screen-6 string is an ADDRESS now, appended to `parents.note`; the chat never
+    // writes `province`. The sequence is the same: write (student + note), notify, clear, reply screen 8.
+    const order = ["isConfirm(text)", "createStudentFromLine(parent, {", "address: draft.province ?? null", "clearSession(lineUserId)", 't("added_done", lang'];
     for (let i = 1; i < order.length; i++) expect(confirm.indexOf(order[i - 1])).toBeLessThan(confirm.indexOf(order[i]));
     expect(confirm).toContain("birthDate: draft.birthDate ?? null,");
   });

@@ -34,7 +34,8 @@ const linkBody = withToken.extend({ phone: z.string().trim().min(1), code: z.str
 const createBody = withToken.extend({
   name: z.string().optional(),
   birthDate: z.string().optional(), // the customer's `DD-MM-YYYY` text, or absent = ข้าม
-  province: z.string().optional(),
+  province: z.string().optional(), // 🔻 TASK-352 — the PICKED province, full form, one of the 77 → `parents.province`
+  address: z.string().optional(), // 🔻 TASK-352 — the joined line, the customer's format → APPENDED to `parents.note`
   detailProvided: z.boolean().optional(),
 });
 
@@ -61,6 +62,7 @@ const REFUSAL: Record<string, [number, string]> = {
   "family-full": [409, "FAMILY_FULL"],
   "name-duplicate-needs-detail": [409, "NAME_DUPLICATE_NEEDS_DETAIL"],
   "birthdate-invalid": [400, "BIRTHDATE_INVALID"],
+  "province-unknown": [400, "PROVINCE_UNKNOWN"],
 };
 
 const childView = (k: any) => ({ id: k.id, name: k.name, nickname: k.nickname ?? null });
@@ -117,14 +119,19 @@ export const publicRegister = new Hono()
 
   // ── §C3 create — add a child to MY family. THE ONE WRITER. ───────────────────────────────────────────────
   .post("/register/create", zValidator("json", createBody), async (c) => {
-    const { idToken, name, birthDate, province, detailProvided } = c.req.valid("json");
+    const { idToken, name, birthDate, province, address, detailProvided } = c.req.valid("json");
     const who = await verifyLiffIdToken(idToken);
     if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
     // 🔑 The family is `sub`'s — no phone, no id. The guards run in the CHAT's order inside this one call.
-    const r = await addChildForLineParent(who.sub, { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, detailProvided });
+    const r = await addChildForLineParent(who.sub, { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, address: address ?? null, detailProvided });
     if (r.outcome !== "created") {
       const [status, code] = REFUSAL[r.outcome]!;
-      const extra = r.outcome === "name-reserved" ? { word: r.word } : r.outcome === "family-full" ? { max: r.max } : r.outcome === "name-duplicate-needs-detail" ? { name: r.name } : {};
+      const extra =
+        r.outcome === "name-reserved" ? { word: r.word }
+        : r.outcome === "family-full" ? { max: r.max }
+        : r.outcome === "name-duplicate-needs-detail" ? { name: r.name }
+        : r.outcome === "province-unknown" ? { province: r.province }
+        : {};
       return refuse(c, status, code, extra);
     }
     await clearLinkSession(who.sub); // Rule 4, on this door too
