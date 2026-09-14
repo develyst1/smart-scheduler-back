@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { lineLinkSessions, parents, teachers } from "../db/schema";
 import { bindFamilyLine, familyOfLineUser } from "../lib/family-link";
+import { clearParentLineLink } from "./parent.service";
 import { getProfileLang } from "../lib/line-client";
 import { linkKnownRichMenu, linkRoleRichMenu } from "../lib/line-rich-menu";
 import type { Lang } from "../lib/line-i18n";
@@ -99,9 +100,12 @@ export async function lookupFamilyByPhone(lineUserId: string, code: string): Pro
   const phone = normalizePhone(code);
   if (phone.length < 9) return { outcome: "phone-invalid" };
   const existing = await findParentByPhone(phone);
-  if (!existing) return { outcome: "new", phone };
-  if (existing.lineUserId && existing.lineUserId !== lineUserId) return { outcome: "phone-bound-to-other-line" };
   const current = await familyOfLineUser(lineUserId);
+  // 🔴 TASK-354 (`REQ-088 §10.3`) — ITEM 12: a bound account entering a phone that is not its family's is refused
+  // EVEN WHEN THE PHONE IS NEW. Before this, `new` was returned and `link` created an orphan parent while the
+  // account kept answering its old family — silently. The owner found it on his phone.
+  if (!existing) return current ? { outcome: "line-bound-to-other-family" } : { outcome: "new", phone };
+  if (existing.lineUserId && existing.lineUserId !== lineUserId) return { outcome: "phone-bound-to-other-line" };
   if (current && current !== existing.id) return { outcome: "line-bound-to-other-family" };
   return { outcome: "found", parent: existing, children: await listStudentsOfParent(existing.id) };
 }
@@ -134,12 +138,14 @@ export async function linkFamilyByPhone(lineUserId: string, code: string): Promi
     await moveRosterLink(lineUserId, "customer");
     return { outcome: "linked", parent: existing, children: await listStudentsOfParent(existing.id), isNew: false };
   }
-  // A NEW phone — EXACTLY the chat's two lines: the parent row is created with this account as its primary
+  // A NEW phone — the chat's two lines: the parent row is created with this account as its primary
   // (`parents.line_user_id`, which `familyOfLineUser` reads as the fallback), and the roster link moves.
-  // 🚫 No `bindFamilyLine` here and no "is this account already someone's" check — because the CHAT has neither.
-  // ⚠️ NAMED, NOT FIXED (TASK-347 report): an account already bound to family A that enters a NEW phone creates
-  // an orphan parent B carrying its id, and `familyOfLineUser` keeps answering A. That is the chat's behaviour
-  // today; adding the guard HERE would give it to both doors — and change the chat, which this task forbids.
+  // 🔴 TASK-354 (`REQ-088 §10.3`) — ITEM 12 CLOSED HERE, for BOTH doors. TASK-347 mirrored the chat and named
+  // the gap; the OWNER then found it on his phone: a bound account entering a NEW phone created an orphan parent
+  // B carrying its id while the account kept answering A, with no error. ✅ Refused now, before any row exists.
+  // ⚠️ THE CHAT CHANGES WITH IT (same writer): a linked parent typing `สมัคร` + another phone used to get
+  // `verify_parent_ok_new`; they now get `verify_parent_other_family` — the reply that already means this.
+  if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" };
   const parent = await findOrCreateParentByPhone(phone, { lineUserId });
   await moveRosterLink(lineUserId, "customer");
   return { outcome: "linked", parent, children: [], isNew: true };
@@ -165,6 +171,42 @@ export async function settleLinkedRole(lineUserId: string, role: "customer" | "t
     console.error("[line-register] linkRoleRichMenu failed:", e);
   }
   return seed;
+}
+
+// ── §10.3 — a linked account is TOLD, and can UNLINK through the ONE writer ─────────────────────────────────
+/**
+ * 🔑 TASK-354 — the phone a page may show for an account it merely holds the token for: the first TWO digits,
+ * every other digit `x`, in the customer's display grouping. `0812345678` → `08x-xxx-xxxx`. A parent recognises
+ * their own prefix; a stranger learns nothing. 🚫 A non-standard phone is masked ENTIRELY rather than leaked.
+ */
+export function maskPhone(phone: string): string {
+  if (!/^0\d{9}$/.test(phone)) return "xxx-xxx-xxxx";
+  return `${phone.slice(0, 2)}x-xxx-xxxx`;
+}
+
+export type LinkStatus = { linked: false } | { linked: true; parentId: string; phone: string; childCount: number };
+
+/** READ-ONLY. Is this account already someone's? `phone` comes back MASKED; no names (TASK-047). */
+export async function linkStatus(lineUserId: string): Promise<LinkStatus> {
+  const parent = await findParentByLineUserId(lineUserId);
+  if (!parent) return { linked: false };
+  const children = await listStudentsOfParent(parent.id);
+  return { linked: true, parentId: parent.id, phone: maskPhone(parent.phone), childCount: children.length };
+}
+
+/**
+ * ✍️ UNLINK — the SAME operation the admin's `Clear LINE link` button runs: `clearParentLineLink` →
+ * `clearFamilyLine`, atomic two-write clear, rich menus unlinked after commit. One writer, one more door.
+ * ⚠️ It clears the FAMILY's binding — EVERY account the family holds, not only this one (TASK-230 households).
+ * That is what the admin's button does; this door does not narrow it.
+ * 🔑 `actor` is `line:<sub>` — the audit line must say a PARENT did this to themselves, distinguishable from an
+ * admin's id: the prefix discriminates, the sub says who.
+ */
+export async function unlinkSelf(lineUserId: string): Promise<{ unlinked: boolean; cleared: number }> {
+  const parent = await findParentByLineUserId(lineUserId);
+  if (!parent) return { unlinked: false, cleared: 0 }; // idempotent — not linked is not an error
+  const { cleared } = await clearParentLineLink(parent.id, `line:${lineUserId}`);
+  return { unlinked: true, cleared };
 }
 
 // ── ADD A CHILD: the guards, in the chat's order, into the ONE writer ──────────────────────────────────────

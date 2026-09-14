@@ -336,14 +336,17 @@ export const createParent = z.object({
   phone: z.string().trim().min(9),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
-  note: z.string().trim().max(500).nullish(), // TASK-050 — `parents.note` existed but was unreachable
+  // 🔻 TASK-354 (`REQ-088 §10`) — 2000, not 500: `REQ-088 §9` made the MACHINE append addresses to this note, and
+  // a cap the machine can exceed means the ADMIN cannot save what the SYSTEM wrote. 2000 ≈ 25 lines — room for
+  // ten appended addresses plus a staff note, still a guard against a runaway append. The number is @Sober's.
+  note: z.string().trim().max(2000).nullish(), // TASK-050 — `parents.note` existed but was unreachable
 });
 
 export const updateParent = z.object({
   phone: z.string().trim().min(9).optional(),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
-  note: z.string().trim().max(500).nullish(),
+  note: z.string().trim().max(2000).nullish(), // 🔻 TASK-354 — the parent's note, same cap as on create
 });
 
 export const createParentStudent = z.object({

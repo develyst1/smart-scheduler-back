@@ -21,11 +21,13 @@ import {
   addChildForLineParent,
   clearLinkSession,
   linkFamilyByPhone,
+  linkStatus,
   lookupFamilyByPhone,
   parkedTwoFaCode,
   setTwoFaChallenge,
   settleLinkedRole,
   twoFaEnabled,
+  unlinkSelf,
 } from "../services/line-register.service";
 
 const withToken = z.object({ idToken: z.string().optional() });
@@ -68,6 +70,26 @@ const REFUSAL: Record<string, [number, string]> = {
 const childView = (k: any) => ({ id: k.id, name: k.name, nickname: k.nickname ?? null });
 
 export const publicRegister = new Hono()
+  // ── §10.3 status — "is this LINE account already someone's?" WRITES NOTHING. The page asks this on OPEN. ───
+  .post("/register/status", zValidator("json", withToken), async (c) => {
+    const { idToken } = c.req.valid("json");
+    const who = await verifyLiffIdToken(idToken);
+    if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
+    const s = await linkStatus(who.sub);
+    // 🚫 `parentId` stays on the server; the page gets a MASKED phone and a COUNT — never names (TASK-047).
+    return s.linked ? c.json({ ok: true, linked: true, phone: s.phone, childCount: s.childCount }) : c.json({ ok: true, linked: false });
+  })
+
+  // ── §10.3 unlink — the SAME writer the admin's `Clear LINE link` runs, from `sub`. ────────────────────────
+  .post("/register/unlink", zValidator("json", withToken), async (c) => {
+    const { idToken } = c.req.valid("json");
+    const who = await verifyLiffIdToken(idToken);
+    if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
+    const r = await unlinkSelf(who.sub);
+    await clearLinkSession(who.sub); // Rule 4 — a half-started chat wizard does not outlive its family
+    return r.unlinked ? c.json({ ok: true, unlinked: true, cleared: r.cleared }) : c.json({ ok: true, unlinked: false });
+  })
+
   // ── §C1 lookup — "is this phone a family we know?" WRITES NOTHING (except the 2FA send when ON) ──────────
   .post("/register/lookup", zValidator("json", lookupBody), async (c) => {
     const { idToken, phone } = c.req.valid("json");
