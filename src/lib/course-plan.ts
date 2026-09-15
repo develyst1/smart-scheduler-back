@@ -121,6 +121,8 @@ export function exceedsExtensionCeiling(date: string, ceiling: string): boolean 
  * unlimited absences at creation and silently removed the one leave the family had afterwards.
  * ⇒ **The base ceiling always encoded *plan end + quota weeks*** — an absence-free size-4 ends week 4 and
  * expires week 5 — **and the stretch has to preserve that promise, not just the plan's length.**
+ * 🔻 TASK-358 — and it did NOT: stretching from the last session let the leaves eat the quota. The stretch is
+ * now from the BASE (or the plan's end, whichever is later): `REQ-089 item 2`, the customer's Kavya example.
  *
  * 🚫 **It never SHRINKS the ceiling.** A course whose plan ends early still owes the family the leave window
  * they bought, so `courseExpiry` stays the floor.
@@ -128,13 +130,19 @@ export function exceedsExtensionCeiling(date: string, ceiling: string): boolean 
 export function courseBornCeiling(base: string, lastPlanned: string, absences: number): string {
   // 🔑 THE PROMISE, in words, because a bare `+ 7` is a number nobody can check:
   //
-  //     the ceiling is **the plan's end plus the leave quota**, in weeks.
+  //     the ceiling is **the BASE ceiling plus the weeks declared absent** — week 8 + 3 = week 11.
   //
-  // Each declared absence earns one make-up a week after the plan, so the PLAN ends `absences` weeks after
-  // its last booked session. The quota's weeks then sit BEYOND that end — which is exactly what the base
-  // ceiling already gives an absence-free course, and the term TASK-301 found missing.
-  const stretched = addDays(lastPlanned, absences * 7);
-  return stretched > base ? stretched : base;
+  // 🔴 TASK-358 (`REQ-089 item 2`) — the customer's own example is the spec: *Kavya, size 6, 3 weeks advance
+  // leave ⇒ 8 + 3 = 11 weeks from start.* This used to stretch from the plan's LAST SESSION by the absences —
+  // `max(base, lastPlanned + absences)` — so for a size-6 with 3 absences the plan's make-ups ran to week 9 and
+  // the ceiling was week 9: **the last session, with the quota's two weeks EATEN by the leaves.** The customer
+  // read that screen and said no. ⇒ the quota's headroom survives, and the leaves add ON TOP of it.
+  // 📌 `absences` is the number of DISTINCT WEEKS declared absent (`absentWeeks.size`, a Set of week numbers);
+  // on a weekly course that equals sessions, which is every course today.
+  // 🚫 It still never SHRINKS: a plan drawn past the base (an admin's hand-placed dates) keeps its own end as
+  // the floor, and the absences add on top of whichever is later.
+  const floor = lastPlanned > base ? lastPlanned : base;
+  return addDays(floor, absences * 7);
 }
 
 /**

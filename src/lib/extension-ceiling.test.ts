@@ -60,8 +60,11 @@ describe("TASK-299 (a) — §10: the PLAN sets the ceiling at creation", () => {
     // 🔻 TASK-308 — the three make-ups land on weeks 5, 6 and 7, so the plan ends week 7 and **the ceiling
     // ends week 7 too.** TASK-301's extra quota-week is reverted: with no ceiling left to refuse a leave there
     // is nothing to leave room for, and a pre-allocated week made `expires` claim time nobody had used.
-    expect(born).toBe(week(7));
-    expect(exceedsExtensionCeiling(week(7), born)).toBe(false);
+    // 🔻 TASK-358 (`REQ-089 item 2`) — the CUSTOMER moved this: the ceiling is the BASE + the absent weeks, not
+    // the last session. Week 5 + 3 = week 8; the plan's make-ups end week 7 and the quota's week survives
+    // beyond it. The claim THIS test makes is unchanged — the ceiling covers the plan — the number moved UP.
+    expect(born).toBe(week(8));
+    expect(exceedsExtensionCeiling(week(7), born)).toBe(false); // the plan's last make-up is still covered
     // 🔑 Both halves, because either alone is the bug: it CREATES, and its stored expiry covers its own
     // last session.
     expect(born >= week(7)).toBe(true);
@@ -216,7 +219,8 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     // `คอร์สขยายเกินวันสิ้นสุดของคอร์ส (2026-10-27) ไม่ได้`. 🔑 **The refusal moved and the outcome did not.**
     // The plan ends week 7, its make-up needs week 8, and nothing in the append path refuses it now.
     const born = courseBornCeiling(courseExpiry(START, 4), week(4), 3);
-    expect(born).toBe(week(7));
+    expect(born).toBe(week(8)); // 🔻 TASK-358 — base + absences; the plan (week 7) is covered with the quota's week to spare
+    expect(exceedsExtensionCeiling(week(7), born)).toBe(false);
     expect(append).not.toContain("throw");
     expect(append).not.toContain("exceedsExtensionCeiling");
   });
@@ -248,7 +252,10 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
 
   test("✅ §10's creation stretch for DECLARED absences survives this", () => {
     // 🚫 Those are real planned sessions and must stay covered — the revert took only the quota term.
-    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 3)).toBe(week(7));
-    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 0)).toBe(week(5)); // no absences ⇒ the base
+    // 🔻 TASK-358 (`REQ-089 item 2`) — the CUSTOMER moved this: the ceiling is the BASE + the absent weeks, not
+    // the last session. Week 5 + 3 = week 8; the plan's make-ups end week 7 and the quota's week survives
+    // beyond it. The claim THIS test makes is unchanged — the ceiling covers the plan — the number moved UP.
+    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 3)).toBe(week(8));
+    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 0)).toBe(week(5)); // no absences ⇒ the base, unchanged
   });
 });

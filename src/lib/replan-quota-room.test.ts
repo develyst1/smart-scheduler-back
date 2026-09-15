@@ -31,11 +31,16 @@ describe("🔻 TASK-308 — the pre-allocated week is gone", () => {
     expect(replanExpiry(OLD_EXPIRY, LAST)).toBe(LAST);
   });
 
-  test("🚫 …and the same is true at CREATION — no quota term there either", () => {
-    // A 4-session course with three declared absences: the plan ends week 7 and the ceiling ends week 7.
+  test("🔻 …and at CREATION the CUSTOMER put the quota's week back — through the BASE, not a quota term (TASK-358)", () => {
+    // 🔻 This test used to assert `week(7)` — *no quota term at creation either*. `REQ-089 item 2` reverses the
+    // OUTCOME, not TASK-308's reasoning: there is still no separate quota term; the stretch simply starts from
+    // the BASE ceiling (which already holds the quota's week) instead of from the plan's last session.
+    // ⇒ a 4-session course with three declared absences: plan ends week 7, ceiling is week 5 + 3 = week 8.
+    // 🚫 The RESUME path (`replanExpiry`, absences = 0) is untouched by this — asserted above and below.
     const START = "2026-09-01";
     const week = (n: number) => addDays(START, (n - 1) * 7);
-    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 3)).toBe(week(7));
+    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 3)).toBe(week(8));
+    expect(courseBornCeiling(courseExpiry(START, 4), week(4), 0)).toBe(week(5)); // no absences ⇒ unchanged
   });
 
   test("📌 the arithmetic is gone from the source, not just from the result", () => {

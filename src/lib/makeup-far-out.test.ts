@@ -25,7 +25,9 @@ describe("🔑 TASK-309 §2 — the creation preview refuses NOTHING", () => {
     // start date"*, with the button disabled: **told to change what he wanted because a date could not move.**
     // The boundary the preview reports now covers the plan it describes.
     const born = courseBornCeiling(courseExpiry(START, 4), week(4), 3);
-    expect(born).toBe(week(7)); // the plan's own end — nothing to exceed
+    // 🔻 TASK-358 — base + absences = week 8; the plan's own end (week 7) is inside it — still nothing to exceed.
+    expect(born).toBe(week(8));
+    expect(born >= week(7)).toBe(true);
   });
 
   test("🔑 `exceedsCeiling` cannot be true — by construction, not by luck", () => {
