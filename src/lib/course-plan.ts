@@ -169,6 +169,16 @@ export function plannedRowCount(size: number, absent: ReadonlySet<number>): numb
   return w;
 }
 
+/**
+ * 🔴 TASK-361 — which of a course's rows, in date order, must be FLIPPED to a declared absence: the make-up rows
+ * (positions past the `size` chain) whose position was declared absent and which are not yet `SICK_LEAVE`.
+ * Pure, so the create's second pass is a value the test can check — a mutation that skipped the flip while
+ * leaving its text in place passed a source pin; it cannot pass this.
+ */
+export function makeupsToFlip<R extends { id: string; status: string }>(orderedRows: readonly R[], size: number, absent: ReadonlySet<number>): R[] {
+  return orderedRows.filter((r, i) => i + 1 > size && absent.has(i + 1) && r.status !== "SICK_LEAVE");
+}
+
 /** Row `w` (1-based) is part of the plan `size` and `absent` describe. */
 export const plannedRowExists = (w: number, size: number, absent: ReadonlySet<number>): boolean =>
   Number.isInteger(w) && w >= 1 && w <= plannedRowCount(size, absent);

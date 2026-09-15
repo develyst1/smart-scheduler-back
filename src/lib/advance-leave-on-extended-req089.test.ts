@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { courseBornCeiling, plannedRowCount, plannedRowExists } from "./course-plan";
+import { courseBornCeiling, makeupsToFlip, plannedRowCount, plannedRowExists } from "./course-plan";
 import { courseExpiry, courseSessionDates } from "./recurring";
 import { addDays } from "./time";
 import { readSrc } from "./read-src";
@@ -81,6 +81,27 @@ describe("🔴 the validator — the LOCK is gone, the CAP stays", () => {
   });
 });
 
+describe("🔑 the FLIP decision, with values — which make-ups the create turns into declared absences", () => {
+  const row = (id: string, status = "CONFIRMED") => ({ id, status });
+  test("🔴 the DoD case: size 4, week 2 absent, row 5 ticked ⇒ after the first reconcile, exactly row 5 is flipped", () => {
+    // date order after the first reconcile: 4 chain rows (row 2 already SICK_LEAVE) + 1 appended make-up (row 5)
+    const afterFirst = [row("r1"), row("r2", "SICK_LEAVE"), row("r3"), row("r4"), row("r5", "EXTENDED")];
+    expect(makeupsToFlip(afterFirst, 4, new Set([2, 5])).map((r) => r.id)).toEqual(["r5"]);
+    // …after the flip and the second reconcile: row 5 is SICK_LEAVE, row 6 appended — nothing left to flip.
+    const afterSecond = [...afterFirst.slice(0, 4), row("r5", "SICK_LEAVE"), row("r6", "EXTENDED")];
+    expect(makeupsToFlip(afterSecond, 4, new Set([2, 5]))).toEqual([]);
+  });
+  test("a chain week is never flipped here (it was BORN absent), and an unticked make-up is never touched", () => {
+    const rows = [row("r1"), row("r2", "SICK_LEAVE"), row("r3"), row("r4"), row("r5", "EXTENDED")];
+    expect(makeupsToFlip(rows, 4, new Set([2]))).toEqual([]);
+    expect(makeupsToFlip(rows, 4, new Set([1, 2]))).toEqual([]); // position 1 is chain — not this pass's job
+  });
+  test("a make-up of a make-up: the second pass flips row 6 once it exists", () => {
+    const rows = [row("r1"), row("r2", "SICK_LEAVE"), row("r3"), row("r4"), row("r5", "SICK_LEAVE"), row("r6", "EXTENDED")];
+    expect(makeupsToFlip(rows, 4, new Set([2, 5, 6])).map((r) => r.id)).toEqual(["r6"]);
+  });
+});
+
 describe("🔑 ONE rule, THREE callers — the preview and the save agree because they ask the same function", () => {
   test("the PREVIEW appends until `plannedRowCount` rows exist, flagging a ticked make-up `absent: true, makeup: true`", () => {
     const preview = fn("export async function previewCoursePackage(");
@@ -94,7 +115,14 @@ describe("🔑 ONE rule, THREE callers — the preview and the save agree becaus
   test("the CREATE flips the ticked make-ups and asks the ONE engine again — no second placement path", () => {
     const create = fn("export async function createCoursePackage(");
     expect(create).toContain("const wanted = plannedRowCount(input.size, absentWeeks);");
-    expect(create).toContain('const toFlip = ordered.filter((r: any, i: number) => i + 1 > input.size && absentWeeks.has(i + 1) && r.status !== "SICK_LEAVE");');
+    expect(create).toContain("const toFlip = makeupsToFlip(ordered as any[], input.size, absentWeeks);");
+    // 🔑 the loop's ONLY exit is the guarded one — a bare `break` before the flip would leave the make-ups live
+    // with every line of the flip still in the file (that mutation PASSED a text pin; this is what caught it).
+    const loop = create.slice(create.indexOf("for (let guard = 0; guard < wanted; guard++) {"), create.indexOf("const courseRow = await tx.query.coursePackages"));
+    expect(loop).toContain("if (!toFlip.length) break;");
+    expect((loop.match(/\bbreak;/g) ?? []).length).toBe(1);
+    expect(loop.indexOf("if (!toFlip.length) break;")).toBeLessThan(loop.indexOf("for (const r of toFlip)"));
+    expect(loop).toContain("await reconcileCoursePlan(tx, course.id);");
     expect(create).toContain('await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true }).where(eq(bookings.id, r.id));');
     // the engine, again — and ONLY the engine: the create places no make-up itself.
     expect((create.match(/await reconcileCoursePlan\(tx, course\.id\);/g) ?? []).length).toBe(2);

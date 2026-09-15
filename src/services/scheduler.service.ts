@@ -89,6 +89,7 @@ import {
   replanExpiry,
   deriveLiveEndDate,
   courseBornCeiling,
+  makeupsToFlip,
   plannedRowCount,
   exceedsExtensionCeiling,
   isCoursePlanRow,
@@ -1741,7 +1742,7 @@ export async function createCoursePackage(input: any) {
         where: (b: any, { eq: e, and: a, ne: n }: any) => a(e(b.courseId, course.id), n(b.status, "CANCELLED")),
         orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
       });
-      const toFlip = ordered.filter((r: any, i: number) => i + 1 > input.size && absentWeeks.has(i + 1) && r.status !== "SICK_LEAVE");
+      const toFlip = makeupsToFlip(ordered as any[], input.size, absentWeeks);
       if (!toFlip.length) break;
       for (const r of toFlip) {
         await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true }).where(eq(bookings.id, r.id));
