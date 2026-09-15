@@ -2,10 +2,10 @@
 // to MAX_STUDENTS_PER_PARENT students. Used by the LINE OA parent flow (register →
 // add children) and the staff endpoints (POST /students, GET /students dropdown).
 
-import { and, asc, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { parents, students } from "../db/schema";
-import { badRequest, notFound } from "../lib/http";
+import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
+import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { isSuspended } from "../lib/suspend";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
 
@@ -349,6 +349,63 @@ export async function updateStudent(
   const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
   if (!row) throw notFound("ไม่พบนักเรียน");
   return row;
+}
+
+// ───────────── TASK-364 (REQ-089 item 3) — hard delete of a student with NO history ─────────────
+//
+// The ONE exception to "nothing is ever deleted; suspend is the off switch". Linking parents by LINE produced
+// wrongly-created children; a child with no course, no booking and no voucher has nothing to keep, and
+// suspending the whole family for it would punish the parent. "History" is a ROW in any of the three tables in
+// ANY status — a cancelled booking is history; the family's suspension is not (it lives on the parent).
+//
+// 🔴 The database already refuses this delete (all three FKs are `onDelete: "restrict"`), but the app's
+// `onError` renders SQLSTATE 23503 as `400 VALIDATION` — a validation error for a row that was refused on
+// purpose. So the service refuses FIRST with a code and the counts, and when the FK fires anyway (a booking born
+// between the count and the delete) it is caught HERE and re-said with the same code: the FK is the guard, the
+// count is the sentence.
+
+export type StudentHistory = { courses: number; bookings: number; vouchers: number };
+
+/** The 409 for a student with history, or `null` when the three counts are zero. Pure — the rule in one place. */
+export function studentHistoryRefusal(h: StudentHistory) {
+  if (h.courses === 0 && h.bookings === 0 && h.vouchers === 0) return null;
+  return conflict(
+    "STUDENT_HAS_HISTORY",
+    `มีประวัติ: คอร์ส ${h.courses} · คาบ ${h.bookings} · บัตร ${h.vouchers} — ระงับแทน`,
+  );
+}
+
+/** Rows naming this student in the three history tables — ANY status, no filter. */
+export async function countStudentHistory(studentId: string, exec: any = db): Promise<StudentHistory> {
+  const rows = async (table: any) =>
+    Number((await exec.select({ n: count() }).from(table).where(eq(table.studentId, studentId)))[0]?.n ?? 0);
+  return { courses: await rows(coursePackages), bookings: await rows(bookings), vouchers: await rows(vouchers) };
+}
+
+/**
+ * `DELETE /students/:id` — count → refuse or delete, in one transaction. The parent's child count is a live
+ * count (`listStudentsOfParent`), so the freed slot is visible to `assertCanAddStudent` with no bookkeeping.
+ * Audit is one server log line, not a table — a table for a wrongly-created row is a soft delete by another name.
+ */
+export async function deleteStudent(id: string, actor: string | null): Promise<{ deleted: true }> {
+  let gone: StudentRow;
+  try {
+    gone = await db.transaction(async (tx) => {
+      const student = await tx.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
+      if (!student) throw notFound("ไม่พบนักเรียน");
+      const refusal = studentHistoryRefusal(await countStudentHistory(id, tx));
+      if (refusal) throw refusal;
+      await tx.delete(students).where(eq(students.id, id));
+      return student;
+    });
+  } catch (e) {
+    if (pgErrorCode(e) !== "23503") throw e;
+    // The race: history was born between the count and the delete, and the FK held. Re-count outside the
+    // aborted transaction so the sentence carries the numbers; never let the raw restrict error reach `onError`.
+    throw studentHistoryRefusal(await countStudentHistory(id)) ?? conflict("STUDENT_HAS_HISTORY", "มีประวัติ — ระงับแทน");
+  }
+  console.info(`student deleted: ${gone.id} "${gone.name}" parent=${gone.parentId ?? "walk-in"} by ${actor ?? "unknown"}`);
+  return { deleted: true };
 }
 
 /** Reversible household suspend — enforced server-side (LINE bot + booking creation), never a delete. */

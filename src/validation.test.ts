@@ -62,10 +62,15 @@ describe("createCoursePackage — absentWeeks (TASK-148)", () => {
     expect(JSON.stringify(r.error?.issues)).toContain("สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส");
   });
 
-  test("every week absent is refused — that is not a course", () => {
+  test("🔻 every week absent is ACCEPTED — TASK-363 (`REQ-089 §4.2`) reversed TASK-148's cap", () => {
+    // 🔻 This test used to assert the refusal *"that is not a course"*. The OWNER ruled FULL UNLOCK: every planned
+    // row is leaveable, no ceiling — a family must be able to leave an EXTENDED session too, and on a size-4 the
+    // cap refused the very first make-up leave. The engine appends a make-up per absence, so an all-absent
+    // course IS a course: four make-ups. REVERSED with the reason, not deleted.
     const r = createCoursePackage.safeParse({ ...base, absentWeeks: [1, 2, 3, 4] });
-    expect(r.success).toBe(false);
-    expect(JSON.stringify(r.error?.issues)).toContain("ต้องมีคาบที่เรียนจริงอย่างน้อย 1 คาบ");
+    expect(r.success).toBe(true);
+    // 🚫 …and a position beyond the drawn plan is still refused — that rule is TASK-361's, not the cap.
+    expect(createCoursePackage.safeParse({ ...base, absentWeeks: [1, 2, 3, 4, 9] }).success).toBe(false);
   });
 
   test("week 0 / negative / fractional are rejected by the shape", () => {

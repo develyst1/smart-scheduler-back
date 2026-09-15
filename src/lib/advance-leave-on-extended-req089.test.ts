@@ -69,12 +69,13 @@ describe("🔴 the validator — the LOCK is gone, the CAP stays", () => {
     expect(v.createCoursePackage.safeParse(body(4, [2, 7])).success).toBe(false);
   });
 
-  test("🚫 the CAP `< size` still refuses a course that is all leave — the customer asked for the lock to go, not the cap", () => {
+  test("🔻 the CAP `< size` is GONE too — TASK-363: the owner ruled FULL UNLOCK the same day this file was written", () => {
+    // 🔻 TASK-361 kept the cap on instruction ("the lock goes, not the cap"); `REQ-089 §4.2` then removed it. The
+    // claim this file makes about the LOCK is unchanged; the cap's fate is TASK-363's and pinned there.
     const r = v.createCoursePackage.safeParse(body(4, [1, 2, 3, 4]));
-    expect(r.success).toBe(false);
-    expect(JSON.stringify((r as any).error?.issues)).toContain("ลาทุกสัปดาห์ไม่ได้");
+    expect(r.success).toBe(true);
     const VAL = code(src("src/validation.ts"));
-    expect(VAL).toContain("new Set(d.absentWeeks).size < d.size");
+    expect(VAL).not.toContain("new Set(d.absentWeeks).size < d.size");
     // …and the lock is gone from the source, not just from the result.
     expect(VAL).not.toContain("d.absentWeeks.every((w) => w <= d.size)");
     expect(VAL).toContain("plannedRowExists(w, d.size, new Set(d.absentWeeks))");

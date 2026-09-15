@@ -279,12 +279,16 @@ export const createCoursePackage = z
   // and the create use. A position beyond the drawn plan is still refused: it names a row nobody will see.
   .refine((d) => !d.absentWeeks || d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks))), {
     message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส",
-  })
-  // TASK-148: the whole course can't be absent — that isn't a course. 🚫 TASK-361 keeps this CAP: the customer
-  // asked for the lock to go, not the cap.
-  .refine((d) => !d.absentWeeks || new Set(d.absentWeeks).size < d.size, {
-    message: "ลาทุกสัปดาห์ไม่ได้ — ต้องมีคาบที่เรียนจริงอย่างน้อย 1 คาบ",
   });
+  // 🔻 TASK-363 (`REQ-089 §4.2`) — THE CAP IS GONE. A `< size` refine stood here since TASK-148 (*"the whole
+  // course can't be absent — that isn't a course"*), and TASK-361 kept it while removing the lock. The OWNER then
+  // ruled FULL UNLOCK: *every planned row leaveable, no ceiling, advance leave still free* — the case being a
+  // family that must leave an EXTENDED session too, where on a size-4 the cap refused the very first make-up
+  // leave. ⇒ a course may be born with EVERY original absent; the engine appends a make-up for each, and
+  // `plannedRowCount` still terminates (rows ≤ size + |absent|) — both pinned with values.
+  // 🚫 No request bound was added in its place: "no ceiling" is the ruling, and a bound is a DECISION (on the
+  // owner's list with a number). The only refusal left is the existence rule above: a position beyond the
+  // drawn plan names a row nobody will see.
 
 // TASK-095 — generate the editable `size`-row plan without writing (purchase-time preview).
 export const previewCourse = z.object({

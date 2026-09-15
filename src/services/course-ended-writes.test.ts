@@ -62,6 +62,9 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /parents/:id/suspend": "unrelated",
   "POST /parents/:id/unsuspend": "unrelated",
   "PATCH /students/:id": "unrelated",
+  // TASK-364 — a delete is refused OUTRIGHT for a student with any course row, ended ones included (the count has
+  // no status filter), so an ended course is never touched: it is the thing that makes the delete impossible.
+  "DELETE /students/:id": "unrelated",
   "POST /teacher-link-requests/:id/approve": "unrelated",
   "POST /teacher-link-requests/:id/reject": "unrelated",
   "POST /teachers": "unrelated",

@@ -38,7 +38,10 @@ export const api = new Hono()
   .post("/students", zValidator("json", v.createStudent), async (c) =>
     c.json(await parent.createStudent(c.req.valid("json")), 201),
   )
-  // ── People management (REQ-019 / TASK-048) — staff only. Nothing is ever deleted; suspend is the off switch.
+  // ── People management (REQ-019 / TASK-048) — staff only. Nothing is ever deleted; suspend is the off switch —
+  // EXCEPT a student with NO history (TASK-364, REQ-089 item 3): linking parents by LINE produced wrongly-created
+  // children, and a child with no course, booking or voucher has nothing to keep — suspending the family for it
+  // would punish the parent. One with history stays suspend-only; the service refuses with the counts.
   .get("/parents", zValidator("query", v.parentsQuery), async (c) => {
     const { q, limit, offset } = c.req.valid("query");
     return c.json(await parent.listParents(q, limit, offset));
@@ -71,6 +74,10 @@ export const api = new Hono()
   )
   .patch("/students/:id", zValidator("json", v.updateStudent), async (c) =>
     c.json(await parent.updateStudent(c.req.param("id"), c.req.valid("json"))),
+  )
+  // TASK-364 — hard delete, history-free only; `409 STUDENT_HAS_HISTORY` otherwise. Actor from the TOKEN.
+  .delete("/students/:id", async (c) =>
+    c.json(await parent.deleteStudent(c.req.param("id"), c.get("user")?.sub ?? null)),
   )
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
   .get("/attention", async (c) => c.json(await attention.getAttention()))
