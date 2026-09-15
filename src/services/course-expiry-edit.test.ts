@@ -249,7 +249,8 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
     const c = code(SVC);
     // TASK-282 §7 — the signature carries the RE-PLAN's body now. The actor is what this test is about and it
     // is untouched; only the input beside it changed.
-    expect(c).toContain("input: { startDate: string; startTime: string },");
+    // 🔻 TASK-359 — the body gained an OPTIONAL `teacherId`; the actor beside it is still untouched.
+    expect(c).toContain("input: { startDate: string; startTime: string; teacherId?: string },");
     expect(c).toContain("actor?: string | null,");
     expect(c).not.toContain("_actor?: string | null");
     expect(ROUTES).toContain('svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)');

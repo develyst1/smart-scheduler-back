@@ -89,6 +89,7 @@ import {
   replanExpiry,
   deriveLiveEndDate,
   courseBornCeiling,
+  plannedRowCount,
   exceedsExtensionCeiling,
   isCoursePlanRow,
   isDelivered,
@@ -1726,6 +1727,28 @@ export async function createCoursePackage(input: any) {
     // `leaveUsed` is deliberately NOT touched: an absence declared at creation is free (owner decision B).
     if (absentWeeks.size) await reconcileCoursePlan(tx, course.id);
 
+    // 🔻 TASK-361 (`REQ-089 item 1`) — a declared absence on a MAKE-UP row. The engine has just appended the
+    // make-ups (positions `size+1…`, in date order after the chain); any of those whose position was declared
+    // absent is flipped to `SICK_LEAVE` + `plannedAtCreation` — exactly what a chain-week absence is born as —
+    // and the SAME engine is asked again, which appends one more make-up for it, linked through
+    // `extendedFromId` like every other. Repeat until nothing is left to flip: a make-up of a make-up is the
+    // same case one row later. 🔑 ONE placement engine on the save side (`reconcileCoursePlan`, via
+    // `findFreeExtensionDate` from the last planned date), which is the loop the preview mirrors — so the
+    // finished course is the previewed one. The row positions are `plannedRowCount`'s, the third caller.
+    const wanted = plannedRowCount(input.size, absentWeeks);
+    for (let guard = 0; guard < wanted; guard++) {
+      const ordered = await tx.query.bookings.findMany({
+        where: (b: any, { eq: e, and: a, ne: n }: any) => a(e(b.courseId, course.id), n(b.status, "CANCELLED")),
+        orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
+      });
+      const toFlip = ordered.filter((r: any, i: number) => i + 1 > input.size && absentWeeks.has(i + 1) && r.status !== "SICK_LEAVE");
+      if (!toFlip.length) break;
+      for (const r of toFlip) {
+        await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true }).where(eq(bookings.id, r.id));
+      }
+      await reconcileCoursePlan(tx, course.id);
+    }
+
     const courseRow = await tx.query.coursePackages.findFirst({
       where: (c, { eq }) => eq(c.id, course.id),
       with: { student: true },
@@ -2029,13 +2052,19 @@ export async function previewCoursePackage(input: {
   // (`findFreeExtensionDate`), sequentially, with the dates placed so far treated as occupied. Placing them at
   // naive weekly slots made the previewed **end date** wrong whenever the teacher's slot was taken — and the end
   // date is the preview's headline (AC-1), so a wrong one defeats REQ-045's "create it right the first time".
+  // 🔻 TASK-361 (`REQ-089 item 1`) — make-ups are appended until the plan holds `size` LIVE rows, and a make-up
+  // whose position is declared absent is drawn `absent: true, makeup: true` (both flags — the FE renders from
+  // them) and earns a make-up of its own. The loop's stop condition IS `plannedRowCount`'s rule, so the preview
+  // draws exactly the rows the validator admits and the create flips. 🚫 It used to append `absent.size` rows
+  // flat, which was the same number only while an absence could never fall on a make-up.
   const takenByThisPreview = new Set<string>();
   let fromDate = sessions[sessions.length - 1]?.date ?? input.startDate;
-  for (let k = 0; k < absent.size; k++) {
+  const rowsWanted = plannedRowCount(input.size, absent);
+  while (sessions.length < rowsWanted) {
     const date = await findFreeExtensionDate(db, input.teacherId, input.startTime, fromDate, takenByThisPreview);
     takenByThisPreview.add(date);
     fromDate = date;
-    sessions.push({ date, ...ref, absent: false, makeup: true });
+    sessions.push({ date, ...ref, absent: absent.has(sessions.length + 1), makeup: true });
   }
   const live = sessions.filter((s) => !s.absent);
   // 🔴 REQ-085 §12 (TASK-309 §2) — **the preview reports the boundary the plan actually NEEDS, and refuses
@@ -3765,7 +3794,7 @@ export async function pauseBooking(id: string) {
  * 📌 AC-16 needed no code: the row becomes `CONFIRMED` with a date, which every downstream path already treats
  * as ordinary — which is the evidence that §1's representation was the right one.
  */
-export async function resumeBooking(id: string, input: { date: string; startTime: string }) {
+export async function resumeBooking(id: string, input: { date: string; startTime: string; teacherId?: string }) {
   return db.transaction(async (tx: any) => {
     const current = await tx.query.bookings.findFirst({
       where: (b: any, { eq: e }: any) => e(b.id, id),
@@ -3775,6 +3804,15 @@ export async function resumeBooking(id: string, input: { date: string; startTime
       throw conflict("NOT_PAUSED", "คาบนี้ไม่ได้พักอยู่ — ไม่ต้องกดนำกลับมา");
     }
 
+    // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume. Absent ⇒ the booking's own teacher,
+    // exactly as before. Present ⇒ the CREATE path's own guard runs on the chosen teacher — `assertTeacherBookable`
+    // (exists · not archived · works that weekday · budget), the ONE guard `insertBooking` runs — and the row is
+    // re-pointed at them. 🚫 No subject rule: the create path has none server-side, and this door does not
+    // invent one. 📌 The existing `booking_resumed` send below reads the row AFTER this update, so it goes to
+    // the NEW teacher; the old one is told nothing (item 7's family, not this task).
+    const teacherId = input.teacherId ?? current.teacherId;
+    if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date);
+
     try {
       await tx
         .update(bookings)
@@ -3783,6 +3821,7 @@ export async function resumeBooking(id: string, input: { date: string; startTime
           date: input.date,
           startTime: input.startTime,
           endTime: addHour(input.startTime),
+          teacherId,
         })
         .where(eq(bookings.id, id));
     } catch (e: any) {
@@ -3790,7 +3829,8 @@ export async function resumeBooking(id: string, input: { date: string; startTime
       // uses. ⚠️ `describeSlotClash` reads on `db`, not `tx`, because a `23505` aborts the transaction — the
       // lookup that explains the refusal cannot run inside the one it just broke (TASK-238's lesson).
       if (pgErrorCode(e) === "23505") {
-        throw conflict("SLOT_TAKEN", await describeSlotClash(current.teacherId, input.date, input.startTime));
+        // …and the clash names the CHOSEN teacher, whose slot it is.
+        throw conflict("SLOT_TAKEN", await describeSlotClash(teacherId, input.date, input.startTime));
       }
       throw e;
     }
@@ -4016,7 +4056,7 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
  */
 export async function resumeCourse(
   id: string,
-  input: { startDate: string; startTime: string },
+  input: { startDate: string; startTime: string; teacherId?: string },
   actor?: string | null,
 ) {
   return db.transaction(async (tx: any) => {
@@ -4090,7 +4130,12 @@ export async function resumeCourse(
     await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });
 
     const studentId = course.studentId;
-    const teacherId = rows[0]?.teacherId ?? null;
+    // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume; present ⇒ that teacher on every
+    // re-planned session, through `insertBooking`, which runs `assertTeacherBookable` per session as create does.
+    // 🔻 TASK-361 — and ABSENT ⇒ the LAST session's teacher, not the first. `rows` is `asc(date), asc(startTime)`,
+    // so `rows[0]` was the course's earliest session: a course reassigned (TASK-094) and then dropped was handed
+    // BACK to its original teacher. The owner ruled: *keep the same teacher* means the one the family LAST had.
+    const teacherId = input.teacherId ?? rows.at(-1)?.teacherId ?? null;
     const subjectId = course.subjectId ?? rows[0]?.subjectId ?? null;
     if (owed > 0 && (!studentId || !teacherId || !subjectId)) {
       throw badRequest("คอร์สนี้ไม่มีข้อมูลครู/วิชา/นักเรียนพอที่จะสร้างคาบใหม่");

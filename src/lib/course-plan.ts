@@ -146,6 +146,34 @@ export function courseBornCeiling(base: string, lastPlanned: string, absences: n
 }
 
 /**
+ * 🔴 TASK-361 (`REQ-089 item 1`) — **which rows a planned course HAS, given which positions are declared absent.**
+ * Owner: *"ตารางที่ลาล่วงหน้า คลาสที่เป็น extended ไม่ต้องล็อกค่ะ สามารถลาได้เหมือนกัน"* — a family may declare
+ * advance leave on a MAKE-UP row too, not only on the `size` chain weeks.
+ *
+ * 🔑 THE RULE, in one sentence: **row `w` exists iff the live rows before it number fewer than `size`.** Rows are
+ * laid out one after another; each row is live unless its position is declared absent; the plan stops the
+ * moment `size` live rows exist. ⇒ the plan is `size + (number of declared positions that exist)` rows long,
+ * and a declared position beyond that length names a row that will never be drawn — refused by the validator.
+ * 📌 ONE function, THREE callers: the validator (refuse a position that does not exist), the PREVIEW (draw
+ * exactly these rows) and the CREATE (flip exactly these make-ups). *The preview and the save agree because
+ * they ask the same function, not because two loops happen to match.*
+ * ⚠️ Terminates because `absent` is finite: past its largest member every row is live.
+ */
+export function plannedRowCount(size: number, absent: ReadonlySet<number>): number {
+  let live = 0;
+  let w = 0;
+  while (live < size) {
+    w += 1;
+    if (!absent.has(w)) live += 1;
+  }
+  return w;
+}
+
+/** Row `w` (1-based) is part of the plan `size` and `absent` describe. */
+export const plannedRowExists = (w: number, size: number, absent: ReadonlySet<number>): boolean =>
+  Number.isInteger(w) && w >= 1 && w <= plannedRowCount(size, absent);
+
+/**
  * The moves to bring a course back to `size` teachable sessions.
  * - short  (`current < size`): append `size − current` sessions, each linked to an unmatched SICK_LEAVE.
  * - long   (`current > size`): cancel the newest-dated `EXTENDED` (appended) sessions — never an

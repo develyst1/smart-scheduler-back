@@ -178,7 +178,11 @@ describe("🔴 resume — AC-13 · AC-14 · AC-16", () => {
   });
 
   test("AC-14 — the EXISTING clash refusal, not a second message", () => {
-    expect(RESUME).toContain("describeSlotClash(current.teacherId, input.date, input.startTime)");
+    // 🔻 TASK-359 (`REQ-089 item 8`) — the clash names the CHOSEN teacher (`teacherId` = the picked one, or the
+    // booking’s own when none was picked — which is `current.teacherId`, exactly as before). The CLAIM is
+    // unchanged: the EXISTING refusal, one clash rule in the product.
+    expect(RESUME).toContain("const teacherId = input.teacherId ?? current.teacherId;");
+    expect(RESUME).toContain("describeSlotClash(teacherId, input.date, input.startTime)");
     expect(RESUME).toContain('conflict("SLOT_TAKEN"');
     // 🚫 No second wording anywhere in the service: one clash rule in the product.
     expect(code(SVC)).not.toContain("มีคาบสอนช่วงเวลานี้อยู่แล้ว");

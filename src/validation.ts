@@ -2,6 +2,7 @@ import { z } from "zod";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
+import { plannedRowExists } from "./lib/course-plan";
 
 // TASK-160: declared early so the sale schemas below can reference it.
 export const discountInput = z.object({
@@ -271,11 +272,16 @@ export const createCoursePackage = z
   .refine((d) => !d.sessions || d.sessions.every((s) => !s.subjectId || s.subjectId === d.subjectId), {
     message: "ทุกคาบในคอร์สต้องเป็นกิจกรรมเดียวกัน",
   })
-  // TASK-148: an absent week must name a real week of THIS course, and the whole course can't be absent —
-  // that isn't a course, and it would ask the engine to append `size` make-ups past the ceiling.
-  .refine((d) => !d.absentWeeks || d.absentWeeks.every((w) => w <= d.size), {
+  // 🔻 TASK-361 (`REQ-089 item 1`) — THE LOCK IS GONE. This read `w <= d.size`: a declared absence could name only
+  // one of the `size` chain weeks, so an `Extended` (make-up) row could never be declared absent. The customer:
+  // *"คลาสที่เป็น extended ไม่ต้องล็อกค่ะ สามารถลาได้เหมือนกัน"*. ⇒ a position may name ANY row the plan draws,
+  // make-ups included — and the rule for which rows exist is `plannedRowExists`, the SAME function the preview
+  // and the create use. A position beyond the drawn plan is still refused: it names a row nobody will see.
+  .refine((d) => !d.absentWeeks || d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks))), {
     message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส",
   })
+  // TASK-148: the whole course can't be absent — that isn't a course. 🚫 TASK-361 keeps this CAP: the customer
+  // asked for the lock to go, not the cap.
   .refine((d) => !d.absentWeeks || new Set(d.absentWeeks).size < d.size, {
     message: "ลาทุกสัปดาห์ไม่ได้ — ต้องมีคาบที่เรียนจริงอย่างน้อย 1 คาบ",
   });
@@ -678,6 +684,9 @@ export const dropCourse = z.object({
 export const resumeBooking = z.object({
   date: DATE,
   startTime: TIME,
+  // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume. OPTIONAL: absent ⇒ the booking's own
+  // teacher, byte for byte as before; present ⇒ that teacher on the resumed row and in the clash message.
+  teacherId: ID.optional(),
 });
 /**
  * 🔴 TASK-282 §7 — **the course-CREATION question, and it is REQUIRED.** A resume is a RE-PLAN
@@ -700,6 +709,9 @@ export const resumeBooking = z.object({
 export const resumeCourse = z.object({
   startDate: DATE,
   startTime: TIME,
+  // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume. OPTIONAL: absent ⇒ the course's
+  // first session's teacher, byte for byte as before; present ⇒ that teacher on every re-planned session.
+  teacherId: ID.optional(),
 });
 
 /**
