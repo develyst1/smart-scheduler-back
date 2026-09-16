@@ -101,7 +101,8 @@ describe("🔴 the wiring — ONE grouped read before the loop, both readers, no
   test("the calendar resolves it ONCE, before the loop, from the range's own rows — no per-row query", () => {
     expect(CAL).toContain("const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId)");
     expect(CAL).toContain("courseLast: isCourseLast(row, lastByCourse)");
-    const loop = region(CAL, "for (const row of bookingRows) {", "return {");
+    // TASK-368 §5.1 added the cancelled TRAY read after this loop, so the region ends at the loop’s own close.
+    const loop = region(CAL, "for (const row of bookingRows) {", "\n  }\n");
     expect(loop).not.toContain("await");
   });
 

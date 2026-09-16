@@ -2,13 +2,14 @@
 // `class_cancelled_teacher` per single cancel, one `course_dropped_teacher` per course PER COACH on a drop or an
 // end. The owner's hard constraint is the HOUSE FORMAT (`leave_notice`'s shape), so the renderings are pinned by
 // FORM — the bilingual stamp, the customer's `Label : value` block in his field order, the appended lines — and
-// deliberately NOT by the words in the stamps: those are placeholders until the owner has seen them.
+// ALSO by the bytes of the words since the owner approved them as drafted (`§6.1`) — the `ob_deduct_title` convention.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cancelReasonText, formatOutboxMessage } from "./line-message";
 import { TEMPLATE_FIELDS, TEMPLATE_NONE } from "./line-message-fields";
 import { END_REASONS } from "./course-plan";
+import { t } from "./line-i18n";
 import { readSrc } from "./read-src";
 
 const src = (f: string) => readSrc(readFileSync(resolve(import.meta.dir, "..", "..", f), "utf8"));
@@ -44,7 +45,8 @@ describe("🔑 `class_cancelled_teacher` — `leave_notice`'s shape, line for li
 
   test("the FORM: a bilingual stamp with ‼️, then the customer's block in his order, then Reason", () => {
     const lines = render("TH").split("\n");
-    expect(lines[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/); // `LEAVE NOTICE / แจ้งลา ‼️`'s shape — words not frozen
+    expect(lines[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/); // `LEAVE NOTICE / แจ้งลา ‼️`'s shape
+    expect(lines[0]).toBe("CLASS CANCELLED / ยกเลิกคาบ ‼️"); // …and the owner's bytes (§6.1)
     expect(lines.slice(1)).toEqual([
       "Student : มะขิด",
       "Program : Freeskate 6 HR",
@@ -170,9 +172,26 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
     expect(code(src("src/lib/line.ts"))).toContain('status: "SKIPPED",');
   });
 
-  test("the words are PLACEHOLDERS, said so beside the keys; the reason labels cover exactly END_REASONS", () => {
+  test("🔒 the owner's words, byte-frozen (§6.1): three stamps, one label, three reason labels — 7 keys, 14 values", () => {
+    const FROZEN: Record<string, { TH: string; EN: string }> = {
+      ob_class_cancelled_title: { TH: "CLASS CANCELLED / ยกเลิกคาบ ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบ ‼️" },
+      ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
+      ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
+      ob_f_reason: { TH: "Reason", EN: "Reason" },
+      ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },
+      ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },
+      ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
+    };
+    expect(Object.keys(FROZEN).length).toBe(7);
+    for (const [k, v] of Object.entries(FROZEN)) {
+      expect({ k, TH: t(k, "TH"), EN: t(k, "EN") }).toEqual({ k, ...v });
+    }
+  });
+
+  test("the approval is written beside the keys, the placeholder marker is gone; the reason labels cover exactly END_REASONS", () => {
     const I18N = src("src/lib/line-i18n.ts");
-    expect(I18N).toContain("PLACEHOLDERS — MINE, and the customer has NOT seen them** (TASK-370");
+    expect(I18N).toContain("APPROVED by the owner as drafted (`§6.1`), END path kept (`§6.2`)");
+    expect(I18N).not.toMatch(/PLACEHOLDERS? — MINE[^\n]*TASK-370/);
     for (const c of END_REASONS) expect(I18N).toContain(`ob_reason_${c}:`);
     expect((I18N.match(/ob_reason_[A-Z_]+:/g) ?? []).length).toBe(END_REASONS.length);
   });

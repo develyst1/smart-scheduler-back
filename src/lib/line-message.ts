@@ -276,8 +276,8 @@ function buildOutboxMessage(
     }
     // 🔴 TASK-370 (`REQ-089 §6`, item 7) — a CONFIRMED class the coach was expecting is gone. The owner's hard
     // constraint is the HOUSE FORMAT, so both bodies are `leave_notice`'s shape: the bilingual stamp, the
-    // customer's block, then `extra`-shaped appended lines. 📖 The words in the stamps and the `Reason` labels
-    // are PLACEHOLDERS the owner has not seen — see `line-i18n.ts`.
+    // customer's block, then `extra`-shaped appended lines. ✅ The words in the stamps and the `Reason` labels
+    // are the owner's, approved as drafted (`§6.1`) and byte-frozen — see `line-i18n.ts`.
     case "class_cancelled_teacher": {
       const type = notifyTypeOf(payload.bookingType as string);
       return (

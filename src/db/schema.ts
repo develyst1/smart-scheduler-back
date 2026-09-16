@@ -106,15 +106,6 @@ export const SLOT_INACTIVE_STATUSES = ["CANCELLED", "PENDING_RESCHEDULE", "SICK_
  */
 export const CALENDAR_HIDDEN_STATUSES = ["CANCELLED", "PAUSED"] as const;
 
-/**
- * TASK-368 (REQ-089 §5, item 4) — the admin calendar's hidden list for ONE request: the named list, minus
- * `CANCELLED` when the admin asks to see cancelled sessions. A subtraction from the one list, not a second list
- * and not a branch in the query — `PAUSED` stays hidden either way, and a status added to the list above is
- * hidden on both paths without anyone remembering this function.
- */
-export const calendarHiddenStatuses = (includeCancelled: boolean): (typeof CALENDAR_HIDDEN_STATUSES)[number][] =>
-  includeCancelled ? CALENDAR_HIDDEN_STATUSES.filter((s) => s !== "CANCELLED") : [...CALENDAR_HIDDEN_STATUSES];
-
 /** The same list as SQL literals, for the index predicate. Inlined verbatim — see the index's own comment. */
 const SLOT_INACTIVE_SQL = SLOT_INACTIVE_STATUSES.map((s) => `'${s}'`).join(", ");
 

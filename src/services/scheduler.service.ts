@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { calendarHiddenStatuses, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -133,7 +133,6 @@ import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
-import { cellRank } from "../lib/calendar-cell";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -485,8 +484,6 @@ export async function liveEndDatesForCourses(courseIds: string[], exec: any = db
 
 export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }) {
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
-  // TASK-368: the ONE hidden list, minus CANCELLED when the admin asks — a subtraction, not a second query.
-  const hidden = calendarHiddenStatuses(input.includeCancelled ?? false);
   const days = datesBetween(range.start, range.end);
 
   const [teacherRows, order] = await Promise.all([
@@ -518,8 +515,9 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
         // on the grid — while every `SLOT_INACTIVE_STATUSES` test passed, because that list feeds the unique
         // index and the availability checks, **not this query**. Two lists, two questions; `SICK_LEAVE` is in
         // the other one and is deliberately still shown here (see the overlap resolution below).
-        // TASK-368: `hidden` IS that list (minus CANCELLED on request) — see `calendarHiddenStatuses`.
-        notInArray(b.status, hidden),
+        // TASK-368 (owner §5.1): cancelled sessions NEVER enter the grid — on request they ride in the
+        // `cancelled` tray below, read separately. This list is the constant, untouched.
+        notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
         // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
         // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
         eq(b.pendingSlot, false),
@@ -540,13 +538,26 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
     // the SICK_LEAVE record it replaced — surface the active booking, not the leave one.
-    // TASK-368: with `includeCancelled` a CANCELLED row can share a slot with whatever was booked into the
-    // slot it freed. Precedence LIVE > SICK_LEAVE > CANCELLED — a cancelled row never displaces anything and
-    // anything displaces it (`cellRank`, pure).
-    if (!cur || cellRank(dto.status) > cellRank(cur.status)) {
+    if (!cur || (cur.status === "SICK_LEAVE" && dto.status !== "SICK_LEAVE")) {
       idx.set(key, dto);
     }
   }
+
+  // TASK-368 (REQ-089 §5.1) — the cancelled TRAY, on request: every CANCELLED row in range, in date/time order,
+  // as a top-level list beside the grid — the owner wants them in their own box next to the paused tray, never
+  // on the grid. A separate read, so the grid query and its cell rule are exactly today's; the key is absent
+  // when not asked for, so today's response is byte-for-byte (the FE reads `?? []`).
+  const cancelled = input.includeCancelled
+    ? await (async () => {
+        const rows = await db.query.bookings.findMany({
+          where: (b, { and, eq, gte, lte }) => and(gte(b.date, range.start), lte(b.date, range.end), eq(b.status, "CANCELLED")),
+          with: withBookingRelations,
+          orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)],
+        });
+        const rentedToo = await bookingsWithRentals(rows.map((b) => b.id));
+        return rows.map((row) => toBookingDTO(row, { hasRental: rentedToo.has(row.id) }));
+      })()
+    : undefined;
 
   return {
     view: input.view,
@@ -565,6 +576,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
         }));
       return { date, columns };
     }),
+    ...(cancelled ? { cancelled } : {}),
   };
 }
 
@@ -2499,7 +2511,7 @@ async function sendLeaveNotice(
  *
  * ✅ Non-throwing by `enqueueLine`'s contract: an unlinked coach gets a SKIPPED row, never a failed cancel.
  * 🚫 The parent is not a recipient here — the paths that told the parent before tell them the same today.
- * 📖 The WORDS are placeholders until the owner has seen them (`line-i18n.ts`); the plumbing is final.
+ * ✅ The WORDS are the owner's — approved as drafted (`§6.1`), END kept (`§6.2`), byte-frozen in `line-i18n.ts`.
  */
 const confirmedOnly = <T extends { status: string }>(rows: T[]): T[] => rows.filter((r) => r.status === "CONFIRMED");
 

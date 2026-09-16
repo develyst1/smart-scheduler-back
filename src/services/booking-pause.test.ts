@@ -88,10 +88,10 @@ describe("🔴 the TWO lists — §1a's trap, asserted as two separate questions
     // backwards slice silently yields "" — which would make this assertion pass against nothing at all.
     const at = code(SVC).indexOf("const bookingRows =");
     const calendarQuery = code(SVC).slice(at, code(SVC).indexOf("const rented =", at));
-    // TASK-368: the list is now handed in as `hidden` = `calendarHiddenStatuses(includeCancelled)` — the SAME
-    // named list, minus CANCELLED on request. Still the list, still not a hand-written exclusion.
-    expect(calendarQuery).toContain("notInArray(b.status, hidden)");
-    expect(code(SVC)).toContain("const hidden = calendarHiddenStatuses(input.includeCancelled ?? false);");
+    // TASK-368 (owner §5.1): cancelled sessions ride in a separate TRAY, never on the grid — so the grid query
+    // is the constant again, byte for byte. (An earlier shape subtracted CANCELLED from this list on request;
+    // the owner ruled it out, and the literal below is the pin that says so.)
+    expect(calendarQuery).toContain("notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES])");
     expect(calendarQuery).not.toContain('ne(b.status, "CANCELLED")');
   });
 
@@ -100,9 +100,7 @@ describe("🔴 the TWO lists — §1a's trap, asserted as two separate questions
     // the active booking's favour. One list hiding both would delete a shipped behaviour nobody asked about.
     expect([...SLOT_INACTIVE_STATUSES]).toContain("SICK_LEAVE");
     expect([...CALENDAR_HIDDEN_STATUSES]).not.toContain("SICK_LEAVE");
-    // TASK-368: the overlap rule is now `cellRank` (LIVE > SICK_LEAVE > CANCELLED) — the leave still yields to
-    // the live row, and `lib/calendar-cell.test.ts` pins that with values; here, only that the rule is applied.
-    expect(code(SVC)).toContain("cellRank(dto.status) > cellRank(cur.status)"); // the overlap rule, extended not removed
+    expect(code(SVC)).toContain('cur.status === "SICK_LEAVE"'); // the overlap rule, untouched (TASK-368 §5.1: a cancelled row never enters the cell map)
   });
 
   test("each list says which question it answers", () => {
