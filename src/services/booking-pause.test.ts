@@ -88,7 +88,10 @@ describe("🔴 the TWO lists — §1a's trap, asserted as two separate questions
     // backwards slice silently yields "" — which would make this assertion pass against nothing at all.
     const at = code(SVC).indexOf("const bookingRows =");
     const calendarQuery = code(SVC).slice(at, code(SVC).indexOf("const rented =", at));
-    expect(calendarQuery).toContain("notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES])");
+    // TASK-368: the list is now handed in as `hidden` = `calendarHiddenStatuses(includeCancelled)` — the SAME
+    // named list, minus CANCELLED on request. Still the list, still not a hand-written exclusion.
+    expect(calendarQuery).toContain("notInArray(b.status, hidden)");
+    expect(code(SVC)).toContain("const hidden = calendarHiddenStatuses(input.includeCancelled ?? false);");
     expect(calendarQuery).not.toContain('ne(b.status, "CANCELLED")');
   });
 
@@ -97,7 +100,9 @@ describe("🔴 the TWO lists — §1a's trap, asserted as two separate questions
     // the active booking's favour. One list hiding both would delete a shipped behaviour nobody asked about.
     expect([...SLOT_INACTIVE_STATUSES]).toContain("SICK_LEAVE");
     expect([...CALENDAR_HIDDEN_STATUSES]).not.toContain("SICK_LEAVE");
-    expect(code(SVC)).toContain('cur.status === "SICK_LEAVE"'); // the overlap rule, untouched
+    // TASK-368: the overlap rule is now `cellRank` (LIVE > SICK_LEAVE > CANCELLED) — the leave still yields to
+    // the live row, and `lib/calendar-cell.test.ts` pins that with values; here, only that the rule is applied.
+    expect(code(SVC)).toContain("cellRank(dto.status) > cellRank(cur.status)"); // the overlap rule, extended not removed
   });
 
   test("each list says which question it answers", () => {

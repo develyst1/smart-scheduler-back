@@ -65,6 +65,13 @@ const TEACHER_TYPE = z.enum(["FULL_TIME", "PART_TIME", "FREELANCE"]);
 export const calendarQuery = z.object({
   date: DATE,
   view: z.enum(["day", "week"]).default("day"),
+  // TASK-368 (REQ-089 §5) — show the range's CANCELLED sessions too (display only). The `archived` pattern, NOT
+  // `z.coerce.boolean()`: coercion makes the string "false" true. "true" is on; "false", absent are off; anything
+  // else is a 400.
+  includeCancelled: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 export const reportQuery = z.object({ date: DATE });

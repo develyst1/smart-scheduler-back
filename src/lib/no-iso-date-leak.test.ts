@@ -98,7 +98,9 @@ describe("🔴 TASK-345 — NO message emits a RAW ISO date. ONE assertion, ever
     // are indistinguishable from the assertion's side.** This is the floor that tells them apart.
     const all = everyRendering();
     expect(all.length).toBeGreaterThanOrEqual((KINDS.length + 1) * 4);
-    expect(KINDS.length).toBe(15);
+    // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
+    // class is gone). The number moved because the walkers reached them — which is the point.
+    expect(KINDS.length).toBe(17);
     // …and every rendering is non-trivial: a builder returning `""` would satisfy the ISO assertion perfectly.
     for (const { where, out } of all) expect({ where, empty: out.trim().length === 0 }).toEqual({ where, empty: false });
   });

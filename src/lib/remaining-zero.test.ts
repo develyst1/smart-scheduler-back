@@ -99,7 +99,9 @@ describe("🔑 TASK-332 — the expression, and why it is a HELPER rather than a
     // they moved because they were emitting RAW ISO DATES to a reader.
     // 🔑 **The claim this line makes is unchanged and is still the one that matters: the survivors are
     // CORRECT and nobody may 'consistency-fix' them.**
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(6);
+    // 🔻 TASK-370 — EIGHT: the two coach notices mirror `leave_notice`'s own `(payload.studentName as string) ||`
+    // line for line (the house format is the owner's hard constraint). Same shape, same reason, still not for fixing.
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(8);
     expect(src("src/lib/line-message.ts")).toContain("Changing them \"for consistency\" would delete a rule the customer asked for.");
     // …and the three that fall through to `-` are still the safe shape: a `-` is visible, a missing line is not.
     expect(MSG).toContain('student: (payload.studentName as string) || ctx.studentName || "-",');

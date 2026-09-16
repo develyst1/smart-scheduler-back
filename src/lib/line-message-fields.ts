@@ -59,7 +59,11 @@ export type TemplateKey =
   // 🔴 REQ-085 §9.1 (TASK-305) — the LEAVE NOTICE. The only §7 format that ADDS a message rather than
   // re-wording one: a parent declares leave, the parent is told, and **the teacher is not** — so a coach
   // can arrive for a session the student cancelled.
-  | "leave_notice";
+  | "leave_notice"
+  // TASK-370 (REQ-089 §6) — the teacher is told a CONFIRMED class is gone: the `leave_notice` shape, and for
+  // the bulk one (a drop / an end) minus the per-session fields — the dates ride as an appended list.
+  | "class_cancelled"
+  | "course_dropped";
 
 export type FieldKey =
   | "student"
@@ -106,6 +110,8 @@ export const TEMPLATE_FIELDS: Record<TemplateKey, readonly FieldKey[]> = {
   // this in their OWN chat and already knows it is theirs, while the admin receives every coach's — and
   // without it, three leaves from three teachers in one day arrive looking identical.
   leave_notice: ["student", "program", "date", "time", "coach"],
+  class_cancelled: ["student", "program", "date", "time", "coach"],
+  course_dropped: ["student", "program", "coach"],
 };
 
 /**

@@ -137,6 +137,8 @@ describe("🔴 TASK-337 — the REASON is in the code, because the comment matte
     // they moved because they were emitting RAW ISO DATES to a reader.
     // 🔑 **The claim this line makes is unchanged and is still the one that matters: the survivors are
     // CORRECT and nobody may 'consistency-fix' them.**
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(6);
+    // 🔻 TASK-370 — EIGHT: the two coach notices mirror `leave_notice`'s own `(payload.studentName as string) ||`
+    // line for line (the house format is the owner's hard constraint). Same shape, same reason, still not for fixing.
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(8);
   });
 });

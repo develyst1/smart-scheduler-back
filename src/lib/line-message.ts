@@ -5,6 +5,7 @@
 import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
 import { ddmmyyyy } from "./time";
+import { isEndReason } from "./course-plan";
 import { buildDigestMessage } from "./attention";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
@@ -95,6 +96,19 @@ const fieldValue = (v: unknown): string | undefined => {
   const s = String(v);
   return s.trim() ? s : undefined; // `0` → `"0"` · `""` and `"   "` → absent, never a bare label
 };
+
+/**
+ * TASK-370 — the `Reason` a coach reads, and the ONE place the rule lives: the closed code's label when the
+ * code is one of `END_REASONS` (the first labels those codes have ever had — no parent message carries a
+ * reason today), else the human note (`bookings.note` — a drop's `พักคอร์สชั่วคราว`, an end's own sentence,
+ * an admin's typed reason), else `(-)`, the house `TEMPLATE_NONE`. Exported so the three outcomes are pinned
+ * without a message around them.
+ */
+export function cancelReasonText(code: unknown, note: unknown, lang: Lang): string {
+  const c = fieldValue(code);
+  if (c && isEndReason(c)) return t(`ob_reason_${c}`, lang);
+  return fieldValue(note) ?? TEMPLATE_NONE;
+}
 
 /**
  * 🔴 TASK-345 — a DATE as a field: `fieldValue`'s guard, then `time.ts`'s ONE formatter.
@@ -258,6 +272,55 @@ function buildOutboxMessage(
         // correct only because `validation.attendeeNote`'s `z.string().trim()` cannot deliver whitespace —
         // a fact in a file this one cannot see. 🚫 Do not simplify it back; see `fieldValue`'s note.
         extra(t("ob_f_note", lang), fieldValue(payload.attendeeNote))
+      );
+    }
+    // 🔴 TASK-370 (`REQ-089 §6`, item 7) — a CONFIRMED class the coach was expecting is gone. The owner's hard
+    // constraint is the HOUSE FORMAT, so both bodies are `leave_notice`'s shape: the bilingual stamp, the
+    // customer's block, then `extra`-shaped appended lines. 📖 The words in the stamps and the `Reason` labels
+    // are PLACEHOLDERS the owner has not seen — see `line-i18n.ts`.
+    case "class_cancelled_teacher": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      return (
+        t("ob_class_cancelled_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_cancelled",
+          {
+            student: ctx.studentName ?? ((payload.studentName as string) || undefined),
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: ctx.coach,
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
+      );
+    }
+    case "course_dropped_teacher": {
+      // One message per course per coach: `dates` are the CONFIRMED classes THIS coach loses, `startTime` /
+      // `endTime` the slot; the count is theirs too. `cause` picks the stamp — a drop and an end are the same
+      // loss to a coach's week, and only the word differs.
+      const dates = Array.isArray(payload.dates) ? (payload.dates as string[]) : [];
+      const title = payload.cause === "ended" ? "ob_course_ended_title" : "ob_course_dropped_title";
+      return (
+        t(title, lang) + "\n" +
+        renderFieldBlock(
+          "course_dropped",
+          {
+            student: ctx.studentName ?? ((payload.studentName as string) || undefined),
+            program: programLabel("COURSE", { subject: ctx.subject, size: payload.size as number }),
+            coach: ctx.coach,
+          },
+          { type: "COURSE", audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_sessions", lang), dates.length ? String(dates.length) : undefined) +
+        // The `**Advance Leave Notice` list's own join (`§7.1`) — the one precedent for dates in the block.
+        extra(t("ob_f_date", lang), dates.length ? dates.map(ddmmyyyy).join(", ") : undefined) +
+        extra(
+          t("ob_f_time", lang),
+          fieldValue(payload.startTime) ? `${payload.startTime}${payload.endTime ? `-${payload.endTime}` : ""}` : undefined,
+        ) +
+        extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
       );
     }
     case "daily_reminder":

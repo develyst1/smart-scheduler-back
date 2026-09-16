@@ -540,6 +540,22 @@ const TABLE: Record<string, Entry> = {
   // the fix is new keys rather than an edit — that is the whole of §3's cause, in one line.
   ob_f_sessions: { TH: "Sessions", EN: "Sessions" },
   ob_f_note: { TH: "Remark", EN: "Remark" },
+  // 📖 **PLACEHOLDERS — MINE, and the customer has NOT seen them** (TASK-370, `REQ-089 §6` item 7). The
+  // teacher is told when a CONFIRMED class is cancelled (single) or a course is dropped / ended (bulk). The
+  // owner's hard constraint is the HOUSE FORMAT, so the shape mirrors `leave_notice` line for line; the only
+  // new words are these stamps, the `Reason` label and the three reason-code labels. ⚠️ **Not ratified:** the
+  // tests pin the FORM (the bilingual stamp with `‼️`, the customer's `Label : value` block) and deliberately
+  // do not byte-freeze the words — the `ob_deduct_title_voucher` convention. The header is Thai-and-English in
+  // both languages exactly as `ob_leave_notice_title` is: the audience is coaches, never a parent.
+  ob_class_cancelled_title: { TH: "CLASS CANCELLED / ยกเลิกคาบ ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบ ‼️" },
+  ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
+  ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
+  ob_f_reason: { TH: "Reason", EN: "Reason" },
+  // The closed cancel/end codes (`END_REASONS`) as words — the first labels these codes have ever had; the
+  // message is the first reader that needs them.
+  ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },
+  ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },
+  ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

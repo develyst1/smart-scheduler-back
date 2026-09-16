@@ -42,7 +42,9 @@ describe("🔴 TASK-327 — NO message emits an un-interpolated placeholder. ONE
     // 🔻 TASK-334 Part A — FIFTEEN now: `teacher_link_approved` gained the `case` whose ABSENCE was live on
     // the deployed build (an approved teacher received the generic default). **The number moving is the
     // point of this assertion, not a nuisance: it is what makes a new kind visible here.**
-    expect(KINDS.length).toBe(15);
+    // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
+    // class is gone). The number moved because the walkers reached them — which is the point.
+    expect(KINDS.length).toBe(17);
     for (const k of ["booking_confirmed", "leave_notice", "sick_leave", "daily_digest"]) {
       expect({ k, present: KINDS.includes(k) }).toEqual({ k, present: true });
     }
@@ -124,6 +126,6 @@ describe("📌 TASK-327 — WHICH branches are safe, and HOW. Two mechanisms, an
     // 📌 The property is asserted, not enforced. If a future branch breaks it, THIS test fails and the fix is
     // a decision someone makes then — rather than a `?? "-"` added today to code a tester is reading.
     expect(MSG).toContain("return buildOutboxMessage(payload, ctx, lang, recipientType).trimEnd();");
-    expect(switchBody.match(/case "/g)!.length).toBe(15);
+    expect(switchBody.match(/case "/g)!.length).toBe(17); // TASK-370: +2, see the kind-list pin
   });
 });

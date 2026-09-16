@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { calendarHiddenStatuses, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -91,6 +91,8 @@ import {
   courseBornCeiling,
   makeupsToFlip,
   plannedRowCount,
+  liveEndDateByCourse,
+  isCourseLast,
   exceedsExtensionCeiling,
   isCoursePlanRow,
   isDelivered,
@@ -131,6 +133,7 @@ import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
+import { cellRank } from "../lib/calendar-cell";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -428,7 +431,9 @@ async function loadBookingDTO(exec: any, id: string) {
   // TASK-190: one id, one lookup — the same helper the batch paths use, so a single booking and the calendar
   // can never disagree about whether it has a rental.
   const rented = await bookingsWithRentals(row ? [row.id] : [], exec);
-  return toBookingDTO(row, { hasRental: rented.has(row?.id) });
+  // TASK-366: one course, one read — the cell's modal opens on this and must agree with the calendar.
+  const lastByCourse = await liveEndDatesForCourses(row?.courseId ? [row.courseId] : [], exec);
+  return toBookingDTO(row, { hasRental: rented.has(row?.id), courseLast: row ? isCourseLast(row, lastByCourse) : false });
 }
 
 // ───────────────────────────── Reads ─────────────────────────────
@@ -460,8 +465,28 @@ export async function bookingsWithRentals(ids: string[], exec: any = db): Promis
     );
   return new Set(rows.map((r: any) => r.refId).filter((r: any): r is string => !!r));
 }
-export async function getCalendar(input: { date: string; view: "day" | "week" }) {
+
+/**
+ * TASK-366 (REQ-089 item 5) — the live end date of every course in `courseIds`, in ONE query: the live rows of
+ * those courses (three columns, on the indexed `course_id`), grouped, `deriveLiveEndDate` per course. The
+ * status pre-filter is `COURSE_LIVE_STATUSES` itself — the constant the function filters by — so it narrows the
+ * read without being a second rule; the function still decides. A calendar week ≈ 90 rows ⇒ ~40 courses ⇒
+ * ≈ 600 rows in one round trip, not one query per course.
+ */
+export async function liveEndDatesForCourses(courseIds: string[], exec: any = db): Promise<Map<string, string | null>> {
+  const ids = [...new Set(courseIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await exec
+    .select({ courseId: bookings.courseId, status: bookings.status, date: bookings.date })
+    .from(bookings)
+    .where(and(inArray(bookings.courseId, ids), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  return liveEndDateByCourse(rows);
+}
+
+export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }) {
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
+  // TASK-368: the ONE hidden list, minus CANCELLED when the admin asks — a subtraction, not a second query.
+  const hidden = calendarHiddenStatuses(input.includeCancelled ?? false);
   const days = datesBetween(range.start, range.end);
 
   const [teacherRows, order] = await Promise.all([
@@ -493,7 +518,8 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
         // on the grid — while every `SLOT_INACTIVE_STATUSES` test passed, because that list feeds the unique
         // index and the availability checks, **not this query**. Two lists, two questions; `SICK_LEAVE` is in
         // the other one and is deliberately still shown here (see the overlap resolution below).
-        notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
+        // TASK-368: `hidden` IS that list (minus CANCELLED on request) — see `calendarHiddenStatuses`.
+        notInArray(b.status, hidden),
         // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
         // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
         eq(b.pendingSlot, false),
@@ -504,15 +530,20 @@ export async function getCalendar(input: { date: string; view: "day" | "week" })
   // TASK-190: ONE query for the whole week, resolved BEFORE the loop — a per-booking lookup here would be ~90
   // round trips to render a grid that otherwise reads in three.
   const rented = await bookingsWithRentals(bookingRows.map((b) => b.id));
+  // TASK-366: the same shape for `courseLast` — one grouped read of the range's courses, resolved before the loop.
+  const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { hasRental: rented.has(row.id) });
+    const dto = toBookingDTO(row, { hasRental: rented.has(row.id), courseLast: isCourseLast(row, lastByCourse) });
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
     // the SICK_LEAVE record it replaced — surface the active booking, not the leave one.
-    if (!cur || (cur.status === "SICK_LEAVE" && dto.status !== "SICK_LEAVE")) {
+    // TASK-368: with `includeCancelled` a CANCELLED row can share a slot with whatever was booked into the
+    // slot it freed. Precedence LIVE > SICK_LEAVE > CANCELLED — a cancelled row never displaces anything and
+    // anything displaces it (`cellRank`, pure).
+    if (!cur || cellRank(dto.status) > cellRank(cur.status)) {
       idx.set(key, dto);
     }
   }
@@ -2456,6 +2487,87 @@ async function sendLeaveNotice(
     tx,
   );
 }
+
+/**
+ * 🔴 TASK-370 (`REQ-089 §6`, item 7) — **the coach is told when a CONFIRMED class is taken off his week.**
+ *
+ * The gate is the status BEFORE the write: only a `CONFIRMED` row earns a message — a PENDING one the coach
+ * never held. Single cancel ⇒ one `class_cancelled_teacher`; a drop or an end ⇒ one `course_dropped_teacher`
+ * PER COACH (a re-teachered course has sessions under two coaches; each is told about HIS dates, and none is
+ * told if none of his were confirmed). `bookingId` is one of the coach's own rows so the worker's enrichment
+ * (student, coach, program) reads a real booking.
+ *
+ * ✅ Non-throwing by `enqueueLine`'s contract: an unlinked coach gets a SKIPPED row, never a failed cancel.
+ * 🚫 The parent is not a recipient here — the paths that told the parent before tell them the same today.
+ * 📖 The WORDS are placeholders until the owner has seen them (`line-i18n.ts`); the plumbing is final.
+ */
+const confirmedOnly = <T extends { status: string }>(rows: T[]): T[] => rows.filter((r) => r.status === "CONFIRMED");
+
+async function sendClassCancelledToTeacher(
+  tx: any,
+  current: { id: string; status: string; teacherId: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null },
+  reason: { cancelReason: string | null; note: string | null },
+) {
+  if (current.status !== "CONFIRMED") return null;
+  const teacher = current.teacherId
+    ? await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, current.teacherId) })
+    : null;
+  return enqueueLine(
+    {
+      recipientType: "teacher",
+      recipientLineUserId: teacher?.lineUserId ?? null,
+      bookingId: current.id,
+      payload: {
+        kind: "class_cancelled_teacher",
+        bookingId: current.id,
+        bookingType: current.bookingType ?? null,
+        size: current.course?.size ?? current.voucher?.totalHours ?? null,
+        cancelReason: reason.cancelReason,
+        note: reason.note,
+      },
+    },
+    tx,
+  );
+}
+
+async function sendCourseDroppedToTeachers(
+  tx: any,
+  course: { id: string; size: number },
+  cancelled: Array<{ id: string; status: string; teacherId: string | null; date: string; startTime: string; endTime: string }>,
+  cause: "dropped" | "ended",
+  reason: { cancelReason: string | null; note: string | null },
+) {
+  const byTeacher = new Map<string, typeof cancelled>();
+  for (const b of confirmedOnly(cancelled)) {
+    if (!b.teacherId) continue;
+    byTeacher.set(b.teacherId, [...(byTeacher.get(b.teacherId) ?? []), b]);
+  }
+  for (const [teacherId, rows] of byTeacher) {
+    const teacher = await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, teacherId) });
+    const ordered = [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const first = ordered[0]!;
+    await enqueueLine(
+      {
+        recipientType: "teacher",
+        recipientLineUserId: teacher?.lineUserId ?? null,
+        bookingId: first.id,
+        payload: {
+          kind: "course_dropped_teacher",
+          courseId: course.id,
+          cause,
+          size: course.size,
+          dates: ordered.map((r) => r.date),
+          startTime: hhmm(first.startTime),
+          endTime: hhmm(first.endTime),
+          cancelReason: reason.cancelReason,
+          note: reason.note,
+        },
+      },
+      tx,
+    );
+  }
+  return byTeacher.size;
+}
 /**
  * SPEC-028 §3 (TASK-093) — the ONE shared, ATOMIC plan-edit applier (calendar / course screen / purchase-time
  * all call it, so the rule has a single implementation). Opens a tx, applies the booking mutation, runs the
@@ -2846,6 +2958,11 @@ export async function updateBookingStatus(
           ...(enumReason ? { cancelReason: enumReason } : {}),
         })
         .where(eq(bookings.id, id));
+      // TASK-370: the coach held this class only if it WAS confirmed — `current` is the pre-write row.
+      notification = await sendClassCancelledToTeacher(tx, current, {
+        cancelReason: enumReason ?? null,
+        note: cancelReason ?? current.note ?? null,
+      });
       // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
       // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs
       // in the same transaction as the status change and the freelance reconcile, so the correction is atomic.
@@ -4012,6 +4129,8 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
         .set({ status: "CANCELLED", note: COURSE_PAUSE_NOTE })
         .where(eq(bookings.id, b.id));
     }
+    // TASK-370: one message per coach naming the CONFIRMED classes he loses; `paused` still carries the pre-write status.
+    await sendCourseDroppedToTeachers(tx, course, paused, "dropped", { cancelReason: null, note: COURSE_PAUSE_NOTE });
 
     await tx
       .update(coursePackages)
@@ -4208,6 +4327,9 @@ export async function endCourse(
         .set({ status: "CANCELLED", note: "ยกเลิกคอร์ส (จบคอร์สก่อนกำหนด)" })
         .where(eq(bookings.id, b.id));
     }
+    // TASK-370: an end is the same loss to a coach's week as a drop — same kind, `cause: "ended"`; the closed
+    // end reason is the `Reason` he reads.
+    await sendCourseDroppedToTeachers(tx, course, doomed, "ended", { cancelReason: input.reason, note: input.note?.trim() || null });
 
     await tx
       .update(coursePackages)

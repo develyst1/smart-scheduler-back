@@ -171,7 +171,12 @@ describe("🔴 TASK-318 §4 (`§16.4`) — `Sessions :` is gone from the course-
     // TASK-269 §1 pointed `Sessions` at the same field `programLabel` reads. Had they still disagreed,
     // deleting one would have hidden a defect instead of closing it.
     const MSG = code(src("src/lib/line-message.ts"));
-    expect(MSG).not.toContain('extra(t("ob_f_sessions", lang)');
+    // 🔻 TASK-370 — scoped to the COURSE-WIDE notice: `course_dropped_teacher` now prints a `Sessions :` line of
+    // its own (the count of CONFIRMED classes a coach loses — a different figure in a different message). The
+    // claim here is unchanged: `Sessions :` is gone from `course_confirmed`.
+    const COURSE = MSG.slice(MSG.indexOf('case "course_confirmed": {'), MSG.indexOf('case "course_deduction": {'));
+    expect(COURSE.length).toBeGreaterThan(100);
+    expect(COURSE).not.toContain('extra(t("ob_f_sessions", lang)');
     expect(src("src/lib/line-message.ts")).toContain("the two agreed, so nothing is lost with");
   });
 });

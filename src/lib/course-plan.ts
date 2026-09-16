@@ -50,6 +50,40 @@ export function deriveLiveEndDate(sessions: Array<{ status: string; date: string
   return live.length ? live.reduce((m, d) => (d > m ? d : m)) : null;
 }
 
+// ── TASK-366 (REQ-089 item 5) — the `Last` badge on the admin schedule ──
+//
+// A calendar row does not know its course; these two give it the answer from `deriveLiveEndDate` and nothing
+// else — no second "last" rule. Pure, so the DoD cases are pinned with rows, not a database.
+
+/** `Map<courseId, deriveLiveEndDate(that course's rows)>` — one grouping pass over rows read in ONE query. */
+export function liveEndDateByCourse(
+  rows: ReadonlyArray<{ courseId: string | null; status: string; date: string }>,
+): Map<string, string | null> {
+  const byCourse = new Map<string, Array<{ status: string; date: string }>>();
+  for (const r of rows) {
+    if (!r.courseId) continue;
+    const list = byCourse.get(r.courseId) ?? [];
+    list.push(r);
+    byCourse.set(r.courseId, list);
+  }
+  return new Map([...byCourse].map(([id, sessions]) => [id, deriveLiveEndDate(sessions)]));
+}
+
+/**
+ * Is this row its course's last session? A COURSE row, LIVE, dated on the course's live end. A `SICK_LEAVE`
+ * dated last is never "last" — it is not a lesson, and the function above never names it; a delivered last
+ * (ATTENDED) is not live, so once it is attended the course has no live end and NO row is last — the badge
+ * leaves the past cell by construction.
+ */
+export function isCourseLast(
+  row: { bookingType: string; courseId: string | null; status: string; date: string },
+  lastByCourse: ReadonlyMap<string, string | null>,
+): boolean {
+  if (row.bookingType !== "COURSE_PACKAGE" || !row.courseId || !COURSE_LIVE.has(row.status)) return false;
+  const last = lastByCourse.get(row.courseId);
+  return last != null && last === row.date;
+}
+
 // ── Guards for the applier (TASK-093) — pure, so each rule is pinned independently of the DB write ──
 
 /** A delivered session (attended, or forfeited as NO_SHOW) is immutable — can't be edited/moved. */

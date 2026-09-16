@@ -74,6 +74,23 @@ const TIME_OWNER: Record<TemplateKey, { kind: string; file: string; start: strin
     start: "startTime: hhmm(s.startTime),",
     end: "endTime: s.endTime ? hhmm(s.endTime) : null,",
   },
+  // 🔑 TASK-370 — the SIXTH and SEVENTH, and the Record refused to compile a third time. The single cancel
+  // reads the same enrichment as the leave notice; the bulk one carries the slot on its PAYLOAD (one message
+  // names several dates, so the row it is attached to cannot be its `Time` owner) and formats both ends where
+  // the payload is built. Its `Time` is an appended line, not a block field — so `printsTime` is false below
+  // and the owner is still named, because both ends ARE printed.
+  class_cancelled: {
+    kind: "class_cancelled_teacher",
+    file: "src/services/outbox.service.ts",
+    start: "startTime: hhmm(b.startTime),",
+    end: "endTime: hhmm(b.endTime),",
+  },
+  course_dropped: {
+    kind: "course_dropped_teacher",
+    file: "src/services/scheduler.service.ts",
+    start: "startTime: hhmm(first.startTime),",
+    end: "endTime: hhmm(first.endTime),",
+  },
 };
 
 describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", () => {
@@ -105,6 +122,9 @@ describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", 
       // …and TASK-305's is the FIFTH, arriving the same way one task later. 📌 Two new templates in two tasks,
       // each caught by the compiler before a test ran: the control is not theoretical any more.
       { key: "leave_notice", printsTime: true, declared: true, start: true, end: true },
+      // TASK-370 — the sixth and seventh; the bulk one prints its `Time` as an appended line (see TIME_OWNER).
+      { key: "class_cancelled", printsTime: true, declared: true, start: true, end: true },
+      { key: "course_dropped", printsTime: false, declared: true },
     ]);
   });
 

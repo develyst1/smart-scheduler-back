@@ -117,7 +117,7 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
-export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
+export const toBookingDTO = (b: any, opts: { hasRental?: boolean; courseLast?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
   startTime: hhmm(b.startTime),
@@ -125,6 +125,9 @@ export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
   bookingType: b.bookingType,
   status: b.status,
   note: b.note ?? null,
+  // TASK-368 (REQ-089 §5) — the closed cancel code (`note` above holds the human sentence). Rides for every
+  // reader, `null` on a live row: the calendar shows cancelled sessions on request and must say why.
+  cancelReason: b.cancelReason ?? null,
   // SPEC-063 / TASK-178 (REQ-068) — what a parent told us about this session ("พาน้องมาด้วย 2 คน"), distinct
   // from `note` above, which is what the system did to it (cancel reason, auto-extend, leave).
   attendeeNote: b.attendeeNote ?? null,
@@ -153,6 +156,12 @@ export const toBookingDTO = (b: any, opts: { hasRental?: boolean } = {}) => ({
   // week is ~90 bookings). Defaults to `false`, which is exactly right for the one caller that cannot have
   // rentals: the bookings a course creates, which do not exist until their transaction commits.
   hasRental: opts.hasRental ?? false,
+  // TASK-366 (REQ-089 item 5) — is this row its course's LAST session? The `Last` badge on the admin schedule.
+  // Same shape as `hasRental`: passed in, because the calendar answers it for the whole range in ONE grouped
+  // read (`liveEndDateByCourse` over `deriveLiveEndDate` — the plan's own end, no second rule). Computed on the
+  // calendar and the single-booking read; `false` on the paginated list and the create/pause/resume returns,
+  // where no screen draws the badge.
+  courseLast: opts.courseLast ?? false,
   // SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount captured at booking, so the record can answer
   // what/why/who. `null` — not a partly-filled object — when there is no discount: an absent discount and a
   // discount of nothing must not look alike on screen.
