@@ -325,7 +325,7 @@ function buildOutboxMessage(
       );
     }
     // 🔴 TASK-375 (`REQ-091` Deploy B) — a rental added TODAY after the reminder went: the coach would not know,
-    // so he is told once, in `leave_notice`'s shape, with the customer's print line. 📖 The stamp is a placeholder.
+    // so he is told once, in `leave_notice`'s shape, with the customer's print line. ✅ The stamp is the owner's (TASK-376).
     case "rental_added_teacher": {
       const type = notifyTypeOf(payload.bookingType as string);
       const r = payload.rental as { code?: string; remark?: string | null } | undefined;

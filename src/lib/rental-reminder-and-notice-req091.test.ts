@@ -13,6 +13,7 @@ import { AUDIENCE_OMITS, TEMPLATE_FIELDS } from "./line-message-fields";
 import { groupReminders } from "./daily-reminder";
 import { REMINDER_JOB, reminderRanOn } from "./reminder-run";
 import { readSrc } from "./read-src";
+import { t } from "./line-i18n";
 
 const src = (f: string) => readSrc(readFileSync(resolve(import.meta.dir, "..", "..", f), "utf8"));
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
@@ -75,14 +76,15 @@ describe("🔑 (1) the reminder line — `Remark`'s twin, after it, only when pr
   });
 });
 
-describe("🔑 (2) the notice — `leave_notice`'s FORM, the customer's print line; the stamp is a placeholder", () => {
+describe("🔑 (2) the notice — `leave_notice`'s FORM, the customer's print line; the stamp is the owner's (TASK-376)", () => {
   const CTX = { studentName: "มะขิด", subject: "Freeskate", date: "2026-09-17", startTime: "12:00", endTime: "13:00", coach: "Ek" } as any;
   const render = (lang: "TH" | "EN") =>
     formatOutboxMessage({ kind: "rental_added_teacher", bookingType: "COURSE_PACKAGE", size: 6, rental: { code: "rental-set", remark: "inline skate size 18-19 CM" } } as any, CTX, lang, "teacher");
 
   test("the stamp's shape, the customer's block, then `Rental :` with his example", () => {
     const lines = render("TH").split("\n");
-    expect(lines[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/); // form, not bytes — the owner has not seen the word
+    expect(lines[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/); // the form
+    expect(lines[0]).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️"); // 🔒 …and the owner's bytes (TASK-376)
     expect(lines.slice(1)).toEqual(["Student : มะขิด", "Program : Freeskate 6 HR", "Date : 17-09-2026", "Time : 12:00-13:00", "Coach : Ek", "Rental : Rent 200 / Full Set (inline skate size 18-19 CM)"]);
     expect(TEMPLATE_FIELDS.rental_added).toEqual(TEMPLATE_FIELDS.leave_notice);
   });
@@ -93,9 +95,12 @@ describe("🔑 (2) the notice — `leave_notice`'s FORM, the customer's print li
     const out = formatOutboxMessage({ kind: "rental_added_teacher" } as any, CTX, "TH", "teacher");
     expect(out).not.toContain("Rental");
   });
-  test("the i18n says PLACEHOLDER beside the stamp; the label is the customer's section word", () => {
+  test("🔒 the stamp is APPROVED and byte-frozen beside the key (TASK-376); the placeholder marker is gone; the label is the customer's section word", () => {
     const I18N = src("src/lib/line-i18n.ts");
-    expect(I18N).toContain("PLACEHOLDER — MINE, and the owner has NOT seen it** (TASK-375");
+    expect(I18N).toContain("APPROVED by the owner as drafted** — the stamp of the same-day");
+    expect(I18N).not.toMatch(/PLACEHOLDER — MINE[^\n]*TASK-375/);
+    expect(t("ob_rental_added_title", "TH")).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️");
+    expect(t("ob_rental_added_title", "EN")).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️");
     expect(I18N).toContain('ob_f_rental: { TH: "Rental", EN: "Rental" },');
   });
 });

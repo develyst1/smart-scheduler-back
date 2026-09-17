@@ -133,7 +133,7 @@ import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
-import { recordRental } from "./rental.service";
+import { inheritCourseRental, recordRental } from "./rental.service";
 import { courseRentalOf, rentalRemarkRequired } from "../lib/rental-row";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
@@ -2340,9 +2340,6 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
 
   const appended: string[] = [];
   if (plan.append.length) {
-    // TASK-373: ONE read of the course's rental rows; the first one is the course's (all-or-nothing by construction).
-    const rentalRows = await tx.select().from(bookingRentals).where(inArray(bookingRentals.bookingId, rows.map((r: any) => r.id)));
-    const courseRental = rentalRows[0] ?? null;
     const byId = new Map(rows.map((r: any) => [r.id, r]));
     const cancelledSet = new Set(plan.cancelIds);
     const liveAfterCancel = rows.filter(
@@ -2431,19 +2428,10 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         })
         .returning({ id: bookings.id });
       appended.push(ext.id);
-      // TASK-373 — a rented course's make-up INHERITS a paid row: the family paid `size` lessons of equipment
-      // once, and this is one of them. The source is the COURSE's rental (derived from its rows), NOT the
+      // TASK-373 → TASK-376: a rented course's make-up INHERITS a paid row, through the ONE copy both make-up
+      // writers call (the sick-leave append below is the other). The source is the COURSE's rental, not the
       // template's — the template is the leave row being replaced, which carries none. No post.
-      if (courseRental) {
-        await tx.insert(bookingRentals).values({
-          bookingId: ext.id,
-          code: courseRental.code,
-          remark: courseRental.remark,
-          paidAt: courseRental.paidAt,
-          paidActor: courseRental.paidActor,
-          createdBy: courseRental.createdBy,
-        });
-      }
+      await inheritCourseRental(tx, courseId, ext.id);
       fromDate = extDate;
     }
 
@@ -3171,6 +3159,9 @@ export async function updateBookingStatus(
             })
             .returning({ id: bookings.id });
           extendedId = ext.id;
+          // 🔴 TASK-376 — the SECOND make-up writer, and the one TASK-373 missed: a rented course's leave make-up
+          // inherits its paid rental row through the same ONE copy the reconcile calls. Found by @Tanya on `sid`.
+          await inheritCourseRental(tx, current.courseId, ext.id);
         } else {
           locked = true; // over quota — needs admin unlock
         }

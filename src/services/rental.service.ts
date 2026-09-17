@@ -3,9 +3,9 @@
 // is that the rental post IS the event — there's no other artifact — so a failed post is SURFACED, never a silent 200.
 
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db";
-import { bookingRentals } from "../db/schema";
+import { bookingRentals, bookings } from "../db/schema";
 import { rentalBookingLive, rentalRemarkRequired, toRentalDTO } from "../lib/rental-row";
 import { bangkokNow } from "../lib/bangkok-time";
 import { reminderRanOn } from "../lib/reminder-run";
@@ -123,6 +123,31 @@ async function notifyRentalAddedSameDay(
     bookingId: booking.id,
     payload: { kind: "rental_added_teacher", bookingId: booking.id, bookingType: booking.bookingType ?? null, rental: { code: row.code, remark: row.remark } },
   });
+}
+
+/**
+ * 🔴 TASK-376 (REQ-091 Deploy B defect, @Tanya on `sid`) — **the ONE copy of a course's rental onto a make-up.**
+ *
+ * A rented course has a paid row on every live session (TASK-373). A make-up appended LATER must carry one too —
+ * the family paid `size` lessons of equipment once. There were TWO writers of a make-up row (the reconcile and
+ * the sick-leave branch of `updateBookingStatus`) and the copy lived in only one of them: a post-creation sick
+ * leave's make-up shipped without its `R`. *A second writer of the same fact is the defect; the chip is the
+ * symptom.* ⇒ both writers call THIS, and nothing else inserts a rental on a make-up (pinned by count).
+ *
+ * The source is the COURSE's rental — any OTHER row of the course carrying one (the make-up's template is a
+ * leave row, which has none). Inherited stamps (`paid_at` / `paid_actor` / `created_by`), NO post. No-op on an
+ * unrented course.
+ */
+export async function inheritCourseRental(tx: any, courseId: string, newBookingId: string) {
+  const [source] = await tx
+    .select({ code: bookingRentals.code, remark: bookingRentals.remark, paidAt: bookingRentals.paidAt, paidActor: bookingRentals.paidActor, createdBy: bookingRentals.createdBy })
+    .from(bookingRentals)
+    .innerJoin(bookings, eq(bookings.id, bookingRentals.bookingId))
+    .where(and(eq(bookings.courseId, courseId), ne(bookings.id, newBookingId)))
+    .limit(1);
+  if (!source) return null;
+  const [row] = await tx.insert(bookingRentals).values({ bookingId: newBookingId, ...source }).returning();
+  return row;
 }
 
 export async function payBookingRental(bookingId: string, actor: string | null) {

@@ -137,29 +137,19 @@ describe("🔴 the create — order, the ONE post, no discount, the mirrored gap
   });
 });
 
-describe("🔴 the reconcile — a later make-up inherits the COURSE's rental, no post (source)", () => {
+describe("🔴 the reconcile — a later make-up inherits the COURSE's rental through the ONE copy (source)", () => {
+  // 🔻 TASK-376 — this block used to pin an INLINE copy here, and that is exactly how the sick-leave writer's
+  // make-up shipped without its R: the copy lived in one of two writers. It now pins the call to the chokepoint;
+  // `course-rental-inherit-req091.test.ts` pins both writers, the count, and the function itself.
   const SVC = code(src("src/services/scheduler.service.ts"));
   const REC = () => region(SVC, "export async function reconcileCoursePlan(", "\n}\n");
 
-  test("ONE read of the course's rental rows; the copy uses the COURSE's, not the template's (the leave row has none)", () => {
+  test("the copy is the ONE function, called per appended row right after its insert; no inline copy, no pre-read, no post", () => {
     const R = REC();
-    expect(R).toContain("const rentalRows = await tx.select().from(bookingRentals).where(inArray(bookingRentals.bookingId, rows.map((r: any) => r.id)));");
-    expect(R).toContain("const courseRental = rentalRows[0] ?? null;");
-    expect(R).toContain("if (courseRental) {\n        await tx.insert(bookingRentals).values({\n          bookingId: ext.id,\n          code: courseRental.code,");
-    expect(R).not.toContain("template.rental");
-    expect((R.match(/\.from\(bookingRentals\)/g) ?? []).length).toBe(1);
-  });
-
-  test("the copied row INHERITS paid_at / paid_actor / created_by — and nothing posts", () => {
-    const R = REC();
-    expect(R).toContain("paidAt: courseRental.paidAt,\n          paidActor: courseRental.paidActor,\n          createdBy: courseRental.createdBy,");
-    expect(R).not.toMatch(/recordRental|recordSale/);
-  });
-
-  test("the copy happens per appended row, right after its insert", () => {
-    const R = REC();
-    expect(R.indexOf("if (courseRental) {")).toBeGreaterThan(R.indexOf("appended.push(ext.id);"));
-    expect(R.indexOf("if (courseRental) {")).toBeLessThan(R.indexOf("fromDate = extDate;"));
+    expect(R).toContain("await inheritCourseRental(tx, courseId, ext.id);");
+    expect(R.indexOf("inheritCourseRental(")).toBeGreaterThan(R.indexOf("appended.push(ext.id);"));
+    expect(R.indexOf("inheritCourseRental(")).toBeLessThan(R.indexOf("fromDate = extDate;"));
+    expect(R).not.toMatch(/insert\(bookingRentals\)|courseRental|template\.rental|recordRental|recordSale/);
   });
 });
 
