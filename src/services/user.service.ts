@@ -5,9 +5,10 @@
 // 🔴 `password_hash` never leaves this file: every reader goes through `toUserDTO`, which picks columns. A
 // service that returned a row would leak the hash into the first `c.json(row)` somebody wrote.
 
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, like, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users } from "../db/schema";
+import { userPermissions, users } from "../db/schema";
+import { MENU_KEYS, isMenuKey, type MenuKey } from "../lib/permissions";
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
 
 export const PASSWORD_MIN = 8;
@@ -23,6 +24,8 @@ export type UserDTO = {
   isSuperAdmin: boolean;
   disabledAt: string | null;
   createdAt: string;
+  /** TASK-381 — the user's `menu:*` grants (a super admin: all of them). */
+  menus: MenuKey[];
 };
 
 export const toUserDTO = (u: {
@@ -32,13 +35,14 @@ export const toUserDTO = (u: {
   isSuperAdmin: boolean;
   disabledAt: Date | string | null;
   createdAt: Date | string;
-}): UserDTO => ({
+}, grants: Iterable<string> = []): UserDTO => ({
   id: u.id,
   username: u.username,
   displayName: u.displayName,
   isSuperAdmin: u.isSuperAdmin,
   disabledAt: u.disabledAt ? new Date(u.disabledAt).toISOString() : null,
   createdAt: new Date(u.createdAt).toISOString(),
+  menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => new Set(grants).has(m)),
 });
 
 export const hashPassword = (password: string) => Bun.password.hash(password);
@@ -64,9 +68,50 @@ export async function countUsers(exec: any = db): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+/** TASK-381 — the guard's second read: this user's grant keys, one indexed query. */
+export async function userGrantKeys(userId: string, exec: any = db): Promise<string[]> {
+  const rows = await exec.select({ key: userPermissions.key }).from(userPermissions).where(eq(userPermissions.userId, userId));
+  return rows.map((r: any) => r.key as string);
+}
+
+async function grantsByUser(userIds: string[], exec: any = db): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (userIds.length === 0) return out;
+  const rows = await exec.select({ userId: userPermissions.userId, key: userPermissions.key }).from(userPermissions).where(inArray(userPermissions.userId, userIds));
+  for (const r of rows) out.set(r.userId, [...(out.get(r.userId) ?? []), r.key]);
+  return out;
+}
+
 export async function listUsers() {
   const rows = await db.query.users.findMany({ orderBy: (u, { asc: a }) => [a(u.username)] });
-  return rows.map(toUserDTO);
+  const grants = await grantsByUser(rows.map((r) => r.id)); // ONE grouped read, not one per user
+  return rows.map((r) => toUserDTO(r, grants.get(r.id) ?? []));
+}
+
+/**
+ * TASK-381 — REPLACE a user's `menu:*` grants with `keys` (unknown key ⇒ 400; duplicates collapse). A super-admin
+ * target is accepted and stored — meaningless while super, and the set a later demotion lands on. One
+ * transaction: delete the menu rows, insert the new ones.
+ */
+export async function setUserMenus(id: string, keys: string[], actor: string | null): Promise<UserDTO> {
+  const row = await mustFind(id);
+  const bad = keys.filter((k) => !isMenuKey(k));
+  if (bad.length) throw new ApiException(400, "VALIDATION", `ไม่รู้จักเมนู: ${bad.join(", ")}`);
+  const menus = [...new Set(keys)] as MenuKey[];
+  await db.transaction(async (tx) => {
+    await tx.delete(userPermissions).where(and(eq(userPermissions.userId, id), like(userPermissions.key, "menu:%")));
+    if (menus.length) await tx.insert(userPermissions).values(menus.map((key) => ({ userId: id, key, grantedBy: actor })));
+  });
+  return toUserDTO(row, await userGrantKeys(id));
+}
+
+/** TASK-381 — any user changes their OWN password: the current one must verify (401), the new one min 8 (400). */
+export async function changeOwnPassword(id: string, currentPassword: string, newPassword: string): Promise<{ ok: true }> {
+  const row = await mustFind(id);
+  if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new ApiException(401, "UNAUTHORIZED", "รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  assertPassword(newPassword);
+  await db.update(users).set({ passwordHash: await hashPassword(newPassword) }).where(eq(users.id, id));
+  return { ok: true };
 }
 
 export async function createUser(
@@ -127,7 +172,7 @@ export async function updateUser(id: string, input: { displayName?: string; isSu
     patch.isSuperAdmin = input.isSuperAdmin;
   }
   if (Object.keys(patch).length) await db.update(users).set(patch).where(eq(users.id, id));
-  return toUserDTO(await mustFind(id));
+  return toUserDTO(await mustFind(id), await userGrantKeys(id));
 }
 
 export async function resetPassword(id: string, password: string): Promise<{ ok: true }> {
@@ -141,7 +186,7 @@ export async function setUserDisabled(id: string, disabled: boolean): Promise<Us
   const row = await mustFind(id);
   if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();
   await db.update(users).set({ disabledAt: disabled ? new Date() : null }).where(eq(users.id, id));
-  return toUserDTO(await mustFind(id));
+  return toUserDTO(await mustFind(id), await userGrantKeys(id));
 }
 
 /**

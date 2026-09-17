@@ -491,6 +491,8 @@ export interface UserDTO {
   isSuperAdmin: boolean;
   disabledAt: string | null;
   createdAt: string;
+  /** TASK-381 — the user's `menu:*` grants; a super admin: all 12. */
+  menus: string[];
 }
 export interface LoginResponse {
   token: string;

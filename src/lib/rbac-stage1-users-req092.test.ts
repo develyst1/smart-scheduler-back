@@ -51,7 +51,7 @@ describe("🔑 the rules — pure, with values", () => {
   });
   test("the DTO never carries the hash", () => {
     const dto = usersSvc.toUserDTO({ id: "u", username: "a", displayName: "A", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00Z", passwordHash: "x" } as any);
-    expect(Object.keys(dto).sort()).toEqual(["createdAt", "disabledAt", "displayName", "id", "isSuperAdmin", "username"]);
+    expect(Object.keys(dto).sort()).toEqual(["createdAt", "disabledAt", "displayName", "id", "isSuperAdmin", "menus", "username"]); // 🔻 TASK-381: + menus
   });
   test("`Bun.password` round-trips (argon2id) and a wrong password fails", async () => {
     const h = await usersSvc.hashPassword("correct horse");
@@ -184,7 +184,7 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     const MW = code(src("src/middleware/auth.ts"));
     expect(MW).toContain("const row = await findUserById(sub);");
     expect(MW).toContain('if (row.disabledAt) throw new ApiException(401, "UNAUTHORIZED", "บัญชีนี้ถูกปิดใช้งาน");');
-    expect(MW).toContain("c.set(\"user\", toAuthUser(row));");
+    expect(MW).toContain("c.set(\"user\", toAuthUser(row, row.isSuperAdmin ? [] : await userGrantKeys(row.id)));"); // 🔻 TASK-381: + the grants
     expect(MW).not.toContain("requireRole");
     expect(MW).toContain("export async function requireSuperAdmin(");
     expect(code(src("src/routes/users.ts"))).toContain('.use("*", requireSuperAdmin)');

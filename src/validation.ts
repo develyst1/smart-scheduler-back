@@ -483,6 +483,9 @@ export const updateUser = z.object({
   isSuperAdmin: z.boolean().optional(),
 });
 export const resetPassword = z.object({ password: z.string() });
+// TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.
+export const setUserMenus = z.object({ keys: z.array(z.string()) });
+export const changeOwnPassword = z.object({ currentPassword: z.string(), newPassword: z.string() });
 
 // Teacher type ordering (B.2) — exactly the 3 types, no duplicates.
 export const setTeacherTypeOrder = z.object({
