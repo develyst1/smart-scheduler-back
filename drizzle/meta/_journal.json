@@ -246,6 +246,13 @@
       "when": 1783000000030,
       "tag": "0034_course_expiry_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783000000031,
+      "tag": "0035_booking_rentals",
+      "breakpoints": true
     }
   ]
 }

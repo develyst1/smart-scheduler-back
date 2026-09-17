@@ -341,6 +341,15 @@ export const api = new Hono()
     const r = await rental.recordRental({ ...body, actor: c.get("user")?.sub ?? null });
     return c.json(r, r.status === "recorded" ? 201 : 200);
   })
+  // ── TASK-371 (REQ-091 Deploy A) — a rental as a ROW on a session: record (no money) · paid (the ONE place money
+  // moves, through `recordRental`) · remove (unpaid only). Actor from the TOKEN. Prices are constants.
+  .post("/bookings/:id/rental", zValidator("json", v.recordBookingRental), async (c) =>
+    c.json(await rental.recordBookingRental(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null), 201),
+  )
+  .post("/bookings/:id/rental/paid", async (c) =>
+    c.json(await rental.payBookingRental(c.req.param("id"), c.get("user")?.sub ?? null)),
+  )
+  .delete("/bookings/:id/rental", async (c) => c.json(await rental.removeBookingRental(c.req.param("id"))))
   // ── Configurable business rules (SPEC-029 / REQ-031) ──
   .get("/settings", async (c) => c.json(await settings.listSettings()))
   .put("/settings/:key", zValidator("json", v.putSetting), async (c) => {

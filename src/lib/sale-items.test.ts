@@ -61,10 +61,11 @@ describe("voucher program exclusion (SPEC-030 / TASK-106)", () => {
 });
 
 describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
-  const EXPECTED = { "rental-set": 200, "rental-ride": 150, "rental-helmet": 50, "rental-pads": 50 } as const;
+  // 🔻 TASK-371 (REQ-091 §9) — FIVE: the customer's "100 = Helmet + Pad" had no code; `rental-helmet-pads` is it.
+  const EXPECTED = { "rental-set": 200, "rental-ride": 150, "rental-helmet": 50, "rental-pads": 50, "rental-helmet-pads": 100 } as const;
 
-  test("the four codes are known sale items at the VAT-inclusive card price", () => {
-    expect([...RENTAL_CODES]).toEqual(["rental-set", "rental-ride", "rental-helmet", "rental-pads"]);
+  test("the five codes are known sale items at the VAT-inclusive card price", () => {
+    expect([...RENTAL_CODES]).toEqual(["rental-set", "rental-ride", "rental-helmet", "rental-pads", "rental-helmet-pads"]);
     for (const code of RENTAL_CODES) {
       expect(isKnownSaleItem(code)).toBe(true); // recordSale won't refuse it
       const item = SALE_ITEMS.find((i) => i.externalRef === code)!;
@@ -86,6 +87,7 @@ describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
       { code: "rental-ride", priceMinor: THB(150) },
       { code: "rental-helmet", priceMinor: THB(50) },
       { code: "rental-pads", priceMinor: THB(50) },
+      { code: "rental-helmet-pads", priceMinor: THB(100) }, // TASK-371 — the customer's "100 = Helmet + Pad"
     ]);
     // each price matches the seed item's price (single source — can't drift from what recordSale charges)
     for (const { code, priceMinor } of list) {
@@ -100,7 +102,7 @@ describe("equipment rental as revenue (SPEC-031 / TASK-108)", () => {
   });
 
   test("RENTAL_ITEMS all carry the RENTAL marker; idempotency key is stable per (base, code)", () => {
-    expect(RENTAL_ITEMS).toHaveLength(4);
+    expect(RENTAL_ITEMS).toHaveLength(5); // TASK-371: +1, the 5th tier
     expect(RENTAL_ITEMS.every((i) => (i.metadata as any)?.revenueKind === "RENTAL")).toBe(true);
     expect(rentalIdempotencyKey("booking-123", "rental-set")).toBe("rental:booking-123:rental-set");
   });

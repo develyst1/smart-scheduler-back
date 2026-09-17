@@ -123,7 +123,10 @@ export interface SaleItemSeed {
 
 // SPEC-031 / TASK-108 (REQ-028) — equipment rental as recorded revenue. A rental is just four more product codes
 // through the existing `recordSale` path (no new money mechanism). VAT-inclusive per HOUR; `quantity = hours`.
-export const RENTAL_CODES = ["rental-set", "rental-ride", "rental-helmet", "rental-pads"] as const;
+// TASK-371 (REQ-091 §9) — the 5th tier: the customer's "100 = Helmet + Pad" had no code. Prices are FIXED
+// (owner §6); editing is the backoffice's, later. An existing box gets the new bo.item via
+// `bun run sale:ensure-items` (additive; never overwrites a price) — the deploy step after the migration.
+export const RENTAL_CODES = ["rental-set", "rental-ride", "rental-helmet", "rental-pads", "rental-helmet-pads"] as const;
 export type RentalCode = (typeof RENTAL_CODES)[number];
 export const isRentalCode = (code: string): code is RentalCode =>
   (RENTAL_CODES as readonly string[]).includes(code);
@@ -133,12 +136,14 @@ const RENTAL_PRICE: Record<RentalCode, number> = {
   "rental-ride": THB(150),
   "rental-helmet": THB(50),
   "rental-pads": THB(50),
+  "rental-helmet-pads": THB(100),
 };
 const RENTAL_NAME: Record<RentalCode, string> = {
   "rental-set": "Equipment rental — full set / hr",
   "rental-ride": "Equipment rental — ride only / hr",
   "rental-helmet": "Equipment rental — helmet / hr",
   "rental-pads": "Equipment rental — pads / hr",
+  "rental-helmet-pads": "Equipment rental — helmet + pads / hr",
 };
 
 /** SPEC-031 / TASK-123 — the rental price card for the FE (code + VAT-incl `priceMinor` only; the FE owns labels via

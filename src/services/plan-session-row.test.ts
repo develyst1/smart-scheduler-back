@@ -31,33 +31,40 @@ describe("toSessionRow carries the attendee note (TASK-184)", () => {
 });
 
 // ───────── SPEC-045 / TASK-190 (REQ-052) — the rental lookup is batched, not an N+1 ─────────
-describe("bookingsWithRentals is a set lookup, not an N+1 (TASK-190)", () => {
+// 🔻 TASK-371 (REQ-091 Deploy A) — REWRITTEN, not deleted: the marker is a ROW now (`booking_rentals`), read as a
+// RELATION in `withBookingRelations` (Drizzle's one batched relation query), so `bookingsWithRentals` — the
+// ledger join by product code — is gone with the `hasRental` it fed. The CLAIM this block makes is unchanged:
+// no reader resolves rentals one booking at a time.
+describe("the rental row is batched, not an N+1 (TASK-190 → TASK-371)", () => {
   const fnSrc = (name: string) => {
     const at = SRC.indexOf(`export async function ${name}`);
     const rest = SRC.slice(at);
     return rest.slice(0, rest.indexOf("\n}\n") + 2);
   };
 
-  test("🔴 the calendar resolves rentals ONCE, before the loop that maps ~90 bookings", () => {
+  test("🔴 the calendar reads the rental as a RELATION — no lookup inside the loop that maps ~90 bookings", () => {
     const body = fnSrc("getCalendar");
-    expect(body).toContain("bookingsWithRentals(bookingRows.map((b) => b.id))");
-    // Ordering, not just presence: a helper called from INSIDE the loop would pass a presence check and still
-    // be the N+1 this test exists to prevent.
-    expect(body.indexOf("bookingsWithRentals")).toBeLessThan(body.indexOf("for (const row of bookingRows)"));
+    expect(SRC).toContain("  rental: true,\n} as const;"); // in the shared relation set
+    expect(body).toContain("with: withBookingRelations,");
+    const loop = body.slice(body.indexOf("for (const row of bookingRows)"), body.indexOf("\n  }\n", body.indexOf("for (const row of bookingRows)")));
+    expect(loop).not.toMatch(/await|rentalsByBooking|bookingRentals/);
   });
 
-  test("the paged list batches over its page too", () => {
-    expect(fnSrc("getBookings")).toContain("bookingsWithRentals(rows.map((r) => r.b.id))");
+  test("the paged list — the one HAND-BUILT select — batches over its page, keyed by booking", () => {
+    const body = fnSrc("getBookings");
+    expect(body).toContain("const rentalRows = await rentalsByBooking(rows.map((r) => r.b.id));");
+    expect(body).toContain("rental: rentalRows.get(r.b.id) ?? null,");
   });
 
-  test("🔑 a rental is identified by its PRODUCT CODE, not by the movement's reason", () => {
-    // Every sale posts `reason = "SALE"`, so matching on reason would mark every sold COURSE as rented.
-    const body = fnSrc("bookingsWithRentals");
-    expect(body).toContain("RENTAL_CODES");
-    expect(body).toContain("boItem.externalRef");
+  test("an empty id list short-circuits — no query for a page with no bookings", () => {
+    const at = SRC.indexOf("async function rentalsByBooking(");
+    const body = SRC.slice(at, SRC.indexOf("\n}\n", at));
+    expect(body).toContain("if (bookingIds.length === 0) return new Map();");
+    expect(body).toContain("inArray(bookingRentals.bookingId, bookingIds)");
   });
 
-  test("an empty id list short-circuits — no query for a day with no bookings", () => {
-    expect(fnSrc("bookingsWithRentals")).toContain("if (ids.length === 0) return new Set()");
+  test("🚫 the ledger join is GONE — a rental is a row, not a movement with a product code", () => {
+    expect(SRC).not.toContain("bookingsWithRentals");
+    expect(SRC).not.toContain("hasRental");
   });
 });

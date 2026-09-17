@@ -75,11 +75,11 @@ describe("🔑 the rule — DoD cases with rows", () => {
   });
 });
 
-describe("🔑 the DTO — one shape, `false` where nothing computes it (the `hasRental` convention)", () => {
+describe("🔑 the DTO — one shape, `false` where nothing computes it (TASK-190's passed-in convention)", () => {
   const base = { id: "b", date: W(1), startTime: "10:00", endTime: "11:00", bookingType: "COURSE_PACKAGE", status: "CONFIRMED", teacher: { id: "t", name: "T", nickname: "T", type: "FULL_TIME" }, student: { id: "s", name: "S" } };
   test("passed in ⇒ carried; absent ⇒ false", () => {
     expect(toBookingDTO(base, { courseLast: true }).courseLast).toBe(true);
-    expect(toBookingDTO(base, { hasRental: true }).courseLast).toBe(false);
+    expect(toBookingDTO({ ...base, rental: { code: "rental-set", remark: null, paidAt: null } }).courseLast).toBe(false); // an unrelated field does not flip it
     expect(toBookingDTO(base).courseLast).toBe(false);
   });
 });
@@ -88,7 +88,8 @@ describe("🔴 the wiring — ONE grouped read before the loop, both readers, no
   const SVC = code(src("src/services/scheduler.service.ts"));
   const READ = region(SVC, "export async function liveEndDatesForCourses(", "export async function getCalendar(");
   const CAL = region(SVC, "export async function getCalendar(", "export async function getTeachers(");
-  const ONE = region(SVC, "async function loadBookingDTO(", "export async function bookingsWithRentals(");
+  // TASK-371 removed `bookingsWithRentals` (the old end anchor); the single read now ends where the grouped read begins.
+  const ONE = region(SVC, "async function loadBookingDTO(", "export async function liveEndDatesForCourses(");
 
   test("the grouped read: one select of three columns, `course_id in (…)` + the plan's own live list, then the pure grouping", () => {
     expect(READ).toContain(".select({ courseId: bookings.courseId, status: bookings.status, date: bookings.date })");

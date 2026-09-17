@@ -65,6 +65,12 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // TASK-364 — a delete is refused OUTRIGHT for a student with any course row, ended ones included (the count has
   // no status filter), so an ended course is never touched: it is the thing that makes the delete impossible.
   "DELETE /students/:id": "unrelated",
+  // TASK-371 — a rental row on a SESSION: no session is added, revived or billed for tuition; the rental money
+  // posts through `recordRental` on the paid press, which an ended course's remaining rows (all CANCELLED, hence
+  // BOOKING_NOT_LIVE) cannot reach. `allowed` on a delivered row of an ended course: the cash was collected.
+  "POST /bookings/:id/rental": "allowed",
+  "POST /bookings/:id/rental/paid": "allowed",
+  "DELETE /bookings/:id/rental": "allowed",
   "POST /teacher-link-requests/:id/approve": "unrelated",
   "POST /teacher-link-requests/:id/reject": "unrelated",
   "POST /teachers": "unrelated",

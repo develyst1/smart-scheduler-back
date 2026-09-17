@@ -84,10 +84,14 @@ describe("🔴 the TWO lists — §1a's trap, asserted as two separate questions
     // The trap: a paused booking keeps its date, so the old `ne(status, "CANCELLED")` would still have rendered
     // it — while every `SLOT_INACTIVE_STATUSES` test passed. Asserted against the calendar query itself.
     expect([...CALENDAR_HIDDEN_STATUSES]).toContain("PAUSED");
-    // ⚠️ Bounded FORWARD from the query itself: `const rented =` also appears EARLIER in the file, and a
-    // backwards slice silently yields "" — which would make this assertion pass against nothing at all.
+    // ⚠️ Bounded FORWARD from the query itself, and the END anchor is asserted to exist: a missing end anchor
+    // makes `slice(at, -1)` the whole file, and a negative over the whole file fails for the wrong reason (it
+    // did, when TASK-371 removed the old `const rented =` anchor).
     const at = code(SVC).indexOf("const bookingRows =");
-    const calendarQuery = code(SVC).slice(at, code(SVC).indexOf("const rented =", at));
+    const end = code(SVC).indexOf("const lastByCourse =", at);
+    expect(at).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(at);
+    const calendarQuery = code(SVC).slice(at, end);
     // TASK-368 (owner §5.1): cancelled sessions ride in a separate TRAY, never on the grid — so the grid query
     // is the constant again, byte for byte. (An earlier shape subtracted CANCELLED from this list on request;
     // the owner ruled it out, and the literal below is the pin that says so.)

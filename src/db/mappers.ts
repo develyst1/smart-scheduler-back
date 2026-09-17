@@ -4,6 +4,7 @@
 import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
+import { toRentalDTO } from "../lib/rental-row";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -117,7 +118,7 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
-export const toBookingDTO = (b: any, opts: { hasRental?: boolean; courseLast?: boolean } = {}) => ({
+export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
   startTime: hhmm(b.startTime),
@@ -149,15 +150,13 @@ export const toBookingDTO = (b: any, opts: { hasRental?: boolean; courseLast?: b
   teachers: bookingTeachers(b),
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
-  // SPEC-045 / TASK-190 (REQ-052) — does this session have equipment rented against it? A **presence marker**
-  // only: the cell shows a glyph, and the rental's detail lives in the ledger, not on a booking.
-  //
-  // Passed in rather than derived here, because the caller reads it for the whole set in ONE query (a calendar
-  // week is ~90 bookings). Defaults to `false`, which is exactly right for the one caller that cannot have
-  // rentals: the bookings a course creates, which do not exist until their transaction commits.
-  hasRental: opts.hasRental ?? false,
+  // TASK-371 (REQ-091 Deploy A) — the session's rental ROW: `{ code, remark, paid } | null`. It REPLACES
+  // `hasRental` (SPEC-045 / TASK-190), which was a ledger-derived presence marker with zero FE readers. The
+  // row is a relation in every reader's `withBookingRelations` (one batched query), so nothing is passed in;
+  // a reader that did not load the relation gets `null`, which is honest for the row it did not ask for.
+  rental: toRentalDTO(b.rental),
   // TASK-366 (REQ-089 item 5) — is this row its course's LAST session? The `Last` badge on the admin schedule.
-  // Same shape as `hasRental`: passed in, because the calendar answers it for the whole range in ONE grouped
+  // Same shape as TASK-190's marker was: passed in, because the calendar answers it for the whole range in ONE grouped
   // read (`liveEndDateByCourse` over `deriveLiveEndDate` — the plan's own end, no second rule). Computed on the
   // calendar and the single-booking read; `false` on the paginated list and the create/pause/resume returns,
   // where no screen draws the badge.

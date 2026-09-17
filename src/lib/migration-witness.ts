@@ -371,6 +371,17 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "blindness. The rule was never 'avoid existence'; it is 'the object must exist ONLY because this ran'.",
     rerunnable: true,
   },
+  {
+    tag: "0035_booking_rentals",
+    probe: { kind: "index", index: "booking_rentals_booking_uq" },
+    why:
+      "TASK-371 (REQ-091 Deploy A). 0034's two rules again: the LAST object 0035 creates is the unique index, " +
+      "not the table — witnessing the table would call a run that died between the two statements 'applied' " +
+      "and the one-rental-per-session guarantee would never exist. And EXISTENCE is valid: the index is invented " +
+      "by this migration over a table invented by this migration, so nothing that ran before could have produced " +
+      "it. Both statements are IF NOT EXISTS, so a re-run is safe.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

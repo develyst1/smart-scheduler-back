@@ -196,27 +196,29 @@ describe("toBookingDTO attendeeNote (TASK-178)", () => {
 });
 
 // ───────── SPEC-045 / TASK-190 (REQ-052) — the calendar cell's rental marker ─────────
-describe("toBookingDTO hasRental (TASK-190)", () => {
-  test("defaults to false — a booking nobody asked about is not marked as rented", () => {
-    expect(toBookingDTO(bookingRow()).hasRental).toBe(false);
+// 🔻 TASK-371 (REQ-091 Deploy A) — `hasRental` (a ledger-derived presence marker, zero FE readers) is REPLACED by
+// `rental: { code, remark, paid } | null`, read from the row relation. TASK-190's "the ledger holds the money" is
+// still true: the row holds the CHOICE and the paid state; the amount lives only in `bo.movement`.
+describe("toBookingDTO rental (TASK-190 → TASK-371)", () => {
+  test("null — a booking with no rental row, or a reader that did not load the relation", () => {
+    expect(toBookingDTO(bookingRow()).rental).toBeNull();
+    expect(toBookingDTO(bookingRow({ rental: null })).rental).toBeNull();
   });
 
-  test("true when the caller's batched lookup says this booking has one", () => {
-    expect(toBookingDTO(bookingRow(), { hasRental: true }).hasRental).toBe(true);
+  test("the row rides as { code, remark, paid } — paid is paid_at being set, nothing else", () => {
+    expect(toBookingDTO(bookingRow({ rental: { code: "rental-set", remark: "ชุด M", paidAt: null } })).rental).toEqual({ code: "rental-set", remark: "ชุด M", paid: false });
+    expect(toBookingDTO(bookingRow({ rental: { code: "rental-helmet", remark: null, paidAt: new Date("2026-09-17T10:00:00Z") } })).rental).toEqual({ code: "rental-helmet", remark: null, paid: true });
   });
 
-  test("🔑 a PRESENCE marker, not the rental — the cell shows a glyph, the ledger holds the money", () => {
-    // Putting code/price/hours on a booking would be a second home for data the ledger already owns, and the
-    // two would drift the first time a rental was edited.
-    const dto = toBookingDTO(bookingRow(), { hasRental: true }) as any;
-    for (const leaked of ["rental", "rentalCode", "rentalHours", "rentalMinor"]) {
-      expect(leaked in dto).toBe(false);
-    }
+  test("🔑 no PRICE on the booking — the ledger holds the money (TASK-190's rule, unchanged)", () => {
+    const dto = toBookingDTO(bookingRow({ rental: { code: "rental-set", remark: null, paidAt: null, priceMinor: 20000 } })) as any;
+    expect(Object.keys(dto.rental)).toEqual(["code", "remark", "paid"]);
+    for (const leaked of ["hasRental", "rentalCode", "rentalHours", "rentalMinor"]) expect(leaked in dto).toBe(false);
   });
 
   test("the rest of the DTO is unchanged either way (regression)", () => {
-    const { hasRental: _a, ...withOut } = toBookingDTO(bookingRow()) as any;
-    const { hasRental: _b, ...withIn } = toBookingDTO(bookingRow(), { hasRental: true }) as any;
+    const { rental: _a, ...withOut } = toBookingDTO(bookingRow()) as any;
+    const { rental: _b, ...withIn } = toBookingDTO(bookingRow({ rental: { code: "rental-pads", remark: null, paidAt: null } })) as any;
     expect(withIn).toEqual(withOut);
   });
 });

@@ -647,6 +647,13 @@ export const recordRental = z.object({
   discount: discountInput.optional(),
 });
 
+// TASK-371 (REQ-091 Deploy A) — a rental ROW on a session. The remark rule lives in `lib/rental-row.ts`
+// (`rentalRemarkRequired`) so the service and this schema cannot disagree; here only the shape.
+export const recordBookingRental = z.object({
+  code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
+  remark: z.string().trim().max(200).optional(),
+});
+
 export const importVoucher = z.object({
   student: studentInput,
   totalHours: z.coerce.number().int().min(1).max(100),

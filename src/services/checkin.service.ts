@@ -7,7 +7,7 @@ import { CRM_POINT_RULES } from "../lib/crm";
 import { awardCrmPoints } from "../lib/line-admin";
 import { getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
-import { bookingsWithRentals, updateBookingStatus } from "./scheduler.service";
+import { updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
 import { findParentByLineUserId } from "./parent.service";
 
@@ -19,6 +19,8 @@ const withBookingRelations = {
   // TASK-224 (AC-18) — same shape as the scheduler's loader: the check-in screen renders the same cell as the
   // calendar, so it must resolve a booking's teachers the same way rather than showing only the first.
   additionalTeachers: { with: { teacher: true } },
+  // TASK-371 — the rental row rides here too, so the check-in screen shows the same `R` as the calendar.
+  rental: true,
 } as const;
 
 async function loadBooking(id: string) {
@@ -27,9 +29,7 @@ async function loadBooking(id: string) {
     with: withBookingRelations,
   });
   if (!row) return null;
-  // TASK-190: the check-in screen shows the same cell markers as the calendar, so it resolves the same way.
-  const rented = await bookingsWithRentals([row.id]);
-  return toBookingDTO(row, { hasRental: rented.has(row.id) });
+  return toBookingDTO(row);
 }
 
 export async function getCheckinQr(bookingId: string) {

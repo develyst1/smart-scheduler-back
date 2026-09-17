@@ -526,6 +526,38 @@ export const bookingTeachers = pgTable(
   (t) => [primaryKey({ columns: [t.bookingId, t.teacherId] })],
 );
 
+// ───────────── TASK-371 (REQ-091 §9, Deploy A) — a rental is a ROW on a session, `0035` ─────────────
+//
+// Before this a rental was ONLY a ledger post (`recordRental` → `recordSale`): no row, no "unpaid" state, and
+// the grid could not say "collect cash for this one". The customer's `R` marker (red unpaid → green paid) needs
+// a fact that exists BEFORE the money moves, so the row is the fact and the ledger stays the money.
+//
+// 🔴 ONE rental per session (`booking_rentals_booking_uq`) — the customer's tiers are whole-session choices, not
+// a basket. 🚫 No price column: prices are constants (`RENTAL_PRICE`, owner: fixed for now); `bo.movement` holds
+// the amount that was actually posted. Money moves ONLY on the paid press, ONLY through `recordRental` — the
+// ledger's `rental:<bookingId>:<code>` idempotency is the backstop, and `paid_at` is written only after the post
+// answered `recorded` or `duplicate`.
+// 📌 A cancelled session KEEPS its row: cancel is a status write; the cascade fires only on a hard delete of the
+// booking, and no path deletes a booking.
+export const bookingRentals = pgTable(
+  "booking_rentals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    /** One of `RENTAL_CODES` (`lib/sale-items.ts`) — validated at the edge, the same code the ledger posts. */
+    code: text("code").notNull(),
+    /** Which set / which pair — REQUIRED for `rental-set` and `rental-ride` (customer: "Full Set or inline"). */
+    remark: text("remark"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    paidActor: text("paid_actor"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: text("created_by"),
+  },
+  (t) => [uniqueIndex("booking_rentals_booking_uq").on(t.bookingId)],
+);
+
 // ───────────────────── LINE OA link sessions (C.4) ─────────────────────
 // Short-lived conversation state while a LINE user picks a role + enters a code.
 export const lineLinkSessions = pgTable("line_link_sessions", {
@@ -839,6 +871,13 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   // `withBookingRelations` so every booking read has the same shape; never read directly — see
   // `bookingTeachers` in `db/mappers.ts`.
   additionalTeachers: many(bookingTeachers),
+  // TASK-371 — the session's rental row, or none. Rides in `withBookingRelations` so every relational reader
+  // carries `rental` without its own read.
+  rental: one(bookingRentals, { fields: [bookings.id], references: [bookingRentals.bookingId] }),
+}));
+
+export const bookingRentalsRelations = relations(bookingRentals, ({ one }) => ({
+  booking: one(bookings, { fields: [bookingRentals.bookingId], references: [bookings.id] }),
 }));
 
 export const bookingTeachersRelations = relations(bookingTeachers, ({ one }) => ({

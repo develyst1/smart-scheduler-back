@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -420,6 +420,9 @@ const withBookingRelations = {
   // set, rather than opted into per query: every booking read then produces the same `teachers[]`, and no
   // caller can accidentally render a multi-teacher booking as though it had one.
   additionalTeachers: { with: { teacher: true } },
+  // TASK-371 (REQ-091) — the session's rental ROW, or none. In the shared set so every relational reader
+  // carries `rental` in Drizzle's one batched relation query — no per-reader read, no N+1.
+  rental: true,
 } as const;
 
 async function loadBookingDTO(exec: any, id: string) {
@@ -427,43 +430,14 @@ async function loadBookingDTO(exec: any, id: string) {
     where: (b: any, { eq }: any) => eq(b.id, id),
     with: withBookingRelations,
   });
-  // TASK-190: one id, one lookup — the same helper the batch paths use, so a single booking and the calendar
-  // can never disagree about whether it has a rental.
-  const rented = await bookingsWithRentals(row ? [row.id] : [], exec);
   // TASK-366: one course, one read — the cell's modal opens on this and must agree with the calendar.
   const lastByCourse = await liveEndDatesForCourses(row?.courseId ? [row.courseId] : [], exec);
-  return toBookingDTO(row, { hasRental: rented.has(row?.id), courseLast: row ? isCourseLast(row, lastByCourse) : false });
+  return toBookingDTO(row, { courseLast: row ? isCourseLast(row, lastByCourse) : false });
 }
 
 // ───────────────────────────── Reads ─────────────────────────────
 
 
-/**
- * SPEC-045 / TASK-190 (REQ-052) — which of these bookings have an equipment rental attached.
- *
- * 🔴 **One query for the whole set, never one per booking.** `getCalendar` hydrates a full week — a per-booking
- * lookup would be ~90 round trips to render a grid that already reads in three. The caller hands in every id it
- * is about to map and gets a set back.
- *
- * A rental is identified by its **product code** (`bo.item.external_ref ∈ RENTAL_CODES`), not by the movement's
- * `reason` — every sale posts `reason = "SALE"`, so reason cannot tell a rental from a course and matching on
- * it would mark every sold course as rented. The codes come from `sale-items.ts`, so a fifth rental code added
- * there is picked up here with no second list to update.
- */
-export async function bookingsWithRentals(ids: string[], exec: any = db): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const rows = await exec
-    .select({ refId: boMovement.refId })
-    .from(boMovement)
-    .innerJoin(boItem, eq(boItem.id, boMovement.itemId))
-    .where(
-      and(
-        inArray(boMovement.refId, ids),
-        inArray(boItem.externalRef, RENTAL_CODES as unknown as string[]),
-      ),
-    );
-  return new Set(rows.map((r: any) => r.refId).filter((r: any): r is string => !!r));
-}
 
 /**
  * TASK-366 (REQ-089 item 5) — the live end date of every course in `courseIds`, in ONE query: the live rows of
@@ -525,15 +499,13 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
     with: withBookingRelations,
   });
 
-  // TASK-190: ONE query for the whole week, resolved BEFORE the loop — a per-booking lookup here would be ~90
-  // round trips to render a grid that otherwise reads in three.
-  const rented = await bookingsWithRentals(bookingRows.map((b) => b.id));
-  // TASK-366: the same shape for `courseLast` — one grouped read of the range's courses, resolved before the loop.
+  // TASK-366: one grouped read of the range's courses, resolved before the loop (TASK-190's shape; the rental
+  // marker that used to be read here the same way is a RELATION since TASK-371 and rides in `withBookingRelations`).
   const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { hasRental: rented.has(row.id), courseLast: isCourseLast(row, lastByCourse) });
+    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse) });
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
@@ -554,8 +526,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
           with: withBookingRelations,
           orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)],
         });
-        const rentedToo = await bookingsWithRentals(rows.map((b) => b.id));
-        return rows.map((row) => toBookingDTO(row, { hasRental: rentedToo.has(row.id) }));
+        return rows.map((row) => toBookingDTO(row));
       })()
     : undefined;
 
@@ -870,8 +841,9 @@ export async function getBookings(f: {
     .from(bookings)
     .where(cond);
 
-  // TASK-190: batched over the page, same as the calendar.
-  const rented = await bookingsWithRentals(rows.map((r) => r.b.id));
+  // TASK-371: the rental ROW, batched over the page — this select is hand-built, so the relation the DTO now
+  // reads (`rental`) has to be spread on here, exactly as `additionalTeachers` is below.
+  const rentalRows = await rentalsByBooking(rows.map((r) => r.b.id));
   // 🔴 TASK-236 — the SECOND thing the sweep turned up, same root cause as DEF-3.
   //
   // This row is hand-built, so it carries only what is listed here — and `additionalTeachers` was not. The
@@ -879,7 +851,7 @@ export async function getBookings(f: {
   // teacher of an อื่นๆ booking while this list silently showed **one**. Not an inner join, but the identical
   // failure: a hand-written `select()` that has drifted from what the DTO now expects.
   //
-  // Batched over the page for the same reason the rentals are (one query, not one per row).
+  // Batched over the page for the same reason the rental rows are (one query, not one per row).
   const extraTeachers = await additionalTeachersByBooking(rows.map((r) => r.b.id));
 
   return {
@@ -892,8 +864,8 @@ export async function getBookings(f: {
           subject: r.sub,
           course: r.c,
           additionalTeachers: extraTeachers.get(r.b.id) ?? [],
+          rental: rentalRows.get(r.b.id) ?? null,
         },
-        { hasRental: rented.has(r.b.id) },
       ),
     ),
     page: f.page,
@@ -1059,6 +1031,13 @@ async function describeSlotClash(teacherId: string, date: string, startTime: str
  * A hand-built row is only as complete as its author remembered; this is what stops the bookings list from
  * disagreeing with the calendar about how many teachers an อื่นๆ booking has.
  */
+/** TASK-371 — the rental rows of a page of bookings, ONE query, keyed by booking (for the hand-built list select). */
+async function rentalsByBooking(bookingIds: string[], exec: any = db): Promise<Map<string, any>> {
+  if (bookingIds.length === 0) return new Map();
+  const rows = await exec.select().from(bookingRentals).where(inArray(bookingRentals.bookingId, bookingIds));
+  return new Map(rows.map((r: any) => [r.bookingId, r]));
+}
+
 async function additionalTeachersByBooking(
   bookingIds: string[],
 ): Promise<Map<string, { teacher: any }[]>> {

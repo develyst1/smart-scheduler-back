@@ -74,9 +74,8 @@ describe("🔑 the TRAY — on request only, every CANCELLED row in range, date/
     expect(TRAY()).toContain("with: withBookingRelations,");
     expect(TRAY()).not.toContain("pendingSlot"); // every cancelled row, no B.1 filter — the tray is a list, not a grid
   });
-  test("the rows are full BookingDTOs with their own rentals read; `courseLast` is never passed (false by construction)", () => {
-    expect(TRAY()).toContain("const rentedToo = await bookingsWithRentals(rows.map((b) => b.id));");
-    expect(TRAY()).toContain("rows.map((row) => toBookingDTO(row, { hasRental: rentedToo.has(row.id) }))");
+  test("the rows are full BookingDTOs (the rental rides as a relation since TASK-371); `courseLast` is never passed (false by construction)", () => {
+    expect(TRAY()).toContain("rows.map((row) => toBookingDTO(row))");
     expect(TRAY()).not.toContain("courseLast");
   });
   test("🔴 the key is ABSENT when not asked for — today's response byte for byte; present (possibly []) when asked", () => {
