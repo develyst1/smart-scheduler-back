@@ -51,7 +51,7 @@ describe("🔑 the rules — pure, with values", () => {
   });
   test("the DTO never carries the hash", () => {
     const dto = usersSvc.toUserDTO({ id: "u", username: "a", displayName: "A", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00Z", passwordHash: "x" } as any);
-    expect(Object.keys(dto).sort()).toEqual(["createdAt", "disabledAt", "displayName", "id", "isSuperAdmin", "menus", "username"]); // 🔻 TASK-381: + menus
+    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "id", "isSuperAdmin", "menus", "username"]); // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions
   });
   test("`Bun.password` round-trips (argon2id) and a wrong password fails", async () => {
     const h = await usersSvc.hashPassword("correct horse");
@@ -191,12 +191,13 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(code(src("src/index.ts"))).toContain('app.route("/api/users", userRoutes);');
     expect(code(src("src/index.ts")).indexOf('app.route("/api/users"')).toBeGreaterThan(code(src("src/index.ts")).indexOf('app.use("/api/*", authMiddleware);'));
   });
-  test("the claim carries sub = id, username, role, isSuperAdmin; `assertMayDiscount` still reads `role` (Stage 3 retires it)", () => {
+  test("the claim carries sub = id, username, role, isSuperAdmin; `assertMayDiscount` reads the KEY now (TASK-385 retired the `role` reader)", () => {
     const AUTH = code(src("src/routes/auth.ts"));
     expect(AUTH).toContain("signToken({ sub: user.id, username: user.username, role, isSuperAdmin: user.isSuperAdmin })");
     expect(AUTH).toContain('user.isSuperAdmin ? ("super_admin" as const) : ("admin" as const)');
-    // 🔻 TASK-379: `role !== "admin"` refused the super admin (whose role is `super_admin`) — the capability is read now.
-    expect(code(src("src/lib/discount-plan.ts"))).toContain('if (!user || !(user.isSuperAdmin || user.role === "admin")) {');
+    // 🔻 TASK-379: `role !== "admin"` refused the super admin — the capability was read; 🔻 TASK-385: the KEY is read.
+    expect(code(src("src/lib/discount-plan.ts"))).toContain('if (!hasAction(user, "action:sales.discount")) throw new ApiException(403, "FORBIDDEN", "ไม่มีสิทธิ์ให้ส่วนลด");');
+    expect(code(src("src/lib/discount-plan.ts"))).not.toContain("user.role");
   });
   test("USERNAME_TAKEN: the UNIQUE's 23505 is caught in the service (onError would say SLOT_TAKEN)", () => {
     const C = region(code(src("src/services/user.service.ts")), "export async function createUser(", "export const wouldRemoveLastSuperAdmin");

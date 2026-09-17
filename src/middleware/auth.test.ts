@@ -8,7 +8,7 @@ import { authMiddleware, requireSuperAdmin } from "./auth";
 import { authRoutes } from "../routes/auth";
 import { ApiException } from "../lib/http";
 import * as usersSvc from "../services/user.service";
-import { MENU_KEYS } from "../lib/permissions";
+import { ACTION_KEYS, MENU_KEYS } from "../lib/permissions";
 
 process.env.JWT_SECRET ??= "test-secret";
 
@@ -71,7 +71,7 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     const login = await app.request("/api/auth/login", json({ username: "admin", password: "admin" }));
     expect(login.status).toBe(200);
     const { token, user } = (await login.json()) as any;
-    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS] }); // 🔻 TASK-381: a super admin's menus = all 12
+    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS] }); // 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
     expect("passwordHash" in user).toBe(false);
     const ping = await app.request("/api/ping", { headers: { authorization: `Bearer ${token}` } });
     expect(ping.status).toBe(200);

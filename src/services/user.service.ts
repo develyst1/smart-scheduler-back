@@ -8,7 +8,7 @@
 import { and, asc, eq, inArray, isNull, like, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { userPermissions, users } from "../db/schema";
-import { MENU_KEYS, isMenuKey, type MenuKey } from "../lib/permissions";
+import { ACTION_KEYS, MENU_KEYS, isActionKey, isMenuKey, type ActionKey, type MenuKey } from "../lib/permissions";
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
 
 export const PASSWORD_MIN = 8;
@@ -26,6 +26,8 @@ export type UserDTO = {
   createdAt: string;
   /** TASK-381 — the user's `menu:*` grants (a super admin: all of them). */
   menus: MenuKey[];
+  /** TASK-385 — the user's `action:*` grants (a super admin: all of them). */
+  actions: ActionKey[];
 };
 
 export const toUserDTO = (u: {
@@ -43,6 +45,7 @@ export const toUserDTO = (u: {
   disabledAt: u.disabledAt ? new Date(u.disabledAt).toISOString() : null,
   createdAt: new Date(u.createdAt).toISOString(),
   menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => new Set(grants).has(m)),
+  actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => new Set(grants).has(a)),
 });
 
 export const hashPassword = (password: string) => Bun.password.hash(password);
@@ -94,21 +97,37 @@ export async function listUsers() {
  * transaction: delete the menu rows, insert the new ones.
  */
 export async function setUserMenus(id: string, keys: string[], actor: string | null): Promise<UserDTO> {
+  return replaceGrants(id, keys, "menu:", isMenuKey, "ไม่รู้จักเมนู", actor);
+}
+
+/** TASK-385 — the mirror for `action:*`: replace the user's acts; unknown key ⇒ 400 before any write. */
+export async function setUserActions(id: string, keys: string[], actor: string | null): Promise<UserDTO> {
+  return replaceGrants(id, keys, "action:", isActionKey, "ไม่รู้จักรายการ", actor);
+}
+
+/**
+ * The ONE replace: refuse an unknown key BEFORE the transaction; one tx deletes the user's rows of this PREFIX and
+ * inserts the deduplicated set. The other prefix's rows are untouched — menus and actions are independent grants
+ * (SPEC-079 §3.4: "see the menu, change nothing" is a valid combination).
+ */
+async function replaceGrants(id: string, keys: string[], prefix: "menu:" | "action:", isKey: (k: string) => boolean, unknownWord: string, actor: string | null): Promise<UserDTO> {
   const row = await mustFind(id);
-  const bad = keys.filter((k) => !isMenuKey(k));
-  if (bad.length) throw new ApiException(400, "VALIDATION", `ไม่รู้จักเมนู: ${bad.join(", ")}`);
-  const menus = [...new Set(keys)] as MenuKey[];
+  const bad = keys.filter((k) => !isKey(k));
+  if (bad.length) throw new ApiException(400, "VALIDATION", `${unknownWord}: ${bad.join(", ")}`);
+  const set = [...new Set(keys)];
   await db.transaction(async (tx) => {
-    await tx.delete(userPermissions).where(and(eq(userPermissions.userId, id), like(userPermissions.key, "menu:%")));
-    if (menus.length) await tx.insert(userPermissions).values(menus.map((key) => ({ userId: id, key, grantedBy: actor })));
+    await tx.delete(userPermissions).where(and(eq(userPermissions.userId, id), like(userPermissions.key, `${prefix}%`)));
+    if (set.length) await tx.insert(userPermissions).values(set.map((key) => ({ userId: id, key, grantedBy: actor })));
   });
   return toUserDTO(row, await userGrantKeys(id));
 }
 
-/** TASK-381 — any user changes their OWN password: the current one must verify (401), the new one min 8 (400). */
+/** TASK-381 — any user changes their OWN password: the current one must verify (400 WRONG_PASSWORD), the new one min 8 (400). */
 export async function changeOwnPassword(id: string, currentPassword: string, newPassword: string): Promise<{ ok: true }> {
   const row = await mustFind(id);
-  if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new ApiException(401, "UNAUTHORIZED", "รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  // TASK-383: 400, not 401 — the request was well-formed and the SESSION is fine; the credential in the BODY was
+  // wrong. A 401 collided with the FE's sign-out interceptor.
+  if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new ApiException(400, "WRONG_PASSWORD", "รหัสผ่านปัจจุบันไม่ถูกต้อง");
   assertPassword(newPassword);
   await db.update(users).set({ passwordHash: await hashPassword(newPassword) }).where(eq(users.id, id));
   return { ok: true };

@@ -19,9 +19,13 @@ export const userRoutes = new Hono()
   .post("/:id/password", zValidator("json", v.resetPassword), async (c) =>
     c.json(await usersSvc.resetPassword(c.req.param("id"), c.req.valid("json").password)),
   )
-  // TASK-381 — replace the user's menu grants; the server refuses within the request, the nav follows on `/auth/me`.
+  // TASK-381 — replace the user's menu grants; the server refuses within the request, the nav follows on `/api/me` (TASK-383).
   .put("/:id/menus", zValidator("json", v.setUserMenus), async (c) =>
     c.json({ user: await usersSvc.setUserMenus(c.req.param("id"), c.req.valid("json").keys, actorOf(c)) }),
+  )
+  // TASK-385 — replace the user's action grants; independent of the menus.
+  .put("/:id/actions", zValidator("json", v.setUserActions), async (c) =>
+    c.json({ user: await usersSvc.setUserActions(c.req.param("id"), c.req.valid("json").keys, actorOf(c)) }),
   )
   .post("/:id/disable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), true) }))
   .post("/:id/enable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), false) }));

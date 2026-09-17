@@ -9,6 +9,7 @@
 // is exactly one definition of what a valid discount is, and one rounding rule.
 
 import { ApiException } from "./http";
+import { hasAction } from "./permissions";
 
 export type DiscountKind = "PERCENT" | "BAHT";
 
@@ -141,17 +142,19 @@ export class DiscountRefused extends ApiException {
  *
  * 🔻 TASK-379 (REQ-092 Stage 1 defect, found by @Fern): TASK-377 widened `role` to `"super_admin" | "admin"` and
  * this line read `role !== "admin"` — so the bootstrapped first user, a super admin and the ONLY user on day one,
- * could not discount. Read the CAPABILITY (`isSuperAdmin`) beside the label; the sentence is unchanged. Stage 3
- * retires this check by the key `action:sales.discount` — not here.
+ * could not discount. Read the CAPABILITY (`isSuperAdmin`) beside the label; the sentence is unchanged.
+ *
+ * 🔻 TASK-385 (Stage 3): the check is BY KEY — `action:sales.discount`, a grant like any other (a super admin has
+ * all). The `role` reader is gone; nothing reads `role` for authorization any more. The sentence changed with the
+ * fact: it is no longer "admins only", it is a grant the owner ticks per person. The guard cannot see the body, so
+ * this is the one act checked at the route beside its create (courses · vouchers · bookings · rentals).
  */
 export function assertMayDiscount(
   discount: unknown,
-  user: { role?: string; isSuperAdmin?: boolean } | undefined | null,
+  user: { isSuperAdmin: boolean; grants: ReadonlySet<string> } | undefined | null,
 ): void {
   if (!discount) return;
-  if (!user || !(user.isSuperAdmin || user.role === "admin")) {
-    throw new ApiException(403, "FORBIDDEN", "เฉพาะแอดมินเท่านั้นที่ให้ส่วนลดได้");
-  }
+  if (!hasAction(user, "action:sales.discount")) throw new ApiException(403, "FORBIDDEN", "ไม่มีสิทธิ์ให้ส่วนลด");
 }
 
 /**

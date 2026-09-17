@@ -6,9 +6,10 @@ import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Hono } from "hono";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MENU_KEYS, hasMenu, isMenuKey, menusOf } from "./permissions";
-import { ROUTE_MENUS, routeKey } from "./route-menus";
-import { authMiddleware, menuGuard, requireMenu } from "../middleware/auth";
+import { ACTION_KEYS, MENU_KEYS, hasMenu, isMenuKey, menusOf } from "./permissions";
+// 🔻 TASK-385: `ROUTE_MENUS` → `ROUTE_ACCESS` (menus + action) and `menuGuard` → `accessGuard`; the menu half is unchanged.
+import { ROUTE_ACCESS, routeKey } from "./route-access";
+import { authMiddleware, accessGuard, requireMenu } from "../middleware/auth";
 import { ApiException } from "./http";
 import { signToken } from "./jwt";
 import * as usersSvc from "../services/user.service";
@@ -50,25 +51,27 @@ describe("🔴 the enumeration — every route in `routes/api.ts` has a ROUTE_ME
   const declared = [...ROUTES.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`);
   test("the router declares 85 routes (the floor that keeps this list non-empty), and every one is mapped", () => {
     expect(declared.length).toBeGreaterThanOrEqual(85);
-    const unmapped = declared.filter((r) => !(r in ROUTE_MENUS));
+    const unmapped = declared.filter((r) => !(r in ROUTE_ACCESS));
     expect(unmapped).toEqual([]);
   });
   test("no stale entry: every ROUTE_MENUS key is a declared route, and every entry lists ≥ 1 known menu", () => {
-    const stale = Object.keys(ROUTE_MENUS).filter((k) => !declared.includes(k));
+    const stale = Object.keys(ROUTE_ACCESS).filter((k) => !declared.includes(k));
     expect(stale).toEqual([]);
-    for (const [k, menus] of Object.entries(ROUTE_MENUS)) {
+    for (const [k, { menus }] of Object.entries(ROUTE_ACCESS)) {
       expect({ k, ok: menus.length > 0 && menus.every(isMenuKey) }).toEqual({ k, ok: true });
     }
   });
   test("the shared reads carry several menus — the map is from the FE's calls, not one-route-one-menu", () => {
-    expect([...ROUTE_MENUS["GET /teachers"]!].sort()).toEqual(["menu:bookings", "menu:calendar", "menu:link-requests", "menu:reports", "menu:teachers"]);
-    expect([...ROUTE_MENUS["GET /bookings"]!].sort()).toEqual(["menu:bookings", "menu:calendar"]);
-    expect([...ROUTE_MENUS["GET /badges"]!].sort()).toEqual(["menu:badges", "menu:calendar"]);
-    expect(ROUTE_MENUS["GET /reports/daily"]).toEqual(["menu:reports"]);
-    expect(ROUTE_MENUS["GET /calendar"]).toEqual(["menu:calendar"]);
+    expect([...ROUTE_ACCESS["GET /teachers"]!.menus].sort()).toEqual(["menu:bookings", "menu:calendar", "menu:link-requests", "menu:reports", "menu:teachers"]);
+    expect([...ROUTE_ACCESS["GET /bookings"]!.menus].sort()).toEqual(["menu:bookings", "menu:calendar"]);
+    expect([...ROUTE_ACCESS["GET /badges"]!.menus].sort()).toEqual(["menu:badges", "menu:calendar"]);
+    expect(ROUTE_ACCESS["GET /reports/daily"]!.menus).toEqual(["menu:reports"]);
+    expect(ROUTE_ACCESS["GET /calendar"]!.menus).toEqual(["menu:calendar"]);
   });
-  test("`/auth/*` and `/users/*` are NOT in the table (login is public; users is `requireSuperAdmin`)", () => {
-    expect(Object.keys(ROUTE_MENUS).some((k) => /\/(auth|users)(\/|$)/.test(k))).toBe(false);
+  test("`/auth/*`, `/users/*`, `/me*` and `/permissions` are NOT in the table (login is public; users is `requireSuperAdmin`; me + permissions are the JWT alone — TASK-383/385)", () => {
+    expect(Object.keys(ROUTE_ACCESS).some((k) => /\/(auth|users|me|permissions)(\/|$)/.test(k))).toBe(false);
+    // the guard's own exclusion names the same four — the table and the guard agree by source
+    expect(code(src("src/middleware/auth.ts"))).toContain("if (/^\\/api\\/(auth|users|me|permissions)(\\/|$)/.test(path)) return next();");
     expect(routeKey("get", "/api/calendar")).toBe("GET /calendar");
   });
 });
@@ -94,7 +97,7 @@ describe("🔴 the guard end to end — a calendar-only user, a super admin, a s
     process.env.SKIP_AUTH = "false";
     const a = new Hono();
     a.use("/api/*", authMiddleware);
-    a.use("/api/*", menuGuard);
+    a.use("/api/*", accessGuard);
     a.get("/api/calendar", (c) => c.json({ ok: "calendar" }));
     a.get("/api/teachers", (c) => c.json({ ok: "teachers" }));
     a.get("/api/reports/daily", (c) => c.json({ ok: "reports" }));
@@ -128,7 +131,7 @@ describe("🔴 the guard end to end — a calendar-only user, a super admin, a s
     try {
       expect(await status(ids.cal, "/api/not-in-the-table")).toBe(403);
       expect(await status(ids.sa, "/api/not-in-the-table")).toBe(403);
-      expect(logs.some((l) => l.includes("[rbac] route not in ROUTE_MENUS") && l.includes("GET /api/not-in-the-table"))).toBe(true);
+      expect(logs.some((l) => l.includes("[rbac] route not in ROUTE_ACCESS") && l.includes("GET /api/not-in-the-table"))).toBe(true);
     } finally { s.mockRestore(); }
   });
   test("an UNKNOWN path is the 404's business, not a menu refusal (TASK-297's envelope survives)", async () => {
@@ -147,49 +150,69 @@ describe("🔴 the guard end to end — a calendar-only user, a super admin, a s
 
 const rootApp = (await import("../index")).default as { fetch: (r: Request) => Promise<Response> };
 
-describe("🔑 the routes — `/auth/me`, the self password change, `PUT /users/:id/menus` (root app; service spied)", () => {
+describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:id/menus` (root app; service spied)", () => {
   const app = rootApp;
   const calls: any[] = [];
   const spies: any[] = [];
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   afterEach(() => { process.env.SKIP_AUTH = "true"; });
 
-  test("GET /auth/me — the dev super admin ⇒ all 12 menus; the shape is the nav's fact", async () => {
+  test("GET /api/me — the dev super admin ⇒ all 12 menus; the shape is the nav's fact", async () => {
     process.env.SKIP_AUTH = "true";
-    const res = await app.fetch(new Request("http://localhost/api/auth/me"));
+    const res = await app.fetch(new Request("http://localhost/api/me"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS] } });
+    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS], actions: [...ACTION_KEYS] } });
   });
-  test("🔴 GET /auth/me WITHOUT a token ⇒ 401 — the `me` routes carry the JWT guard explicitly (auth is mounted before the guard); login stays public", async () => {
+  test("🔴 GET /api/me WITHOUT a token ⇒ 401 — the `me` routes sit under the normal `/api/*` guard; login stays public", async () => {
     process.env.SKIP_AUTH = "false";
-    expect((await app.fetch(new Request("http://localhost/api/auth/me"))).status).toBe(401);
-    expect((await app.fetch(new Request("http://localhost/api/auth/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))).status).toBe(401);
+    expect((await app.fetch(new Request("http://localhost/api/me"))).status).toBe(401);
+    expect((await app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))).status).toBe(401);
     const login = await app.fetch(new Request("http://localhost/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "x", password: "y" }) }));
     expect(login.status).not.toBe(401 + 1000); // reaches the handler (a 401 from authenticate, never the guard's)
   });
-  test("a ZERO-menu user's /auth/me ⇒ `menus: []` (the shell's fact), not an error", async () => {
+  test("🚫 TASK-383: `/api/auth/me` and `/api/auth/me/password` are GONE (404, no alias) — NextAuth owns `/api/auth/*` on the FE host", async () => {
+    process.env.SKIP_AUTH = "true";
+    expect((await app.fetch(new Request("http://localhost/api/auth/me"))).status).toBe(404);
+    expect((await app.fetch(new Request("http://localhost/api/auth/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))).status).toBe(404);
+    // and `routes/auth.ts` has nothing but login left in it
+    const AUTH = code(src("src/routes/auth.ts"));
+    expect(AUTH).not.toContain("/me");
+    expect(AUTH).not.toContain("authMiddleware");
+    expect(AUTH.match(/\.(get|post|patch|put|delete)\(\s*"/g)).toEqual(['.post("']);
+  });
+  test("a ZERO-menu user REACHES both `/api/me` (⇒ `menus: []`, the shell's fact) and `/api/me/password` — the menu guard does not gate them", async () => {
     process.env.SKIP_AUTH = "false";
     const id = "44444444-4444-4444-8444-444444444444";
     const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, disabledAt: null })) as any);
     const s2 = spyOn(usersSvc, "userGrantKeys").mockImplementation((async () => []) as any);
     try {
       const token = await signToken({ sub: id, username: "nobody", role: "admin", isSuperAdmin: false });
-      const res = await app.fetch(new Request("http://localhost/api/auth/me", { headers: { authorization: `Bearer ${token}` } }));
+      const res = await app.fetch(new Request("http://localhost/api/me", { headers: { authorization: `Bearer ${token}` } }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [] } });
+      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [], actions: [] } });
+      const s3 = spyOn(usersSvc, "changeOwnPassword").mockImplementation((async () => ({ ok: true as const })) as any);
+      try {
+        const pw = await app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ currentPassword: "old-pass-1", newPassword: "new-pass-1" }) }));
+        expect(pw.status).toBe(200);
+        expect(s3.mock.calls[0]?.[0]).toBe(id);
+      } finally { s3.mockRestore(); }
+      // and a menu route still refuses the same user — the exclusion is `/me*` only
+      expect((await app.fetch(new Request("http://localhost/api/calendar?from=2026-09-01&to=2026-09-02", { headers: { authorization: `Bearer ${token}` } }))).status).toBe(403);
     } finally { s1.mockRestore(); s2.mockRestore(); }
   });
-  test("POST /auth/me/password ⇒ the service with the caller's OWN id; wrong current 401 / short 400 / ok { ok: true }", async () => {
+  test("POST /api/me/password ⇒ the service with the caller's OWN id; wrong current 400 WRONG_PASSWORD / short 400 / ok { ok: true }", async () => {
     process.env.SKIP_AUTH = "true";
     const s = spyOn(usersSvc, "changeOwnPassword").mockImplementation((async (id: string, cur: string, next: string) => {
       calls.push(["pw", id, cur, next]);
-      if (cur !== "old-pass-1") throw new ApiException(401, "UNAUTHORIZED", "รหัสผ่านปัจจุบันไม่ถูกต้อง");
+      if (cur !== "old-pass-1") throw new ApiException(400, "WRONG_PASSWORD", "รหัสผ่านปัจจุบันไม่ถูกต้อง");
       if (next.length < 8) throw new ApiException(400, "PASSWORD_TOO_SHORT", "x");
       return { ok: true as const };
     }) as any);
     spies.push(s);
-    const post = (b: unknown) => app.fetch(new Request("http://localhost/api/auth/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
-    expect((await post({ currentPassword: "wrong", newPassword: "new-pass-1" })).status).toBe(401);
+    const post = (b: unknown) => app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
+    const wrong = await post({ currentPassword: "wrong", newPassword: "new-pass-1" });
+    expect(wrong.status).toBe(400);
+    expect(await wrong.json()).toEqual({ error: { code: "WRONG_PASSWORD", message: "รหัสผ่านปัจจุบันไม่ถูกต้อง" } });
     expect((await post({ currentPassword: "old-pass-1", newPassword: "short" })).status).toBe(400);
     const ok = await post({ currentPassword: "old-pass-1", newPassword: "new-pass-1" });
     expect(await ok.json()).toEqual({ ok: true });
@@ -201,7 +224,7 @@ describe("🔑 the routes — `/auth/me`, the self password change, `PUT /users/
       calls.push(["menus", id, keys, actor]);
       const bad = keys.filter((k) => !isMenuKey(k));
       if (bad.length) throw new ApiException(400, "VALIDATION", `ไม่รู้จักเมนู: ${bad.join(", ")}`);
-      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", menus: keys };
+      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", menus: keys, actions: [] };
     }) as any);
     spies.push(s);
     const put = (b: unknown) => app.fetch(new Request("http://localhost/api/users/u-1/menus", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
@@ -215,17 +238,19 @@ describe("🔑 the routes — `/auth/me`, the self password change, `PUT /users/
 
 describe("🔴 the service and the wiring (source)", () => {
   const SVC = code(src("src/services/user.service.ts"));
-  test("`setUserMenus` REPLACES: one transaction, delete `menu:%` rows, insert the deduplicated set; unknown key refused before any write", () => {
+  test("`setUserMenus` REPLACES (via the one `replaceGrants`, TASK-385): one transaction, delete `menu:%` rows, insert the deduplicated set; unknown key refused before any write", () => {
     const S = SVC.slice(SVC.indexOf("export async function setUserMenus("), SVC.indexOf("export async function changeOwnPassword("));
-    expect(S).toContain("const bad = keys.filter((k) => !isMenuKey(k));");
+    expect(S).toContain('return replaceGrants(id, keys, "menu:", isMenuKey, "ไม่รู้จักเมนู", actor);');
+    expect(S).toContain("const bad = keys.filter((k) => !isKey(k));");
     expect(S).toContain("db.transaction(async (tx) => {");
-    expect(S).toContain('like(userPermissions.key, "menu:%")');
+    expect(S).toContain("like(userPermissions.key, `${prefix}%`)");
     expect(S).toContain("[...new Set(keys)]");
     expect(S.indexOf("bad.length")).toBeLessThan(S.indexOf("db.transaction("));
   });
-  test("`changeOwnPassword`: verify the CURRENT hash (401) before the length rule (400), then replace the hash", () => {
+  test("`changeOwnPassword`: verify the CURRENT hash (400 WRONG_PASSWORD — never a 401, the FE's sign-out interceptor eats those) before the length rule (400), then replace the hash", () => {
     const S = SVC.slice(SVC.indexOf("export async function changeOwnPassword("), SVC.indexOf("\n}\n", SVC.indexOf("export async function changeOwnPassword(")));
-    expect(S).toContain('if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new ApiException(401, "UNAUTHORIZED", "รหัสผ่านปัจจุบันไม่ถูกต้อง");');
+    expect(S).toContain('if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new ApiException(400, "WRONG_PASSWORD", "รหัสผ่านปัจจุบันไม่ถูกต้อง");');
+    expect(S).not.toContain("ApiException(401");
     expect(S.indexOf("verifyPassword(")).toBeLessThan(S.indexOf("assertPassword(newPassword)"));
     expect(S).toContain("passwordHash: await hashPassword(newPassword)");
   });
@@ -235,8 +260,10 @@ describe("🔴 the service and the wiring (source)", () => {
   });
   test("the guard order in `index.ts`: auth → menuGuard → the users group; the grants read only for a non-super-admin", () => {
     const IDX = code(src("src/index.ts"));
-    expect(IDX.indexOf('app.use("/api/*", authMiddleware);')).toBeLessThan(IDX.indexOf('app.use("/api/*", menuGuard);'));
-    expect(IDX.indexOf('app.use("/api/*", menuGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/users", userRoutes);'));
+    expect(IDX.indexOf('app.use("/api/*", authMiddleware);')).toBeLessThan(IDX.indexOf('app.use("/api/*", accessGuard);'));
+    expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/users", userRoutes);'));
+    expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/me", meRoutes);')); // TASK-383
+    expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/permissions", permissionRoutes);')); // TASK-385
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await userGrantKeys(row.id)");
   });
   test("37 = 37 — no migration", () => {

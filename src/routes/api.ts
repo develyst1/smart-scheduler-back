@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "../lib/validate";
 import * as v from "../validation";
 import { assertMayDiscount } from "../lib/discount-plan";
+import { assertMayOverrideLeave } from "../lib/permissions";
 import * as svc from "../services/scheduler.service";
 import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
@@ -245,6 +246,8 @@ export const api = new Hono()
   )
   .patch("/bookings/:id/status", zValidator("json", v.updateStatus), async (c) => {
     const { action, reason, override, reasonCode } = c.req.valid("json");
+    // TASK-385: the override waives a rule written for parents — a grant (`action:calendar.leave-override`), like the discount.
+    assertMayOverrideLeave(override, c.get("user"));
     return c.json(
       await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode),
     );

@@ -12,8 +12,8 @@ import type { Context, Next } from "hono";
 import { verifyToken } from "../lib/jwt";
 import { ApiException } from "../lib/http";
 import { findUserById, userGrantKeys } from "../services/user.service";
-import { hasMenu, type MenuKey } from "../lib/permissions";
-import { ROUTE_MENUS, routeKey } from "../lib/route-menus";
+import { ACTION_FORBIDDEN_TH, hasAction, hasMenu, type ActionKey, type MenuKey } from "../lib/permissions";
+import { ROUTE_ACCESS, routeKey } from "../lib/route-access";
 
 export interface AuthUser {
   id: string;
@@ -88,24 +88,38 @@ export function requireMenu(...menus: MenuKey[]) {
   };
 }
 
+/** TASK-385 — the action refusal: its OWN sentence, so the FE can tell "not your menu" from "not your act". */
+export const ACTION_FORBIDDEN = () => new ApiException(403, "FORBIDDEN", ACTION_FORBIDDEN_TH);
+
+/** The action primitive: a super admin may; anyone else needs the grant. */
+export function requireAction(action: ActionKey) {
+  return async (c: Context, next: Next) => {
+    if (!hasAction(c.get("user"), action)) throw ACTION_FORBIDDEN();
+    return next();
+  };
+}
+
 /**
- * 🔴 TASK-381 — ONE guard for every `/api/*` route, driven by `ROUTE_MENUS` (the table traced from the FE's real
- * calls). It reads the HANDLER route Hono matched (`c.req.matchedRoutes`, skipping middleware patterns), looks
- * it up, and applies `requireMenu`. `/auth/*` and `/users/*` are not menu-gated (public login + the JWT for
- * `/auth/me*`; `requireSuperAdmin` for users). **A route with NO entry is refused and logged — an auth guard
- * fails CLOSED** — and the enumeration test makes an unmapped route unshippable.
+ * 🔴 TASK-381 + TASK-385 — ONE guard for every `/api/*` route, driven by `ROUTE_ACCESS` (the table traced from the
+ * FE's real calls). It reads the HANDLER route Hono matched (`c.req.matchedRoutes`, skipping middleware patterns),
+ * looks it up, and applies the MENU check (its sentence), THEN — on a mutate route — the ACTION check (its own
+ * sentence). `/auth/*`, `/users/*`, `/me*` and `/permissions` are not in the table (public login; `requireSuperAdmin`
+ * for users; the JWT alone for the signed-in user's own routes — TASK-383). **A route with NO entry is refused and
+ * logged — an auth guard fails CLOSED** — and the enumeration tests make an unmapped route unshippable.
  */
-export async function menuGuard(c: Context, next: Next) {
+export async function accessGuard(c: Context, next: Next) {
   const handler = [...c.req.matchedRoutes].reverse().find((r) => !r.path.endsWith("*") && r.method !== "ALL");
   if (!handler) return next(); // no route matched at all — that is `notFound`'s 404 (TASK-297), not a menu refusal
   const path = handler.path;
-  if (/^\/api\/(auth|users)(\/|$)/.test(path)) return next();
-  const menus = ROUTE_MENUS[routeKey(c.req.method, path)];
-  if (!menus) {
-    console.error(`[rbac] route not in ROUTE_MENUS — refused closed: ${c.req.method} ${path} (add it to lib/route-menus.ts)`);
+  if (/^\/api\/(auth|users|me|permissions)(\/|$)/.test(path)) return next(); // TASK-383/385: the JWT-only routes
+  const access = ROUTE_ACCESS[routeKey(c.req.method, path)];
+  if (!access) {
+    console.error(`[rbac] route not in ROUTE_ACCESS — refused closed: ${c.req.method} ${path} (add it to lib/route-access.ts)`);
     throw MENU_FORBIDDEN();
   }
-  if (!hasMenu(c.get("user"), ...menus)) throw MENU_FORBIDDEN();
+  const user = c.get("user");
+  if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();
+  if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();
   return next();
 }
 

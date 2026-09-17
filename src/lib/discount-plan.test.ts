@@ -158,33 +158,33 @@ describe("validateSaleDiscount", () => {
 });
 
 // ── The admin guard (AC-9, TASK-160) ────────────────────────────────────────────────────────────────────────
+// 🔻 TASK-385 (REQ-092 Stage 3): the check is BY KEY — `action:sales.discount`. The `role` reader (TASK-160, patched by
+// TASK-379 to read `isSuperAdmin` beside it) is gone; a super admin has every key, anyone else needs the grant.
 describe("assertMayDiscount", () => {
+  const sa = { isSuperAdmin: true, grants: new Set<string>() };
+  const granted = { isSuperAdmin: false, grants: new Set(["action:sales.discount"]) };
+  const plain = { isSuperAdmin: false, grants: new Set(["menu:calendar", "action:calendar.book"]) };
   test("no discount ⇒ anyone may sell — an ordinary sale is not privileged work", () => {
     expect(() => assertMayDiscount(undefined, undefined)).not.toThrow();
-    expect(() => assertMayDiscount(undefined, { role: "staff" })).not.toThrow();
+    expect(() => assertMayDiscount(undefined, plain)).not.toThrow();
   });
 
-  test("an admin may discount", () => {
-    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "admin" })).not.toThrow();
+  test("🔴 TASK-385 — the grant `action:sales.discount` may discount; a super admin may (every key); the label `role` is NOT read", () => {
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, granted)).not.toThrow();
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, sa)).not.toThrow();
+    // a `role: "admin"` label with no grant is refused — nothing reads the label for authorization any more
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { ...plain, role: "admin" } as any)).toThrow(/ส่วนลด/);
   });
 
-  test("🔴 TASK-379 — a SUPER ADMIN may discount: the capability, not the label (`role` is `super_admin`, not `admin`)", () => {
-    // The bootstrapped first user is a super admin and the only user on day one; `role !== "admin"` refused him.
-    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "super_admin", isSuperAdmin: true })).not.toThrow();
-    // …and the capability alone is enough — a context that carries `isSuperAdmin` with no `role` still passes.
-    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { isSuperAdmin: true })).not.toThrow();
-    // …while a `super_admin` label with the capability FALSE is refused: the label is not the fact.
-    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "super_admin", isSuperAdmin: false })).toThrow(/แอดมิน/);
-  });
-
-  test("🔴 a non-admin (or an unauthenticated caller) may NOT", () => {
-    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "staff" })).toThrow(/แอดมิน/);
+  test("🔴 no grant (or an unauthenticated caller) may NOT — the sentence names the act, not \"admins\"", () => {
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, plain)).toThrow("ไม่มีสิทธิ์ให้ส่วนลด");
     expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, undefined)).toThrow();
   });
 
   test("the refusal is a 403, so it can't be confused with a validation problem", () => {
     try {
-      assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "staff" });
+      assertMayDiscount({ kind: "BAHT", value: 100 }, plain);
+      throw new Error("did not throw");
     } catch (e: any) {
       expect(e.status).toBe(403);
       expect(e.code).toBe("FORBIDDEN");

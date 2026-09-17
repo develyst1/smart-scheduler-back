@@ -5,9 +5,11 @@ import { db } from "./db";
 import { api } from "./routes/api";
 import { ApiException, pgErrorCode } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
-import { authMiddleware, menuGuard } from "./middleware/auth";
+import { authMiddleware, accessGuard } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
 import { userRoutes } from "./routes/users";
+import { meRoutes } from "./routes/me";
+import { permissionRoutes } from "./routes/permissions";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
 import { publicCalendar } from "./routes/calendar";
@@ -51,8 +53,10 @@ app.route("/internal", internalJobs);
 
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);
-app.use("/api/*", menuGuard); // TASK-381 — ONE menu guard, driven by `lib/route-menus.ts`; fails closed on an unmapped route
+app.use("/api/*", accessGuard); // TASK-381/385 — ONE guard (menu, then action), driven by `lib/route-access.ts`; fails closed on an unmapped route
 app.route("/api/users", userRoutes); // TASK-377 — super admin only (its own middleware), behind the guard
+app.route("/api/me", meRoutes); // TASK-383 — the signed-in user's own routes, behind the JWT guard, not menu-gated
+app.route("/api/permissions", permissionRoutes); // TASK-385 — the key registry with labels, any signed-in user
 
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
 const routes = app.route("/api", api);
