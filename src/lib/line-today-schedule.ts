@@ -52,6 +52,9 @@ export interface TodayRow {
   coach?: string | null;
   /** 🔴 REQ-085 §7.2 (TASK-304) — this entry's own `Remark`, or nothing. Per BOOKING. */
   attendeeNote?: string | null;
+  /** TASK-375 (REQ-091) — the entry's rental, ALREADY RENDERED (`rentalPrintLine`), or nothing. `Remark`'s twin:
+   *  per booking, printed only when present, never `(-)`. */
+  rental?: string | null;
 }
 
 /** Fields that MAY move to the header. `date` is constant by construction; `coach` only when the data agrees. */
@@ -72,8 +75,12 @@ const dash = (v: string | null | undefined) => (v && String(v).trim() ? String(v
  * 📌 Per BOOKING: the customer's own example shows two entries with DIFFERENT remarks, so a per-message note
  * would be visibly wrong.
  */
-const remarkLine = (r?: TodayRow): string[] =>
-  r?.attendeeNote?.trim() ? [`${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`] : [];
+const remarkLine = (r?: TodayRow): string[] => [
+  ...(r?.attendeeNote?.trim() ? [`${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`] : []),
+  // TASK-375 — `Rental :` right after `Remark`, in its shape (`*ถ้ามี`: present or absent, never a dash). Both
+  // audiences: `AUDIENCE_OMITS` hides nothing from anyone, and the parent pays for it at the shop.
+  ...(r?.rental?.trim() ? [`${t("ob_f_rental", TEMPLATE_LANG)} : ${r.rental.trim()}`] : []),
+];
 
 export function renderTodaySchedule(rows: TodayRow[], lang: Lang, audience: Audience = "parent"): string {
   const title = t("ob_today_title", lang);

@@ -91,6 +91,14 @@ const TIME_OWNER: Record<TemplateKey, { kind: string; file: string; start: strin
     start: "startTime: hhmm(first.startTime),",
     end: "endTime: hhmm(first.endTime),",
   },
+  // 🔑 TASK-375 — the EIGHTH, refused by the Record again: the same-day rental notice reads the same enrichment
+  // as the leave notice and the single cancel.
+  rental_added: {
+    kind: "rental_added_teacher",
+    file: "src/services/outbox.service.ts",
+    start: "startTime: hhmm(b.startTime),",
+    end: "endTime: hhmm(b.endTime),",
+  },
 };
 
 describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", () => {
@@ -125,6 +133,7 @@ describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", 
       // TASK-370 — the sixth and seventh; the bulk one prints its `Time` as an appended line (see TIME_OWNER).
       { key: "class_cancelled", printsTime: true, declared: true, start: true, end: true },
       { key: "course_dropped", printsTime: false, declared: true },
+      { key: "rental_added", printsTime: true, declared: true, start: true, end: true }, // TASK-375 — the eighth
     ]);
   });
 

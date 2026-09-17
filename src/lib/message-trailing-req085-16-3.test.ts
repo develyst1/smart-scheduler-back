@@ -70,7 +70,8 @@ describe("🔑 TASK-325 — NO message ends in whitespace. ONE property, ONE ass
     // point of this assertion, not a nuisance: it is what makes a new kind visible here.**
     // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
     // class is gone). The number moved because the walkers reached them — which is the point.
-    expect(KINDS.length).toBe(17);
+    // 🔻 TASK-375 — EIGHTEEN: `rental_added_teacher` (a rental added today after the reminder went).
+    expect(KINDS.length).toBe(18);
     for (const k of ["booking_confirmed", "leave_notice", "course_confirmed", "daily_digest"]) {
       expect({ k, present: KINDS.includes(k) }).toEqual({ k, present: true });
     }
@@ -117,7 +118,7 @@ describe("✅ TASK-325 §2 — ONE trim, at the builder's exit", () => {
     // `).trimEnd();`, so a file-wide negative would have failed on the fix. **My first version did.**
     const switchBody = MSG.slice(MSG.indexOf("function buildOutboxMessage("));
     expect(switchBody).not.toContain("trimEnd");
-    expect(switchBody.match(/case "/g)!.length).toBe(17); // TASK-370: +2, see the kind-list pin // …and it really is the whole switch
+    expect(switchBody.match(/case "/g)!.length).toBe(18); // TASK-370: +2, TASK-375: +1 — see the kind-list pin // …and it really is the whole switch
 
   });
 

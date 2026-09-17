@@ -24,6 +24,8 @@ import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
 import { enqueueLine } from "../lib/line";
+import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
+import { rentalPrintLine } from "../lib/rental-row";
 import { dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 
 export async function runEndOfDayJob(date?: string) {
@@ -304,7 +306,7 @@ async function postOtherBookingSale(b: {
 
 // ─────── SPEC-066 / TASK-208 (REQ-072 3B) — the 08:15 "you have a class today" push ───────
 
-export const REMINDER_JOB = "daily-reminder";
+export { REMINDER_JOB } from "../lib/reminder-run"; // TASK-375: one home for the name and the read
 
 /**
  * Had this business date already fired at least once before this invocation? **Observability only.**
@@ -318,16 +320,10 @@ export const REMINDER_JOB = "daily-reminder";
  * ⚠️ **Never re-wire this into an `if` around the send.** Both job-level flags are wrong: `sent` re-runs all
  * morning on a day that reached nobody, `attempted` eats the day.
  */
-async function reminderRanToday(runDate: string): Promise<boolean> {
-  const rows = await db
-    .select()
-    .from(jobRuns)
-    .where(and(eq(jobRuns.job, REMINDER_JOB), eq(jobRuns.runDate, runDate)));
-  // 🔴 TASK-209: keyed on `attempted`, NOT on `sent`. `sent` is a delivered COUNT, and a day where every
-  // recipient was unlinked delivers 0 — reading this off that number would misreport a day that reached
-  // nobody as one that never fired.
-  return rows.some((r) => (r.summary as any)?.attempted === true);
-}
+// TASK-375: the read lives in `lib/reminder-run.ts` now (`reminderRanOn`) — a second reader, the same-day rental
+// notice, needed it without closing an import cycle through `scheduler.service` → `rental.service`. Same read,
+// byte for byte, TASK-209's `attempted` key included; this file keeps its name for the one caller below.
+const reminderRanToday = (runDate: string): Promise<boolean> => reminderRanOn(runDate);
 
 /**
  * The 08:15 daily reminder. **One message per person** — every teacher who teaches today, every parent whose
@@ -363,6 +359,7 @@ export async function runDailyReminderJob(date?: string) {
       // SAME query, not a per-row lookup: a Saturday is ~60 sessions, and that is the shape this job avoids.
       course: true,
       voucher: true,
+      rental: true, // TASK-375 — the row relation (TASK-371); no extra read
     },
   });
 
@@ -424,6 +421,8 @@ export async function runDailyReminderJob(date?: string) {
       coach: joinCoaches(r.teacher, r.additionalTeachers ?? []) ?? null,
       // 🔴 REQ-085 §7.2 (TASK-304) — the booking's OWN note reaches its own entry.
       attendeeNote: r.attendeeNote ?? null,
+      // TASK-375 — rendered HERE, once, like `remaining`: the builder decides who and which rows, never the words.
+      rental: r.rental ? rentalPrintLine(r.rental.code, r.rental.remark ?? null) : null,
     })),
   );
 

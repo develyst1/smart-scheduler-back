@@ -137,9 +137,14 @@ describe("runDailyReminderJob (TASK-208)", () => {
     expect(body).toContain("alreadyReminded = sends.length - due.length");
   });
 
-  test("`reminderRanToday` is recorded, never acted on — and still keys on `attempted`", () => {
+  test("`reminderRanToday` is recorded, never acted on — and still keys on `attempted`", async () => {
     // Keying on `sent` would make it misreport a day that reached nobody as "never fired".
-    const predicate = SRC.slice(SRC.indexOf("async function reminderRanToday"));
+    // 🔻 TASK-375 — the read lives in `lib/reminder-run.ts` (`reminderRanOn`) so the same-day rental notice can
+    // ask it without an import cycle; `jobs.service` keeps the name as a delegation. The claim is unchanged:
+    // the predicate keys on `attempted`, and this file's only consumer is the summary.
+    expect(SRC).toContain("const reminderRanToday = (runDate: string): Promise<boolean> => reminderRanOn(runDate);");
+    const RUN = readSrc(await Bun.file(new URL("../lib/reminder-run.ts", import.meta.url)).text());
+    const predicate = RUN.slice(RUN.indexOf("export async function reminderRanOn"));
     expect(predicate.slice(0, predicate.indexOf("\n}\n"))).toContain("attempted === true");
     // Its only consumer is the summary/return payload.
     expect(body).toContain("const priorRunToday = await reminderRanToday(runDate)");

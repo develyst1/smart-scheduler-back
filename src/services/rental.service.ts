@@ -7,6 +7,9 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { bookingRentals } from "../db/schema";
 import { rentalBookingLive, rentalRemarkRequired, toRentalDTO } from "../lib/rental-row";
+import { bangkokNow } from "../lib/bangkok-time";
+import { reminderRanOn } from "../lib/reminder-run";
+import { enqueueLine } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
 import { listPriceMinor, rentalIdBase, rentalIdempotencyKey } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -87,6 +90,7 @@ export async function recordBookingRental(
       .insert(bookingRentals)
       .values({ bookingId, code: input.code, remark, createdBy: actor })
       .returning();
+    await notifyRentalAddedSameDay(booking, row);
     return { rental: toRentalDTO(row) };
   } catch (e) {
     // 🔴 The UNIQUE's 23505 is caught HERE: `onError` renders every 23505 as `409 SLOT_TAKEN` ("the slot is
@@ -94,6 +98,31 @@ export async function recordBookingRental(
     if (pgErrorCode(e) !== "23505") throw e;
     throw conflict("RENTAL_EXISTS", "คาบนี้มีรายการเช่าอุปกรณ์อยู่แล้ว");
   }
+}
+
+/**
+ * TASK-375 (REQ-091 Deploy B) — the coach is told of a rental ONLY when the reminder could not carry it: the
+ * session is TODAY (Bangkok) and today's reminder has already gone. Any other day, or today before 08:15, the
+ * reminder prints the `Rental :` line and nothing else is sent. One teacher row; unlinked ⇒ SKIPPED by
+ * `enqueueLine`; the worker enriches student / program / slot / coach from the booking. 🚫 No parent message,
+ * nothing on mark-paid, nothing on a whole-course creation or its reconcile copies (those never come here).
+ */
+async function notifyRentalAddedSameDay(
+  booking: { id: string; date: string; teacherId: string | null; bookingType?: string | null },
+  row: { code: string; remark: string | null },
+) {
+  const today = bangkokNow().date;
+  if (booking.date !== today) return null;
+  if (!(await reminderRanOn(today))) return null;
+  const teacher = booking.teacherId
+    ? await db.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.teacherId) })
+    : null;
+  return enqueueLine({
+    recipientType: "teacher",
+    recipientLineUserId: teacher?.lineUserId ?? null,
+    bookingId: booking.id,
+    payload: { kind: "rental_added_teacher", bookingId: booking.id, bookingType: booking.bookingType ?? null, rental: { code: row.code, remark: row.remark } },
+  });
 }
 
 export async function payBookingRental(bookingId: string, actor: string | null) {

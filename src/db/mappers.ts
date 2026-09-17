@@ -4,7 +4,7 @@
 import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
-import { toRentalDTO } from "../lib/rental-row";
+import { courseRentalOf, toRentalDTO } from "../lib/rental-row";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -205,6 +205,9 @@ export const toCourseWithStudent = (c: any) => ({
     : c.bookings?.[0]?.subject
       ? { id: c.bookings[0].subject.id, name: c.bookings[0].subject.name }
       : null,
+  // TASK-373 (REQ-091 Deploy B) — the course's whole-course rental, DERIVED, no column: from a grouped read the
+  // list spreads on (`courseRental`), else from the loaded rows (the create's return). `null` = not rented.
+  rental: c.courseRental ?? courseRentalOf(c.bookings ?? []),
 });
 
 export const toVoucherDTO = (v: any) => ({

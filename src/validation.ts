@@ -242,6 +242,13 @@ export const coursesQuery = z.object({
 });
 
 // Register a recurring course package (B.4): size + first slot → weekly sessions.
+// TASK-371 (REQ-091 Deploy A) — a rental ROW on a session. The remark rule lives in `lib/rental-row.ts`
+// (`rentalRemarkRequired`) so the service and this schema cannot disagree; here only the shape.
+export const recordBookingRental = z.object({
+  code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
+  remark: z.string().trim().max(200).optional(),
+});
+
 export const createCoursePackage = z
   .object({
     student: studentInput,
@@ -258,6 +265,9 @@ export const createCoursePackage = z
     absentWeeks: z.array(z.number().int().min(1)).optional(),
     // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
     discount: discountInput.optional(),
+    // TASK-373 (REQ-091 Deploy B) — whole-course rental: one tier for every session, paid upfront, one post.
+    // The same shape as the session rental; the remark RULE (set + ride) is the service's, as in TASK-371.
+    rental: recordBookingRental.optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -645,13 +655,6 @@ export const recordRental = z.object({
   idempotencyKey: z.string().min(1).max(200).optional(),
   // TASK-160 (REQ-063) — validated against the LINE TOTAL (hours × rate) in the service, never the unit rate.
   discount: discountInput.optional(),
-});
-
-// TASK-371 (REQ-091 Deploy A) — a rental ROW on a session. The remark rule lives in `lib/rental-row.ts`
-// (`rentalRemarkRequired`) so the service and this schema cannot disagree; here only the shape.
-export const recordBookingRental = z.object({
-  code: z.string().refine(isRentalCode, "รหัสอุปกรณ์เช่าไม่ถูกต้อง"),
-  remark: z.string().trim().max(200).optional(),
 });
 
 export const importVoucher = z.object({

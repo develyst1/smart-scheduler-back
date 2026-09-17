@@ -63,7 +63,9 @@ export type TemplateKey =
   // TASK-370 (REQ-089 §6) — the teacher is told a CONFIRMED class is gone: the `leave_notice` shape, and for
   // the bulk one (a drop / an end) minus the per-session fields — the dates ride as an appended list.
   | "class_cancelled"
-  | "course_dropped";
+  | "course_dropped"
+  // TASK-375 (REQ-091) — a rental added the same day after the reminder went: `leave_notice`'s block again.
+  | "rental_added";
 
 export type FieldKey =
   | "student"
@@ -112,6 +114,7 @@ export const TEMPLATE_FIELDS: Record<TemplateKey, readonly FieldKey[]> = {
   leave_notice: ["student", "program", "date", "time", "coach"],
   class_cancelled: ["student", "program", "date", "time", "coach"],
   course_dropped: ["student", "program", "coach"],
+  rental_added: ["student", "program", "date", "time", "coach"],
 };
 
 /**

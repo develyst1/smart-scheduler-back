@@ -101,7 +101,8 @@ describe("🔑 TASK-332 — the expression, and why it is a HELPER rather than a
     // CORRECT and nobody may 'consistency-fix' them.**
     // 🔻 TASK-370 — EIGHT: the two coach notices mirror `leave_notice`'s own `(payload.studentName as string) ||`
     // line for line (the house format is the owner's hard constraint). Same shape, same reason, still not for fixing.
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(8);
+    // 🔻 TASK-375 — NINE: the same-day rental notice mirrors `leave_notice`'s `studentName` line too.
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(9);
     expect(src("src/lib/line-message.ts")).toContain("Changing them \"for consistency\" would delete a rule the customer asked for.");
     // …and the three that fall through to `-` are still the safe shape: a `-` is visible, a missing line is not.
     expect(MSG).toContain('student: (payload.studentName as string) || ctx.studentName || "-",');

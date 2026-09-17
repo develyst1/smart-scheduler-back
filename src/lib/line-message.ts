@@ -6,6 +6,7 @@ import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
 import { ddmmyyyy } from "./time";
 import { isEndReason } from "./course-plan";
+import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
@@ -321,6 +322,27 @@ function buildOutboxMessage(
           fieldValue(payload.startTime) ? `${payload.startTime}${payload.endTime ? `-${payload.endTime}` : ""}` : undefined,
         ) +
         extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
+      );
+    }
+    // 🔴 TASK-375 (`REQ-091` Deploy B) — a rental added TODAY after the reminder went: the coach would not know,
+    // so he is told once, in `leave_notice`'s shape, with the customer's print line. 📖 The stamp is a placeholder.
+    case "rental_added_teacher": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      const r = payload.rental as { code?: string; remark?: string | null } | undefined;
+      return (
+        t("ob_rental_added_title", lang) + "\n" +
+        renderFieldBlock(
+          "rental_added",
+          {
+            student: ctx.studentName ?? ((payload.studentName as string) || undefined),
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: ctx.coach,
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_rental", lang), r?.code ? rentalPrintLine(r.code, r.remark ?? null) : undefined)
       );
     }
     case "daily_reminder":

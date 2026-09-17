@@ -199,7 +199,7 @@ describe("🔴 the DTO, the readers and the dead marker (source)", () => {
 describe("🔴 the migration — 0035, counted, witnessed, the lock named (source)", () => {
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
-  const SQL = readFileSync(resolve(root, "drizzle/0035_booking_rentals.sql"), "utf8");
+  const SQL = readFileSync(resolve(root, "drizzle/0035_booking_rentals.sql"), "utf8").replace(/\r\n/g, "\n"); // the file may be CRLF on this box
 
   test("36 = 36: the 36th file is `0035_booking_rentals`, registered last in the journal with idx 35", () => {
     expect(files.length).toBe(36);

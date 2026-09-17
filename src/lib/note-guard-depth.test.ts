@@ -139,6 +139,7 @@ describe("🔴 TASK-337 — the REASON is in the code, because the comment matte
     // CORRECT and nobody may 'consistency-fix' them.**
     // 🔻 TASK-370 — EIGHT: the two coach notices mirror `leave_notice`'s own `(payload.studentName as string) ||`
     // line for line (the house format is the owner's hard constraint). Same shape, same reason, still not for fixing.
-    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(8);
+    // 🔻 TASK-375 — NINE: the same-day rental notice mirrors `leave_notice`'s `studentName` line too.
+    expect(MSG.match(/as string\) \|\|/g)!.length).toBe(9);
   });
 });

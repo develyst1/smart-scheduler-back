@@ -551,6 +551,12 @@ const TABLE: Record<string, Entry> = {
   ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
   ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
   ob_f_reason: { TH: "Reason", EN: "Reason" },
+  // 📖 **PLACEHOLDER — MINE, and the owner has NOT seen it** (TASK-375, `REQ-091` Deploy B): the stamp of the
+  // same-day rental notice, in `leave_notice`'s shape. ⚠️ Not ratified: the test pins the FORM, not the bytes —
+  // the `ob_deduct_title_voucher` convention until the owner's eye. `Rental` below is NOT new: it is the
+  // customer's own section word (TASK-372), and the value line is his ruled print shape.
+  ob_rental_added_title: { TH: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️", EN: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️" },
+  ob_f_rental: { TH: "Rental", EN: "Rental" },
   // The closed cancel/end codes (`END_REASONS`) as words — the first labels these codes have ever had; the
   // message is the first reader that needs them.
   ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },

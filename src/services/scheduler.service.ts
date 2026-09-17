@@ -133,6 +133,8 @@ import { issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
+import { recordRental } from "./rental.service";
+import { courseRentalOf, rentalRemarkRequired } from "../lib/rental-row";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -603,6 +605,19 @@ async function courseIdsOrdered(f: { q?: string; page?: number; limit?: number }
 }
 
 /** Hydrate courses to their DTO shape, preserving the id order handed in. */
+/** TASK-373 — `Map<courseId, { code, remark }>` for the courses that are rented, in ONE query (rows joined to their rentals). */
+async function courseRentalsByCourse(courseIds: string[], exec: any = db): Promise<Map<string, { code: string; remark: string | null }>> {
+  if (courseIds.length === 0) return new Map();
+  const rows = await exec
+    .select({ courseId: bookings.courseId, code: bookingRentals.code, remark: bookingRentals.remark })
+    .from(bookingRentals)
+    .innerJoin(bookings, eq(bookings.id, bookingRentals.bookingId))
+    .where(inArray(bookings.courseId, courseIds));
+  const out = new Map<string, { code: string; remark: string | null }>();
+  for (const r of rows) if (r.courseId && !out.has(r.courseId)) out.set(r.courseId, { code: r.code, remark: r.remark ?? null });
+  return out;
+}
+
 async function coursesByIds(ids: string[]) {
   if (ids.length === 0) return [];
   // TASK-140: the course's own `subject` is the program. The one-booking load stays only as the pre-0018
@@ -611,10 +626,13 @@ async function coursesByIds(ids: string[]) {
     where: (c, { inArray: inA }) => inA(c.id, ids),
     with: { student: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },
   });
+  // TASK-373: the course's rental, ONE grouped read (the nested `bookings` above is `limit: 1` and could sample a
+  // leave row, which carries none) — spread on as `courseRental` for the mapper to derive from.
+  const rentalByCourse = await courseRentalsByCourse(ids);
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => {
     const row = byId.get(id);
-    return row ? [toCourseWithStudent(row)] : [];
+    return row ? [toCourseWithStudent({ ...row, courseRental: rentalByCourse.get(id) ?? null })] : [];
   });
 }
 
@@ -1654,6 +1672,11 @@ export async function createCoursePackage(input: any) {
     listPriceMinor(courseItemRef(priceGroup, input.size)) ?? 0,
     input.actor ?? null,
   );
+  // TASK-373: the whole-course rental's remark rule, refused BEFORE anything is written — the same function
+  // the session rental uses (set + ride), so the two doors cannot disagree.
+  if (input.rental && rentalRemarkRequired(input.rental.code, input.rental.remark)) {
+    throw new ApiException(400, "RENTAL_REMARK_REQUIRED", "กรุณาระบุรายละเอียดอุปกรณ์ (ชุด/คู่/ไซส์)");
+  }
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
@@ -1772,6 +1795,27 @@ export async function createCoursePackage(input: any) {
       await reconcileCoursePlan(tx, course.id);
     }
 
+    // TASK-373 (REQ-091 Deploy B) — the whole-course rental: a PAID row on every LIVE row the course is born
+    // with, inserted AFTER the flip loop (so the rows are final: the make-ups exist, the leave rows are
+    // SICK_LEAVE and get none). The money is ONE post after the transaction, below — the rows are the fact,
+    // the ledger the amount, exactly as TASK-371 laid it out.
+    if (input.rental) {
+      const finalRows = await tx.query.bookings.findMany({
+        where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.courseId, course.id), inA(b.status, [...COURSE_LIVE_STATUSES])),
+      });
+      const paidAt = new Date();
+      for (const r of finalRows) {
+        await tx.insert(bookingRentals).values({
+          bookingId: r.id,
+          code: input.rental.code,
+          remark: input.rental.remark?.trim() || null,
+          paidAt,
+          paidActor: input.actor ?? null,
+          createdBy: input.actor ?? null,
+        });
+      }
+    }
+
     const courseRow = await tx.query.coursePackages.findFirst({
       where: (c, { eq }) => eq(c.id, course.id),
       with: { student: true },
@@ -1781,7 +1825,7 @@ export async function createCoursePackage(input: any) {
       with: withBookingRelations,
       orderBy: (b, { asc }) => asc(b.date),
     });
-    return { course: toCourseWithStudent(courseRow), bookings: created.map((b) => toBookingDTO(b)) };
+    return { course: toCourseWithStudent({ ...courseRow, bookings: created }), bookings: created.map((b) => toBookingDTO(b)) };
   });
 
   // Phase 2 (item-centric): a course sale → record revenue on its INCOME item in backoffice.
@@ -1791,6 +1835,16 @@ export async function createCoursePackage(input: any) {
     idempotencyKey: `course-sale:${result.course.id}`,
     discount, // TASK-160 — validated at the top of this function, BEFORE the course was written
   });
+  // TASK-373 — the rental's ONE post, where the course sale posts and in its shape: after the transaction,
+  // best-effort, `hours = size` (a 10-lesson course is ten rentals on one line), key `rental:<courseId>:<code>`,
+  // NO discount. ⚠️ One line the course sale does not need: `recordRental` THROWS on a failed post (TASK-108 —
+  // the post IS the event) where `recordSale` returns `ok: false`, so the rejection is caught and logged here —
+  // the same effect as the course sale's gap (the rows are paid, the ledger is missing, the log is the alarm).
+  if (input.rental) {
+    void recordRental({ code: input.rental.code, hours: input.size, refId: result.course.id, actor: input.actor ?? null }).catch((e) =>
+      console.error(`[rental] NOT POSTED — course ${result.course.id} ${input.rental.code} × ${input.size}: ${e?.message ?? e}`),
+    );
+  }
 
   return result;
 }
@@ -2286,6 +2340,9 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
 
   const appended: string[] = [];
   if (plan.append.length) {
+    // TASK-373: ONE read of the course's rental rows; the first one is the course's (all-or-nothing by construction).
+    const rentalRows = await tx.select().from(bookingRentals).where(inArray(bookingRentals.bookingId, rows.map((r: any) => r.id)));
+    const courseRental = rentalRows[0] ?? null;
     const byId = new Map(rows.map((r: any) => [r.id, r]));
     const cancelledSet = new Set(plan.cancelIds);
     const liveAfterCancel = rows.filter(
@@ -2374,6 +2431,19 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         })
         .returning({ id: bookings.id });
       appended.push(ext.id);
+      // TASK-373 — a rented course's make-up INHERITS a paid row: the family paid `size` lessons of equipment
+      // once, and this is one of them. The source is the COURSE's rental (derived from its rows), NOT the
+      // template's — the template is the leave row being replaced, which carries none. No post.
+      if (courseRental) {
+        await tx.insert(bookingRentals).values({
+          bookingId: ext.id,
+          code: courseRental.code,
+          remark: courseRental.remark,
+          paidAt: courseRental.paidAt,
+          paidActor: courseRental.paidActor,
+          createdBy: courseRental.createdBy,
+        });
+      }
       fromDate = extDate;
     }
 
