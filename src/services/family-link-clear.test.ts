@@ -81,7 +81,7 @@ describe("🔴 it is an AUDITED, deliberate act — not a cleanup", () => {
   test("🔑 the actor comes from the TOKEN, never the request body", () => {
     // The rule TASK-160 set for discounts, for the same reason: an actor a caller can choose is not an actor.
     const route = API.slice(API.indexOf('.post("/parents/:id/clear-line-link"'));
-    expect(route.slice(0, 300)).toContain('c.get("user")?.sub ?? null');
+    expect(route.slice(0, 300)).toContain("actorOf(c)"); // 🔻 TASK-377: the actor is `actorOf(c)` (the username) at every site — no route reads `.sub` any more
     expect(route.slice(0, 300)).not.toContain("body.actor");
   });
 });

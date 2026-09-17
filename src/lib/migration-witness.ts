@@ -382,6 +382,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "it. Both statements are IF NOT EXISTS, so a re-run is safe.",
     rerunnable: true,
   },
+  {
+    tag: "0036_users",
+    probe: { kind: "index", index: "user_permissions_user_key_uq" },
+    why:
+      "TASK-377 (REQ-092 RBAC Stage 1). The LAST of four objects — the unique index on `user_permissions`, a table " +
+      "invented here over `users`, invented here — so existence is a valid probe and a run that died after " +
+      "`users` alone is not called applied (Stage 2 would find no grants table). All four are IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

@@ -201,12 +201,12 @@ describe("🔴 the migration — 0035, counted, witnessed, the lock named (sourc
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0035_booking_rentals.sql"), "utf8").replace(/\r\n/g, "\n"); // the file may be CRLF on this box
 
-  test("36 = 36: the 36th file is `0035_booking_rentals`, registered last in the journal with idx 35", () => {
-    expect(files.length).toBe(36);
-    expect(files.at(-1)).toBe("0035_booking_rentals.sql");
-    expect((JOURNAL.match(/"tag"/g) ?? []).length).toBe(36);
+  test("37 = 37 (TASK-377 added 0036): the 36th file is `0035_booking_rentals`, at idx 35", () => {
+    expect(files.length).toBe(37);
+    expect(files[35]).toBe("0035_booking_rentals.sql"); // 🔻 TASK-377: 0036_users is the 37th
+    expect((JOURNAL.match(/"tag"/g) ?? []).length).toBe(37);
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.at(-1)).toMatchObject({ idx: 35, tag: "0035_booking_rentals" });
+    expect(j.entries[35]).toMatchObject({ idx: 35, tag: "0035_booking_rentals" });
   });
 
   test("the body: CREATE TABLE with the FK (cascade), then the UNIQUE INDEX as the LAST statement; both IF NOT EXISTS; no price column", () => {
@@ -233,7 +233,7 @@ describe("🔴 the migration — 0035, counted, witnessed, the lock named (sourc
     expect(w).toBeTruthy();
     expect(w.probe).toEqual({ kind: "index", index: "booking_rentals_booking_uq" });
     expect(w.rerunnable).toBe(true);
-    expect(SCHEDULING_WITNESSES.at(-1)?.tag).toBe("0035_booking_rentals");
+    expect(SCHEDULING_WITNESSES.map((w) => w.tag)).toContain("0035_booking_rentals"); // 🔻 TASK-377: no longer the last
   });
 
   test("the 5th bo.item reaches an existing box through `sale:ensure-items` (additive) — the seed list carries it with the RENTAL marker", () => {

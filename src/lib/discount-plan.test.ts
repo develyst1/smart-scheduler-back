@@ -168,6 +168,15 @@ describe("assertMayDiscount", () => {
     expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "admin" })).not.toThrow();
   });
 
+  test("🔴 TASK-379 — a SUPER ADMIN may discount: the capability, not the label (`role` is `super_admin`, not `admin`)", () => {
+    // The bootstrapped first user is a super admin and the only user on day one; `role !== "admin"` refused him.
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "super_admin", isSuperAdmin: true })).not.toThrow();
+    // …and the capability alone is enough — a context that carries `isSuperAdmin` with no `role` still passes.
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { isSuperAdmin: true })).not.toThrow();
+    // …while a `super_admin` label with the capability FALSE is refused: the label is not the fact.
+    expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "super_admin", isSuperAdmin: false })).toThrow(/แอดมิน/);
+  });
+
   test("🔴 a non-admin (or an unauthenticated caller) may NOT", () => {
     expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, { role: "staff" })).toThrow(/แอดมิน/);
     expect(() => assertMayDiscount({ kind: "BAHT", value: 100 }, undefined)).toThrow();

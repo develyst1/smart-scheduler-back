@@ -558,6 +558,47 @@ export const bookingRentals = pgTable(
   (t) => [uniqueIndex("booking_rentals_booking_uq").on(t.bookingId)],
 );
 
+// ───────────── TASK-377 (REQ-092 RBAC, SPEC-079 Stage 1) — real users, `0036` ─────────────
+//
+// One shared env login became a table. `password_hash` is `Bun.password` (argon2id) and NEVER leaves the
+// service (`toUserDTO` picks columns). The guard reads this row on EVERY request: `disabled_at` set ⇒ 401 within
+// the request, not the token's TTL. A super admin ignores `user_permissions` and is the only one who manages
+// users; the LAST enabled super admin cannot be disabled or demoted (`LAST_SUPER_ADMIN`).
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Trimmed + lower-cased on write, `^[a-z0-9._-]{3,40}$`. The login key and the audit `actor`. */
+    username: text("username").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    displayName: text("display_name").notNull(),
+    isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: text("created_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("users_username_uq").on(t.username)],
+);
+
+// Stage 2 onward — a user's effective GRANTS, one row per permission KEY (a code constant: `menu:*`, `action:*`).
+// Created in `0036` so Stages 2–3 ship without a migration. Empty and unread until then.
+export const userPermissions = pgTable(
+  "user_permissions",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    grantedBy: text("granted_by"),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("user_permissions_user_key_uq").on(t.userId, t.key)],
+);
+
 // ───────────────────── LINE OA link sessions (C.4) ─────────────────────
 // Short-lived conversation state while a LINE user picks a role + enters a code.
 export const lineLinkSessions = pgTable("line_link_sessions", {
@@ -874,6 +915,14 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   // TASK-371 — the session's rental row, or none. Rides in `withBookingRelations` so every relational reader
   // carries `rental` without its own read.
   rental: one(bookingRentals, { fields: [bookings.id], references: [bookingRentals.bookingId] }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  permissions: many(userPermissions),
+}));
+
+export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
+  user: one(users, { fields: [userPermissions.userId], references: [users.id] }),
 }));
 
 export const bookingRentalsRelations = relations(bookingRentals, ({ one }) => ({

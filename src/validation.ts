@@ -470,6 +470,20 @@ export const login = z.object({
   password: z.string().min(1),
 });
 
+// TASK-377 (REQ-092 Stage 1) — user management. Shape only; the username pattern, the password minimum and the
+// last-super-admin rule are the service's (one source, one sentence each).
+export const createUser = z.object({
+  username: z.string().trim().min(1),
+  password: z.string(),
+  displayName: z.string().trim().min(1),
+  isSuperAdmin: z.boolean().optional(),
+});
+export const updateUser = z.object({
+  displayName: z.string().trim().optional(),
+  isSuperAdmin: z.boolean().optional(),
+});
+export const resetPassword = z.object({ password: z.string() });
+
 // Teacher type ordering (B.2) — exactly the 3 types, no duplicates.
 export const setTeacherTypeOrder = z.object({
   order: z

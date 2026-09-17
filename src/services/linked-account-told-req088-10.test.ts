@@ -91,7 +91,7 @@ describe("🔑 `unlink` — the ONE writer, one more door, actor stated", () => 
     }
     // …and the admin's door is UNCHANGED: the same function, the admin as actor.
     expect(PARENT).toContain("export async function clearParentLineLink(id: string, actor: string | null)");
-    expect(API).toContain('parent.clearParentLineLink(c.req.param("id"), c.get("user")?.sub ?? null)');
+    expect(API).toContain('parent.clearParentLineLink(c.req.param("id"), actorOf(c))');
   });
 
   test("🔑 the actor is `line:<sub>` — the audit says a PARENT did this to themselves", () => {

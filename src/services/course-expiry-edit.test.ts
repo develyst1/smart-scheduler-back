@@ -37,7 +37,7 @@ describe("TASK-264 — the migration, counted and witnessed", () => {
   test("0034 is registered, and the counts agree", () => {
     // The board's rule: "no migration" is a CLAIM, not a state — so the numbers are asserted, not asserted about.
     const tags = JOURNAL.match(/"tag": "\d{4}_/g) ?? [];
-    expect(tags.length).toBe(36); // 🔻 TASK-371: 0035_booking_rentals — the first migration since 0034
+    expect(tags.length).toBe(37); // 🔻 TASK-371: 0035; TASK-377: 0036_users
     expect(JOURNAL).toContain('"tag": "0034_course_expiry_changes"');
     expect(JOURNAL).toContain('"idx": 34');
   });
@@ -124,7 +124,7 @@ describe("TASK-264 — AC-1: ANY course, so no writability gate", () => {
 
   test("the route classifies the new write, and takes its actor from the TOKEN", () => {
     expect(ROUTES).toContain('.patch("/courses/:id/expiry"');
-    expect(ROUTES).toContain('svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)');
+    expect(ROUTES).toContain('svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), actorOf(c))');
     // 🚫 Never from the body — TASK-160's rule, and an audit row whose author the caller picks records nothing.
     expect(code(VALIDATION).slice(code(VALIDATION).indexOf("export const updateCourseExpiry"))).not.toContain("actor");
   });
@@ -253,6 +253,6 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
     expect(c).toContain("input: { startDate: string; startTime: string; teacherId?: string },");
     expect(c).toContain("actor?: string | null,");
     expect(c).not.toContain("_actor?: string | null");
-    expect(ROUTES).toContain('svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)');
+    expect(ROUTES).toContain('svc.resumeCourse(c.req.param("id"), c.req.valid("json"), actorOf(c))');
   });
 });

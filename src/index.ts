@@ -7,6 +7,7 @@ import { ApiException, pgErrorCode } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
 import { authMiddleware } from "./middleware/auth";
 import { authRoutes } from "./routes/auth";
+import { userRoutes } from "./routes/users";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
 import { publicCalendar } from "./routes/calendar";
@@ -50,6 +51,7 @@ app.route("/internal", internalJobs);
 
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);
+app.route("/api/users", userRoutes); // TASK-377 — super admin only (its own middleware), behind the guard
 
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
 const routes = app.route("/api", api);

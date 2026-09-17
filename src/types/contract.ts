@@ -475,16 +475,26 @@ export interface SetTeacherTypeOrderRequest {
 
 // ═══════════════════════════════ Auth (B.7) ═══════════════════════════════
 
-export type Role = "admin" | "staff";
+/** TASK-377: `"super_admin" | "admin"` are issued; `"staff"` kept for compatibility, never issued. */
+export type Role = "super_admin" | "admin" | "staff";
 
 /** POST /auth/login — staff/admin login (public). */
 export interface LoginRequest {
   username: string;
   password: string;
 }
+/** TASK-377 (REQ-092 Stage 1) — a real user row, never its hash. */
+export interface UserDTO {
+  id: string;
+  username: string;
+  displayName: string;
+  isSuperAdmin: boolean;
+  disabledAt: string | null;
+  createdAt: string;
+}
 export interface LoginResponse {
   token: string;
-  user: { username: string; role: Role };
+  user: UserDTO & { role: Role };
 }
 
 // ═══════════════════════════════ Errors ═══════════════════════════════

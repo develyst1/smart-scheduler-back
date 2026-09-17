@@ -138,13 +138,18 @@ export class DiscountRefused extends ApiException {
  * ⚠️ Caveat carried from SPEC-059 Q1: there is only ONE role in the system today, so in practice this asserts an
  * authenticated admin and cannot yet distinguish a non-admin staff member. It is correct as written and becomes
  * meaningful the moment a staff role exists — which is why it is written now rather than left as a TODO.
+ *
+ * 🔻 TASK-379 (REQ-092 Stage 1 defect, found by @Fern): TASK-377 widened `role` to `"super_admin" | "admin"` and
+ * this line read `role !== "admin"` — so the bootstrapped first user, a super admin and the ONLY user on day one,
+ * could not discount. Read the CAPABILITY (`isSuperAdmin`) beside the label; the sentence is unchanged. Stage 3
+ * retires this check by the key `action:sales.discount` — not here.
  */
 export function assertMayDiscount(
   discount: unknown,
-  user: { role?: string } | undefined | null,
+  user: { role?: string; isSuperAdmin?: boolean } | undefined | null,
 ): void {
   if (!discount) return;
-  if (!user || user.role !== "admin") {
+  if (!user || !(user.isSuperAdmin || user.role === "admin")) {
     throw new ApiException(403, "FORBIDDEN", "เฉพาะแอดมินเท่านั้นที่ให้ส่วนลดได้");
   }
 }

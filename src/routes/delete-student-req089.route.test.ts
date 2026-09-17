@@ -113,7 +113,7 @@ describe("🔴 the service — count → refuse or delete in ONE transaction; th
 
   test("the route exists, takes the actor from the TOKEN, and `api.ts` now says why this one delete exists", () => {
     const API = src("src/routes/api.ts");
-    expect(code(API)).toContain('.delete("/students/:id", async (c) =>\n    c.json(await parent.deleteStudent(c.req.param("id"), c.get("user")?.sub ?? null)),');
+    expect(code(API)).toContain('.delete("/students/:id", async (c) =>\n    c.json(await parent.deleteStudent(c.req.param("id"), actorOf(c))),');
     expect(API).toContain("Nothing is ever deleted; suspend is the off switch —\n  // EXCEPT a student with NO history (TASK-364, REQ-089 item 3)");
   });
 });

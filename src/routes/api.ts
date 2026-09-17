@@ -17,6 +17,7 @@ import { crmLevelLadder } from "../lib/crm";
 import { isSettingKey } from "../lib/settings";
 import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
+import { actorOf } from "../services/user.service";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -67,7 +68,7 @@ export const api = new Hono()
   // TOKEN, never the body — the rule TASK-160 set for discounts, for the same reason.
   // ⚠️ It removes the LINK ONLY. No student, booking, note or message row is touched.
   .post("/parents/:id/clear-line-link", async (c) =>
-    c.json(await parent.clearParentLineLink(c.req.param("id"), c.get("user")?.sub ?? null)),
+    c.json(await parent.clearParentLineLink(c.req.param("id"), actorOf(c))),
   )
   .post("/parents/:id/unsuspend", async (c) =>
     c.json(await parent.setParentSuspended(c.req.param("id"), false)),
@@ -77,7 +78,7 @@ export const api = new Hono()
   )
   // TASK-364 — hard delete, history-free only; `409 STUDENT_HAS_HISTORY` otherwise. Actor from the TOKEN.
   .delete("/students/:id", async (c) =>
-    c.json(await parent.deleteStudent(c.req.param("id"), c.get("user")?.sub ?? null)),
+    c.json(await parent.deleteStudent(c.req.param("id"), actorOf(c))),
   )
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
   .get("/attention", async (c) => c.json(await attention.getAttention()))
@@ -109,7 +110,7 @@ export const api = new Hono()
   .post("/courses/:id/cancel", zValidator("json", v.endCourse), async (c) => {
     const body = c.req.valid("json");
     return c.json(
-      await svc.endCourse(c.req.param("id"), body, c.get("user")?.sub ?? null),
+      await svc.endCourse(c.req.param("id"), body, actorOf(c)),
     );
   })
   // SPEC-066 / TASK-201 (REQ-072) — confirm every PENDING session of a course in one action, with exactly ONE
@@ -118,10 +119,10 @@ export const api = new Hono()
   // SPEC-065 / TASK-198 — pause a course (off the calendar, not deleted, still owed) and bring it back on its
   // own slot. Separate verbs from `/cancel`: reversible and terminal must not share a button or a code.
   .post("/courses/:id/drop", zValidator("json", v.dropCourse), async (c) =>
-    c.json(await svc.dropCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+    c.json(await svc.dropCourse(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
   .post("/courses/:id/resume", zValidator("json", v.resumeCourse), async (c) =>
-    c.json(await svc.resumeCourse(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+    c.json(await svc.resumeCourse(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
   // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
   // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and
@@ -132,7 +133,7 @@ export const api = new Hono()
     c.json(await svc.previewCourseExpiry(c.req.param("id"), c.req.valid("json"))),
   )
   .patch("/courses/:id/expiry", zValidator("json", v.updateCourseExpiry), async (c) =>
-    c.json(await svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null)),
+    c.json(await svc.updateCourseExpiry(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
   .get("/courses/:id/expiry-history", async (c) =>
     c.json(await svc.getCourseExpiryHistory(c.req.param("id"))),
@@ -215,7 +216,7 @@ export const api = new Hono()
     // TASK-160: only an admin may discount, and the actor comes from the TOKEN — never from the body, or
     // "who authorised this" would be whatever the caller typed.
     assertMayDiscount(body.discount, c.get("user"));
-    return c.json(await svc.createCoursePackage({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+    return c.json(await svc.createCoursePackage({ ...body, actor: actorOf(c) }), 201);
   })
   .get("/vouchers", zValidator("query", v.vouchersQuery), async (c) =>
     c.json(await svc.listVouchersPaged(c.req.valid("query"))),
@@ -223,7 +224,7 @@ export const api = new Hono()
   .post("/vouchers", zValidator("json", v.createVoucher), async (c) => {
     const body = c.req.valid("json");
     assertMayDiscount(body.discount, c.get("user"));
-    return c.json(await svc.createVoucher({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+    return c.json(await svc.createVoucher({ ...body, actor: actorOf(c) }), 201);
   })
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
     c.json(await svc.getBookings(c.req.valid("query"))),
@@ -237,7 +238,7 @@ export const api = new Hono()
     const body = c.req.valid("json");
     // TASK-162: same admin-only rule and same token-sourced actor as the at-sale discounts.
     assertMayDiscount(body.discount, c.get("user"));
-    return c.json(await svc.createBooking({ ...body, actor: c.get("user")?.sub ?? null }), 201);
+    return c.json(await svc.createBooking({ ...body, actor: actorOf(c) }), 201);
   })
   .post("/bookings/bulk-confirm", zValidator("json", v.bulkConfirm), async (c) =>
     c.json(await svc.bulkConfirm(c.req.valid("json").ids)),
@@ -338,16 +339,16 @@ export const api = new Hono()
   .post("/rentals", zValidator("json", v.recordRental), async (c) => {
     const body = c.req.valid("json");
     assertMayDiscount(body.discount, c.get("user"));
-    const r = await rental.recordRental({ ...body, actor: c.get("user")?.sub ?? null });
+    const r = await rental.recordRental({ ...body, actor: actorOf(c) });
     return c.json(r, r.status === "recorded" ? 201 : 200);
   })
   // ── TASK-371 (REQ-091 Deploy A) — a rental as a ROW on a session: record (no money) · paid (the ONE place money
   // moves, through `recordRental`) · remove (unpaid only). Actor from the TOKEN. Prices are constants.
   .post("/bookings/:id/rental", zValidator("json", v.recordBookingRental), async (c) =>
-    c.json(await rental.recordBookingRental(c.req.param("id"), c.req.valid("json"), c.get("user")?.sub ?? null), 201),
+    c.json(await rental.recordBookingRental(c.req.param("id"), c.req.valid("json"), actorOf(c)), 201),
   )
   .post("/bookings/:id/rental/paid", async (c) =>
-    c.json(await rental.payBookingRental(c.req.param("id"), c.get("user")?.sub ?? null)),
+    c.json(await rental.payBookingRental(c.req.param("id"), actorOf(c))),
   )
   .delete("/bookings/:id/rental", async (c) => c.json(await rental.removeBookingRental(c.req.param("id"))))
   // ── Configurable business rules (SPEC-029 / REQ-031) ──
