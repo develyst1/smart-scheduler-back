@@ -152,12 +152,41 @@ export async function setUserDisabled(id: string, disabled: boolean): Promise<Us
  * exists the pair is ignored — the break-glass re-creates the first super admin only on an empty table
  * (SPEC-079 §3.1). The old `ADMIN_USERNAME` / `ADMIN_PASSWORD` login is RETIRED: nothing reads it.
  */
+let bootstrapRefusalLogged = false;
+
+/**
+ * 🔴 TASK-380 — the env pair is checked against the SAME rules `createUser` applies (`USERNAME_RE`, `PASSWORD_MIN`)
+ * BEFORE the call, and a breach is LOUD: one `console.error` per process and the specific 400 as the login's
+ * answer. On `sid` the pair was `admin` / `admin` (5 chars): `createUser` threw `PASSWORD_TOO_SHORT` inside the
+ * login, the FE showed its generic sentence, stdout said nothing, the table stayed empty, and the owner looped
+ * for hours. 🚫 NEVER log a credential — the password's LENGTH class is the only fact about it that is printed.
+ */
+export function bootstrapEnvRefusal(envUser: string, envPass: string): ApiException | null {
+  if (!USERNAME_RE.test(normalizeUsername(envUser))) {
+    return new ApiException(400, "VALIDATION", "BOOTSTRAP_ADMIN_USERNAME ต้องเป็น a-z 0-9 . _ - ยาว 3–40 ตัว");
+  }
+  if (envPass.length < PASSWORD_MIN) {
+    return new ApiException(400, "PASSWORD_TOO_SHORT", `BOOTSTRAP_ADMIN_PASSWORD ต้องยาวอย่างน้อย ${PASSWORD_MIN} ตัวอักษร — ตั้งค่าใหม่แล้วรีสตาร์ท`);
+  }
+  return null;
+}
+
 export async function bootstrapIfEmpty(username: string, password: string): Promise<boolean> {
   const envUser = process.env.BOOTSTRAP_ADMIN_USERNAME;
   const envPass = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   if (!envUser || !envPass) return false;
   if (normalizeUsername(username) !== normalizeUsername(envUser) || password !== envPass) return false;
   if ((await countUsers()) !== 0) return false;
+  const refusal = bootstrapEnvRefusal(envUser, envPass);
+  if (refusal) {
+    if (!bootstrapRefusalLogged) {
+      bootstrapRefusalLogged = true;
+      console.error(
+        `[auth] bootstrap REFUSED: ${refusal.code === "PASSWORD_TOO_SHORT" ? `BOOTSTRAP_ADMIN_PASSWORD is shorter than ${PASSWORD_MIN}` : "BOOTSTRAP_ADMIN_USERNAME is invalid (a-z 0-9 . _ - , 3–40)"} — set it and restart. The users table is still empty.`,
+      );
+    }
+    throw refusal;
+  }
   await createUser({ username: envUser, password: envPass, displayName: envUser, isSuperAdmin: true }, "bootstrap");
   console.info(`[auth] bootstrap: first super admin "${normalizeUsername(envUser)}" created from env (users was empty)`);
   return true;

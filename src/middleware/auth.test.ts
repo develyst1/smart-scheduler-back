@@ -11,12 +11,12 @@ import * as usersSvc from "../services/user.service";
 
 process.env.JWT_SECRET ??= "test-secret";
 
-const ROW = { id: "u-1", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null as Date | null, createdAt: new Date("2026-09-17T00:00:00Z"), passwordHash: "hash" };
-const STAFF = { ...ROW, id: "u-2", username: "staff", isSuperAdmin: false };
+const ROW = { id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null as Date | null, createdAt: new Date("2026-09-17T00:00:00Z"), passwordHash: "hash" };
+const STAFF = { ...ROW, id: "22222222-2222-4222-8222-222222222222", username: "staff", isSuperAdmin: false };
 let disabled = false;
 const spies = [
   spyOn(usersSvc, "authenticate").mockImplementation((async (u: string, p: string) => (u === "admin" && p === "admin" ? { ...ROW } : u === "staff" && p === "staffpass" ? { ...STAFF } : null)) as any),
-  spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => (id === "u-1" ? { ...ROW, disabledAt: disabled ? new Date() : null } : id === "u-2" ? { ...STAFF } : null)) as any),
+  spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => (id === "11111111-1111-4111-8111-111111111111" ? { ...ROW, disabledAt: disabled ? new Date() : null } : id === "22222222-2222-4222-8222-222222222222" ? { ...STAFF } : null)) as any),
 ];
 afterAll(() => spies.forEach((s) => s.mockRestore()));
 
@@ -69,11 +69,11 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     const login = await app.request("/api/auth/login", json({ username: "admin", password: "admin" }));
     expect(login.status).toBe(200);
     const { token, user } = (await login.json()) as any;
-    expect(user).toEqual({ id: "u-1", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin" });
+    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin" });
     expect("passwordHash" in user).toBe(false);
     const ping = await app.request("/api/ping", { headers: { authorization: `Bearer ${token}` } });
     expect(ping.status).toBe(200);
-    expect(((await ping.json()) as any).user).toEqual({ id: "u-1", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", grants: [] });
+    expect(((await ping.json()) as any).user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", grants: [] });
   });
 
   test("login with the wrong password → 401, ONE sentence (no enumeration)", async () => {

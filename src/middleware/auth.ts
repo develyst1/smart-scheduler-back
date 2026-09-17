@@ -31,6 +31,9 @@ declare module "hono" {
 
 export const authDisabled = () => process.env.SKIP_AUTH === "true";
 
+/** A well-formed `sub` (the users table's uuid PK). A legacy `"admin"` fails this and never reaches the database. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** `SKIP_AUTH=true` (dev / tests): a full super-admin user object, so every guard and every actor site behaves. */
 export const DEV_USER: AuthUser = { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", grants: new Set() };
 
@@ -57,6 +60,11 @@ export async function authMiddleware(c: Context, next: Next) {
   } catch {
     throw new ApiException(401, "UNAUTHORIZED", "โทเคนไม่ถูกต้องหรือหมดอายุ");
   }
+  // 🔴 TASK-380 §2 — the claim's SHAPE before the read: a pre-Stage-1 token carries `sub = "admin"`, and a
+  // non-UUID against the `uuid` column makes Postgres throw 22P02 before `!row` could answer. Every admin
+  // logged in before the cutover hit a 500 on their first call instead of "sign in again". A malformed `sub`
+  // is the token sentence with NO query; a real database error on a well-formed id stays a 500 — no catch-all.
+  if (!UUID_RE.test(sub)) throw new ApiException(401, "UNAUTHORIZED", "โทเคนไม่ถูกต้องหรือหมดอายุ");
   const row = await findUserById(sub);
   if (!row) throw new ApiException(401, "UNAUTHORIZED", "โทเคนไม่ถูกต้องหรือหมดอายุ");
   if (row.disabledAt) throw new ApiException(401, "UNAUTHORIZED", "บัญชีนี้ถูกปิดใช้งาน");
