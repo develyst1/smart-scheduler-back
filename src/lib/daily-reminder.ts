@@ -36,6 +36,10 @@ export interface ReminderSession {
   attendeeNote?: string | null;
   /** TASK-375 — the rental line, already rendered by the job (`rentalPrintLine`); `Remark`'s twin. */
   rental?: string | null;
+  /** TASK-397 — a GROUP row's seats (folded under it for the coach); a seat's group id (not its own coach entry). */
+  seats?: Array<{ studentName: string; remaining?: string | null }> | null;
+  headCount?: number | null;
+  groupId?: string | null;
   teacherId: string | null;
   teacherLineUserId: string | null;
   /**
@@ -70,7 +74,7 @@ export interface ReminderGroup {
 }
 
 /** Statuses that mean "there is a class today". A cancelled or leave row must never produce a reminder. */
-const REMINDABLE = new Set(["PENDING", "CONFIRMED", "EXTENDED"]);
+export const REMINDABLE = new Set(["PENDING", "CONFIRMED", "EXTENDED"]); // TASK-397: exported — the job filters a GROUP row's seats by the same list
 
 /**
  * Group today's sessions into **one entry per person** — every teacher who teaches today, every parent whose
@@ -114,6 +118,9 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       coach: s.coach ?? null,
       attendeeNote: s.attendeeNote ?? null,
       rental: s.rental ?? null,
+      // TASK-397 — a GROUP row carries its seats; a seat row carries its group id (folded under it for the coach).
+      seats: s.seats ?? null,
+      headCount: s.headCount ?? null,
     };
     // TASK-228 (AC-16): EVERY assigned teacher, not just the first. Built as one list so the grouping below
     // is a single loop — a second `if` block for the extras is how one of the two ends up missing a rule the
@@ -122,7 +129,9 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       ...(s.teacherId ? [{ id: s.teacherId, lineUserId: s.teacherLineUserId }] : []),
       ...(s.additionalTeachers ?? []),
     ];
-    for (const teacher of assigned) {
+    // TASK-397 — a SEAT is not its own entry on the COACH's schedule: it is a line under its group's entry (the group
+    // row carries `seats`). The PARENT's entry for a seat is unchanged — it is their child's class.
+    for (const teacher of s.groupId ? [] : assigned) {
       const g = byTeacher.get(teacher.id) ?? {
         recipientType: "teacher" as const,
         personId: teacher.id,

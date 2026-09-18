@@ -62,7 +62,9 @@ describe("the lookup that feeds it", () => {
     );
     expect(indexWhere).toContain("sql.raw(SLOT_INACTIVE_SQL)");
     expect(SCHEMA).toContain("SLOT_INACTIVE_SQL = SLOT_INACTIVE_STATUSES.map(");
-    expect(FN).toContain("nin(b.status, [...SLOT_INACTIVE_STATUSES])");
+    // 🔻 TASK-397: through the ONE predicate (`lib/slot-holder.ts`), which is built from `SLOT_INACTIVE_STATUSES` + `group_id IS NULL`.
+    expect(FN).toContain("slotHolderWhere(b)");
+    expect(FN).not.toMatch(/nin\(b\.status|notInArray\(b\.status/);
     // …and the list itself is exactly what the index excludes. ⚠️ TASK-260 added PAUSED — a paused booking
     // releases the teacher slot (AC-17), which is the same question this list has always answered.
     expect([...SLOT_INACTIVE_STATUSES]).toEqual(["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE", "PAUSED"]);

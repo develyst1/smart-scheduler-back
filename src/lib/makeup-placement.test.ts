@@ -108,7 +108,7 @@ describe("🔑 TASK-300 — the gating assertion, run before any code was touche
     const SVC = src("src/services/scheduler.service.ts");
     expect(SVC).toContain('const plannedRows = rows.filter((r: any) => !cancelledSet.has(r.id) && r.status !== "CANCELLED");');
     expect(SVC).toContain("(m: string, r: any) => (r.date > m ? r.date : m),");
-    expect(SVC).toContain("notInArray(b.status, [...SLOT_INACTIVE_STATUSES]),");
+    expect(SVC).toContain("slotHolderWhere(b), // TASK-397 — the ONE predicate: a GROUP row holds the slot, a seat never does"); // 🔻 TASK-397
     expect(SVC).toContain("let fromDate = sessions[sessions.length - 1]?.date ?? input.startDate;");
   });
 });

@@ -288,6 +288,13 @@
       "when": 1783000000036,
       "tag": "0040_other_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783000000037,
+      "tag": "0041_group_session",
+      "breakpoints": true
     }
   ]
 }

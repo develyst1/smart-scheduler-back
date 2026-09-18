@@ -21,10 +21,10 @@ const src = (f: string) => readSrc(readFileSync(resolve(root, f), "utf8"));
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const rootApp = (await import("../index")).default as { fetch: (r: Request) => Promise<Response> };
 
-describe("🔑 the registry — 49 keys (46 + TASK-390's `course-rental` + TASK-392's `student-archive` + TASK-394's `other-series`), one rule, labels beside the keys", () => {
-  test("49 keys, every one `action:<area>.<verb>` with a known area, TH + EN labels, no duplicates", () => {
-    expect(ACTION_KEYS.length).toBe(49); // 🔻 TASK-390: + course-rental; 🔻 TASK-392: + student-archive; 🔻 TASK-394: + other-series
-    expect(new Set(ACTION_KEYS).size).toBe(49);
+describe("🔑 the registry — 50 keys (46 + course-rental + student-archive + other-series + TASK-397's `group-series`), one rule, labels beside the keys", () => {
+  test("50 keys, every one `action:<area>.<verb>` with a known area, TH + EN labels, no duplicates", () => {
+    expect(ACTION_KEYS.length).toBe(50); // 🔻 TASK-390/392/394/397: + course-rental, student-archive, other-series, group-series
+    expect(new Set(ACTION_KEYS).size).toBe(50);
     for (const a of ACTION_REGISTRY) {
       const m = /^action:([a-z-]+)\.([a-z-]+)$/.exec(a.key);
       expect({ key: a.key, ok: !!m && (ACTION_AREAS as readonly string[]).includes(m[1]!) && a.area === m[1] }).toEqual({ key: a.key, ok: true });
@@ -62,9 +62,9 @@ describe("🔑 the registry — 49 keys (46 + TASK-390's `course-rental` + TASK-
 describe("🔴 the enumeration — every mutate route carries an action, no read does, every key is used, no unknown key", () => {
   const ROUTES = readSrc(readFileSync(resolve(root, "src/routes/api.ts"), "utf8"));
   const declared = [...ROUTES.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`);
-  test("63 mutate routes (the floor; TASK-390 added one, TASK-392 two, TASK-394 two), each with a known action; every GET without one", () => {
+  test("65 mutate routes (the floor; TASK-390 one, TASK-392 two, TASK-394 two, TASK-397 two), each with a known action; every GET without one", () => {
     const mutate = declared.filter((r) => !r.startsWith("GET "));
-    expect(mutate.length).toBeGreaterThanOrEqual(63);
+    expect(mutate.length).toBeGreaterThanOrEqual(65);
     const missing = mutate.filter((r) => !ROUTE_ACCESS[r]?.action || !isActionKey(ROUTE_ACCESS[r]!.action!));
     expect(missing).toEqual([]);
     const readsWithAction = declared.filter((r) => r.startsWith("GET ") && ROUTE_ACCESS[r]?.action);
@@ -250,7 +250,7 @@ describe("🔴 the service and the wiring (source)", () => {
     const G = MW.slice(MW.indexOf("export async function accessGuard("));
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();"));
   });
-  test("41 = 41 — Stage 3 added no migration (0037 … 0040 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(41);
+  test("42 = 42 — Stage 3 added no migration (0037 … 0041 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(42);
   });
 });

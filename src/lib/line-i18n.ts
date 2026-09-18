@@ -561,6 +561,9 @@ const TABLE: Record<string, Entry> = {
   // an ECA/Free/KOL entry's head count after its title; the LABEL is pinned by FORM, not bytes — @Porter carries the
   // owner's word; the moment it comes back this line changes and the pin flips to bytes (the `ob_deduct_title` path).
   ob_f_heads: { TH: "Heads", EN: "Heads" },
+  // 📖 **PLACEHOLDER — MINE, the customer has NOT seen it** (TASK-397): a DUO/Group entry's seat line, `Seats : n/cap`,
+  // with the children beneath. Pinned by form; flips to bytes when the owner's word comes back through @Porter.
+  ob_f_seats: { TH: "Seats", EN: "Seats" },
   // The closed cancel/end codes (`END_REASONS`) as words — the first labels these codes have ever had; the
   // message is the first reader that needs them.
   ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },

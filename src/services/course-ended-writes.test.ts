@@ -119,6 +119,10 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // Classified deliberately, not by default.
   "PATCH /bookings/:id/other": "unrelated",
   "POST /bookings/other-series": "unrelated",
+  // TASK-397 (REQ-095 Stage 2a) — a GROUP row never names a course (it has no student); the swap moves seats of LIVE
+  // group dates only, and an ended course's rows are not live. Classified deliberately, not by default.
+  "POST /bookings/group-series": "unrelated",
+  "PATCH /bookings/:id/group-teacher": "unrelated",
   // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
   // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,
   // which `expiry-preview.test.ts` asserts as an absence across both the route and the shared computation it

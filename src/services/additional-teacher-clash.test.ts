@@ -27,7 +27,9 @@ describe("🔴 ONE definition of 'live' — the index's own, not a copy of it", 
   test("the guard reads `SLOT_INACTIVE_STATUSES`, and does not restate the three statuses", () => {
     // Sober's instruction, and the reason for it: two definitions of "live" is how a refusal and the index it
     // mirrors start disagreeing — one refuses what the other allows, and it surfaces as a phantom booking.
-    expect(GUARD).toContain("nin(b.status, [...SLOT_INACTIVE_STATUSES])");
+    // 🔻 TASK-397: the ONE predicate (`lib/slot-holder.ts`) — live status AND not a seat — replaces the inline list.
+    expect(GUARD).toContain("slotHolderWhere(b)");
+    expect(GUARD).not.toMatch(/nin\(b\.status|notInArray\(b\.status/);
     const guardCode = code(GUARD);
     for (const status of ["CANCELLED", "PENDING_RESCHEDULE", "SICK_LEAVE"]) {
       expect(guardCode).not.toContain(`"${status}"`);

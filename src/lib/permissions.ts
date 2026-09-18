@@ -74,6 +74,7 @@ export const ACTION_REGISTRY = [
   A("action:calendar.rental", "บันทึก/รับเงิน/ลบค่าเช่าอุปกรณ์ในคาบ", "Record, pay, remove a session rental"),
   A("action:calendar.rental-sale", "ขายเช่าอุปกรณ์", "Sell a rental"),
   A("action:calendar.other-series", "สร้างตารางอื่นๆ เป็นชุด", "Create an Other schedule series"), // TASK-394 — the series; a single OTHER stays under `book`
+  A("action:calendar.group-series", "สร้างกลุ่ม DUO/Group เป็นชุด", "Create a DUO/Group series"), // TASK-397
   // ── bookings ──
   A("action:bookings.bulk-confirm", "ยืนยันคาบทั้งชุด", "Bulk-confirm sessions"),
   A("action:bookings.course-create", "เปิดคอร์ส", "Create a course"),

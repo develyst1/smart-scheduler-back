@@ -268,6 +268,14 @@ export const api = new Hono()
   .post("/bookings/other-series", zValidator("json", v.otherSeries), async (c) =>
     c.json(await svc.createOtherSeries(c.req.valid("json")), 201),
   )
+  // TASK-397 (REQ-095 Stage 2a) — a DUO/Group SERIES: N GROUP rows under one key, all or nothing (409 naming the date).
+  .post("/bookings/group-series", zValidator("json", v.groupSeries), async (c) =>
+    c.json(await svc.createGroupSeries(c.req.valid("json")), 201),
+  )
+  // TASK-397 — swap the group's teacher (this date, or from here on); every seat moves with it in one tx. No notice.
+  .patch("/bookings/:id/group-teacher", zValidator("json", v.groupTeacherSwap), async (c) =>
+    c.json(await svc.swapGroupTeacher(c.req.param("id"), c.req.valid("json"))),
+  )
   // SPEC-075 / TASK-260 (REQ-076) — pause / resume ONE booking. These shapes are the ratified contract (§8),
   // and they are REQ-071's COURSE pause/resume shapes deliberately, so one verb keeps one convention across
   // the product. The FE half (TASK-261) is already built against exactly these.

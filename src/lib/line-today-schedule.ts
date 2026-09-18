@@ -57,6 +57,8 @@ export interface TodayRow {
   rental?: string | null;
   /** TASK-394 (REQ-095) — an OTHER entry's head count, or nothing. Printed FIRST among the appended lines (`*ถ้ามี`). */
   headCount?: number | null;
+  /** TASK-397 — a GROUP entry's seats (the children), folded under it on the COACH's schedule; absent elsewhere. */
+  seats?: Array<{ studentName: string; remaining?: string | null }> | null;
 }
 
 /** Fields that MAY move to the header. `date` is constant by construction; `coach` only when the data agrees. */
@@ -79,7 +81,9 @@ const dash = (v: string | null | undefined) => (v && String(v).trim() ? String(v
  */
 const remarkLine = (r?: TodayRow): string[] => [
   // TASK-394 — `Heads : 12` for an ECA/Free/KOL entry, before `Remark`; absent when there is no count (a lesson never has one).
-  ...(r?.headCount != null ? [`${t("ob_f_heads", TEMPLATE_LANG)} : ${r.headCount}`] : []),
+  // TASK-397 — a GROUP entry: `Seats : n/cap` + one line per child (name, their balance) BEFORE `Heads`/`Remark`.
+  ...(r?.seats ? [`${t("ob_f_seats", TEMPLATE_LANG)} : ${r.seats.length}/${r.headCount ?? r.seats.length}`, ...r.seats.map((s) => `  - ${s.studentName}${s.remaining ? ` (${s.remaining})` : ""}`)] : []),
+  ...(r?.headCount != null && !r?.seats ? [`${t("ob_f_heads", TEMPLATE_LANG)} : ${r.headCount}`] : []),
   ...(r?.attendeeNote?.trim() ? [`${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`] : []),
   // TASK-375 — `Rental :` right after `Remark`, in its shape (`*ถ้ามี`: present or absent, never a dash). Both
   // audiences: `AUDIENCE_OMITS` hides nothing from anyone, and the parent pays for it at the shop.

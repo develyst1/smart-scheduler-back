@@ -45,7 +45,7 @@ describe("required for the NON-COURSE types — and ONLY those", () => {
     // cancel is found by the same `WHERE cancel_reason = 'ADMIN_ERROR'` as every other standalone type — on
     // day one, rather than after someone notices the gap.
     expect(CANCEL).toContain(
-      'REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER"])',
+      'REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"])', // 🔻 TASK-397: a group date's cancel is audited like an OTHER's
     );
     expect(CANCEL).toContain('throw new ApiException(400, "REASON_REQUIRED"');
   });

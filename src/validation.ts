@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OTHER_KINDS } from "./lib/other-kind";
+import { GROUP_KINDS, OTHER_KINDS } from "./lib/other-kind";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
@@ -287,6 +287,9 @@ export const createCoursePackage = z
     // 🔻 TASK-390 (REQ-091 §14) — `paidUpfront` (default TRUE = today: every row born paid, one post). FALSE = pay per
     // session: rows born unpaid, NO post at creation, each session's paid press posts one.
     rental: recordBookingRental.extend({ paidUpfront: z.boolean().default(true) }).optional(),
+    // TASK-397 (REQ-095 Stage 2a) — sell this course INTO a group: every planned session becomes a SEAT on the group
+    // row of its date; the teacher / weekday / start must be the group's (the FE prefills them; a mismatch ⇒ 400).
+    groupKey: ID.optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -430,6 +433,26 @@ export const editOtherBooking = z
     teacherRates: z.record(ID, z.number().int().min(0)).optional(),
   })
   .refine((d) => Object.values(d).some((value) => value !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+
+// TASK-397 (REQ-095 Stage 2a) — a DUO/Group SERIES: the OTHER series body + a name, a kind and a seat cap. DUO ⇒ exactly 2.
+export const groupSeries = z
+  .object({
+    name: z.string().trim().min(1),
+    groupKind: z.enum(GROUP_KINDS),
+    seatCap: z.number().int().min(2).max(12),
+    teacherId: ID,
+    additionalTeacherIds: z.array(ID).optional(),
+    teacherRates: z.record(ID, z.number().int().min(0)).optional(),
+    startTime: TIME,
+    dates: z.array(DATE).min(1).max(60),
+  })
+  .refine((d) => d.groupKind !== "DUO" || d.seatCap === 2, { message: "DUO มี 2 ที่นั่งเสมอ", path: ["seatCap"] })
+  .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] })
+  .refine((d) => !d.additionalTeacherIds || new Set(d.additionalTeacherIds).size === d.additionalTeacherIds.length, { message: "ครูซ้ำกัน", path: ["additionalTeacherIds"] })
+  .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), { message: "ครูซ้ำกับครูคนแรก", path: ["additionalTeacherIds"] });
+
+// TASK-397 — swap the group's teacher from this date on (or this date only); every seat moves with it.
+export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean() });
 
 // TASK-394 — the SERIES: one OTHER row per date, all or nothing. `endTime` is derived (+1h) as for every booking.
 export const otherSeries = z

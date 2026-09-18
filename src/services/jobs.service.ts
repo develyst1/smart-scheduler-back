@@ -34,7 +34,7 @@ import { familyLineUserIdsBulk } from "../lib/family-link";
 import { enqueueLine } from "../lib/line";
 import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
 import { rentalPrintLine } from "../lib/rental-row";
-import { dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
+import { REMINDABLE, dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -368,6 +368,7 @@ export async function runDailyReminderJob(date?: string) {
       course: true,
       voucher: true,
       rental: true, // TASK-375 — the row relation (TASK-371); no extra read
+      seats: { with: { student: true, course: true } }, // TASK-397 — a GROUP row's seats, for the coach's folded entry
     },
   });
 
@@ -433,6 +434,9 @@ export async function runDailyReminderJob(date?: string) {
       rental: r.rental ? rentalPrintLine(r.rental.code, r.rental.remark ?? null) : null,
       // TASK-394 — an OTHER's head count reaches the coach's entry; `null` on every lesson row by construction.
       headCount: r.headCount ?? null,
+      // TASK-397 — a GROUP row's seats, for the coach's folded entry; a seat's group id, so it is not its own entry there.
+      groupId: r.groupId ?? null,
+      seats: r.bookingType === "GROUP" ? (r.seats ?? []).filter((x: any) => REMINDABLE.has(x.status)).map((x: any) => ({ studentName: x.student?.nickname ?? x.student?.name ?? "", remaining: x.course ? remainingLabel("course", x.course.size - x.course.usedSessions, x.course.size) : null })) : null,
     })),
   );
 

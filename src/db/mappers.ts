@@ -118,6 +118,20 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
+const groupFacts = (b: any): { key: string | null; kind: string | null; name: string | null; seatCap: number | null; seats: Array<{ bookingId: string; studentId: string | null; studentName: string | null; status: string; courseId: string | null }>; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
+  if (b.bookingType !== "GROUP") return null;
+  const o = otherFacts({ ...b, bookingType: "OTHER" })!;
+  return {
+    key: b.groupKey ?? null,
+    kind: o.kind,
+    name: b.otherTitle ?? null,
+    seatCap: b.headCount ?? null,
+    seats: (b.seats ?? []).map((s: any) => ({ bookingId: s.id, studentId: s.studentId ?? null, studentName: s.student?.nickname ?? s.student?.name ?? null, status: s.status, courseId: s.courseId ?? null })),
+    teacherRates: o.teacherRates,
+    ratePostedAt: o.ratePostedAt,
+  };
+};
+
 const otherFacts = (b: any): { kind: string | null; headCount: number | null; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
   if (b.bookingType !== "OTHER") return null;
   const teacherRates: Record<string, number> = {};
@@ -161,6 +175,10 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   // teacher (the primary from `bookings`, each extra from its `booking_teachers` row) so the FE's per-teacher inputs
   // read ONE object; `ratePostedAt` is reserved and null this stage.
   other: otherFacts(b),
+  // TASK-397 (REQ-095 Stage 2a) — a GROUP row: its seats; a seat: its group. `null` / absent otherwise.
+  group: groupFacts(b),
+  groupId: b.groupId ?? null,
+  groupName: b.group?.otherTitle ?? null,
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
   // TASK-371 (REQ-091 Deploy A) — the session's rental ROW: `{ code, remark, paid } | null`. It REPLACES

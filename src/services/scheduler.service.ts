@@ -1,7 +1,7 @@
 // Business logic — the source of truth for scheduling. Routes stay thin and call
 // these; all domain rules (quota/extension/idempotency) live here.
 
-import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
@@ -16,7 +16,7 @@ import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // gate are both gone — a re-plan DERIVES the expiry from the sessions it lays out, so there is nothing to warn
 // about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
 import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
-import { SLOT_NON_BLOCKING } from "../lib/booking-slot";
+import { holdsSlot, slotHolderWhere } from "../lib/slot-holder";
 import { firstFreeWeeklySlot, searchExhausted, weeksBetween } from "../lib/extension-slot";
 import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
 import {
@@ -113,7 +113,7 @@ import {
 import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
-import { assertRatesOnBooking } from "../lib/other-kind";
+import { assertKindForType, assertRatesOnBooking } from "../lib/other-kind";
 import {
   bookingsOrderBy,
   courseSearchQuery,
@@ -270,10 +270,14 @@ async function reconcileBookingHolds(
   // known. Returning before the movement read also means an อื่นๆ booking never writes a `fl:` movement at
   // all — the DoD asserts the absence of the row, not merely a number that did not change.
   const booking = await tx.query.bookings.findFirst({
-    columns: { bookingType: true },
+    columns: { bookingType: true, groupId: true },
     where: (b: any, { eq }: any) => eq(b.id, bookingId),
   });
   if (booking?.bookingType === "OTHER") return;
+  // 🔴 TASK-397 — a SEAT draws no freelance hour: its GROUP row holds the slot and the draw. Two seats + the group
+  // row would otherwise draw THREE hours off a freelance ceiling for one taught hour. The group row itself draws
+  // like any lesson (it is not OTHER).
+  if (booking?.groupId) return;
 
   // Every freelance item holding this booking — including teachers it was moved away from.
   const movements = await tx.query.boMovement.findMany({
@@ -426,6 +430,10 @@ const withBookingRelations = {
   // TASK-371 (REQ-091) — the session's rental ROW, or none. In the shared set so every relational reader
   // carries `rental` in Drizzle's one batched relation query — no per-reader read, no N+1.
   rental: true,
+  // TASK-397 — a GROUP row's seats (with their student), and a seat's group row (for `groupName`). In the shared set so
+  // every relational reader answers `group` / `groupId` the same way.
+  seats: { with: { student: true } },
+  group: true,
 } as const;
 
 async function loadBookingDTO(exec: any, id: string) {
@@ -495,6 +503,8 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
         // TASK-368 (owner §5.1): cancelled sessions NEVER enter the grid — on request they ride in the
         // `cancelled` tray below, read separately. This list is the constant, untouched.
         notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
+        // TASK-397 — SEATS are not cells: the GROUP row is the cell (its DTO lists the seats). Every other read keeps them.
+        isNull(b.groupId),
         // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
         // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
         eq(b.pendingSlot, false),
@@ -1028,9 +1038,8 @@ async function describeSlotClash(teacherId: string, date: string, startTime: str
           e(b.date, date),
           e(b.startTime, startTime),
           // TASK-239: the SAME list `bookings_teacher_slot_uq`'s `WHERE` is built from — not a second copy.
-          // This used to restate the three statuses inline; two definitions of "live" is how the refusal and
-          // the index it describes start disagreeing about which row caused the conflict.
-          nin(b.status, [...SLOT_INACTIVE_STATUSES]),
+          // TASK-397: through the ONE predicate (`lib/slot-holder.ts`) — live status AND not a seat.
+          slotHolderWhere(b),
         ),
       with: { teacher: true, student: true },
     });
@@ -1149,7 +1158,7 @@ async function assertAdditionalTeacherFree(
         e(b.teacherId, teacherId),
         e(b.date, date),
         e(b.startTime, startTime),
-        nin(b.status, [...SLOT_INACTIVE_STATUSES]),
+        slotHolderWhere(b), // TASK-397 — the ONE predicate
         // Never the booking being created — it cannot clash with itself. Validation already refuses an extra
         // that repeats the primary, so this is belt-and-braces on the one row we know is in flight.
         n(b.id, bookingId),
@@ -1178,6 +1187,7 @@ async function insertBooking(
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
   await assertTeacherBookable(exec, input.teacherId, input.date);
+  assertKindForType(input.bookingType, input.otherKind); // TASK-397 — `booking_type ⇔ other_kind`, both ways
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
   // TASK-224: no student ⇒ no household ⇒ nothing to be suspended. The check is skipped rather than made
@@ -1239,6 +1249,9 @@ async function insertBooking(
         otherKind: input.otherKind ?? null,
         headCount: input.headCount ?? null,
         teacherRateMinor: input.teacherRates?.[input.teacherId] ?? null,
+        // TASK-397 — a GROUP row's series key; a SEAT's group row (outside the slot index by the predicate).
+        groupKey: input.groupKey ?? null,
+        groupId: input.groupId ?? null,
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1405,7 +1418,8 @@ export async function createBooking(input: any) {
 export async function editOtherBooking(id: string, input: { otherKind?: string; headCount?: number; teacherRates?: Record<string, number> }) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id), with: { additionalTeachers: true } });
   if (!current) throw notFound("ไม่พบคาบเรียน");
-  if (current.bookingType !== "OTHER") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”");
+  if (current.bookingType !== "OTHER" && current.bookingType !== "GROUP") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ” หรือ “กลุ่ม”");
+  if (input.otherKind !== undefined) assertKindForType(current.bookingType, input.otherKind); // TASK-397 — no ECA on a group, no DUO on an OTHER
   const extras = (current.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
   assertRatesOnBooking(input.teacherRates, [current.teacherId, ...extras]);
   await db.transaction(async (tx) => {
@@ -1452,6 +1466,143 @@ export async function createOtherSeries(input: {
     return ids;
   });
   return { created: bookingIds.length, bookingIds };
+}
+
+// ═══════════════════ TASK-397 (REQ-095 Stage 2a, SPEC-081) — the GROUP SESSION ═══════════════════
+
+/** A GROUP row of a series, by key + date (any status — a cancelled group date is not re-used; the caller decides). */
+async function groupRowOn(exec: any, groupKey: string, date: string) {
+  return (await exec.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupKey, groupKey), e(b.date, date), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
+    with: { additionalTeachers: true },
+  })) ?? null;
+}
+
+/** The series' TEMPLATE: its first live GROUP row (teacher / start / kind / cap / rates carry to an extension). */
+async function groupTemplate(exec: any, groupKey: string) {
+  const row = await exec.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
+    orderBy: (b: any, { asc: o }: any) => [o(b.date)],
+    with: { additionalTeachers: true },
+  });
+  if (!row) throw notFound("ไม่พบกลุ่ม");
+  return row;
+}
+
+/**
+ * The SERIES: N GROUP rows under ONE key, all or nothing through the existing `insertBooking` (every gate reused);
+ * the FIRST clash aborts the whole set naming the date. `other_title` = the name, `head_count` = the seat cap,
+ * `other_kind` = DUO | GROUP (the type ⇔ kind pin), rates on the Stage 1 columns. 🚫 No money anywhere here.
+ */
+export async function createGroupSeries(input: {
+  name: string; groupKind: string; seatCap: number; teacherId: string; additionalTeacherIds?: string[];
+  teacherRates?: Record<string, number>; startTime: string; dates: string[];
+}): Promise<{ groupKey: string; created: number; bookingIds: string[] }> {
+  assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
+  const groupKey = crypto.randomUUID();
+  const dates = [...input.dates].sort();
+  const bookingIds = await db.transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const date of dates) {
+      let id: string;
+      try {
+        id = await insertBooking(tx, null, { ...input, bookingType: "GROUP", otherTitle: input.name, otherKind: input.groupKind, headCount: input.seatCap, groupKey, date });
+        if (input.additionalTeacherIds?.length) await attachAdditionalTeachers(tx, id, input.additionalTeacherIds, input.teacherRates ?? {});
+      } catch (e) {
+        if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ไม่ได้สร้างรายการใด (${e.message})`);
+        throw e;
+      }
+      ids.push(id);
+    }
+    return ids;
+  });
+  return { groupKey, created: bookingIds.length, bookingIds };
+}
+
+/** `POST /courses { groupKey }`: the body's teacher / weekday / start must be the group's — refused, never corrected. */
+async function assertCourseMatchesGroup(groupKey: string, input: { teacherId: string; startDate: string; startTime: string }) {
+  const g = await groupTemplate(db, groupKey);
+  const same = g.teacherId === input.teacherId && hhmm(g.startTime) === hhmm(input.startTime) && weekdayOf(g.date) === weekdayOf(input.startDate);
+  if (!same) throw badRequest("คอร์สต้องใช้ครู/วัน/เวลาเดียวกับกลุ่ม");
+}
+
+/**
+ * The group row a new SEAT lands on, for `date`: the existing row (cap checked — live seats < head_count), or the
+ * series EXTENDED by one row on that date (same teacher / extras / rates / cap / kind, through `insertBooking` — the
+ * slot check applies, `409 SLOT_TAKEN` naming the date). ⇒ the group row's id.
+ */
+async function seatOnGroup(tx: any, groupKey: string, date: string): Promise<string> {
+  let row = await groupRowOn(tx, groupKey, date);
+  if (!row) {
+    const t = await groupTemplate(tx, groupKey);
+    const extras = (t.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
+    const rates: Record<string, number> = {};
+    if (t.teacherRateMinor != null) rates[t.teacherId] = t.teacherRateMinor;
+    for (const a of t.additionalTeachers ?? []) if (a.rateMinor != null) rates[a.teacherId] = a.rateMinor;
+    let id: string;
+    try {
+      id = await insertBooking(tx, null, { teacherId: t.teacherId, subjectId: null, startTime: hhmm(t.startTime), bookingType: "GROUP", otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates, date });
+      if (extras.length) await attachAdditionalTeachers(tx, id, extras, rates);
+    } catch (e) {
+      if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ขยายกลุ่มไม่ได้ (${e.message})`);
+      throw e;
+    }
+    return id;
+  }
+  const [c] = await tx.select({ n: count() }).from(bookings).where(and(eq(bookings.groupId, row.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  const live = Number(c?.n ?? 0);
+  const cap = row.headCount ?? 0;
+  if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);
+  return row.id;
+}
+
+/**
+ * Swap the group's teacher from this date on (or this date only): the GROUP row(s) and EVERY live seat on them move
+ * in ONE transaction; the slot is checked per date through the index (`409 SLOT_TAKEN` naming the date, nothing
+ * moved). 🚫 No notice is sent: `moveBooking` sends none today either — a family notice is a NEW message (owner words).
+ */
+export async function swapGroupTeacher(id: string, input: { teacherId: string; fromHereOn: boolean }) {
+  const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
+  if (!current) throw notFound("ไม่พบคาบเรียน");
+  if (current.bookingType !== "GROUP" || !current.groupKey) throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");
+  const groupKey = current.groupKey;
+  const targets = await db.query.bookings.findMany({
+    where: (b, { and: a, eq: e, gte: g, inArray: inA }) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES]), input.fromHereOn ? g(b.date, current.date) : e(b.date, current.date)),
+    orderBy: (b, { asc: o }) => [o(b.date)],
+  });
+  let moved = 0;
+  await db.transaction(async (tx) => {
+    for (const g of targets) {
+      await assertTeacherBookable(tx, input.teacherId, g.date);
+      try {
+        await tx.update(bookings).set({ teacherId: input.teacherId }).where(eq(bookings.id, g.id));
+      } catch (e: any) {
+        if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${g.date} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
+        throw e;
+      }
+      await reconcileBookingHolds(tx, g.id, input.teacherId, g.status, false);
+      // every live seat of this date follows its group row (a seat is outside the index — no clash possible)
+      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+      moved++;
+    }
+  });
+  return { moved, booking: await loadBookingDTO(db, id) };
+}
+
+/**
+ * Cancelling a GROUP DATE: every live seat is cancelled the way its child's course session would be — status,
+ * the audit note, and the make-up re-owed by `reconcileCoursePlan` (SPEC-028 §11.3) — in the caller's transaction.
+ * The coach is told ONCE, by the group row's own cancel (the caller); a seat sends no teacher notice of its own.
+ */
+async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {
+  const seats = await tx.query.bookings.findMany({
+    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES])),
+  });
+  for (const s of seats) {
+    await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));
+    if (s.courseId) await reconcileCoursePlan(tx, s.courseId);
+  }
+  return seats.length;
 }
 
 /**
@@ -1753,6 +1904,9 @@ export async function createCoursePackage(input: any) {
   if (input.rental && rentalRemarkRequired(input.rental.code, input.rental.remark)) {
     throw new ApiException(400, "RENTAL_REMARK_REQUIRED", "กรุณาระบุรายละเอียดอุปกรณ์ (ชุด/คู่/ไซส์)");
   }
+  // TASK-397 — a course sold INTO a group takes the group's teacher / weekday / start; the body must agree (the FE
+  // prefills and locks them — a disagreeing body is a stale form, refused rather than silently corrected).
+  if (input.groupKey) await assertCourseMatchesGroup(input.groupKey, input);
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new course
@@ -1824,6 +1978,9 @@ export async function createCoursePackage(input: any) {
     for (const [i, s] of plannedSessions.entries()) {
       const absent = absentWeeks.has(i + 1);
       try {
+        // TASK-397 — sold INTO a group: this session is a SEAT on the group row of its date (extended if missing;
+        // cap checked). A declared-absent week takes no seat (it is not a session).
+        const groupId = input.groupKey && !absent ? await seatOnGroup(tx, input.groupKey, s.date) : null;
         await insertBooking(tx, studentId, {
           ...(absent ? { status: "SICK_LEAVE" as const, plannedAtCreation: true } : {}),
           teacherId: s.teacherId,
@@ -1832,6 +1989,7 @@ export async function createCoursePackage(input: any) {
           startTime: s.startTime,
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
+          groupId,
           note: input.note,
           attendeeNote: input.attendeeNote, // TASK-178: one note at creation, carried onto every session
         });
@@ -2158,7 +2316,9 @@ export async function getSlotAvailability(date: string, startTime: string) {
   // slot for a replacement (UC-004), so a SICK_LEAVE row must NOT read as a clash.
   const booked = await db.query.bookings.findMany({
     where: (b, { and, eq, notInArray }) =>
-      and(eq(b.date, date), eq(b.startTime, startTime), notInArray(b.status, [...SLOT_NON_BLOCKING])),
+        // TASK-397 — the ONE predicate (`lib/slot-holder.ts`): live status AND not a seat. This used to read a second
+        // list (`SLOT_NON_BLOCKING`, no PAUSED) — a PAUSED booking showed as BOOKED here while the index freed it.
+      and(eq(b.date, date), eq(b.startTime, startTime), slotHolderWhere(b)),
     with: { student: true },
   });
   const clashByTeacher = new Map(booked.map((b: any) => [b.teacherId, b]));
@@ -2362,7 +2522,7 @@ async function findFreeExtensionDate(
           eq(b.teacherId, teacherId),
           eq(b.date, d),
           eq(b.startTime, startTime),
-          notInArray(b.status, [...SLOT_INACTIVE_STATUSES]),
+          slotHolderWhere(b), // TASK-397 — the ONE predicate: a GROUP row holds the slot, a seat never does
         ),
     }));
   });
@@ -3068,7 +3228,7 @@ export async function updateBookingStatus(
       // TASK-224 (AC-13) adds `OTHER` — one line, no migration: `0025`'s `cancel_reason` column and its CHECK
       // already carry the three values. Exactly the TASK-220 shape, and it means an อื่นๆ cancel is found by
       // the same `WHERE cancel_reason = 'ADMIN_ERROR'` as every other type, on day one.
-      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER"]);
+      const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"]); // TASK-397: a group date's cancel is audited like an OTHER's
       const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType) ? reasonCode : undefined;
       if (REASON_ENUM_REQUIRED.has(current.bookingType)) {
         if (!enumReason) {
@@ -3081,6 +3241,9 @@ export async function updateBookingStatus(
         }
       }
 
+      // 🔴 TASK-397 — cancelling a GROUP DATE: every live seat goes the teacher-cancel path first (its status, its
+      // course's make-up via the reconcile — SPEC-028 §11.3 — in THIS transaction), then the group row itself below.
+      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null);
       await tx
         .update(bookings)
         .set({

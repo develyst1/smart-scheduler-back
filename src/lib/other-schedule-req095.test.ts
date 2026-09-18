@@ -37,12 +37,12 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0040_other_schedule.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("41 = 41: `0040_other_schedule` is the 41st file, idx 40, the last; the order 0038 → 0039 → 0040", () => {
-    expect(files.length).toBe(41);
-    expect(files.at(-1)).toBe("0040_other_schedule.sql");
+  test("42 = 42 (TASK-397 added 0041): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
+    expect(files.length).toBe(42);
+    expect(files[40]).toBe("0040_other_schedule.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(41);
-    expect(j.entries.slice(38).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule"]);
+    expect(j.entries.length).toBe(42);
+    expect(j.entries.slice(38, 41).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule"]);
   });
   test("five nullable column adds in order — four on `bookings`, `booking_teachers.rate_minor` LAST; all IF NOT EXISTS; no DEFAULT / NOT NULL; no enum", () => {
     expect((SQL.match(/--> statement-breakpoint/g) ?? []).length).toBe(4);
@@ -70,8 +70,8 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
     expect(SQL).toContain("ONE run, ONE transaction, five statements");
     expect(SQL).toContain("`drizzle/*.sql` = 40 (0000–0039) and journal tags = 40 before this, newest `0039`, so this is `0040`");
   });
-  test("🔑 the witness is the LAST column, `booking_teachers.rate_minor`, registered last; the schema mirrors all five", () => {
-    const w = SCHEDULING_WITNESSES.at(-1)!;
+  test("🔑 the witness is the LAST column, `booking_teachers.rate_minor`, registered; the schema mirrors all five", () => {
+    const w = SCHEDULING_WITNESSES.find((x) => x.tag === "0040_other_schedule")!; // 🔻 TASK-397: no longer last — by tag
     expect(w).toMatchObject({ tag: "0040_other_schedule", probe: { kind: "column", table: "booking_teachers", column: "rate_minor" }, rerunnable: true });
     const S = code(src("src/db/schema.ts"));
     for (const line of ['otherKind: text("other_kind"),', 'headCount: integer("head_count"),', 'teacherRateMinor: integer("teacher_rate_minor"),', 'ratePostedAt: timestamp("rate_posted_at", { withTimezone: true }),', 'rateMinor: integer("rate_minor"),']) expect(S).toContain(line);
@@ -164,7 +164,7 @@ describe("🔴 the writes (source) — create carries the fields; the edit is no
   test("`editOtherBooking`: 404 · a lesson type ⇒ 400 · the rates checked against the teachers ON the booking · updates `bookings` + each extra's row · NO notification, NO move fields", () => {
     const E = region(SCHED, "export async function editOtherBooking(", "\n}\n");
     expect(E).toContain('if (!current) throw notFound("ไม่พบคาบเรียน");');
-    expect(E).toContain('if (current.bookingType !== "OTHER") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”");');
+    expect(E).toContain('if (current.bookingType !== "OTHER" && current.bookingType !== "GROUP") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ” หรือ “กลุ่ม”");'); // 🔻 TASK-397: GROUP rows too
     expect(E).toContain("assertRatesOnBooking(input.teacherRates, [current.teacherId, ...extras]);");
     expect(E).toContain("patch.teacherRateMinor = input.teacherRates[current.teacherId];");
     expect(E).toContain("await tx.update(bookingTeachers).set({ rateMinor: input.teacherRates[teacherId] })");
@@ -259,6 +259,6 @@ describe("📖 the coach's reminder — `Heads : n` for an OTHER entry, PLACEHOL
     expect(I18N).toContain("PLACEHOLDER — MINE, and the customer has NOT seen it** (TASK-394");
     expect(code(I18N)).toContain('ob_f_heads: { TH: "Heads", EN: "Heads" },');
     expect(code(src("src/services/jobs.service.ts"))).toContain("headCount: r.headCount ?? null,");
-    expect(code(src("src/lib/line-today-schedule.ts"))).toContain('...(r?.headCount != null ? [`${t("ob_f_heads", TEMPLATE_LANG)} : ${r.headCount}`] : []),');
+    expect(code(src("src/lib/line-today-schedule.ts"))).toContain('...(r?.headCount != null && !r?.seats ? [`${t("ob_f_heads", TEMPLATE_LANG)} : ${r.headCount}`] : []),'); // 🔻 TASK-397: a GROUP entry prints `Seats` instead
   });
 });

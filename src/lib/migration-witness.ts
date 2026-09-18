@@ -427,6 +427,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "All five are IF NOT EXISTS; existence is valid.",
     rerunnable: true,
   },
+  {
+    tag: "0041_group_session",
+    probe: { kind: "index-predicate", index: "bookings_teacher_slot_uq", contains: "group_id" },
+    why:
+      "TASK-397 (REQ-095 Stage 2a). 🔴 NOT the index's existence — `bookings_teacher_slot_uq` exists before AND after; " +
+      "only its predicate gains `AND group_id IS NULL` (seats hold no slot). An existence probe would be satisfied by " +
+      "0033's version — the 0022 blindness. The label and the two columns come earlier in the same run; the rebuild is " +
+      "the LAST statement, so the predicate is the witness of the whole file.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

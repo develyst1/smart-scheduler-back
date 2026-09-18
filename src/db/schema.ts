@@ -27,6 +27,7 @@ import {
   uniqueIndex,
   index,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ───────────────────────────── Enums ─────────────────────────────
@@ -45,6 +46,9 @@ export const bookingType = pgEnum("booking_type", [
   // SPEC-070 / TASK-224 (REQ-078) `0029` — a booking that is not a lesson: a meeting, a maintenance slot, a
   // school visit. No student and no program required, its own typed title, and possibly several teachers.
   "OTHER",
+  // TASK-397 (REQ-095 Stage 2a, SPEC-081) `0041` — the GROUP SESSION row: holds the teacher slot for a DUO/Group;
+  // the children's course sessions are SEATS (`groupId` → this row) outside the slot index. Never a lesson itself.
+  "GROUP",
 ]);
 
 export const bookingStatus = pgEnum("booking_status", [
@@ -477,6 +481,11 @@ export const bookings = pgTable(
     // decision pending) and stays NULL this stage.
     otherKind: text("other_kind"),
     headCount: integer("head_count"),
+    // TASK-397 (REQ-095 Stage 2a) `0041` — the SERIES key of a GROUP row (one per series; a course sold into it
+    // extends under the same key); and a SEAT's group row. A seat is OUTSIDE the slot index (`group_id IS NULL`
+    // in its predicate) — the group row is the one live booking the invariant sees.
+    groupKey: uuid("group_key"),
+    groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),
     teacherRateMinor: integer("teacher_rate_minor"),
     ratePostedAt: timestamp("rate_posted_at", { withTimezone: true }),
     note: text("note"),
@@ -501,7 +510,10 @@ export const bookings = pgTable(
       // checks that must agree with it share one literal definition instead of two that drift.
       // `sql.raw` inlines the same text this line has always produced, so the emitted SQL is unchanged and no
       // migration is implied — only the source of the list moved.
-      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)})`),
+      // 🔴 TASK-397 — `AND group_id IS NULL`: a SEAT holds no slot; its GROUP row does. `lib/slot-holder.ts` builds the
+      // same predicate for every availability read — one definition, five mirrors.
+      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null`),
+    index("bookings_group_id_idx").on(t.groupId),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
     index("bookings_student_idx").on(t.studentId),
@@ -955,6 +967,9 @@ export const vouchersRelations = relations(vouchers, ({ one }) => ({
 }));
 
 export const bookingsRelations = relations(bookings, ({ one, many }) => ({
+  // TASK-397 — a seat's group row, and a group row's seats (self-relation, one name for both ends).
+  group: one(bookings, { fields: [bookings.groupId], references: [bookings.id], relationName: "group_seats" }),
+  seats: many(bookings, { relationName: "group_seats" }),
   student: one(students, { fields: [bookings.studentId], references: [students.id] }),
   teacher: one(teachers, { fields: [bookings.teacherId], references: [teachers.id] }),
   subject: one(subjects, { fields: [bookings.subjectId], references: [subjects.id] }),
