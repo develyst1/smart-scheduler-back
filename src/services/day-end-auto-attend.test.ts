@@ -48,11 +48,22 @@ describe("the day-end auto-mark (TASK-180)", () => {
     expect(TX).not.toContain("coursesCut");
   });
 
-  test("WHICH sessions it acts on is unchanged — only the status written changed", () => {
-    const now = { date: "2026-08-24", time: "18:05", minutes: 18 * 60 + 5 };
-    expect(isDueForAutoAttend({ status: "CONFIRMED", date: "2026-08-24", endTime: "18:00" }, now)).toBe(true);
-    expect(isDueForAutoAttend({ status: "CONFIRMED", date: "2026-08-24", endTime: "19:00" }, now)).toBe(false);
-    expect(isDueForAutoAttend({ status: "SICK_LEAVE", date: "2026-08-24", endTime: "10:00" }, now)).toBe(false);
+  test("WHICH sessions it acts on — 🔻 TASK-396: a CONFIRMED class that has STARTED (the owner's ruling); the status written is still ATTENDED", () => {
+    const now = { date: "2026-08-24", time: "17:30", minutes: 17 * 60 + 30 };
+    expect(isDueForAutoAttend({ status: "CONFIRMED", date: "2026-08-24", startTime: "17:00" }, now)).toBe(true); // 17:00–18:00 at 17:30: started ⇒ cut
+    expect(isDueForAutoAttend({ status: "CONFIRMED", date: "2026-08-24", startTime: "17:45" }, now)).toBe(false);
+    expect(isDueForAutoAttend({ status: "SICK_LEAVE", date: "2026-08-24", startTime: "10:00" }, now)).toBe(false);
+  });
+
+  test("🔴 TASK-396 — the two mirrors agree: the SQL today-branch gates on START (`startTime`, never `endTime`); the past-date branch is still `true`, the future `false`", async () => {
+    const gate = JOB.slice(JOB.indexOf("const ended ="), JOB.indexOf("const due = await tx"));
+    expect(gate).toContain("sql`${bookings.startTime} <= ${now.time}::time`");
+    expect(gate).not.toContain("endTime");
+    expect(gate).toContain("runDate < now.date\n        ? sql`true`");
+    expect(gate).toContain(": sql`false`");
+    const MIRROR = readSrc(await Bun.file(new URL("../lib/auto-cut.ts", import.meta.url)).text()).replace(/^\s*\/\/.*$/gm, "");
+    expect(MIRROR).toContain("minutesUntilClassStart(b.date, b.startTime, now) <= 0");
+    expect(MIRROR).not.toMatch(/endTime|ClassEnd/);
   });
 
   test("🔴 the now-impossible NO_SHOW digest check is gone, not left reporting a structural zero", () => {

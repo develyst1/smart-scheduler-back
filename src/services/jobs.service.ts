@@ -2,9 +2,17 @@
 // (see scripts/end-of-day.ts) that POSTs the internal endpoint. All logic lives
 // here — the exe is a thin trigger — so it can also be run by hand or re-run.
 //
-// A CONFIRMED class on the target date whose end time has passed, with no check-in and no leave, is marked
+// A CONFIRMED class on the target date whose START time has passed, with no check-in and no leave, is marked
 // **ATTENDED** and its course/voucher quota is deducted. Idempotent: only CONFIRMED rows are touched, so a
 // second run marks nothing.
+//
+// 🔴 TASK-396 (the OWNER'S RULING, 2026-09-18, via @Porter) — the gate is the START time, not the end. The team
+// leaves at 17:30 and wants every class cut before they go, and the trigger cannot move to 18:30 — so the 17:30
+// run attends a 17:00–18:00 class because it has STARTED. This is a CONSCIOUS OVERRIDE of REQ-070's "a session is
+// never attended before it ends": staff are on-site and review the day before leaving, which is what makes
+// attending a class in progress acceptable to the owner. It used to gate on `end_time <= now`, and a 17:00 class
+// at the 17:30 run was (correctly, by the old rule) skipped and cut the next morning — the owner called that a bug.
+// The past-date branch, the future-date branch, what is written and the trigger time are all unchanged.
 //
 // 🔴 REQ-070 / TASK-180: this used to write **NO_SHOW**, and that was a false claim about a child. `NO_SHOW`
 // had exactly one writer — this line — no human could set it, and quota already treated `{ATTENDED, NO_SHOW}`
@@ -33,15 +41,15 @@ export async function runEndOfDayJob(date?: string) {
   const runDate = date ?? now.date;
 
   const marked = await db.transaction(async (tx) => {
-    // Which CONFIRMED classes on runDate have already ended?
+    // Which CONFIRMED classes on runDate have already STARTED? (TASK-396 — the owner's ruling; it was "ended".)
     //  - past date  → all of them
-    //  - today      → only those whose end time is at/behind the Bangkok clock
+    //  - today      → only those whose START time is at/behind the Bangkok clock
     //  - future     → none
     const ended =
       runDate < now.date
         ? sql`true`
         : runDate === now.date
-          ? sql`${bookings.endTime} <= ${now.time}::time`
+          ? sql`${bookings.startTime} <= ${now.time}::time`
           : sql`false`;
 
     const due = await tx
