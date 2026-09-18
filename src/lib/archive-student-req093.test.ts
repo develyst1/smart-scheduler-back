@@ -33,12 +33,12 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("40 = 40: `0039_student_archive` is the 40th file, idx 39, the last", () => {
-    expect(files.length).toBe(40);
-    expect(files.at(-1)).toBe("0039_student_archive.sql");
+  test("41 = 41 (TASK-394 added 0040): `0039_student_archive` is the 40th file, idx 39", () => {
+    expect(files.length).toBe(41);
+    expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(40);
-    expect(j.entries.at(-1)).toMatchObject({ idx: 39, tag: "0039_student_archive" });
+    expect(j.entries.length).toBe(41);
+    expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });
   test("two nullable column adds on `students`: `archived_at` then `archived_by`; both IF NOT EXISTS; no DEFAULT / NOT NULL; nothing else", () => {
@@ -64,7 +64,7 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
     expect(SQL).toContain("`drizzle/*.sql` = 39 (0000–0038) and journal tags = 39 before this, newest `0038`, so this is `0039`");
   });
   test("🔑 the witness is the LAST column, `archived_by`, registered last; the schema mirrors both", () => {
-    const w = SCHEDULING_WITNESSES.at(-1)!;
+    const w = SCHEDULING_WITNESSES.find((x) => x.tag === "0039_student_archive")!; // 🔻 TASK-394: no longer last — by tag
     expect(w).toMatchObject({ tag: "0039_student_archive", probe: { kind: "column", table: "students", column: "archived_by" }, rerunnable: true });
     const S = code(src("src/db/schema.ts"));
     expect(S).toContain('archivedAt: timestamp("archived_at", { withTimezone: true }),');

@@ -113,6 +113,7 @@ import {
 import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
 import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
+import { assertRatesOnBooking } from "../lib/other-kind";
 import {
   bookingsOrderBy,
   courseSearchQuery,
@@ -1065,17 +1066,19 @@ async function rentalsByBooking(bookingIds: string[], exec: any = db): Promise<M
 
 async function additionalTeachersByBooking(
   bookingIds: string[],
-): Promise<Map<string, { teacher: any }[]>> {
-  const out = new Map<string, { teacher: any }[]>();
+): Promise<Map<string, { teacher: any; teacherId: string; rateMinor: number | null }[]>> {
+  const out = new Map<string, { teacher: any; teacherId: string; rateMinor: number | null }[]>();
   if (!bookingIds.length) return out;
+  // TASK-394 — `teacherId` + `rateMinor` ride along so `toBookingDTO`'s `other.teacherRates` reads the same from this
+  // hand-built path as from the relation. Still ONLY the extras, still never composing the list.
   const rows = await db
-    .select({ bookingId: bookingTeachers.bookingId, teacher: teachers })
+    .select({ bookingId: bookingTeachers.bookingId, teacherId: bookingTeachers.teacherId, rateMinor: bookingTeachers.rateMinor, teacher: teachers })
     .from(bookingTeachers)
     .innerJoin(teachers, eq(teachers.id, bookingTeachers.teacherId))
     .where(inArray(bookingTeachers.bookingId, bookingIds));
   for (const r of rows) {
     const list = out.get(r.bookingId) ?? [];
-    list.push({ teacher: r.teacher });
+    list.push({ teacher: r.teacher, teacherId: r.teacherId, rateMinor: r.rateMinor ?? null });
     out.set(r.bookingId, list);
   }
   return out;
@@ -1095,7 +1098,7 @@ async function assignedTeacherIds(
   return [primaryTeacherId, ...extra.map((r: any) => r.teacherId).filter((t: string) => t !== primaryTeacherId)];
 }
 
-async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[]) {
+async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[], rates: Record<string, number> = {}) {
   const booking = await exec.query.bookings.findFirst({
     columns: { date: true, startTime: true },
     where: (b: any, { eq: e }: any) => e(b.id, bookingId),
@@ -1119,7 +1122,7 @@ async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds
   }
   await exec
     .insert(bookingTeachers)
-    .values(teacherIds.map((teacherId) => ({ bookingId, teacherId })))
+    .values(teacherIds.map((teacherId) => ({ bookingId, teacherId, rateMinor: rates[teacherId] ?? null }))) // TASK-394: each extra's rate
     .onConflictDoNothing();
 }
 
@@ -1231,6 +1234,11 @@ async function insertBooking(
         otherTitle: input.otherTitle ?? null,
         otherPriceMinor: input.otherPriceMinor ?? null,
         otherPriceItemId: input.otherPriceItemId ?? null,
+        // TASK-394 (REQ-095 Stage 1) — ECA/Free/KOL; refused on the lesson types by validation, so `?? null` again.
+        // The PRIMARY teacher's rate comes out of the ONE `teacherRates` map; the extras' land on their own rows.
+        otherKind: input.otherKind ?? null,
+        headCount: input.headCount ?? null,
+        teacherRateMinor: input.teacherRates?.[input.teacherId] ?? null,
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1360,6 +1368,8 @@ export async function createBooking(input: any) {
   // total (one hour at its program's rate) — and the day-end job only posts what was already authorised.
   // Validated before the booking exists, so an invalid discount refuses the booking rather than storing junk.
   const discountCapture = await captureBookingDiscount(input);
+  // TASK-394 — a rate for a teacher who is not on the booking is refused BEFORE anything is written.
+  assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
   return await db.transaction(async (tx) => {
     // TASK-224: `null` for an อื่นๆ booking with no student. Validation has already refused a missing student
     // on the four lesson types, so this is only ever null where the schema now allows it.
@@ -1376,7 +1386,7 @@ export async function createBooking(input: any) {
     // exists with only some of its teachers is a booking that renders wrongly in a teacher's column, and no
     // later request would know to repair it.
     if (input.additionalTeacherIds?.length) {
-      await attachAdditionalTeachers(tx, id, input.additionalTeacherIds);
+      await attachAdditionalTeachers(tx, id, input.additionalTeacherIds, input.teacherRates ?? {});
     }
     if (input.badgeValueIds?.length) {
       await attachBookingBadges(tx, id, input.badgeValueIds);
@@ -1384,6 +1394,64 @@ export async function createBooking(input: any) {
     const booking = await loadBookingDTO(tx, id);
     return { booking, course: booking.course };
   });
+}
+
+/**
+ * TASK-394 (REQ-095 Stage 1) — edit an OTHER's kind / head count / per-teacher rates. 🚫 Not `moveBooking`: that
+ * re-times and TELLS the teacher; this tells nobody (the note's precedent). A lesson type ⇒ 400. The rates map is
+ * checked against the teachers actually ON the booking; the primary's lands on `bookings`, each extra's on its row.
+ * 🚫 No money: nothing here posts, and `rate_posted_at` is never written.
+ */
+export async function editOtherBooking(id: string, input: { otherKind?: string; headCount?: number; teacherRates?: Record<string, number> }) {
+  const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id), with: { additionalTeachers: true } });
+  if (!current) throw notFound("ไม่พบคาบเรียน");
+  if (current.bookingType !== "OTHER") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”");
+  const extras = (current.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
+  assertRatesOnBooking(input.teacherRates, [current.teacherId, ...extras]);
+  await db.transaction(async (tx) => {
+    const patch: Record<string, unknown> = {};
+    if (input.otherKind !== undefined) patch.otherKind = input.otherKind;
+    if (input.headCount !== undefined) patch.headCount = input.headCount;
+    if (input.teacherRates && current.teacherId in input.teacherRates) patch.teacherRateMinor = input.teacherRates[current.teacherId];
+    if (Object.keys(patch).length) await tx.update(bookings).set(patch).where(eq(bookings.id, id));
+    for (const teacherId of extras) {
+      if (input.teacherRates && teacherId in input.teacherRates) {
+        await tx.update(bookingTeachers).set({ rateMinor: input.teacherRates[teacherId] }).where(and(eq(bookingTeachers.bookingId, id), eq(bookingTeachers.teacherId, teacherId)));
+      }
+    }
+  });
+  return { booking: await loadBookingDTO(db, id) };
+}
+
+/**
+ * TASK-394 (REQ-095 Stage 1) — the SERIES: one OTHER row per date in ONE transaction through the existing
+ * `insertBooking` (every gate reused: teacher bookable, the extras' clash gate, the slot UNIQUE). "Fixed up front"
+ * means ALL OR NOTHING: the FIRST clash aborts the whole set with the DATE in the sentence, and nothing is created.
+ * Each row is an ordinary OTHER afterwards (move / cancel / edit one by one). 🚫 No money anywhere here.
+ */
+export async function createOtherSeries(input: {
+  title: string; otherKind: string; headCount: number; note?: string; teacherId: string; additionalTeacherIds?: string[];
+  teacherRates?: Record<string, number>; startTime: string; dates: string[];
+}): Promise<{ created: number; bookingIds: string[] }> {
+  assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
+  const dates = [...input.dates].sort();
+  const bookingIds = await db.transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const date of dates) {
+      let id: string;
+      try {
+        id = await insertBooking(tx, null, { ...input, bookingType: "OTHER", otherTitle: input.title, date });
+        if (input.additionalTeacherIds?.length) await attachAdditionalTeachers(tx, id, input.additionalTeacherIds, input.teacherRates ?? {});
+      } catch (e) {
+        // The whole set is refused on the FIRST clash, naming its date — the transaction rolls back every earlier row.
+        if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ไม่ได้สร้างรายการใด (${e.message})`);
+        throw e;
+      }
+      ids.push(id);
+    }
+    return ids;
+  });
+  return { created: bookingIds.length, bookingIds };
 }
 
 /**

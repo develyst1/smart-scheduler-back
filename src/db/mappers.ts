@@ -118,6 +118,15 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
+const otherFacts = (b: any): { kind: string | null; headCount: number | null; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
+  if (b.bookingType !== "OTHER") return null;
+  const teacherRates: Record<string, number> = {};
+  const primaryId = b.teacherId ?? b.teacher?.id; // a hand-built row may carry only the relation
+  if (b.teacherRateMinor != null && primaryId) teacherRates[primaryId] = b.teacherRateMinor;
+  for (const a of b.additionalTeachers ?? []) if (a?.rateMinor != null && a.teacherId) teacherRates[a.teacherId] = a.rateMinor;
+  return { kind: b.otherKind ?? null, headCount: b.headCount ?? null, teacherRates, ratePostedAt: b.ratePostedAt ? new Date(b.ratePostedAt).toISOString() : null };
+};
+
 export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
@@ -148,6 +157,10 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   // 🔴 TASK-224 / AC-18 — EVERY assigned teacher, from the ONE accessor. Present on every booking type
   // (length 1 for the four lesson types), so the FE has one shape rather than two.
   teachers: bookingTeachers(b),
+  // TASK-394 (REQ-095 Stage 1) — the ECA/Free/KOL facts of an OTHER, `null` for a lesson type. The rates keyed by
+  // teacher (the primary from `bookings`, each extra from its `booking_teachers` row) so the FE's per-teacher inputs
+  // read ONE object; `ratePostedAt` is reserved and null this stage.
+  other: otherFacts(b),
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
   // TASK-371 (REQ-091 Deploy A) — the session's rental ROW: `{ code, remark, paid } | null`. It REPLACES

@@ -41,6 +41,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /bookings": read(CAL_BOOK),
   "POST /bookings": act(CAL_BOOK, "action:calendar.book"), // + `action:sales.discount` on its `discount` field (service)
   "PATCH /bookings/:id": act(CAL_BOOK, "action:calendar.booking-edit"),
+  "PATCH /bookings/:id/other": act(CAL_BOOK, "action:calendar.booking-edit"), // TASK-394 — an edit, not a move
+  "POST /bookings/other-series": act(CAL_BOOK, "action:calendar.other-series"), // TASK-394 — its own act
   "PATCH /bookings/:id/badges": act(CAL_BOOK, "action:calendar.badges"),
   "GET /bookings/:id/checkin": read(CAL_BOOK),
   "PATCH /bookings/:id/note": act(CAL_BOOK, "action:calendar.note"),

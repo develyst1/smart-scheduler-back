@@ -259,6 +259,15 @@ export const api = new Hono()
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
     c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
   )
+  // TASK-394 (REQ-095 Stage 1) — an OTHER's kind / head count / per-teacher rates, on its OWN route: `PATCH /bookings/:id`
+  // is a MOVE and tells the teacher; this tells nobody (the note's precedent). A lesson type ⇒ 400.
+  .patch("/bookings/:id/other", zValidator("json", v.editOtherBooking), async (c) =>
+    c.json(await svc.editOtherBooking(c.req.param("id"), c.req.valid("json"))),
+  )
+  // TASK-394 — the SERIES: one OTHER per date, all or nothing (the first clash ⇒ 409 naming the date, nothing created).
+  .post("/bookings/other-series", zValidator("json", v.otherSeries), async (c) =>
+    c.json(await svc.createOtherSeries(c.req.valid("json")), 201),
+  )
   // SPEC-075 / TASK-260 (REQ-076) — pause / resume ONE booking. These shapes are the ratified contract (§8),
   // and they are REQ-071's COURSE pause/resume shapes deliberately, so one verb keeps one convention across
   // the product. The FE half (TASK-261) is already built against exactly these.

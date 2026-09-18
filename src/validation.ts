@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OTHER_KINDS } from "./lib/other-kind";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
@@ -159,6 +160,13 @@ export const createBooking = z
     otherPriceItemId: ID.optional(),
     /** AC-18/19/20 — the teachers BEYOND `teacherId`. `OTHER` only; `teacherId` is always the first. */
     additionalTeacherIds: z.array(ID).optional(),
+    // ── TASK-394 (REQ-095 Stage 1) — ECA · Free/KOL. `OTHER` only; refused on the four lesson types below. ──
+    /** ECA | FREE | KOL — the code list in `lib/other-kind.ts`; an unknown kind ⇒ 400. */
+    otherKind: z.enum(OTHER_KINDS).optional(),
+    /** How many heads the slot serves (≥ 0). */
+    headCount: z.number().int().min(0).optional(),
+    /** ONE map keyed by teacher id (the primary AND the extras), satang ≥ 0; an id not on the booking ⇒ 400 (service). */
+    teacherRates: z.record(ID, z.number().int().min(0)).optional(),
   })
   // การจองแบบ Voucher ต้องผูกวอยเชอร์เสมอ (ไม่งั้นชั่วโมงจะไม่ถูกตัด)
   .refine((d) => d.bookingType !== "VOUCHER" || !!d.voucherId, {
@@ -220,7 +228,11 @@ export const createBooking = z
       (d.otherTitle === undefined &&
         d.otherPriceMinor === undefined &&
         d.otherPriceItemId === undefined &&
-        d.additionalTeacherIds === undefined),
+        d.additionalTeacherIds === undefined &&
+        // TASK-394 — the three ECA/Free/KOL fields join the refusal: dropped silently is how a lesson grows a head count
+        d.otherKind === undefined &&
+        d.headCount === undefined &&
+        d.teacherRates === undefined),
     {
       message: "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”",
       path: ["bookingType"],
@@ -409,6 +421,33 @@ export const bulkConfirm = z.object({
 });
 
 // Manual move/edit a booking (reschedule). At least one field required.
+// TASK-394 (REQ-095 Stage 1) — edit an OTHER's kind / head count / rates. Its OWN route, not `moveBooking`: that one
+// re-times a session and TELLS the teacher; this must notify nobody (the note's precedent, TASK-178).
+export const editOtherBooking = z
+  .object({
+    otherKind: z.enum(OTHER_KINDS).optional(),
+    headCount: z.number().int().min(0).optional(),
+    teacherRates: z.record(ID, z.number().int().min(0)).optional(),
+  })
+  .refine((d) => Object.values(d).some((value) => value !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+
+// TASK-394 — the SERIES: one OTHER row per date, all or nothing. `endTime` is derived (+1h) as for every booking.
+export const otherSeries = z
+  .object({
+    title: z.string().trim().min(1),
+    otherKind: z.enum(OTHER_KINDS),
+    headCount: z.number().int().min(0),
+    note: z.string().optional(),
+    teacherId: ID,
+    additionalTeacherIds: z.array(ID).optional(),
+    teacherRates: z.record(ID, z.number().int().min(0)).optional(),
+    startTime: TIME,
+    dates: z.array(DATE).min(1).max(60),
+  })
+  .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] })
+  .refine((d) => !d.additionalTeacherIds || new Set(d.additionalTeacherIds).size === d.additionalTeacherIds.length, { message: "ครูซ้ำกัน", path: ["additionalTeacherIds"] })
+  .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), { message: "ครูซ้ำกับครูคนแรก", path: ["additionalTeacherIds"] });
+
 export const moveBooking = z
   .object({
     teacherId: ID.optional(),

@@ -471,6 +471,14 @@ export const bookings = pgTable(
     // migrations depend on the order of theirs.
     otherPriceMinor: integer("other_price_minor"),
     otherPriceItemId: uuid("other_price_item_id"),
+    // TASK-394 (REQ-095 Stage 1, SPEC-080) `0040` — ECA · Free/KOL on the อื่นๆ booking. `otherKind` is a CODE list
+    // (`lib/other-kind.ts`), `headCount` a number, `teacherRateMinor` the PRIMARY teacher's rate (each extra's is on
+    // its `booking_teachers` row) — STORED, never posted; `ratePostedAt` is reserved for the backoffice pass (owner
+    // decision pending) and stays NULL this stage.
+    otherKind: text("other_kind"),
+    headCount: integer("head_count"),
+    teacherRateMinor: integer("teacher_rate_minor"),
+    ratePostedAt: timestamp("rate_posted_at", { withTimezone: true }),
     note: text("note"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }), // idempotent confirm/notify
     /** C.1: one-time token for QR / link check-in; issued on confirm */
@@ -530,6 +538,8 @@ export const bookingTeachers = pgTable(
     teacherId: uuid("teacher_id")
       .notNull()
       .references(() => teachers.id, { onDelete: "restrict" }),
+    /** TASK-394 `0040` — this additional teacher's rate for the session, in satang. Stored, never posted. */
+    rateMinor: integer("rate_minor"),
   },
   // CASCADE + this composite PK are what make AC-18 ("cancelling removes it from all three columns") free:
   // there is still exactly ONE booking row, so a cancel stays one status change.

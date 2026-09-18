@@ -55,6 +55,8 @@ export interface TodayRow {
   /** TASK-375 (REQ-091) — the entry's rental, ALREADY RENDERED (`rentalPrintLine`), or nothing. `Remark`'s twin:
    *  per booking, printed only when present, never `(-)`. */
   rental?: string | null;
+  /** TASK-394 (REQ-095) — an OTHER entry's head count, or nothing. Printed FIRST among the appended lines (`*ถ้ามี`). */
+  headCount?: number | null;
 }
 
 /** Fields that MAY move to the header. `date` is constant by construction; `coach` only when the data agrees. */
@@ -76,6 +78,8 @@ const dash = (v: string | null | undefined) => (v && String(v).trim() ? String(v
  * would be visibly wrong.
  */
 const remarkLine = (r?: TodayRow): string[] => [
+  // TASK-394 — `Heads : 12` for an ECA/Free/KOL entry, before `Remark`; absent when there is no count (a lesson never has one).
+  ...(r?.headCount != null ? [`${t("ob_f_heads", TEMPLATE_LANG)} : ${r.headCount}`] : []),
   ...(r?.attendeeNote?.trim() ? [`${t("ob_f_note", TEMPLATE_LANG)} : ${r.attendeeNote.trim()}`] : []),
   // TASK-375 — `Rental :` right after `Remark`, in its shape (`*ถ้ามี`: present or absent, never a dash). Both
   // audiences: `AUDIENCE_OMITS` hides nothing from anyone, and the parent pays for it at the shop.

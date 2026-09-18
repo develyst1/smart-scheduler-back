@@ -213,12 +213,12 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(SVC).toContain("if (!input.isSuperAdmin && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
     expect(SVC).toContain("if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
   });
-  test("🔴 40 = 40 (TASK-387 added 0037, TASK-390 added 0038, TASK-392 added 0039): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
+  test("🔴 41 = 41 (0037 … 0040 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(40);
+    expect(files.length).toBe(41);
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(40);
+    expect(j.entries.length).toBe(41);
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");

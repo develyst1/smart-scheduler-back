@@ -114,6 +114,11 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // become `guarded` and this line is where that shows up.
   "POST /bookings/:id/pause": "unrelated",
   "POST /bookings/:id/resume": "unrelated",
+  // TASK-394 (REQ-095 Stage 1) — an OTHER never names a course (validation refuses `courseId` on it — it has no
+  // student, no program), so neither the series creator nor the kind/count/rate edit can reach an ended course.
+  // Classified deliberately, not by default.
+  "PATCH /bookings/:id/other": "unrelated",
+  "POST /bookings/other-series": "unrelated",
   // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
   // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,
   // which `expiry-preview.test.ts` asserts as an absence across both the route and the shared computation it

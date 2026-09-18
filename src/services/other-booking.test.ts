@@ -244,6 +244,12 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
     const writer = body("async function attachAdditionalTeachers");
     const reader = body("async function assignedTeacherIds");
     const loader = body("async function additionalTeachersByBooking");
+    // 🔻 TASK-394 (REQ-095) — a FOURTH function touches the table: `editOtherBooking` UPDATES an extra's `rate_minor`.
+    // It never inserts or deletes a row, so it cannot change the answer to "who teaches this booking" — the rule this
+    // test guards. Pinned to exactly that: an update of one column, no insert, no delete, no composing.
+    const rateWriter = body("export async function editOtherBooking");
+    expect(rateWriter).toContain("update(bookingTeachers).set({ rateMinor:");
+    expect(rateWriter).not.toMatch(/insert\(bookingTeachers\)|delete\(bookingTeachers\)/);
     expect(writer).toContain("insert(bookingTeachers)");
     expect(reader).toContain("from(bookingTeachers)");
     expect(loader).toContain("from(bookingTeachers)");
@@ -254,7 +260,7 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
     expect(loader).not.toContain("primary");
     const count = (s: string) => s.split("bookingTeachers").length - 1;
     // Every mention in the file is the import (1), or inside one of those three functions.
-    expect(count(code)).toBe(1 + count(writer) + count(reader) + count(loader));
+    expect(count(code)).toBe(1 + count(writer) + count(reader) + count(loader) + count(rateWriter));
   });
 
   test("the relation is loaded in the SHARED relation set, not opted into per query", () => {

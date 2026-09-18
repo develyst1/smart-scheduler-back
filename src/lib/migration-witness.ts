@@ -418,6 +418,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "a run that died after `archived_at` alone is not called applied. Both are IF NOT EXISTS; existence is valid.",
     rerunnable: true,
   },
+  {
+    tag: "0040_other_schedule",
+    probe: { kind: "column", table: "booking_teachers", column: "rate_minor" },
+    why:
+      "TASK-394 (REQ-095 Stage 1). Five nullable column adds — four on `bookings`, the LAST on `booking_teachers`: " +
+      "`rate_minor` is the witness, so a run that died after any of the `bookings` columns is not called applied. " +
+      "All five are IF NOT EXISTS; existence is valid.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

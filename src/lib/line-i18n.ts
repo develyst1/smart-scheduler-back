@@ -557,6 +557,10 @@ const TABLE: Record<string, Entry> = {
   // the value line is his ruled print shape.
   ob_rental_added_title: { TH: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️", EN: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️" },
   ob_f_rental: { TH: "Rental", EN: "Rental" },
+  // 📖 **PLACEHOLDER — MINE, and the customer has NOT seen it** (TASK-394, `REQ-095 §4`). The coach's reminder prints
+  // an ECA/Free/KOL entry's head count after its title; the LABEL is pinned by FORM, not bytes — @Porter carries the
+  // owner's word; the moment it comes back this line changes and the pin flips to bytes (the `ob_deduct_title` path).
+  ob_f_heads: { TH: "Heads", EN: "Heads" },
   // The closed cancel/end codes (`END_REASONS`) as words — the first labels these codes have ever had; the
   // message is the first reader that needs them.
   ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },

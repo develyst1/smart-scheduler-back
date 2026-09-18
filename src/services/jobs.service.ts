@@ -423,6 +423,8 @@ export async function runDailyReminderJob(date?: string) {
       attendeeNote: r.attendeeNote ?? null,
       // TASK-375 — rendered HERE, once, like `remaining`: the builder decides who and which rows, never the words.
       rental: r.rental ? rentalPrintLine(r.rental.code, r.rental.remark ?? null) : null,
+      // TASK-394 — an OTHER's head count reaches the coach's entry; `null` on every lesson row by construction.
+      headCount: r.headCount ?? null,
     })),
   );
 
