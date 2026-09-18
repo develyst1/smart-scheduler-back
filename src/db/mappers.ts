@@ -4,7 +4,7 @@
 import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
-import { courseRentalOf, toRentalDTO } from "../lib/rental-row";
+import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -205,10 +205,19 @@ export const toCourseWithStudent = (c: any) => ({
     : c.bookings?.[0]?.subject
       ? { id: c.bookings[0].subject.id, name: c.bookings[0].subject.name }
       : null,
-  // TASK-373 (REQ-091 Deploy B) — the course's whole-course rental, DERIVED, no column: from a grouped read the
+  // TASK-373 (REQ-091 Deploy B) — the course's whole-course rental, DERIVED from the rows: from a grouped read the
   // list spreads on (`courseRental`), else from the loaded rows (the create's return). `null` = not rented.
-  rental: c.courseRental ?? courseRentalOf(c.bookings ?? []),
+  // 🔻 TASK-390 (REQ-091 §14): `null` ALSO once `rental_removed_at` is set — the marker wins over any past paid rows
+  // still on the course (they are history, not a rental the family still has). `paidUpfront` is the stored variant
+  // (`0038`; a pre-0038 rented course reads `true` — it was, by construction); `unpaidSessions` what is left to collect.
+  rental: courseRentalDTO(c),
 });
+
+const courseRentalDTO = (c: any): { code: string; remark: string | null; paidUpfront: boolean; unpaidSessions: number } | null => {
+  if (c.rentalRemovedAt) return null;
+  const s = c.courseRental ?? courseRentalSummary(c.bookings ?? []);
+  return s ? { code: s.code, remark: s.remark, paidUpfront: c.rentalPaidUpfront ?? true, unpaidSessions: s.unpaidSessions } : null;
+};
 
 export const toVoucherDTO = (v: any) => ({
   id: v.id,

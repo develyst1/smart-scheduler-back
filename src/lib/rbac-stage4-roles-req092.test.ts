@@ -35,12 +35,12 @@ describe("🔴 the migration — 0037, counted, witnessed, the `users` lock name
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0037_roles.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("38 = 38: `0037_roles` is the 38th file, idx 37, the last", () => {
-    expect(files.length).toBe(38);
-    expect(files.at(-1)).toBe("0037_roles.sql");
+  test("40 = 40 (TASK-390 added 0038, TASK-392 added 0039): `0037_roles` is the 38th file, idx 37", () => {
+    expect(files.length).toBe(40);
+    expect(files[37]).toBe("0037_roles.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(38);
-    expect(j.entries.at(-1)).toMatchObject({ idx: 37, tag: "0037_roles" });
+    expect(j.entries.length).toBe(40);
+    expect(j.entries[37]).toMatchObject({ idx: 37, tag: "0037_roles" });
   });
   test("five statements in the contract's order: roles · lower(name) UNIQUE · users.role_id RESTRICT · role_permissions CASCADE · the (role_id, key) UNIQUE LAST; all IF NOT EXISTS", () => {
     expect((SQL.match(/--> statement-breakpoint/g) ?? []).length).toBe(4);
@@ -66,8 +66,8 @@ describe("🔴 the migration — 0037, counted, witnessed, the `users` lock name
     expect(SQL).toContain("ONE run, ONE transaction (drizzle runs each migration in a transaction), five statements");
     expect(SQL).toContain("`drizzle/*.sql` = 37 (0000–0036) and journal tags = 37 before this, newest `0036`, so this is `0037`");
   });
-  test("🔑 the witness is the LAST object, `role_permissions_role_key_uq`, registered last and rerunnable", () => {
-    const w = SCHEDULING_WITNESSES.at(-1)!;
+  test("🔑 the witness is the LAST object, `role_permissions_role_key_uq`, registered and rerunnable", () => {
+    const w = SCHEDULING_WITNESSES.find((x) => x.tag === "0037_roles")!; // 🔻 TASK-390: no longer last — found by tag
     expect(w).toMatchObject({ tag: "0037_roles", probe: { kind: "index", index: "role_permissions_role_key_uq" }, rerunnable: true });
     expect(w.why).toContain("LAST of five objects");
   });

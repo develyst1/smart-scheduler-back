@@ -33,8 +33,8 @@ export const api = new Hono()
   })
   // Booking dropdown source — searchable by name / nickname / parent phone.
   .get("/students", zValidator("query", v.studentsQuery), async (c) => {
-    const { q, limit } = c.req.valid("query");
-    return c.json(await parent.searchStudents(q, limit));
+    const { q, limit, archived } = c.req.valid("query");
+    return c.json(await parent.searchStudents(q, limit, archived));
   })
   // Staff student creation — under an existing parent or a phone (find-or-create).
   .post("/students", zValidator("json", v.createStudent), async (c) =>
@@ -81,6 +81,10 @@ export const api = new Hono()
   .delete("/students/:id", async (c) =>
     c.json(await parent.deleteStudent(c.req.param("id"), actorOf(c))),
   )
+  // TASK-392 (REQ-093 shape (a)) — ARCHIVE / restore: hidden from every working read, history untouched, nothing
+  // else touched; refused with live future sessions (409 with the count). One key for both directions.
+  .post("/students/:id/archive", async (c) => c.json({ student: await parent.archiveStudent(c.req.param("id"), actorOf(c)) }))
+  .post("/students/:id/unarchive", async (c) => c.json({ student: await parent.unarchiveStudent(c.req.param("id")) }))
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
   .get("/attention", async (c) => c.json(await attention.getAttention()))
   // REQ-020 Stage 2 (TASK-075) — teacher LINE link requests. Approval is the ONLY path that grants a link.
@@ -291,6 +295,9 @@ export const api = new Hono()
   )
   // SPEC-033 §4 (TASK-112): a PAID extra session beside the plan — SINGLE_SESSION soft-linked by courseId, out of
   // quota. Distinct route from /plan so the seam is visible in the API, not just the UI.
+  // TASK-390 (REQ-091 §14) — remove the rental from the REMAINING sessions: future live rows lose their rental row,
+  // the course is marked so a later make-up does not re-inherit; NO money moves. ⇒ `{ removed: n }`.
+  .delete("/courses/:id/rental", async (c) => c.json(await rental.removeCourseRental(c.req.param("id"), actorOf(c))))
   .post("/courses/:id/extra-session", zValidator("json", v.extraSession), async (c) =>
     c.json(await svc.addExtraSession(c.req.param("id"), c.req.valid("json")), 201),
   )

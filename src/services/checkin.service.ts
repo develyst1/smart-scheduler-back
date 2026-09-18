@@ -95,7 +95,7 @@ async function linkedStudentIds(lineUserId: string): Promise<string[]> {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return [];
   const linked = await db.query.students.findMany({
-    where: (s, { eq: e }) => e(s.parentId, parent.id),
+    where: (s, { eq: e, and: a, isNull: n }) => a(e(s.parentId, parent.id), n(s.archivedAt)), // TASK-392: an archived child is not offered
   });
   return linked.map((s) => s.id);
 }

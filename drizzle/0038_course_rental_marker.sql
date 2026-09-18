@@ -1,0 +1,44 @@
+-- TASK-390 (REQ-091 §14, rental round 2) — two facts about a course's rental that its rows cannot carry:
+-- `rental_removed_at` (the marker) and `rental_paid_upfront` (the variant), both on `course_packages`.
+--
+-- 🔴 Numbering: counted at the moment of writing, per the board rule ("no migration" is a CLAIM, not a state) —
+-- `drizzle/*.sql` = 38 (0000–0037) and journal tags = 38 before this, newest `0037`, so this is `0038` — the
+-- 39th file. Hand-authored + journal-registered per drizzle/README.md; do NOT run `db:generate` (snapshots stop
+-- at 0003).
+--
+-- 📌 WHY COLUMNS, NOT RULES.
+--   · THE MARKER. "Remove the rental from the remaining sessions" deletes the rental rows of the course's FUTURE
+--     live sessions (no money moves). A later make-up is appended by `inheritCourseRental`, which copies the
+--     course's rental from ANY existing row — and a leave on the LAST session appends a make-up when no future
+--     row exists, so a "copy only from future rows" rule would drop the rental on an honestly rented course.
+--     The marker records what happened; a rule would guess. `inheritCourseRental` yields nothing once it is set.
+--   · THE VARIANT. A pay-per-session course's rows are born UNPAID and each session's paid press posts one line.
+--     Once some are paid, "was this course paid upfront?" cannot be derived from the rows without lying
+--     mid-course (a fully-paid pay-per-session course would read "upfront"), so it is stored at creation.
+--     NULL = the course was not rented at creation (every course before this migration).
+--
+-- 🔒 THE LOCK — read this before running it (the human runs it; it is why this comment exists):
+--   · Each `ALTER TABLE course_packages ADD COLUMN` takes **ACCESS EXCLUSIVE on `course_packages`** for the
+--     duration of its statement: reads AND writes wait. A NULLable column with no default is a catalog write —
+--     **no table rewrite, no backfill**. `course_packages` is one row per course ever sold: hundreds to low
+--     thousands of rows. Two statements ⇒ two blinks of milliseconds each, in ONE transaction.
+--   · ⚠️ The queueing hazard: the calendar, the bookings page and every course read touch `course_packages`;
+--     if a transaction holds it when this starts, the ALTER queues behind it and every course read queues
+--     behind the ALTER. ⇒ a read-blocking blink — run it at a quiet moment, not during an import. Never read
+--     this as "5 ms".
+--   · ONE run, ONE transaction, two statements; both `IF NOT EXISTS` ⇒ rerunnable. No other table is touched.
+--   · 📌 THE CUTOVER ORDER: this, then `0039_student_archive` (TASK-392) — two files, ONE `db:migrate` run applies
+--     both in journal order; `db:verify` expects 40. Neither depends on the other's objects.
+--
+-- 🔑 THE WITNESS (`lib/migration-witness.ts`): the LAST object — the column `rental_paid_upfront` — invented by
+-- this migration (0034's rules: it exists ONLY because this ran). Witnessing the first column would call a run
+-- that died between the two statements "applied", and the variant would have no home.
+
+-- Set when a super admin removed the rental from the remaining sessions: the course's rental is OVER — the DTO
+-- reads `rental: null`, `inheritCourseRental` copies nothing onto a later make-up. Past paid rows stay as history.
+ALTER TABLE "course_packages" ADD COLUMN IF NOT EXISTS "rental_removed_at" timestamptz NULL;
+--> statement-breakpoint
+
+-- TRUE = paid upfront at creation (one post, every row born paid — today's path). FALSE = pay per session (rows
+-- born unpaid, no post at creation, each paid press posts one). NULL = not rented at creation.
+ALTER TABLE "course_packages" ADD COLUMN IF NOT EXISTS "rental_paid_upfront" boolean NULL;

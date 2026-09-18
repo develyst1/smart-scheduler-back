@@ -112,7 +112,7 @@ import {
 } from "../lib/course-plan";
 import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
-import { findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
+import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import {
   bookingsOrderBy,
   courseSearchQuery,
@@ -134,7 +134,7 @@ import { CRM_POINT_RULES } from "../lib/crm";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
 import { inheritCourseRental, recordRental } from "./rental.service";
-import { courseRentalOf, rentalRemarkRequired } from "../lib/rental-row";
+import { courseRentalOf, courseRentalSummary, rentalPrintLine, rentalRemarkRequired, type CourseRentalSummary } from "../lib/rental-row";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -605,16 +605,19 @@ async function courseIdsOrdered(f: { q?: string; page?: number; limit?: number }
 }
 
 /** Hydrate courses to their DTO shape, preserving the id order handed in. */
-/** TASK-373 — `Map<courseId, { code, remark }>` for the courses that are rented, in ONE query (rows joined to their rentals). */
-async function courseRentalsByCourse(courseIds: string[], exec: any = db): Promise<Map<string, { code: string; remark: string | null }>> {
+/** TASK-373 — `Map<courseId, summary>` for the courses that are rented, in ONE query (rows joined to their rentals).
+ *  🔻 TASK-390: the summary carries `unpaidSessions` (live rows without `paid_at`) — the same reduction as `courseRentalSummary`. */
+async function courseRentalsByCourse(courseIds: string[], exec: any = db): Promise<Map<string, CourseRentalSummary>> {
   if (courseIds.length === 0) return new Map();
   const rows = await exec
-    .select({ courseId: bookings.courseId, code: bookingRentals.code, remark: bookingRentals.remark })
+    .select({ courseId: bookings.courseId, status: bookings.status, code: bookingRentals.code, remark: bookingRentals.remark, paidAt: bookingRentals.paidAt })
     .from(bookingRentals)
     .innerJoin(bookings, eq(bookings.id, bookingRentals.bookingId))
     .where(inArray(bookings.courseId, courseIds));
-  const out = new Map<string, { code: string; remark: string | null }>();
-  for (const r of rows) if (r.courseId && !out.has(r.courseId)) out.set(r.courseId, { code: r.code, remark: r.remark ?? null });
+  const byCourse = new Map<string, any[]>();
+  for (const r of rows) if (r.courseId) byCourse.set(r.courseId, [...(byCourse.get(r.courseId) ?? []), { status: r.status, rental: { code: r.code, remark: r.remark ?? null, paidAt: r.paidAt } }]);
+  const out = new Map<string, CourseRentalSummary>();
+  for (const [id, rs] of byCourse) { const s = courseRentalSummary(rs); if (s) out.set(id, s); }
   return out;
 }
 
@@ -705,6 +708,8 @@ export async function getEligibleStudents(type: string, q?: string) {
   // REQ-019 / TASK-056: this endpoint exists ONLY to answer "who can be booked", so a suspended household
   // never belongs in it — filtered unconditionally. Parentless walk-in students are never in the set.
   const suspended = await suspendedStudentIds();
+  // TASK-392 — an ARCHIVED child cannot be booked either: the same exclusion shape as suspended (an id set).
+  const archived = await archivedStudentIds();
 
   // TASK-088 — `q` resolves through the SAME rule as /students and /bookings (`studentSearchConditions`,
   // via `searchStudentIds`), so one term finds the same child on all three surfaces. Resolving to ids and
@@ -721,6 +726,7 @@ export async function getEligibleStudents(type: string, q?: string) {
           (c: any) =>
             courseEligible(c, date) &&
             !suspended.has(c.student.id) &&
+            !archived.has(c.student.id) &&
             matchesSearch(c.student.id, matching),
         )
         .map((c: any) => ({
@@ -749,6 +755,7 @@ export async function getEligibleStudents(type: string, q?: string) {
           (v: any) =>
             voucherEligible(v, date) &&
             !suspended.has(v.student.id) &&
+            !archived.has(v.student.id) &&
             matchesSearch(v.student.id, matching),
         )
         .map((v: any) => ({
@@ -1357,6 +1364,7 @@ export async function createBooking(input: any) {
     // TASK-224: `null` for an อื่นๆ booking with no student. Validation has already refused a missing student
     // on the four lesson types, so this is only ever null where the schema now allows it.
     const studentId = input.student ? await resolveStudentId(tx, input.student) : null;
+    if (studentId) await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new session
     if (input.bookingType === "VOUCHER" && input.voucherId) {
       await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);
     }
@@ -1679,6 +1687,7 @@ export async function createCoursePackage(input: any) {
   }
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
+    await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new course
     // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
     // reject the generated sessions anyway, but incidental enforcement stops being enforcement the moment
     // someone reorders this or adds a course type that books no sessions.
@@ -1799,18 +1808,23 @@ export async function createCoursePackage(input: any) {
     // with, inserted AFTER the flip loop (so the rows are final: the make-ups exist, the leave rows are
     // SICK_LEAVE and get none). The money is ONE post after the transaction, below — the rows are the fact,
     // the ledger the amount, exactly as TASK-371 laid it out.
+    // 🔻 TASK-390 (REQ-091 §14) — the VARIANT: `paidUpfront === false` ⇒ every row born UNPAID (no `paid_at`), no post
+    // below; each session's paid press posts one (`payBookingRental`, TASK-371's path). The choice is STORED on the
+    // course (`rental_paid_upfront`) — the rows cannot say it once some are paid.
     if (input.rental) {
+      const paidUpfront = input.rental.paidUpfront !== false;
+      await tx.update(coursePackages).set({ rentalPaidUpfront: paidUpfront }).where(eq(coursePackages.id, course.id));
       const finalRows = await tx.query.bookings.findMany({
         where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.courseId, course.id), inA(b.status, [...COURSE_LIVE_STATUSES])),
       });
-      const paidAt = new Date();
+      const paidAt = paidUpfront ? new Date() : null;
       for (const r of finalRows) {
         await tx.insert(bookingRentals).values({
           bookingId: r.id,
           code: input.rental.code,
           remark: input.rental.remark?.trim() || null,
           paidAt,
-          paidActor: input.actor ?? null,
+          paidActor: paidUpfront ? (input.actor ?? null) : null,
           createdBy: input.actor ?? null,
         });
       }
@@ -1840,7 +1854,8 @@ export async function createCoursePackage(input: any) {
   // NO discount. ⚠️ One line the course sale does not need: `recordRental` THROWS on a failed post (TASK-108 —
   // the post IS the event) where `recordSale` returns `ok: false`, so the rejection is caught and logged here —
   // the same effect as the course sale's gap (the rows are paid, the ledger is missing, the log is the alarm).
-  if (input.rental) {
+  // 🔻 TASK-390: ONLY when paid upfront — a pay-per-session course posts nothing here; its money moves per paid press.
+  if (input.rental && input.rental.paidUpfront !== false) {
     void recordRental({ code: input.rental.code, hours: input.size, refId: result.course.id, actor: input.actor ?? null }).catch((e) =>
       console.error(`[rental] NOT POSTED — course ${result.course.id} ${input.rental.code} × ${input.size}: ${e?.message ?? e}`),
     );
@@ -2220,6 +2235,7 @@ export async function createVoucher(input: any) {
   );
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
+    await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new voucher
     // TASK-058: a suspended household may not BUY. Inside the tx and BEFORE the insert, so the blocked sale
     // never reaches the `recordSale(...)` revenue post below.
     await assertHouseholdNotSuspended(tx, studentId);
@@ -3659,7 +3675,7 @@ async function loadCourseForEnd(exec: any, id: string) {
   if (!course) throw notFound("ไม่พบคอร์ส");
   const rows = await exec.query.bookings.findMany({
     where: (b: any, { and: a, eq: e }: any) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
-    with: { teacher: true, subject: true, student: true },
+    with: { teacher: true, subject: true, student: true, rental: true }, // TASK-390: the rental rows, for the confirm line
     orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
   });
   return { course, rows };
@@ -3850,6 +3866,10 @@ export async function confirmCourse(id: string) {
       // "and 2 more": **a course summary has no true answer to "which session's note", and the earliest is at
       // least a RULE rather than an accident.**
       note: courseNote(rows),
+      // 🔻 TASK-390 (REQ-091 §14) — the course's rental, RENDERED here (`rentalPrintLine`, the customer's print shape)
+      // as the reminder carries it; `null` when the course has none (or the rental was removed — the marker wins).
+      // Both audiences read it: the one payload, the one renderer.
+      rental: course.rentalRemovedAt ? null : (() => { const r = courseRentalOf(rows); return r ? rentalPrintLine(r.code, r.remark) : null; })(),
     };
     const notification = confirmed
       ? await enqueueLine(

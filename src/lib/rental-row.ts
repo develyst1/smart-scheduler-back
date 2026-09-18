@@ -2,6 +2,7 @@
 // tests pin them with values, without a database.
 
 import { CALENDAR_HIDDEN_STATUSES } from "../db/schema";
+import { COURSE_LIVE } from "./course-plan";
 import { rentalPriceList } from "./sale-items";
 
 /**
@@ -38,6 +39,23 @@ export const courseRentalOf = (
 ): { code: string; remark: string | null } | null => {
   const r = rows.find((x) => x.rental)?.rental;
   return r ? { code: r.code, remark: r.remark ?? null } : null;
+};
+
+/**
+ * TASK-390 (REQ-091 §14) — the course's rental WITH what is left to collect: `unpaidSessions` = rows in a COURSE-LIVE
+ * status (PENDING · CONFIRMED · EXTENDED — `COURSE_LIVE`, not the calendar's wider "shown" set: a leave row is shown
+ * but is not a session to collect for) whose rental row has no `paid_at`. A pay-per-session course counts down as
+ * each paid press lands; a paid-upfront course is 0. Pure; the list's grouped read and the create's return both
+ * reduce to this shape.
+ */
+export type CourseRentalSummary = { code: string; remark: string | null; unpaidSessions: number };
+export const courseRentalSummary = (
+  rows: ReadonlyArray<{ status: string; rental?: { code: string; remark: string | null; paidAt?: Date | string | null } | null }>,
+): CourseRentalSummary | null => {
+  const base = courseRentalOf(rows);
+  if (!base) return null;
+  const unpaidSessions = rows.filter((r) => r.rental && !r.rental.paidAt && COURSE_LIVE.has(r.status)).length;
+  return { ...base, unpaidSessions };
 };
 
 /**

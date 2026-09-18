@@ -80,6 +80,11 @@ export const reportQuery = z.object({ date: DATE });
 export const studentsQuery = z.object({
   q: z.string().trim().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  // TASK-392 (REQ-093) — `archived=true` ⇒ ONLY the archived students (the restore view); default hides them.
+  archived: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
   // TASK-058 retired the `bookable` opt-in — suspended households are now excluded by default for every
   // consumer. Zod strips unknown keys, so an older client still sending `bookable=true` is simply ignored
   // (it asked for the behaviour that is now the default), which is what makes the FE/BE deploy order free.
@@ -265,9 +270,11 @@ export const createCoursePackage = z
     absentWeeks: z.array(z.number().int().min(1)).optional(),
     // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
     discount: discountInput.optional(),
-    // TASK-373 (REQ-091 Deploy B) — whole-course rental: one tier for every session, paid upfront, one post.
-    // The same shape as the session rental; the remark RULE (set + ride) is the service's, as in TASK-371.
-    rental: recordBookingRental.optional(),
+    // TASK-373 (REQ-091 Deploy B) — whole-course rental: one tier for every session. The same shape as the session
+    // rental; the remark RULE (set + ride) is the service's, as in TASK-371.
+    // 🔻 TASK-390 (REQ-091 §14) — `paidUpfront` (default TRUE = today: every row born paid, one post). FALSE = pay per
+    // session: rows born unpaid, NO post at creation, each session's paid press posts one.
+    rental: recordBookingRental.extend({ paidUpfront: z.boolean().default(true) }).optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(

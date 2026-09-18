@@ -449,7 +449,11 @@ function buildOutboxMessage(
         // upstream: `courseNote` (`course-plan.ts`) is what rejects a whitespace-only note here, not zod.
         // 📌 Included deliberately: leaving one of four notes on a different guard would recreate the very
         // question this task exists to answer — *which of these guards is load-bearing?*
-        extra(t("ob_f_note", lang), fieldValue(payload.note))
+        extra(t("ob_f_note", lang), fieldValue(payload.note)) +
+        // 🔻 TASK-390 (REQ-091 §14) — `Rental : Rent 200 / Full Set (…)` LAST, after `Remark`, as the reminder prints it;
+        // the line arrives RENDERED on the payload (built once where the payload is), `*ถ้ามี` — absent when the course
+        // has none, so an unrented course renders byte-for-byte as before. Both audiences: the one renderer.
+        extra(t("ob_f_rental", lang), fieldValue(payload.rental))
       );
     }
     // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.

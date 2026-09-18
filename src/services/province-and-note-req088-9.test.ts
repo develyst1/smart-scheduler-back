@@ -119,7 +119,7 @@ describe("🚫 §9.1 — what this task deliberately does NOT do", () => {
     // The owner MOVED the addresses himself and is LEAVING `province` dirty ON PURPOSE, so a visibly broken
     // dashboard gets fixed by the admins who know the family. If anyone proposes a script, `§9.1` is the answer.
     const journal = await Bun.file(new URL("../../drizzle/meta/_journal.json", import.meta.url)).text();
-    expect((journal.match(/"tag"/g) ?? []).length).toBe(38); // 🔻 TASK-371 added 0035, TASK-377 added 0036 (users), TASK-387 added 0037 (roles) — none a province script
+    expect((journal.match(/"tag"/g) ?? []).length).toBe(40); // 🔻 TASK-371 added 0035, TASK-377 added 0036 (users), TASK-387 added 0037 (roles), TASK-390 added 0038 (course rental marker), TASK-392 added 0039 (student archive) — none a province script
     expect(REG).not.toMatch(/UPDATE parents SET province/i);
   });
 });

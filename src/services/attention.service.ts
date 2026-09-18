@@ -72,7 +72,8 @@ function buildCtx(today: string): AttentionCtx {
         (studentsWithParent ??= (async () => {
           // LEFT-join semantics: a walk-in / First-Trial student has `parent_id = null` BY DESIGN and must
           // never be dropped from the count by an inner join (the badge-report failure mode).
-          const students = await db.query.students.findMany();
+          // TASK-392 — an ARCHIVED child must not nag: hidden from this working read like every other.
+          const students = (await db.query.students.findMany()).filter((s) => !s.archivedAt);
           const parents = await db.query.parents.findMany();
           const byId = new Map(parents.map((p) => [p.id, p]));
           return students.map((s) => ({

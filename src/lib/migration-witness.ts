@@ -401,6 +401,23 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "are IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0038_course_rental_marker",
+    probe: { kind: "column", table: "course_packages", column: "rental_paid_upfront" },
+    why:
+      "TASK-390 (REQ-091 §14). Two nullable column adds on `course_packages`; the LAST one — `rental_paid_upfront` — " +
+      "is the witness, so a run that died after the marker column alone is not called applied. Both are " +
+      "IF NOT EXISTS; existence is valid — nothing before this migration could have produced the column.",
+    rerunnable: true,
+  },
+  {
+    tag: "0039_student_archive",
+    probe: { kind: "column", table: "students", column: "archived_by" },
+    why:
+      "TASK-392 (REQ-093). Two nullable column adds on `students`; the LAST one — `archived_by` — is the witness, so " +
+      "a run that died after `archived_at` alone is not called applied. Both are IF NOT EXISTS; existence is valid.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

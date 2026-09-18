@@ -65,6 +65,11 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // TASK-364 — a delete is refused OUTRIGHT for a student with any course row, ended ones included (the count has
   // no status filter), so an ended course is never touched: it is the thing that makes the delete impossible.
   "DELETE /students/:id": "unrelated",
+  // TASK-392 (REQ-093) — archive / restore a student: writes `students.archived_at/by` and NOTHING else (asserted by
+  // absence in its own test); refused while the child has live future sessions. An ended course's rows are not
+  // live, so it neither reaches nor is reached by an ended course. Classified deliberately, not by default.
+  "POST /students/:id/archive": "unrelated",
+  "POST /students/:id/unarchive": "unrelated",
   // TASK-371 — a rental row on a SESSION: no session is added, revived or billed for tuition; the rental money
   // posts through `recordRental` on the paid press, which an ended course's remaining rows (all CANCELLED, hence
   // BOOKING_NOT_LIVE) cannot reach. `allowed` on a delivered row of an ended course: the cash was collected.
@@ -116,6 +121,11 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // 📌 Classified deliberately: this guard is exactly why the route could not slip past unnoticed, and it
   // caught mine on the first run.
   "POST /courses/:id/expiry/preview": "unrelated",
+  // TASK-390 (REQ-091 §14) — remove the rental from the REMAINING sessions. Classified `unrelated` for a REASON: it
+  // deletes rental rows of FUTURE **LIVE** rows only (`COURSE_LIVE_STATUSES`) and sets a marker on the course; an
+  // ended course has no live row (ending cancels them), so nothing of it is reachable — the marker on an ended
+  // course is inert. No money moves, so there is no ledger to protect either.
+  "DELETE /courses/:id/rental": "unrelated",
 };
 
 describe("every write route is classified against the ended-course rule (TASK-185)", () => {

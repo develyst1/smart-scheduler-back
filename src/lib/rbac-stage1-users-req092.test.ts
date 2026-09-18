@@ -163,9 +163,9 @@ describe("🔑 the routes — super admin only, through the ROOT app (the dev us
 });
 
 describe("🔴 the source — actor = username everywhere, the env login retired, the guard, the migration", () => {
-  test("🔑 zero `.sub` actors: every actor site in the router is `actorOf(c)` — 12 of them — and no route reads `c.get(\"user\")?.sub`", () => {
+  test("🔑 zero `.sub` actors: every actor site in the router is `actorOf(c)` — 14 of them — and no route reads `c.get(\"user\")?.sub`", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(12);
+    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(14); // 🔻 TASK-390: + `DELETE /courses/:id/rental`; 🔻 TASK-392: + `POST /students/:id/archive`
     for (const f of ["src/routes/api.ts", "src/routes/users.ts", "src/routes/auth.ts", "src/routes/register.ts", "src/routes/checkin.ts"]) {
       expect({ f, subActor: code(src(f)).includes('c.get("user")?.sub') }).toEqual({ f, subActor: false });
     }
@@ -213,12 +213,12 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(SVC).toContain("if (!input.isSuperAdmin && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
     expect(SVC).toContain("if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
   });
-  test("🔴 38 = 38 (TASK-387 added 0037): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
+  test("🔴 40 = 40 (TASK-387 added 0037, TASK-390 added 0038, TASK-392 added 0039): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(38);
+    expect(files.length).toBe(40);
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(38);
+    expect(j.entries.length).toBe(40);
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");
@@ -230,7 +230,7 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect((SQL.match(/--> statement-breakpoint/g) ?? []).length).toBe(3);
     expect(SQL).toContain("No lock is taken on\n--     any EXISTING table");
     expect(SQL).toContain("ONE run, ONE transaction, four statements");
-    const w = SCHEDULING_WITNESSES.at(-2)!; // 🔻 TASK-387: 0037_roles is last now
+    const w = SCHEDULING_WITNESSES.find((x) => x.tag === "0036_users")!; // 🔻 TASK-387/390: no longer last — found by tag
     expect(w).toMatchObject({ tag: "0036_users", probe: { kind: "index", index: "user_permissions_user_key_uq" }, rerunnable: true });
   });
 });

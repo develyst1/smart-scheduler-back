@@ -7,6 +7,8 @@ import { db } from "../db";
 import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { isSuspended } from "../lib/suspend";
+import { bangkokNow } from "../lib/bangkok-time";
+import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
@@ -93,15 +95,67 @@ export async function linkParentLine(
     .where(and(eq(parents.id, parentId), isNull(parents.lineUserId)));
 }
 
+/**
+ * 🔻 TASK-392 (REQ-093) — ARCHIVED children are hidden by default: this is the ONE helper behind the parent detail
+ * and list, the per-parent cap, the LIFF register, the LINE webhook's kid lists and the check-in service, so the
+ * default here IS the working-read rule. `includeArchived: true` only where the caller must SEE them (the parent
+ * detail's `archivedStudents`, split from one read).
+ */
 export async function listStudentsOfParent(
   parentId: string,
   exec: any = db,
+  opts: { includeArchived?: boolean } = {},
 ): Promise<StudentRow[]> {
   return exec
     .select()
     .from(students)
-    .where(eq(students.parentId, parentId))
+    .where(opts.includeArchived ? eq(students.parentId, parentId) : and(eq(students.parentId, parentId), isNull(students.archivedAt)))
     .orderBy(asc(students.createdAt));
+}
+
+/** TASK-392 — the archived ids, for the reads that filter by id set (`getEligibleStudents`, like `suspendedStudentIds`). */
+export async function archivedStudentIds(exec: any = db): Promise<Set<string>> {
+  const rows = await exec.select({ id: students.id }).from(students).where(isNotNull(students.archivedAt));
+  return new Set(rows.map((r: any) => r.id as string));
+}
+
+/** TASK-392 — a write that puts a NEW session / course / voucher on an archived child is refused: the picker hides them,
+ *  and a route that accepts what the picker hides is the two-writers shape. ONE helper, three call sites. */
+export async function assertStudentActive(exec: any, studentId: string): Promise<void> {
+  const row = await exec.query.students.findFirst({ where: (s: any, { eq: e }: any) => e(s.id, studentId) });
+  if (row?.archivedAt) throw conflict("STUDENT_ARCHIVED", "นักเรียนถูกเก็บแล้ว — คืนสถานะก่อน");
+}
+
+/**
+ * TASK-392 (REQ-093 shape (a)) — ARCHIVE: hidden from every working read, nothing else touched, one tap back.
+ * Idempotent (the second tap is not an error). 🔴 A child with LIVE FUTURE sessions is refused with the count —
+ * archiving is for mistakes; a scheduled class is not one. Live = `date >= today` (Bangkok, today included) and a
+ * course-live status, any booking type. A voucher with hours left is NOT a session ahead (no date) — allowed.
+ */
+export async function archiveStudent(id: string, actor: string | null): Promise<StudentRow> {
+  const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
+  if (!row) throw notFound("ไม่พบนักเรียน");
+  if (row.archivedAt) return row;
+  const { date: today } = bangkokNow();
+  const [live] = await db
+    .select({ n: count() })
+    .from(bookings)
+    .where(and(eq(bookings.studentId, id), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  const n = Number(live?.n ?? 0);
+  if (n > 0) throw conflict("STUDENT_HAS_LIVE_SESSIONS", `มีคาบเรียนข้างหน้า ${n} คาบ — ยกเลิก/ย้ายก่อน`);
+  const [updated] = await db.update(students).set({ archivedAt: new Date(), archivedBy: actor }).where(eq(students.id, id)).returning();
+  return updated!;
+}
+
+/** TASK-392 — UN-ARCHIVE: idempotent; the 5-per-parent cap is re-asked (an archived child does not count toward it,
+ *  so restoring must not silently make six); clears both columns. */
+export async function unarchiveStudent(id: string): Promise<StudentRow> {
+  const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
+  if (!row) throw notFound("ไม่พบนักเรียน");
+  if (!row.archivedAt) return row;
+  if (row.parentId) await assertCanAddStudent(row.parentId);
+  const [updated] = await db.update(students).set({ archivedAt: null, archivedBy: null }).where(eq(students.id, id)).returning();
+  return updated!;
 }
 
 /**
@@ -205,7 +259,10 @@ async function loadParentWithStudents(id: string, exec: any = db) {
     where: (p: any, { eq: e }: any) => e(p.id, id),
   });
   if (!parent) return null;
-  return { ...parent, students: await listStudentsOfParent(id, exec) };
+  // TASK-392 — ONE read, split: `students` = active (what the page works with), `archivedStudents` = the rest (the
+  // "1 archived" hint + the restore toggle, without a second call).
+  const all = await listStudentsOfParent(id, exec, { includeArchived: true });
+  return { ...parent, students: all.filter((s) => !s.archivedAt), archivedStudents: all.filter((s) => !!s.archivedAt) };
 }
 
 /**
@@ -255,7 +312,10 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
     : Number((await db.select({ n: sql<number>`count(*)` }).from(parents))[0]?.n ?? 0);
 
   const withKids = await Promise.all(
-    rows.map(async (p) => ({ ...p, students: await listStudentsOfParent(p.id) })),
+    rows.map(async (p) => {
+      const all = await listStudentsOfParent(p.id, db, { includeArchived: true }); // TASK-392: one read, split
+      return { ...p, students: all.filter((s) => !s.archivedAt), archivedStudents: all.filter((s) => !!s.archivedAt) };
+    }),
   );
   return { parents: withKids, total };
 }
@@ -472,9 +532,14 @@ export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> 
  * to ask for it", and whoever forgot would open a silent hole. No `includeSuspended` escape hatch: the People
  * screen reads `/parents`, where suspended families stay fully visible.
  */
-export async function searchStudents(q?: string, limit = 50) {
+// 🔻 TASK-392 (REQ-093) — `archived` = false (default): ARCHIVED children are hidden — this IS the picker and the
+// People page's student list. `archived = true`: ONLY the archived ones (the restore view), same rows + `archivedAt`.
+export async function searchStudents(q?: string, limit = 50, archived = false) {
   const excluded = [...(await suspendedStudentIds())];
-  const searchWhere = q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`;
+  const searchWhere = and(
+    q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`,
+    archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),
+  );
   const rows = await db
     .select({
       id: students.id,
@@ -483,6 +548,7 @@ export async function searchStudents(q?: string, limit = 50) {
       parentId: students.parentId,
       phone: parents.phone,
       parentName: parents.name,
+      archivedAt: students.archivedAt,
     })
     .from(students)
     .leftJoin(parents, eq(parents.id, students.parentId))
@@ -500,5 +566,6 @@ export async function searchStudents(q?: string, limit = 50) {
     parentId: r.parentId ?? null,
     parentName: r.parentName ?? null,
     label: r.phone ? `${r.name} (${r.phone})` : r.name,
+    archivedAt: r.archivedAt ? new Date(r.archivedAt).toISOString() : null, // TASK-392
   }));
 }

@@ -65,6 +65,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── people ──
   "PATCH /students/:id": act(PEOPLE, "action:people.student-edit"),
   "DELETE /students/:id": act(PEOPLE, "action:people.student-delete"),
+  "POST /students/:id/archive": act(PEOPLE, "action:people.student-archive"), // TASK-392
+  "POST /students/:id/unarchive": act(PEOPLE, "action:people.student-archive"),
   "GET /parents": read(PEOPLE),
   "POST /parents": act(PEOPLE, "action:people.parent-create"),
   "GET /parents/:id": read(PEOPLE),
@@ -92,6 +94,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/import": act(BOOKINGS, "action:bookings.course-import"),
   "POST /courses/import/preview": act(BOOKINGS, "action:bookings.course-import"),
+  "DELETE /courses/:id/rental": act(BOOKINGS, "action:bookings.course-rental"), // TASK-390 — remove from the remaining sessions, no money
   "GET /vouchers": read(BOOKINGS),
   "POST /vouchers": act(BOOKINGS, "action:bookings.voucher-create"), // + `action:sales.discount` (service)
   "POST /vouchers/import": act(BOOKINGS, "action:bookings.voucher-import"),

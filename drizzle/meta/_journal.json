@@ -267,6 +267,20 @@
       "when": 1783000000033,
       "tag": "0037_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783000000034,
+      "tag": "0038_course_rental_marker",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783000000035,
+      "tag": "0039_student_archive",
+      "breakpoints": true
     }
   ]
 }

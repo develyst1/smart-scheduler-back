@@ -172,6 +172,10 @@ export const students = pgTable(
     birthDate: date("birth_date"),
     nationality: text("nationality"),
     note: text("note"),
+    // TASK-392 (REQ-093) `0039` — ARCHIVED: hidden from every WORKING read (pickers, the parent's children, LIFF,
+    // attention); history untouched; one tap restores. Refused while the child has live future sessions.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: text("archived_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -343,6 +347,12 @@ export const coursePackages = pgTable(
     dropReason: text("drop_reason"),
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
+    // TASK-390 (REQ-091 §14) `0038` — the rental was REMOVED from the remaining sessions: the DTO says `rental: null`
+    // and `inheritCourseRental` copies nothing onto a later make-up (a rule over the rows would guess; this records).
+    rentalRemovedAt: timestamp("rental_removed_at", { withTimezone: true }),
+    // TASK-390 `0038` — TRUE paid upfront at creation (one post) · FALSE pay per session (rows born unpaid, each
+    // paid press posts one) · NULL not rented at creation. Stored: not derivable from the rows mid-course.
+    rentalPaidUpfront: boolean("rental_paid_upfront"),
     startDate: date("start_date").notNull(),
     weekday: smallint("weekday").notNull(), // 0-6 (Sun-Sat)
     startTime: time("start_time").notNull(),

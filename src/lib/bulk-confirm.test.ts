@@ -8,8 +8,9 @@ describe("preCheckBulkConfirm — bulk-confirm id classification (TASK-036)", ()
     expect(preCheckBulkConfirm(undefined)).toEqual(expected);
   });
 
-  test("PENDING → proceed to the real single-confirm", () => {
+  test("PENDING → proceed to the real single-confirm; 🔻 TASK-389: EXTENDED (a make-up) too", () => {
     expect(preCheckBulkConfirm({ status: "PENDING" })).toEqual({ proceed: true });
+    expect(preCheckBulkConfirm({ status: "EXTENDED" })).toEqual({ proceed: true });
   });
 
   test("already CONFIRMED / ATTENDED → already_confirmed (retry-safe, no new LINE)", () => {
@@ -23,8 +24,8 @@ describe("preCheckBulkConfirm — bulk-confirm id classification (TASK-036)", ()
     });
   });
 
-  test("any other non-PENDING → skipped (bulk never un-cancels)", () => {
-    for (const status of ["CANCELLED", "NO_SHOW", "SICK_LEAVE", "EXTENDED"]) {
+  test("any other status → skipped (bulk never un-cancels)", () => {
+    for (const status of ["CANCELLED", "NO_SHOW", "SICK_LEAVE", "PAUSED"]) {
       expect(preCheckBulkConfirm({ status })).toEqual({
         proceed: false,
         outcome: "skipped",

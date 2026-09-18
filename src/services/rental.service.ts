@@ -3,9 +3,10 @@
 // is that the rental post IS the event — there's no other artifact — so a failed post is SURFACED, never a silent 200.
 
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../db";
-import { bookingRentals, bookings } from "../db/schema";
+import { bookingRentals, bookings, coursePackages } from "../db/schema";
+import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { rentalBookingLive, rentalRemarkRequired, toRentalDTO } from "../lib/rental-row";
 import { bangkokNow } from "../lib/bangkok-time";
 import { reminderRanOn } from "../lib/reminder-run";
@@ -143,6 +144,10 @@ export async function inheritCourseRental(tx: any, courseId: string, newBookingI
     .select({ code: bookingRentals.code, remark: bookingRentals.remark, paidAt: bookingRentals.paidAt, paidActor: bookingRentals.paidActor, createdBy: bookingRentals.createdBy })
     .from(bookingRentals)
     .innerJoin(bookings, eq(bookings.id, bookingRentals.bookingId))
+    // 🔻 TASK-390 (REQ-091 §14) — the MARKER, honoured in the one copy both writers call: a course whose rental was
+    // removed yields NO source, whatever past paid rows it still carries. (A "future rows only" rule would drop the
+    // rental on a make-up appended after the last session — the marker records; a rule would guess.)
+    .innerJoin(coursePackages, and(eq(coursePackages.id, bookings.courseId), isNull(coursePackages.rentalRemovedAt)))
     .where(and(eq(bookings.courseId, courseId), ne(bookings.id, newBookingId)))
     .limit(1);
   if (!source) return null;
@@ -176,4 +181,30 @@ export async function removeBookingRental(bookingId: string) {
   if (row.paidAt) throw conflict("RENTAL_PAID", "ชำระแล้ว — ลบไม่ได้ (เงินลงบัญชีแล้ว ให้หลังบ้านปรับ)");
   await db.delete(bookingRentals).where(eq(bookingRentals.id, row.id));
   return { removed: true as const };
+}
+
+/**
+ * TASK-390 (REQ-091 §14) — remove the rental from the REMAINING sessions: set the course marker, delete the rental
+ * rows of the course's FUTURE live sessions (`date >= today` Bangkok; paid or not). Past rows stay — they are
+ * history. 🚫 NO MONEY MOVES: no `recordRental`, no `recordSale`, no refund — the owner's ruling (a paid-upfront
+ * course keeps its post; the ledger is not this button's business). One transaction. Re-adding is not built.
+ */
+export async function removeCourseRental(courseId: string, actor: string | null): Promise<{ removed: number }> {
+  const course = await db.query.coursePackages.findFirst({ where: (c: any, { eq: e }: any) => e(c.id, courseId) });
+  if (!course) throw notFound("ไม่พบคอร์ส");
+  if (course.rentalRemovedAt) throw conflict("RENTAL_NOT_ON_COURSE", "คอร์สนี้ไม่มีค่าเช่าอุปกรณ์");
+  const [any] = await db.select({ id: bookingRentals.bookingId }).from(bookingRentals).innerJoin(bookings, eq(bookings.id, bookingRentals.bookingId)).where(eq(bookings.courseId, courseId)).limit(1);
+  if (!any) throw conflict("RENTAL_NOT_ON_COURSE", "คอร์สนี้ไม่มีค่าเช่าอุปกรณ์");
+  const today = bangkokNow().date;
+  return db.transaction(async (tx: any) => {
+    await tx.update(coursePackages).set({ rentalRemovedAt: new Date() }).where(eq(coursePackages.id, courseId));
+    const future = await tx
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(and(eq(bookings.courseId, courseId), gte(bookings.date, today), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+    const ids = future.map((r: any) => r.id as string);
+    const removed = ids.length ? (await tx.delete(bookingRentals).where(inArray(bookingRentals.bookingId, ids)).returning({ id: bookingRentals.bookingId })).length : 0;
+    void actor; // the marker is the audit; the actor is the request's (`actorOf`), kept for the signature's symmetry
+    return { removed };
+  });
 }

@@ -86,6 +86,7 @@ export const ACTION_REGISTRY = [
   A("action:bookings.course-import", "นำเข้าคอร์ส", "Import courses"),
   A("action:bookings.voucher-create", "ออกบัตรกำนัล", "Create a voucher"),
   A("action:bookings.voucher-import", "นำเข้าบัตรกำนัล", "Import vouchers"),
+  A("action:bookings.course-rental", "ถอดค่าเช่าอุปกรณ์ออกจากคอร์ส", "Remove a course's rental"), // TASK-390 — the REMOVE; the set is under course-create
   // ── people ──
   A("action:people.student-create", "เพิ่มนักเรียน", "Add a student"),
   A("action:people.student-edit", "แก้ไขนักเรียน", "Edit a student"),
@@ -95,6 +96,7 @@ export const ACTION_REGISTRY = [
   A("action:people.parent-students", "ผูกนักเรียนกับผู้ปกครอง", "Link a student to a parent"),
   A("action:people.parent-suspend", "ระงับ/ยกเลิกระงับผู้ปกครอง", "Suspend & unsuspend a parent"),
   A("action:people.parent-line-unlink", "ยกเลิกการเชื่อม LINE ผู้ปกครอง", "Clear a parent's LINE link"),
+  A("action:people.student-archive", "เก็บ/คืนสถานะนักเรียน", "Archive & restore a student"), // TASK-392 — act + undo, one key
   // ── teachers ──
   A("action:teachers.create", "เพิ่มครู", "Add a teacher"),
   A("action:teachers.edit", "แก้ไขข้อมูลครู", "Edit a teacher"),

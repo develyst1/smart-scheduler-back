@@ -93,8 +93,9 @@ describe("🔑 the DoD counts — simulated with the real helpers", () => {
 
   test("the course DTO carries `rental` — from the grouped read when spread on, else from the loaded rows, else null", () => {
     const course = { id: "c", size: 4, usedSessions: 0, expiryDate: "2026-12-01", startDate: "2026-09-16", weekday: 3, startTime: "10:00", status: "CONFIRMED", student: { id: T, name: "S" } };
-    expect(toCourseWithStudent({ ...course, courseRental: { code: "rental-ride", remark: "38" } }).rental).toEqual({ code: "rental-ride", remark: "38" });
-    expect(toCourseWithStudent({ ...course, bookings: simulateCreate(4, new Set([1]), true).rows }).rental).toEqual({ code: "rental-set", remark: "ชุด M" });
+    // 🔻 TASK-390: the grouped read spreads a SUMMARY (`unpaidSessions`); the DTO adds `paidUpfront` (stored; pre-0038 ⇒ true).
+    expect(toCourseWithStudent({ ...course, courseRental: { code: "rental-ride", remark: "38", unpaidSessions: 0 } }).rental).toEqual({ code: "rental-ride", remark: "38", paidUpfront: true, unpaidSessions: 0 });
+    expect(toCourseWithStudent({ ...course, bookings: simulateCreate(4, new Set([1]), true).rows }).rental).toEqual({ code: "rental-set", remark: "ชุด M", paidUpfront: true, unpaidSessions: 0 }); // 🔻 TASK-390: born paid ⇒ 0 to collect
     expect(toCourseWithStudent({ ...course }).rental).toBeNull();
   });
 });
@@ -112,12 +113,12 @@ describe("🔴 the create — order, the ONE post, no discount, the mirrored gap
   test("🔑 the rental rows are inserted AFTER the flip loop, over the FINAL live rows (COURSE_LIVE_STATUSES), paid + actor stamped", () => {
     const C = CREATE();
     const flipLoop = C.indexOf("const toFlip = makeupsToFlip(");
-    const rentalPass = C.indexOf("if (input.rental) {\n      const finalRows");
+    const rentalPass = C.indexOf("if (input.rental) {\n      const paidUpfront = input.rental.paidUpfront !== false;"); // 🔻 TASK-390: the variant first
     expect(flipLoop).toBeGreaterThan(-1);
     expect(rentalPass).toBeGreaterThan(flipLoop);
     expect(C).toContain("inA(b.status, [...COURSE_LIVE_STATUSES])");
     expect(C).toContain("await tx.insert(bookingRentals).values({\n          bookingId: r.id,\n          code: input.rental.code,");
-    expect(C).toContain("paidAt,\n          paidActor: input.actor ?? null,\n          createdBy: input.actor ?? null,");
+    expect(C).toContain("paidAt,\n          paidActor: paidUpfront ? (input.actor ?? null) : null,\n          createdBy: input.actor ?? null,"); // 🔻 TASK-390: paid stamps only when paid upfront
   });
 
   test("🔑 ONE post, after the transaction, beside the course sale: hours = size, refId = courseId, NO discount, the rejection caught", () => {
@@ -154,10 +155,10 @@ describe("🔴 the reconcile — a later make-up inherits the COURSE's rental th
 });
 
 describe("🔴 no column, no migration; the list's grouped read; the resume path does not inherit (source)", () => {
-  test("38 = 38 (TASK-377 added 0036_users, TASK-387 added 0037_roles — not a rental column) — no `rental_code` on course_packages", () => {
+  test("40 = 40 (TASK-377 added 0036_users, TASK-387 added 0037_roles, TASK-390 added 0038, TASK-392 added 0039 — none a rental CODE column) — no `rental_code` on course_packages", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql"));
-    expect(files.length).toBe(38);
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(38);
+    expect(files.length).toBe(40);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(40);
     expect(src("src/db/schema.ts")).not.toMatch(/rental_code|rentalCode|rental_remark/);
   });
 
