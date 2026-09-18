@@ -391,6 +391,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "`users` alone is not called applied (Stage 2 would find no grants table). All four are IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0037_roles",
+    probe: { kind: "index", index: "role_permissions_role_key_uq" },
+    why:
+      "TASK-387 (REQ-092 RBAC Stage 4). The LAST of five objects — the unique index on `role_permissions`, a table " +
+      "invented here over `roles`, invented here — so existence is a valid probe, and a run that died after " +
+      "`roles` or after the `users.role_id` column is not called applied (a role would have no keys). All five " +
+      "are IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

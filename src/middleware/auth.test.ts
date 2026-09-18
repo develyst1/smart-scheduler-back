@@ -17,7 +17,7 @@ const STAFF = { ...ROW, id: "22222222-2222-4222-8222-222222222222", username: "s
 let disabled = false;
 const spies = [
   spyOn(usersSvc, "authenticate").mockImplementation((async (u: string, p: string) => (u === "admin" && p === "admin" ? { ...ROW } : u === "staff" && p === "staffpass" ? { ...STAFF } : null)) as any),
-  spyOn(usersSvc, "userGrantKeys").mockImplementation((async () => []) as any), // TASK-381: the grants read, no DB
+  spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => []) as any), // TASK-381: the grants read, no DB
   spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => (id === "11111111-1111-4111-8111-111111111111" ? { ...ROW, disabledAt: disabled ? new Date() : null } : id === "22222222-2222-4222-8222-222222222222" ? { ...STAFF } : null)) as any),
 ];
 afterAll(() => spies.forEach((s) => s.mockRestore()));
@@ -49,7 +49,7 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     process.env.SKIP_AUTH = "true";
     const res = await makeApp().request("/api/ping");
     expect(res.status).toBe(200);
-    expect(((await res.json()) as any).user).toEqual({ id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", grants: [] });
+    expect(((await res.json()) as any).user).toEqual({ id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [] }); // 🔻 TASK-387: + roleId
   });
 
   test("enforced + no token → 401", async () => {
@@ -71,11 +71,11 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     const login = await app.request("/api/auth/login", json({ username: "admin", password: "admin" }));
     expect(login.status).toBe(200);
     const { token, user } = (await login.json()) as any;
-    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS] }); // 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
+    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleId: null, roleName: null, grants: { fromRole: [], own: [] } }); // 🔻 TASK-387: + role fields; 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
     expect("passwordHash" in user).toBe(false);
     const ping = await app.request("/api/ping", { headers: { authorization: `Bearer ${token}` } });
     expect(ping.status).toBe(200);
-    expect(((await ping.json()) as any).user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", grants: [] });
+    expect(((await ping.json()) as any).user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [] }); // 🔻 TASK-387: + roleId
   });
 
   test("login with the wrong password → 401, ONE sentence (no enumeration)", async () => {

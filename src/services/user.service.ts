@@ -6,8 +6,10 @@
 // service that returned a row would leak the hash into the first `c.json(row)` somebody wrote.
 
 import { and, asc, eq, inArray, isNull, like, ne, sql } from "drizzle-orm";
+import { union } from "drizzle-orm/pg-core";
 import { db } from "../db";
-import { userPermissions, users } from "../db/schema";
+import { rolePermissions, userPermissions, users } from "../db/schema";
+import { findRole, roleKeysByIds } from "./role.service";
 import { ACTION_KEYS, MENU_KEYS, isActionKey, isMenuKey, type ActionKey, type MenuKey } from "../lib/permissions";
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
 
@@ -26,9 +28,16 @@ export type UserDTO = {
   createdAt: string;
   /** TASK-381 — the user's `menu:*` grants (a super admin: all of them). */
   menus: MenuKey[];
-  /** TASK-385 — the user's `action:*` grants (a super admin: all of them). */
+  /** TASK-385 — the user's `action:*` grants (a super admin: all of them). 🔻 TASK-387: EFFECTIVE (role ∪ own). */
   actions: ActionKey[];
+  /** TASK-387 — the LIVE role (null = none) and the split the checklists show: inherited vs own. */
+  roleId: string | null;
+  roleName: string | null;
+  grants: { fromRole: string[]; own: string[] };
 };
+
+/** What `toUserDTO` needs of a role: its id, name and keys. */
+export type RoleGrants = { id: string; name: string; keys: readonly string[] };
 
 export const toUserDTO = (u: {
   id: string;
@@ -37,16 +46,24 @@ export const toUserDTO = (u: {
   isSuperAdmin: boolean;
   disabledAt: Date | string | null;
   createdAt: Date | string;
-}, grants: Iterable<string> = []): UserDTO => ({
-  id: u.id,
-  username: u.username,
-  displayName: u.displayName,
-  isSuperAdmin: u.isSuperAdmin,
-  disabledAt: u.disabledAt ? new Date(u.disabledAt).toISOString() : null,
-  createdAt: new Date(u.createdAt).toISOString(),
-  menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => new Set(grants).has(m)),
-  actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => new Set(grants).has(a)),
-});
+}, own: Iterable<string> = [], role: RoleGrants | null = null): UserDTO => {
+  // 🔴 TASK-387: `menus`/`actions` are EFFECTIVE = the role's keys ∪ the user's own rows (a super admin: all).
+  const ownKeys = [...own];
+  const effective = new Set([...(role?.keys ?? []), ...ownKeys]);
+  return {
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+    isSuperAdmin: u.isSuperAdmin,
+    disabledAt: u.disabledAt ? new Date(u.disabledAt).toISOString() : null,
+    createdAt: new Date(u.createdAt).toISOString(),
+    menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => effective.has(m)),
+    actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => effective.has(a)),
+    roleId: role?.id ?? null,
+    roleName: role?.name ?? null,
+    grants: { fromRole: [...(role?.keys ?? [])], own: ownKeys },
+  };
+};
 
 export const hashPassword = (password: string) => Bun.password.hash(password);
 export const verifyPassword = (password: string, hash: string) => Bun.password.verify(password, hash);
@@ -71,10 +88,36 @@ export async function countUsers(exec: any = db): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-/** TASK-381 — the guard's second read: this user's grant keys, one indexed query. */
+/** TASK-381 — this user's OWN grant keys, one indexed query (the DTO's `grants.own`; the replace-writers). */
 export async function userGrantKeys(userId: string, exec: any = db): Promise<string[]> {
   const rows = await exec.select({ key: userPermissions.key }).from(userPermissions).where(eq(userPermissions.userId, userId));
   return rows.map((r: any) => r.key as string);
+}
+
+/**
+ * 🔴 TASK-387 — the guard's second read, EFFECTIVE: the user's own rows UNION their role's rows, ONE statement
+ * (both halves index-backed; UNION dedupes). The guard already holds the row, so `roleId` costs nothing; with no
+ * role it is the own-rows read alone. A super admin skips this entirely (the guard's rule, unchanged).
+ */
+export async function effectiveGrantKeys(userId: string, roleId: string | null | undefined, exec: any = db): Promise<string[]> {
+  const own = exec.select({ key: userPermissions.key }).from(userPermissions).where(eq(userPermissions.userId, userId));
+  const rows = roleId
+    ? await union(own, exec.select({ key: rolePermissions.key }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId)))
+    : await own;
+  return rows.map((r: any) => r.key as string);
+}
+
+/** The DTO of one row: its own rows + its role (two small reads; the list uses the grouped readers instead). */
+export async function userDTO(row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; disabledAt: Date | string | null; createdAt: Date | string; roleId?: string | null }): Promise<UserDTO> {
+  const [own, role] = await Promise.all([userGrantKeys(row.id), roleGrantsOf(row.roleId)]);
+  return toUserDTO(row, own, role);
+}
+
+export async function roleGrantsOf(roleId: string | null | undefined): Promise<RoleGrants | null> {
+  if (!roleId) return null;
+  const role = await findRole(roleId);
+  if (!role) return null;
+  return { id: role.id, name: role.name, keys: (await roleKeysByIds([roleId])).get(roleId) ?? [] };
 }
 
 async function grantsByUser(userIds: string[], exec: any = db): Promise<Map<string, string[]>> {
@@ -85,10 +128,24 @@ async function grantsByUser(userIds: string[], exec: any = db): Promise<Map<stri
   return out;
 }
 
+/** THREE reads for the whole list (users with their role · own rows grouped · the listed roles' keys grouped), never per user. */
 export async function listUsers() {
-  const rows = await db.query.users.findMany({ orderBy: (u, { asc: a }) => [a(u.username)] });
-  const grants = await grantsByUser(rows.map((r) => r.id)); // ONE grouped read, not one per user
-  return rows.map((r) => toUserDTO(r, grants.get(r.id) ?? []));
+  const rows = await db.query.users.findMany({ orderBy: (u, { asc: a }) => [a(u.username)], with: { role: true } });
+  const roleIds = [...new Set(rows.map((r) => r.roleId).filter((x): x is string => !!x))];
+  const [grants, roleKeys] = await Promise.all([grantsByUser(rows.map((r) => r.id)), roleKeysByIds(roleIds)]); // grouped reads, not one per user
+  return rows.map((r) => toUserDTO(r, grants.get(r.id) ?? [], r.role ? { id: r.role.id, name: r.role.name, keys: roleKeys.get(r.role.id) ?? [] } : null));
+}
+
+/**
+ * TASK-387 — assign (or detach, `null`) the LIVE role. The user's OWN rows are untouched (additive — SPEC-079
+ * §3.4; the owner's list carries the "assigning clears own ticks" alternative). A super-admin target is accepted
+ * and stored (meaningless while super; the role a later demotion lands on). Unknown role ⇒ 404.
+ */
+export async function setUserRole(id: string, roleId: string | null): Promise<UserDTO> {
+  await mustFind(id);
+  if (roleId !== null && !(await findRole(roleId))) throw notFound("ไม่พบบทบาท");
+  await db.update(users).set({ roleId }).where(eq(users.id, id));
+  return userDTO(await mustFind(id));
 }
 
 /**
@@ -119,7 +176,7 @@ async function replaceGrants(id: string, keys: string[], prefix: "menu:" | "acti
     await tx.delete(userPermissions).where(and(eq(userPermissions.userId, id), like(userPermissions.key, `${prefix}%`)));
     if (set.length) await tx.insert(userPermissions).values(set.map((key) => ({ userId: id, key, grantedBy: actor })));
   });
-  return toUserDTO(row, await userGrantKeys(id));
+  return userDTO(row); // 🚫 the role is never touched by these writers — own rows only
 }
 
 /** TASK-381 — any user changes their OWN password: the current one must verify (400 WRONG_PASSWORD), the new one min 8 (400). */
@@ -191,7 +248,7 @@ export async function updateUser(id: string, input: { displayName?: string; isSu
     patch.isSuperAdmin = input.isSuperAdmin;
   }
   if (Object.keys(patch).length) await db.update(users).set(patch).where(eq(users.id, id));
-  return toUserDTO(await mustFind(id), await userGrantKeys(id));
+  return userDTO(await mustFind(id));
 }
 
 export async function resetPassword(id: string, password: string): Promise<{ ok: true }> {
@@ -205,7 +262,7 @@ export async function setUserDisabled(id: string, disabled: boolean): Promise<Us
   const row = await mustFind(id);
   if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();
   await db.update(users).set({ disabledAt: disabled ? new Date() : null }).where(eq(users.id, id));
-  return toUserDTO(await mustFind(id), await userGrantKeys(id));
+  return userDTO(await mustFind(id));
 }
 
 /**

@@ -68,10 +68,10 @@ describe("🔴 the enumeration — every route in `routes/api.ts` has a ROUTE_ME
     expect(ROUTE_ACCESS["GET /reports/daily"]!.menus).toEqual(["menu:reports"]);
     expect(ROUTE_ACCESS["GET /calendar"]!.menus).toEqual(["menu:calendar"]);
   });
-  test("`/auth/*`, `/users/*`, `/me*` and `/permissions` are NOT in the table (login is public; users is `requireSuperAdmin`; me + permissions are the JWT alone — TASK-383/385)", () => {
-    expect(Object.keys(ROUTE_ACCESS).some((k) => /\/(auth|users|me|permissions)(\/|$)/.test(k))).toBe(false);
-    // the guard's own exclusion names the same four — the table and the guard agree by source
-    expect(code(src("src/middleware/auth.ts"))).toContain("if (/^\\/api\\/(auth|users|me|permissions)(\\/|$)/.test(path)) return next();");
+  test("`/auth/*`, `/users/*`, `/roles/*`, `/me*` and `/permissions` are NOT in the table (login is public; users + roles are `requireSuperAdmin`; me + permissions are the JWT alone — TASK-383/385/387)", () => {
+    expect(Object.keys(ROUTE_ACCESS).some((k) => /\/(auth|users|me|permissions|roles)(\/|$)/.test(k))).toBe(false);
+    // the guard's own exclusion names the same five — the table and the guard agree by source
+    expect(code(src("src/middleware/auth.ts"))).toContain("if (/^\\/api\\/(auth|users|me|permissions|roles)(\\/|$)/.test(path)) return next();");
     expect(routeKey("get", "/api/calendar")).toBe("GET /calendar");
   });
 });
@@ -86,7 +86,7 @@ describe("🔴 the guard end to end — a calendar-only user, a super admin, a s
   const grantReads: string[] = [];
   const spies = [
     spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => rows[id] ?? null) as any),
-    spyOn(usersSvc, "userGrantKeys").mockImplementation((async (id: string) => { grantReads.push(id); return id === ids.cal ? ["menu:calendar"] : []; }) as any),
+    spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async (id: string) => { grantReads.push(id); return id === ids.cal ? ["menu:calendar"] : []; }) as any),
   ];
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   const origSkip = process.env.SKIP_AUTH;
@@ -161,7 +161,7 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
     process.env.SKIP_AUTH = "true";
     const res = await app.fetch(new Request("http://localhost/api/me"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS], actions: [...ACTION_KEYS] } });
+    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleName: null } });
   });
   test("🔴 GET /api/me WITHOUT a token ⇒ 401 — the `me` routes sit under the normal `/api/*` guard; login stays public", async () => {
     process.env.SKIP_AUTH = "false";
@@ -184,12 +184,12 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
     process.env.SKIP_AUTH = "false";
     const id = "44444444-4444-4444-8444-444444444444";
     const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, disabledAt: null })) as any);
-    const s2 = spyOn(usersSvc, "userGrantKeys").mockImplementation((async () => []) as any);
+    const s2 = spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => []) as any);
     try {
       const token = await signToken({ sub: id, username: "nobody", role: "admin", isSuperAdmin: false });
       const res = await app.fetch(new Request("http://localhost/api/me", { headers: { authorization: `Bearer ${token}` } }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [], actions: [] } });
+      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [], actions: [], roleName: null } });
       const s3 = spyOn(usersSvc, "changeOwnPassword").mockImplementation((async () => ({ ok: true as const })) as any);
       try {
         const pw = await app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ currentPassword: "old-pass-1", newPassword: "new-pass-1" }) }));
@@ -224,7 +224,7 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
       calls.push(["menus", id, keys, actor]);
       const bad = keys.filter((k) => !isMenuKey(k));
       if (bad.length) throw new ApiException(400, "VALIDATION", `ไม่รู้จักเมนู: ${bad.join(", ")}`);
-      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", menus: keys, actions: [] };
+      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", menus: keys, actions: [], roleId: null, roleName: null, grants: { fromRole: [], own: keys } };
     }) as any);
     spies.push(s);
     const put = (b: unknown) => app.fetch(new Request("http://localhost/api/users/u-1/menus", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
@@ -255,8 +255,8 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(S).toContain("passwordHash: await hashPassword(newPassword)");
   });
   test("`listUsers` reads grants in ONE grouped query; the DTO derives `menus` (a super admin: all)", () => {
-    expect(SVC).toContain("const grants = await grantsByUser(rows.map((r) => r.id));");
-    expect(SVC).toContain("menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => new Set(grants).has(m)),");
+    expect(SVC).toContain("const [grants, roleKeys] = await Promise.all([grantsByUser(rows.map((r) => r.id)), roleKeysByIds(roleIds)]);"); // 🔻 TASK-387: + the roles' keys, still grouped
+    expect(SVC).toContain("menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => effective.has(m)),"); // 🔻 TASK-387: effective
   });
   test("the guard order in `index.ts`: auth → menuGuard → the users group; the grants read only for a non-super-admin", () => {
     const IDX = code(src("src/index.ts"));
@@ -264,9 +264,9 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/users", userRoutes);'));
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/me", meRoutes);')); // TASK-383
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/permissions", permissionRoutes);')); // TASK-385
-    expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await userGrantKeys(row.id)");
+    expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
-  test("37 = 37 — no migration", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(37);
+  test("38 = 38 — Stage 2 added no migration (TASK-387 added 0037)", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(38);
   });
 });

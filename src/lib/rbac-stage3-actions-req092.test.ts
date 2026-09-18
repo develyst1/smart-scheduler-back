@@ -107,7 +107,7 @@ describe("🔴 the guard end to end — menu first, then the action with ITS OWN
   const grants: Record<string, string[]> = { [ids.cal]: ["menu:calendar"], [ids.booker]: ["menu:calendar", "action:calendar.book"] };
   const spies = [
     spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => rows[id] ?? null) as any),
-    spyOn(usersSvc, "userGrantKeys").mockImplementation((async (id: string) => grants[id] ?? []) as any),
+    spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async (id: string) => grants[id] ?? []) as any),
   ];
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   const origSkip = process.env.SKIP_AUTH;
@@ -194,7 +194,7 @@ describe("🔑 the routes — `/api/permissions`, `/api/me.actions`, `PUT /users
     expect((await app.fetch(new Request("http://localhost/api/permissions"))).status).toBe(401);
     const id = "44444444-4444-4444-8444-444444444444";
     const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, disabledAt: null })) as any);
-    const s2 = spyOn(usersSvc, "userGrantKeys").mockImplementation((async () => []) as any);
+    const s2 = spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => []) as any);
     try {
       const token = await signToken({ sub: id, username: "nobody", role: "admin", isSuperAdmin: false });
       expect((await app.fetch(new Request("http://localhost/api/permissions", { headers: { authorization: `Bearer ${token}` } }))).status).toBe(200);
@@ -209,11 +209,11 @@ describe("🔑 the routes — `/api/permissions`, `/api/me.actions`, `PUT /users
     process.env.SKIP_AUTH = "false";
     const id = "55555555-5555-4555-8555-555555555555";
     const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "b", displayName: "B", isSuperAdmin: false, disabledAt: null })) as any);
-    const s2 = spyOn(usersSvc, "userGrantKeys").mockImplementation((async () => ["action:settings.edit", "menu:calendar", "action:calendar.book"]) as any);
+    const s2 = spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => ["action:settings.edit", "menu:calendar", "action:calendar.book"]) as any);
     try {
       const token = await signToken({ sub: id, username: "b", role: "admin", isSuperAdmin: false });
       const me = await app.fetch(new Request("http://localhost/api/me", { headers: { authorization: `Bearer ${token}` } }));
-      expect(await me.json()).toEqual({ user: { id, username: "b", displayName: "B", isSuperAdmin: false, menus: ["menu:calendar"], actions: ["action:calendar.book", "action:settings.edit"] } });
+      expect(await me.json()).toEqual({ user: { id, username: "b", displayName: "B", isSuperAdmin: false, menus: ["menu:calendar"], actions: ["action:calendar.book", "action:settings.edit"], roleName: null } });
     } finally { s1.mockRestore(); s2.mockRestore(); }
   });
   test("PUT /users/:id/actions { keys } ⇒ { user } with the new set; the actor from the token; unknown key ⇒ 400", async () => {
@@ -223,7 +223,7 @@ describe("🔑 the routes — `/api/permissions`, `/api/me.actions`, `PUT /users
       calls.push([id, keys, actor]);
       const bad = keys.filter((k) => !isActionKey(k));
       if (bad.length) throw new ApiException(400, "VALIDATION", `ไม่รู้จักรายการ: ${bad.join(", ")}`);
-      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-18T00:00:00.000Z", menus: [], actions: keys };
+      return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-18T00:00:00.000Z", menus: [], actions: keys, roleId: null, roleName: null, grants: { fromRole: [], own: keys } };
     }) as any);
     spies.push(s);
     const put = (b: unknown) => app.fetch(new Request("http://localhost/api/users/u-1/actions", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
@@ -245,12 +245,12 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(S).toContain("[...new Set(keys)]");
   });
   test("the DTO derives `actions` (a super admin: all); the guard checks menu THEN action", () => {
-    expect(SVC).toContain("actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => new Set(grants).has(a)),");
+    expect(SVC).toContain("actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => effective.has(a)),"); // 🔻 TASK-387: effective
     const MW = code(src("src/middleware/auth.ts"));
     const G = MW.slice(MW.indexOf("export async function accessGuard("));
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();"));
   });
-  test("37 = 37 — no migration", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(37);
+  test("38 = 38 — Stage 3 added no migration (TASK-387 added 0037)", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(38);
   });
 });

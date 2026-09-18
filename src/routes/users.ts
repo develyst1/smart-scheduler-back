@@ -27,5 +27,9 @@ export const userRoutes = new Hono()
   .put("/:id/actions", zValidator("json", v.setUserActions), async (c) =>
     c.json({ user: await usersSvc.setUserActions(c.req.param("id"), c.req.valid("json").keys, actorOf(c)) }),
   )
+  // TASK-387 — assign / detach the LIVE role; own rows untouched (additive).
+  .put("/:id/role", zValidator("json", v.setUserRole), async (c) =>
+    c.json({ user: await usersSvc.setUserRole(c.req.param("id"), c.req.valid("json").roleId) }),
+  )
   .post("/:id/disable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), true) }))
   .post("/:id/enable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), false) }));

@@ -580,8 +580,44 @@ export const users = pgTable(
       .defaultNow()
       .notNull()
       .$onUpdate(() => new Date()),
+    /** TASK-387 (`0037`) — the LIVE role: effective grants = the role's keys ∪ this user's own rows. NULL = none. */
+    roleId: uuid("role_id").references(() => roles.id, { onDelete: "restrict" }),
   },
   (t) => [uniqueIndex("users_username_uq").on(t.username)],
+);
+
+// ───────────── TASK-387 (REQ-092 RBAC, SPEC-079 Stage 4) — roles, `0037` ─────────────
+//
+// A role is a NAMED SET of keys that a user references (`users.role_id`). It is live: editing it changes every
+// holder at their next request. Deleting a role in use is refused by the service (409 with the count) and by the
+// FK (`RESTRICT`); a role's keys go with it (`CASCADE`). The name is unique case-insensitively.
+export const roles = pgTable(
+  "roles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: text("created_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("roles_name_uq").on(sql`lower(${t.name})`)],
+);
+
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    grantedBy: text("granted_by"),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("role_permissions_role_key_uq").on(t.roleId, t.key)],
 );
 
 // Stage 2 onward — a user's effective GRANTS, one row per permission KEY (a code constant: `menu:*`, `action:*`).
@@ -917,8 +953,9 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   rental: one(bookingRentals, { fields: [bookings.id], references: [bookingRentals.bookingId] }),
 }));
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),
+  role: one(roles, { fields: [users.roleId], references: [roles.id] }),
 }));
 
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({

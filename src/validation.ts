@@ -486,6 +486,10 @@ export const resetPassword = z.object({ password: z.string() });
 // TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.
 export const setUserMenus = z.object({ keys: z.array(z.string()) });
 export const setUserActions = z.object({ keys: z.array(z.string()) }); // TASK-385 — same shape, the action registry is the service's
+// TASK-387 (Stage 4) — shape only; the name rule, the key registry and the refusals are the service's.
+export const createRole = z.object({ name: z.string(), description: z.string().nullable().optional(), keys: z.array(z.string()) });
+export const updateRole = z.object({ name: z.string().optional(), description: z.string().nullable().optional(), keys: z.array(z.string()).optional() });
+export const setUserRole = z.object({ roleId: z.string().nullable() });
 export const changeOwnPassword = z.object({ currentPassword: z.string(), newPassword: z.string() });
 
 // Teacher type ordering (B.2) — exactly the 3 types, no duplicates.

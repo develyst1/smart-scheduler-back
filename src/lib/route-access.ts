@@ -16,7 +16,7 @@
 // makes an unmapped route unshippable: every route in `routes/api.ts` must have an entry, every entry must name a
 // real route, every mutate route must carry an action, and every action key must be used.
 //
-// 🚫 Not in this table: `/auth/*` (public login), `/users/*` (`requireSuperAdmin`), `/me*` and `/permissions` (the
+// 🚫 Not in this table: `/auth/*` (public login), `/users/*` + `/roles/*` (`requireSuperAdmin`), `/me*` and `/permissions` (the
 // signed-in user's own routes — the JWT alone; TASK-383 moved `/me` off `/auth` because NextAuth owns that path on
 // the FE host).
 

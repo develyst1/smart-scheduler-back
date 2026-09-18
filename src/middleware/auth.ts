@@ -11,7 +11,7 @@
 import type { Context, Next } from "hono";
 import { verifyToken } from "../lib/jwt";
 import { ApiException } from "../lib/http";
-import { findUserById, userGrantKeys } from "../services/user.service";
+import { effectiveGrantKeys, findUserById } from "../services/user.service";
 import { ACTION_FORBIDDEN_TH, hasAction, hasMenu, type ActionKey, type MenuKey } from "../lib/permissions";
 import { ROUTE_ACCESS, routeKey } from "../lib/route-access";
 
@@ -22,6 +22,8 @@ export interface AuthUser {
   isSuperAdmin: boolean;
   role: "super_admin" | "admin";
   /** Stage 2 onward — the user's permission keys. Empty in Stage 1; a super admin ignores it. */
+  /** TASK-387 — the LIVE role's id (null = none); `/me` reads its name. */
+  roleId: string | null;
   grants: Set<string>;
 }
 
@@ -37,14 +39,15 @@ export const authDisabled = () => process.env.SKIP_AUTH === "true";
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `SKIP_AUTH=true` (dev / tests): a full super-admin user object, so every guard and every actor site behaves. */
-export const DEV_USER: AuthUser = { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", grants: new Set() };
+export const DEV_USER: AuthUser = { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: new Set() };
 
-export const toAuthUser = (row: { id: string; username: string; displayName: string; isSuperAdmin: boolean }, grants: Iterable<string> = []): AuthUser => ({
+export const toAuthUser = (row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; roleId?: string | null }, grants: Iterable<string> = []): AuthUser => ({
   id: row.id,
   username: row.username,
   displayName: row.displayName,
   isSuperAdmin: row.isSuperAdmin,
   role: row.isSuperAdmin ? "super_admin" : "admin",
+  roleId: row.roleId ?? null,
   grants: new Set(grants),
 });
 
@@ -72,7 +75,8 @@ export async function authMiddleware(c: Context, next: Next) {
   if (row.disabledAt) throw new ApiException(401, "UNAUTHORIZED", "บัญชีนี้ถูกปิดใช้งาน");
   // TASK-381 (Stage 2): the grants ride with the row — ONE index read on `user_permissions`, and only for a
   // NON-super-admin (a super admin ignores the table; Stage 1's single read stays theirs).
-  c.set("user", toAuthUser(row, row.isSuperAdmin ? [] : await userGrantKeys(row.id)));
+  // TASK-387: EFFECTIVE grants — own rows ∪ the LIVE role's rows, one statement; a super admin skips the read.
+  c.set("user", toAuthUser(row, row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)));
   return next();
 }
 
@@ -111,7 +115,7 @@ export async function accessGuard(c: Context, next: Next) {
   const handler = [...c.req.matchedRoutes].reverse().find((r) => !r.path.endsWith("*") && r.method !== "ALL");
   if (!handler) return next(); // no route matched at all — that is `notFound`'s 404 (TASK-297), not a menu refusal
   const path = handler.path;
-  if (/^\/api\/(auth|users|me|permissions)(\/|$)/.test(path)) return next(); // TASK-383/385: the JWT-only routes
+  if (/^\/api\/(auth|users|me|permissions|roles)(\/|$)/.test(path)) return next(); // TASK-383/385/387: not in the table (their own guards)
   const access = ROUTE_ACCESS[routeKey(c.req.method, path)];
   if (!access) {
     console.error(`[rbac] route not in ROUTE_ACCESS — refused closed: ${c.req.method} ${path} (add it to lib/route-access.ts)`);

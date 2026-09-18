@@ -37,7 +37,7 @@ describe("TASK-264 — the migration, counted and witnessed", () => {
   test("0034 is registered, and the counts agree", () => {
     // The board's rule: "no migration" is a CLAIM, not a state — so the numbers are asserted, not asserted about.
     const tags = JOURNAL.match(/"tag": "\d{4}_/g) ?? [];
-    expect(tags.length).toBe(37); // 🔻 TASK-371: 0035; TASK-377: 0036_users
+    expect(tags.length).toBe(38); // 🔻 TASK-371: 0035; TASK-377: 0036_users; TASK-387: 0037_roles
     expect(JOURNAL).toContain('"tag": "0034_course_expiry_changes"');
     expect(JOURNAL).toContain('"idx": 34');
   });

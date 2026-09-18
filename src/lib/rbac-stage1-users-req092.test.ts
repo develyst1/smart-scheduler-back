@@ -51,7 +51,7 @@ describe("🔑 the rules — pure, with values", () => {
   });
   test("the DTO never carries the hash", () => {
     const dto = usersSvc.toUserDTO({ id: "u", username: "a", displayName: "A", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00Z", passwordHash: "x" } as any);
-    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "id", "isSuperAdmin", "menus", "username"]); // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions
+    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "grants", "id", "isSuperAdmin", "menus", "roleId", "roleName", "username"]); // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions; 🔻 TASK-387: + roleId, roleName, grants
   });
   test("`Bun.password` round-trips (argon2id) and a wrong password fails", async () => {
     const h = await usersSvc.hashPassword("correct horse");
@@ -184,7 +184,7 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     const MW = code(src("src/middleware/auth.ts"));
     expect(MW).toContain("const row = await findUserById(sub);");
     expect(MW).toContain('if (row.disabledAt) throw new ApiException(401, "UNAUTHORIZED", "บัญชีนี้ถูกปิดใช้งาน");');
-    expect(MW).toContain("c.set(\"user\", toAuthUser(row, row.isSuperAdmin ? [] : await userGrantKeys(row.id)));"); // 🔻 TASK-381: + the grants
+    expect(MW).toContain("c.set(\"user\", toAuthUser(row, row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)));"); // 🔻 TASK-381: + the grants
     expect(MW).not.toContain("requireRole");
     expect(MW).toContain("export async function requireSuperAdmin(");
     expect(code(src("src/routes/users.ts"))).toContain('.use("*", requireSuperAdmin)');
@@ -213,13 +213,13 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(SVC).toContain("if (!input.isSuperAdmin && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
     expect(SVC).toContain("if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
   });
-  test("🔴 37 = 37: `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
+  test("🔴 38 = 38 (TASK-387 added 0037): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(37);
-    expect(files.at(-1)).toBe("0036_users.sql");
+    expect(files.length).toBe(38);
+    expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(37);
-    expect(j.entries.at(-1)).toMatchObject({ idx: 36, tag: "0036_users" });
+    expect(j.entries.length).toBe(38);
+    expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");
     expect(body).toContain('CREATE TABLE IF NOT EXISTS "users"');
@@ -230,7 +230,7 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect((SQL.match(/--> statement-breakpoint/g) ?? []).length).toBe(3);
     expect(SQL).toContain("No lock is taken on\n--     any EXISTING table");
     expect(SQL).toContain("ONE run, ONE transaction, four statements");
-    const w = SCHEDULING_WITNESSES.at(-1)!;
+    const w = SCHEDULING_WITNESSES.at(-2)!; // 🔻 TASK-387: 0037_roles is last now
     expect(w).toMatchObject({ tag: "0036_users", probe: { kind: "index", index: "user_permissions_user_key_uq" }, rerunnable: true });
   });
 });
