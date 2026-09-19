@@ -27,6 +27,8 @@ export type WitnessKind =
   | { kind: "index"; index: string; schema?: string }
   | { kind: "index-predicate"; index: string; contains: string; schema?: string }
   | { kind: "constraint"; constraint: string }
+  /** TASK-410 — a constraint that EXISTED before and was REDEFINED: existence proves nothing, its definition does (0007's shape). */
+  | { kind: "constraint-def"; constraint: string; contains: string }
   /**
    * TASK-260 — a LABEL on a pg enum. The only honest witness for an `ALTER TYPE … ADD VALUE` migration: the
    * type, the column and every index over it exist before and after, so nothing else about that migration is
@@ -464,6 +466,24 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0045_cancel_reason_teacher_leave",
+    probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" },
+    why:
+      "TASK-410 (REQ-097). 0025's CHECK on cancel_reason is DROPPED and re-ADDED with the 4th code: the constraint " +
+      "name exists before and after, so only its DEFINITION witnesses the change (the 0007 index-predicate shape). " +
+      "NOT VALID + VALIDATE so the hot table's scan runs under SHARE UPDATE EXCLUSIVE; rerunnable.",
+    rerunnable: true,
+  },
+  {
+    tag: "0046_parent_archive",
+    probe: { kind: "index", index: "parents_archived_idx" },
+    why:
+      "TASK-411 (REQ-098). Three nullable columns on `parents` (archived_at/by, the audit list of cleared LINE ids) " +
+      "and the partial index on archived_at — the LAST object, invented here, is the witness. Catalog-only on a small " +
+      "table; every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";
@@ -494,6 +514,8 @@ export function describeProbe(p: WitnessKind): string {
       return `index ${p.index} definition contains "${p.contains}"`;
     case "constraint":
       return `constraint ${p.constraint} exists`;
+    case "constraint-def":
+      return `constraint ${p.constraint} definition contains "${p.contains}"`;
     case "enum-label":
       return `enum ${p.type} has label '${p.label}'`;
     case "superseded-by":

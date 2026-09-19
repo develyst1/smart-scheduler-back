@@ -1,6 +1,8 @@
 // Resolve the LINE bot language for a user from their teacher/parent link record (REQ-015 / TASK-039).
 // Shared by the webhook service (reply language) and the outbox worker (push language). Default TH.
 import { db } from "../db";
+import { and } from "drizzle-orm";
+import { activeParentWhere } from "./parent-archive";
 import type { Lang } from "./line-i18n";
 
 export async function resolveBotLang(lineUserId: string | null | undefined): Promise<Lang> {
@@ -11,7 +13,7 @@ export async function resolveBotLang(lineUserId: string | null | undefined): Pro
       columns: { lineLang: true },
     }),
     db.query.parents.findFirst({
-      where: (x, { eq }) => eq(x.lineUserId, lineUserId),
+      where: (x, { eq }) => and(eq(x.lineUserId, lineUserId), activeParentWhere()), // TASK-411
       columns: { lineLang: true },
     }),
   ]);

@@ -5,6 +5,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { boMovement, jobRuns } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
+import { activeParentWhere } from "../lib/parent-archive";
 import { addDays } from "../lib/time";
 import {
   ATTENTION_CHECKS,
@@ -74,7 +75,8 @@ function buildCtx(today: string): AttentionCtx {
           // never be dropped from the count by an inner join (the badge-report failure mode).
           // TASK-392 — an ARCHIVED child must not nag: hidden from this working read like every other.
           const students = (await db.query.students.findMany()).filter((s) => !s.archivedAt);
-          const parents = await db.query.parents.findMany();
+          // TASK-411 — an ARCHIVED household does not nag either (its students are archived by the cascade; the term is the rule).
+          const parents = await db.query.parents.findMany({ where: activeParentWhere() });
           const byId = new Map(parents.map((p) => [p.id, p]));
           return students.map((s) => ({
             student: s,

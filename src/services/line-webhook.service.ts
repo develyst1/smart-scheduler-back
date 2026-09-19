@@ -450,6 +450,7 @@ async function verifyAndLink(
   if (r.outcome === "phone-invalid") return { ok: false, message: (l) => t("verify_parent_badphone", l) };
   if (r.outcome === "phone-bound-to-other-line") return { ok: false, message: (l) => t("verify_parent_other", l) };
   if (r.outcome === "line-bound-to-other-family") return { ok: false, message: (l) => t("verify_parent_other_family", l) };
+  if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) }; // TASK-411
   if (r.isNew) return { ok: true, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
   const kids = r.children;
 

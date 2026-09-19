@@ -282,12 +282,15 @@ function buildOutboxMessage(
     // constraint is the HOUSE FORMAT, so both bodies are `leave_notice`'s shape: the bilingual stamp, the
     // customer's block, then `extra`-shaped appended lines. ✅ The words in the stamps and the `Reason` labels
     // are the owner's, approved as drafted (`§6.1`) and byte-frozen — see `line-i18n.ts`.
-    // TASK-406 (REQ-097) — the FAMILY's cancel notice, NEW: the coach's block under a PLACEHOLDER title (`cl_title`), the
-    // reason line (`TEACHER_LEAVE` ⇒ "ครูลา"). Enqueued by `reportOwnLeave` only (the admin's cancel stays coach-only —
-    // the owner's call); wiring it there later is one `enqueueParentCopies` call. The audience rule hides `coach`
-    // for a parent as it does on every other message.
+    // TASK-406 / TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice, THE OWNER'S copy: `❌ CLASS CANCELLED:` · Student /
+    // Program / Date / Time (never the coach) · `Reason : Teacher leave` ONLY when the code is `TEACHER_LEAVE` (the
+    // shop's three codes are its own business) · `Note :` by SHAPE — a course session (incl. a GROUP seat) has its
+    // make-up added; a 1-hour / voucher / trial keeps its hour. Two producers, one kind: the admin's cancel and the
+    // teacher's leave.
     case "class_cancelled_parent": {
       const type = notifyTypeOf(payload.bookingType as string);
+      const bt = payload.bookingType as string | null;
+      const noteKey = bt === "COURSE_PACKAGE" || bt === "GROUP" ? "cl_note_makeup" : "cl_note_hour";
       return (
         t("cl_title", lang) + "\n" +
         renderFieldBlock(
@@ -297,11 +300,12 @@ function buildOutboxMessage(
             program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
             date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
             time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
-            coach: ctx.coach,
+            coach: undefined,
           },
           { type, audience: recipientType, lang },
         ) +
-        extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
+        extra(t("cl_reason", lang), payload.cancelReason === "TEACHER_LEAVE" ? t("ob_reason_TEACHER_LEAVE", lang) : undefined) +
+        extra(t("cl_note", lang), t(noteKey, lang))
       );
     }
     case "class_cancelled_teacher": {

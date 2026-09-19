@@ -2879,6 +2879,33 @@ async function sendClassCancelledToTeacher(
 }
 
 /**
+ * TASK-406 / TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice, ONE sender for BOTH producers (the admin's cancel and
+ * the teacher's leave): one `class_cancelled_parent` row per linked device of the child's family (`enqueueParentCopies`
+ * — an unlinked family gets its SKIPPED row); a GROUP row ⇒ every seat's family. CONFIRMED-only — the same gate as the
+ * coach notice: a PENDING session was never announced to the family, so its cancel has nothing to retract. The words
+ * (`cl_*`) are the owner's; the reason rides only as the code. ⇒ the number of families reached.
+ */
+export async function sendClassCancelledToFamilies(
+  tx: any,
+  current: { id: string; status: string; studentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
+  cancelReason: string | null,
+): Promise<number> {
+  if (current.status !== "CONFIRMED") return 0;
+  const payload = { kind: "class_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, cancelReason };
+  const seats = current.bookingType === "GROUP"
+    ? (current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) })))
+    : null;
+  const studentIds = seats ? seats.map((s: any) => s.studentId).filter(Boolean) : [current.studentId];
+  let n = 0;
+  for (const sid of studentIds) {
+    if (!sid) continue;
+    await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: current.id, payload });
+    n++;
+  }
+  return n;
+}
+
+/**
  * TASK-406 (REQ-097 C-2) — the leave's COACH notice: the OTHER teachers on the row (primary + extras minus me) — a row
  * where I am an extra still has a primary coach who loses the session; when I am the only teacher, nobody (I am the
  * coach). The same `class_cancelled_teacher` payload the admin's cancel sends; the same CONFIRMED-only rule.
@@ -2938,15 +2965,7 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
       if (b.courseId) await reconcileCoursePlan(tx, b.courseId);
       await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);
-      if (b.status === "CONFIRMED") {
-        const payload = { kind: "class_cancelled_parent", bookingId: b.id, bookingType: b.bookingType ?? null, size: b.course?.size ?? b.voucher?.totalHours ?? null, cancelReason: "TEACHER_LEAVE", note: input.reason };
-        const studentIds = b.bookingType === "GROUP" ? (b.seats ?? []).map((s: any) => s.studentId).filter(Boolean) : [b.studentId];
-        for (const sid of studentIds) {
-          if (!sid) continue;
-          await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: b.id, payload });
-          familiesNotified++;
-        }
-      }
+      familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE");
     }
   });
   void actor;
@@ -3389,6 +3408,9 @@ export async function updateBookingStatus(
         cancelReason: enumReason ?? null,
         note: cancelReason ?? current.note ?? null,
       });
+      // TASK-410 (REQ-097 §3.7 — the owner's YES): the shop's cancel tells the FAMILY too, through the ONE sender the
+      // teacher's leave uses. CONFIRMED-only (the sender's gate), every seat's family on a GROUP row.
+      await sendClassCancelledToFamilies(tx, current, enumReason ?? null);
       // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
       // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs
       // in the same transaction as the status change and the freelance reconcile, so the correction is atomic.

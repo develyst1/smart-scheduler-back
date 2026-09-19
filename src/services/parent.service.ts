@@ -10,6 +10,8 @@ import { isSuspended } from "../lib/suspend";
 import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
+import { PARENT_ARCHIVED, activeParentWhere, cascadeMarker, isParentArchived } from "../lib/parent-archive";
+export { activeParentWhere, isParentArchived } from "../lib/parent-archive";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
 export const MAX_STUDENTS_PER_PARENT = 5;
@@ -26,9 +28,23 @@ export async function findParentByPhone(phone: string, exec: any = db): Promise<
   const p = normalizePhone(phone);
   if (!p) return null;
   const row = await exec.query.parents.findFirst({
-    where: (x: any, { eq: e }: any) => e(x.phone, p),
+    where: (x: any, { eq: e, and: a }: any) => a(e(x.phone, p), activeParentWhere()), // TASK-411 — an archived holder is invisible here
   });
   return row ?? null;
+}
+
+/** TASK-411 — does an ARCHIVED parent hold this phone? The one read that looks past the predicate — for the two refusals (Finding B). */
+export async function findArchivedParentByPhone(phone: string, exec: any = db): Promise<ParentRow | null> {
+  const p = normalizePhone(phone);
+  if (!p) return null;
+  const row = await exec.query.parents.findFirst({ where: (x: any, { eq: e, and: a, isNotNull: nn }: any) => a(e(x.phone, p), nn(x.archivedAt)) });
+  return row ?? null;
+}
+
+/** TASK-411 — a write against an archived parent is refused (edit, suspend, add a student, clear/claim a LINE link). */
+export async function assertParentActive(exec: any, parentId: string): Promise<void> {
+  const row = await exec.query.parents.findFirst({ where: (p: any, { eq: e }: any) => e(p.id, parentId), columns: { archivedAt: true } });
+  if (isParentArchived(row)) throw PARENT_ARCHIVED();
 }
 
 /**
@@ -64,6 +80,7 @@ export async function findOrCreateParentByPhone(
   if (p.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");
   const existing = await findParentByPhone(p, exec);
   if (existing) return existing;
+  if (await findArchivedParentByPhone(p, exec)) throw PARENT_ARCHIVED(); // TASK-411 — never a duplicate, never a silent restore
   const [row] = await exec
     .insert(parents)
     .values({ phone: p, name: opts.name ?? null, lineUserId: opts.lineUserId ?? null })
@@ -85,6 +102,7 @@ export async function linkParentLine(
   lineUserId: string,
   exec: any = db,
 ): Promise<void> {
+  await assertParentActive(exec, parentId); // TASK-411 — an archived parent cannot be (re-)linked; restore first
   const owner = await findParentByLineUserId(lineUserId, exec);
   if (owner && owner.id !== parentId) {
     throw badRequest("LINE นี้ผูกกับผู้ปกครองรายอื่นแล้ว");
@@ -132,19 +150,34 @@ export async function assertStudentActive(exec: any, studentId: string): Promise
  * archiving is for mistakes; a scheduled class is not one. Live = `date >= today` (Bangkok, today included) and a
  * course-live status, any booking type. A voucher with hours left is NOT a session ahead (no date) — allowed.
  */
+/**
+ * TASK-411 — REQ-093's live-future count, lifted so ONE statement answers for a student OR a whole household:
+ * `date >= today AND status IN COURSE_LIVE` across the ids. The parent's refusal number and the student's are the
+ * same count.
+ */
+export async function liveFutureSessionCount(exec: any, studentIds: string[]): Promise<number> {
+  if (!studentIds.length) return 0;
+  const { date: today } = bangkokNow();
+  const [live] = await exec
+    .select({ n: count() })
+    .from(bookings)
+    .where(and(inArray(bookings.studentId, studentIds), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  return Number(live?.n ?? 0);
+}
+
+/** TASK-411 — REQ-093's write, lifted: the student's own archive and the parent's cascade share it (`by` = the actor, or `parent:<id>`). */
+export async function markStudentArchived(exec: any, id: string, by: string | null): Promise<StudentRow> {
+  const [updated] = await exec.update(students).set({ archivedAt: new Date(), archivedBy: by }).where(eq(students.id, id)).returning();
+  return updated!;
+}
+
 export async function archiveStudent(id: string, actor: string | null): Promise<StudentRow> {
   const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
   if (!row) throw notFound("ไม่พบนักเรียน");
   if (row.archivedAt) return row;
-  const { date: today } = bangkokNow();
-  const [live] = await db
-    .select({ n: count() })
-    .from(bookings)
-    .where(and(eq(bookings.studentId, id), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
-  const n = Number(live?.n ?? 0);
+  const n = await liveFutureSessionCount(db, [id]);
   if (n > 0) throw conflict("STUDENT_HAS_LIVE_SESSIONS", `มีคาบเรียนข้างหน้า ${n} คาบ — ยกเลิก/ย้ายก่อน`);
-  const [updated] = await db.update(students).set({ archivedAt: new Date(), archivedBy: actor }).where(eq(students.id, id)).returning();
-  return updated!;
+  return markStudentArchived(db, id, actor);
 }
 
 /** TASK-392 — UN-ARCHIVE: idempotent; the 5-per-parent cap is re-asked (an archived child does not count toward it,
@@ -153,6 +186,7 @@ export async function unarchiveStudent(id: string): Promise<StudentRow> {
   const row = await db.query.students.findFirst({ where: (s, { eq: e }) => e(s.id, id) });
   if (!row) throw notFound("ไม่พบนักเรียน");
   if (!row.archivedAt) return row;
+  if (row.parentId) await assertParentActive(db, row.parentId); // TASK-411 — restore the household first
   if (row.parentId) await assertCanAddStudent(row.parentId);
   const [updated] = await db.update(students).set({ archivedAt: null, archivedBy: null }).where(eq(students.id, id)).returning();
   return updated!;
@@ -194,6 +228,7 @@ export async function createStudentForParent(
   const name = input.name?.trim();
   if (!name) throw badRequest("กรุณาระบุชื่อนักเรียน");
 
+  await assertParentActive(exec, parentId); // TASK-411
   const existingCount = await assertCanAddStudent(parentId, exec);
 
   const [student] = await exec
@@ -231,6 +266,7 @@ export async function createStudent(input: {
         where: (x: any, { eq: e }: any) => e(x.id, input.parentId),
       })) ?? null;
       if (!parent) throw badRequest("ไม่พบผู้ปกครอง");
+      if (isParentArchived(parent)) throw PARENT_ARCHIVED(); // TASK-411
     } else if (input.parentPhone) {
       parent = await findOrCreateParentByPhone(
         input.parentPhone,
@@ -270,9 +306,11 @@ async function loadParentWithStudents(id: string, exec: any = db) {
  * name/nickname — the phone term is only added when the query has digits (the REQ-011 rule: a non-numeric
  * query must not `ilike '%%'` its way to the whole roster).
  */
-export async function listParents(q?: string, limit = 50, offset = 0) {
+// TASK-411 — `archived = true` ⇒ ONLY the archived parents (the restore view, the students' shape); default hides them.
+export async function listParents(q?: string, limit = 50, offset = 0, archived = false) {
   const term = q?.trim();
   let ids: string[] | null = null;
+  const scope = archived ? isNotNull(parents.archivedAt) : activeParentWhere();
 
   if (term) {
     const digits = normalizePhone(term);
@@ -282,7 +320,7 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
     const direct = await db
       .select({ id: parents.id })
       .from(parents)
-      .where(or(...conditions));
+      .where(and(or(...conditions), scope));
     // ...plus parents whose STUDENT matches (staff search by the child's name).
     const viaStudent = await db
       .select({ id: students.parentId })
@@ -297,7 +335,7 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
     if (!ids.length) return { parents: [], total: 0 };
   }
 
-  const where = ids ? inArray(parents.id, ids) : undefined;
+  const where = ids ? and(inArray(parents.id, ids), scope) : scope; // the search's via-student ids are re-scoped here
   const rows = await db
     .select()
     .from(parents)
@@ -306,10 +344,7 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
     .limit(Math.min(limit, 200))
     .offset(offset);
 
-  // `total` is always present so the screen can paginate (a search knows its own match count).
-  const total = ids
-    ? ids.length
-    : Number((await db.select({ n: sql<number>`count(*)` }).from(parents))[0]?.n ?? 0);
+  const total = Number((await db.select({ n: sql<number>`count(*)` }).from(parents).where(where))[0]?.n ?? 0); // ONE where for the page and the count
 
   const withKids = await Promise.all(
     rows.map(async (p) => {
@@ -320,9 +355,10 @@ export async function listParents(q?: string, limit = 50, offset = 0) {
   return { parents: withKids, total };
 }
 
-export async function getParent(id: string) {
+export async function getParent(id: string, opts: { archived?: boolean } = {}) {
   const row = await loadParentWithStudents(id);
   if (!row) throw notFound("ไม่พบผู้ปกครอง");
+  if (isParentArchived(row) && !opts.archived) throw notFound("ไม่พบผู้ปกครอง"); // TASK-411 — the restore view asks with ?archived=1
   // SPEC-071 / TASK-243 — whether this family has a LINE account bound, and how many.
   //
   // 🔴 Read through the ONE accessor, not off `parents.line_user_id`: since TASK-230 a family can hold more
@@ -340,6 +376,7 @@ export async function getParent(id: string) {
 export async function clearParentLineLink(id: string, actor: string | null) {
   const parent = await db.query.parents.findFirst({ where: (p: any, { eq: e }: any) => e(p.id, id) });
   if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  if (isParentArchived(parent)) throw PARENT_ARCHIVED(); // TASK-411 — already cleared by the archive
   const { cleared } = await clearFamilyLine(id, actor);
   return { cleared: cleared.length };
 }
@@ -353,6 +390,7 @@ export async function createParent(input: {
   const phone = normalizePhone(input.phone);
   if (phone.length < 9) throw badRequest("เบอร์โทรไม่ถูกต้อง");
   if (await findParentByPhone(phone)) throw badRequest("เบอร์นี้มีผู้ปกครองในระบบแล้ว");
+  if (await findArchivedParentByPhone(phone)) throw conflict("PARENT_ARCHIVED", "เบอร์นี้เป็นของผู้ปกครองที่ถูกเก็บแล้ว — คืนสถานะแทน"); // TASK-411 (Finding B)
   const [row] = await db
     .insert(parents)
     .values({
@@ -369,6 +407,7 @@ export async function updateParent(
   id: string,
   input: { name?: string | null; phone?: string; province?: string | null; note?: string | null },
 ) {
+  await assertParentActive(db, id); // TASK-411
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.province !== undefined) patch.province = input.province;
@@ -472,6 +511,7 @@ export async function deleteStudent(id: string, actor: string | null): Promise<{
 export async function setParentSuspended(id: string, suspended: boolean) {
   const parent = await db.query.parents.findFirst({ where: (p, { eq: e }) => e(p.id, id) });
   if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  if (isParentArchived(parent)) throw PARENT_ARCHIVED(); // TASK-411 — suspend and archive coexist, but an archived row is not edited
   await db
     .update(parents)
     .set({ suspendedAt: suspended ? new Date() : null })
@@ -480,6 +520,46 @@ export async function setParentSuspended(id: string, suspended: boolean) {
 }
 
 /** The household owning this student, or null for a walk-in/trial student with no parent. */
+/**
+ * TASK-411 (REQ-098) — archive a PARENT, ONE tx: the household's live future sessions (ONE grouped count) ⇒
+ * `409 PARENT_HAS_SESSIONS`; the LINE accounts cleared through the ONE unlinker (link rows + column + rich menu —
+ * `familyOfLineUser` can no longer reach the row) and kept in `archived_line_user_ids` for the audit; the three
+ * columns; every NON-archived student cascaded with `archived_by = "parent:<id>"` (REQ-093's write — its own
+ * refusal is the household count above). Idempotent: an archived parent ⇒ the row, no writes. The phone stays.
+ */
+export async function archiveParent(id: string, actor: string | null) {
+  const parent = await db.query.parents.findFirst({ where: (p, { eq: e }) => e(p.id, id) });
+  if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  if (parent.archivedAt) return { parent: await getParent(id, { archived: true }), archivedStudents: 0, clearedLineAccounts: 0 };
+  const kids = await listStudentsOfParent(id, db);
+  const n = await liveFutureSessionCount(db, kids.map((s) => s.id));
+  if (n > 0) throw conflict("PARENT_HAS_SESSIONS", `มีคาบเรียนในอนาคต ${n} คาบ — ยกเลิก/ย้ายก่อน`);
+  const result = await db.transaction(async (tx) => {
+    const { cleared } = await clearFamilyLine(id, actor, tx);
+    await tx.update(parents).set({ archivedAt: new Date(), archivedBy: actor, archivedLineUserIds: cleared }).where(eq(parents.id, id));
+    for (const s of kids) await markStudentArchived(tx, s.id, cascadeMarker(id));
+    return { archivedStudents: kids.length, clearedLineAccounts: cleared.length };
+  });
+  return { parent: await getParent(id, { archived: true }), ...result };
+}
+
+/**
+ * TASK-411 — restore: the parent's three columns cleared (the LINE accounts are NOT put back — the family re-links;
+ * the audit list stays), and ONLY the students this parent's archive cascaded (`archived_by = "parent:<id>"`) come
+ * back — a student archived on its own is untouched. No household-cap check: they were the household before.
+ */
+export async function unarchiveParent(id: string) {
+  const parent = await db.query.parents.findFirst({ where: (p, { eq: e }) => e(p.id, id) });
+  if (!parent) throw notFound("ไม่พบผู้ปกครอง");
+  if (!parent.archivedAt) return { parent: await getParent(id), restoredStudents: 0 };
+  const restored = await db.transaction(async (tx) => {
+    await tx.update(parents).set({ archivedAt: null, archivedBy: null }).where(eq(parents.id, id));
+    const rows = await tx.update(students).set({ archivedAt: null, archivedBy: null }).where(and(eq(students.parentId, id), eq(students.archivedBy, cascadeMarker(id)))).returning({ id: students.id });
+    return rows.length;
+  });
+  return { parent: await getParent(id), restoredStudents: restored };
+}
+
 export async function findParentOfStudent(studentId: string, exec: any = db) {
   const student = await exec.query.students.findFirst({
     where: (s: any, { eq: e }: any) => e(s.id, studentId),

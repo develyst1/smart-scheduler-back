@@ -23,8 +23,8 @@ const rootApp = (await import("../index")).default as { fetch: (r: Request) => P
 
 describe("🔑 the registry — 54 keys (50 + TASK-401's four camp acts), one rule, labels beside the keys", () => {
   test("54 keys, every one `action:<area>.<verb>` with a known area, TH + EN labels, no duplicates", () => {
-    expect(ACTION_KEYS.length).toBe(55); // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
-    expect(new Set(ACTION_KEYS).size).toBe(55);
+    expect(ACTION_KEYS.length).toBe(56); // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
+    expect(new Set(ACTION_KEYS).size).toBe(56); // 🔻 TASK-411: + people.parent-archive
     for (const a of ACTION_REGISTRY) {
       const m = /^action:([a-z-]+)\.([a-z-]+)$/.exec(a.key);
       expect({ key: a.key, ok: !!m && (ACTION_AREAS as readonly string[]).includes(m[1]!) && a.area === m[1] }).toEqual({ key: a.key, ok: true });
@@ -256,7 +256,7 @@ describe("🔴 the service and the wiring (source)", () => {
     const G = MW.slice(MW.indexOf("export async function accessGuard("));
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();"));
   });
-  test("45 = 45 — Stage 3 added no migration (0037 … 0044 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(45);
+  test("47 = 47 — Stage 3 added no migration (0037 … 0046 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(47);
   });
 });

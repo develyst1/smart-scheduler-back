@@ -387,7 +387,10 @@ export const parentsQuery = z.object({
   q: z.string().trim().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  // TASK-411 (REQ-098) — `archived=true` ⇒ ONLY the archived parents (the restore view); default hides them.
+  archived: z.enum(["true", "false", "1", "0"]).optional().transform((v) => v === "true" || v === "1"),
 });
+export const parentDetailQuery = z.object({ archived: z.enum(["true", "false", "1", "0"]).optional().transform((v) => v === "true" || v === "1") });
 
 export const createParent = z.object({
   phone: z.string().trim().min(9),

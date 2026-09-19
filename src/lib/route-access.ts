@@ -98,6 +98,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /parents/:id/students": act(PEOPLE, "action:people.parent-students"),
   "POST /parents/:id/suspend": act(PEOPLE, "action:people.parent-suspend"),
   "POST /parents/:id/unsuspend": act(PEOPLE, "action:people.parent-suspend"),
+  "POST /parents/:id/archive": act(PEOPLE, "action:people.parent-archive"), // TASK-411
+  "POST /parents/:id/unarchive": act(PEOPLE, "action:people.parent-archive"), // TASK-411
   "POST /parents/:id/clear-line-link": act(PEOPLE, "action:people.parent-line-unlink"),
   // ── courses + vouchers (the Bookings page's editor) ──
   "GET /courses": read(BOOKINGS),

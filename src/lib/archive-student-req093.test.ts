@@ -33,11 +33,11 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("45 = 45 (0040 … 0044 added since): `0039_student_archive` is the 40th file, idx 39", () => {
-    expect(files.length).toBe(45);
+  test("47 = 47 (0040 … 0046 added since): `0039_student_archive` is the 40th file, idx 39", () => {
+    expect(files.length).toBe(47);
     expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(45);
+    expect(j.entries.length).toBe(47);
     expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });
@@ -78,19 +78,24 @@ describe("🔴 archive / unarchive — the rules by source; nothing else touched
   test("`archiveStudent`: 404 · idempotent · LIVE future sessions ⇒ 409 with the count (today included, course-live statuses, any type) · writes archived_at/by", () => {
     expect(A).toContain('if (!row) throw notFound("ไม่พบนักเรียน");');
     expect(A).toContain("if (row.archivedAt) return row;");
-    expect(A).toContain("const { date: today } = bangkokNow();");
-    expect(A).toContain("eq(bookings.studentId, id), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    // 🔻 TASK-411 lifted the count and the write into `liveFutureSessionCount` / `markStudentArchived` so the parent's cascade shares them — the rule is unchanged
+    const C = region(PARENT, "export async function liveFutureSessionCount(", "\n}\n");
+    expect(C).toContain("const { date: today } = bangkokNow();");
+    expect(C).toContain("inArray(bookings.studentId, studentIds), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    expect(A).toContain("const n = await liveFutureSessionCount(db, [id]);");
     expect(A).toContain('if (n > 0) throw conflict("STUDENT_HAS_LIVE_SESSIONS", `มีคาบเรียนข้างหน้า ${n} คาบ — ยกเลิก/ย้ายก่อน`);');
-    expect(A).toContain("db.update(students).set({ archivedAt: new Date(), archivedBy: actor })");
-    expect(A.indexOf("STUDENT_HAS_LIVE_SESSIONS")).toBeLessThan(A.indexOf("db.update(students)"));
-    expect(A).not.toMatch(/bookingType/); // any type — no filter on it
+    expect(A).toContain("return markStudentArchived(db, id, actor);");
+    expect(region(PARENT, "export async function markStudentArchived(", "\n}\n")).toContain("update(students).set({ archivedAt: new Date(), archivedBy: by })");
+    expect(A.indexOf("STUDENT_HAS_LIVE_SESSIONS")).toBeLessThan(A.indexOf("markStudentArchived(db, id, actor)"));
+    expect(A + C).not.toMatch(/bookingType/); // any type — no filter on it
   });
   test("🚫 archiving touches NOTHING else — no write to bookings / courses / vouchers / rentals / ledger / LINE links / parents", () => {
     for (const F of [A, U]) {
       expect(F).not.toMatch(/\.(update|delete|insert)\((bookings|coursePackages|vouchers|bookingRentals|boMovement|familyLineLinks|parents)\)/);
       expect(F).not.toMatch(/recordSale|recordRental|enqueueLine|clearFamilyLine/);
-      expect((F.match(/db\.update\(/g) ?? []).length).toBe(1);
-      expect(F).toContain("db.update(students)");
+      // 🔻 TASK-411: the archive's write is the shared `markStudentArchived` (one `update(students)`); the restore's is inline
+      expect((F.match(/db\.update\(|markStudentArchived\(/g) ?? []).length).toBe(1);
+      expect(F).toMatch(/db\.update\(students\)|markStudentArchived\(db, id, actor\)/);
     }
   });
   test("`unarchiveStudent`: 404 · idempotent · the 5-per-parent cap RE-ASKED (a walk-in with no parent skips it) · clears both columns", () => {
@@ -154,9 +159,10 @@ describe("🔴 the WORKING reads — hidden, each by name (the enumeration IS th
 describe("🚫 the HISTORY / by-id reads — untouched (an archived child's past still reads)", () => {
   test("`/bookings?q=`'s `studentSearchQuery`, the parents search by child name, `suspendedStudentIds`, the SOM count, `course-deduction`, `line-admin` — no `archivedAt` in any of them", () => {
     expect(code(src("src/services/search.queries.ts"))).not.toContain("archivedAt");
-    expect(region(PARENT, "export async function listParents(", "const withKids")).not.toContain("archivedAt"); // the SEARCH half — the kids split below it is the parent detail's rule
+    // 🔻 TASK-411: the parents' search half now carries the PARENT's own archive scope (`activeParentWhere` / `isNotNull(parents.archivedAt)`) — never the student's
+    expect(region(PARENT, "export async function listParents(", "const withKids")).not.toContain("students.archivedAt");
     expect(region(PARENT, "export async function suspendedStudentIds(", "\n}\n")).not.toContain("archivedAt");
-    expect(code(src("src/services/som-report.service.ts"))).not.toContain("archivedAt");
+    expect(code(src("src/services/som-report.service.ts"))).not.toContain("students.archivedAt"); // 🔻 TASK-411: the PARENT term (`activeParentWhere`) is that task's rule
     expect(code(src("src/lib/course-deduction.ts"))).not.toContain("archivedAt");
     expect(code(src("src/lib/line-admin.ts"))).not.toContain("archivedAt");
     // the history-free DELETE (TASK-364) is untouched

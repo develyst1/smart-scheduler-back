@@ -100,7 +100,8 @@ export const ACTION_REGISTRY = [
   A("action:people.parent-students", "ผูกนักเรียนกับผู้ปกครอง", "Link a student to a parent"),
   A("action:people.parent-suspend", "ระงับ/ยกเลิกระงับผู้ปกครอง", "Suspend & unsuspend a parent"),
   A("action:people.parent-line-unlink", "ยกเลิกการเชื่อม LINE ผู้ปกครอง", "Clear a parent's LINE link"),
-  A("action:people.student-archive", "เก็บ/คืนสถานะนักเรียน", "Archive & restore a student"), // TASK-392 — act + undo, one key
+  A("action:people.student-archive", "เก็บ/คืนสถานะนักเรียน", "Archive & restore a student"),
+  A("action:people.parent-archive", "เก็บ/คืนสถานะผู้ปกครอง", "Archive & restore a parent"), // TASK-411 (REQ-098) — one key, both doors // TASK-392 — act + undo, one key
   // ── teachers ──
   A("action:teachers.create", "เพิ่มครู", "Add a teacher"),
   A("action:teachers.edit", "แก้ไขข้อมูลครู", "Edit a teacher"),

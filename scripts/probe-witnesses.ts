@@ -55,6 +55,12 @@ async function probeOne(sql: postgres.Sql, p: WitnessKind): Promise<boolean | nu
       const rows = await sql`SELECT 1 FROM pg_constraint WHERE conname = ${p.constraint}`;
       return rows.length > 0;
     }
+    case "constraint-def": {
+      // TASK-410 — the constraint existed before the migration; only its definition changed.
+      const rows = await sql<{ def: string }[]>`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = ${p.constraint}`;
+      if (rows.length === 0) return false;
+      return rows[0]!.def.includes(p.contains);
+    }
     case "superseded-by":
     case "needs-human":
       return null; // resolved by `judge`, not by a query

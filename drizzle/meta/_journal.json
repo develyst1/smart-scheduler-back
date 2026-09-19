@@ -316,6 +316,20 @@
       "when": 1783000000040,
       "tag": "0044_user_teacher_link",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1783000000041,
+      "tag": "0045_cancel_reason_teacher_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1783000000042,
+      "tag": "0046_parent_archive",
+      "breakpoints": true
     }
   ]
 }

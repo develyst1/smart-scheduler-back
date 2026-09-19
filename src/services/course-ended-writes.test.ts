@@ -125,6 +125,10 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // TASK-406 (REQ-097 C-2) — a teacher's own leave cancels the LIVE sessions they teach that day; an ended course's
   // rows are all CANCELLED, so none is ever selected. Classified deliberately, not by default.
   "POST /teachers/me/leave": "unrelated",
+  // TASK-411 (REQ-098) — archive/restore a PARENT: refused while any live future session exists, else it writes
+  // parents + students only (no booking, course or voucher row moves). Classified deliberately, not by default.
+  "POST /parents/:id/archive": "unrelated",
+  "POST /parents/:id/unarchive": "unrelated",
   "PATCH /bookings/:id/group-teacher": "unrelated",
   // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
   // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,

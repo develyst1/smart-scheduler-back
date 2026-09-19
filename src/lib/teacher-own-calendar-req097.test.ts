@@ -1,7 +1,7 @@
 // TASK-406 (`REQ-097`, SPEC-083 C-1 + C-2) — the user ↔ teacher LINK (`0044`), OWN SCOPE (one predicate on every
 // calendar/bookings read, 404 outside by id), the fail-closed `TEACHER_ALLOWED` route set for a linked account,
 // `attend`-only status, the users page's link (409 TEACHER_LINKED), `/me.teacherId`, the OWN LEAVE (`TEACHER_LEAVE`,
-// the 4th reason; the FAMILY's NEW notice as a placeholder kind; the other teachers' coach notice). 45 = 45.
+// the 4th reason; the FAMILY's NEW notice as a placeholder kind; the other teachers' coach notice). 47 = 47.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -47,9 +47,9 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8");
-  test("45 = 45: `0044_user_teacher_link` is the 45th file, idx 44, the last; 'expects 45' in the header", () => {
-    expect(files.length).toBe(45);
-    expect(journal.entries.length).toBe(45);
+  test("47 = 47: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
+    expect(files.length).toBe(47);
+    expect(journal.entries.length).toBe(47);
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -242,7 +242,7 @@ describe("🔴 `attend` only, the leave for a LINKED account only, the users pag
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, null);");
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, id);");
     expect(S).toContain("patch.teacherId = input.teacherId;");
-    expect(ACTION_KEYS.length).toBe(55);
+    expect(ACTION_KEYS.length).toBe(56); // 🔻 TASK-411: + people.parent-archive
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.teacher-leave")).toMatchObject({ labelTh: "แจ้งลาสอน (ครู)", labelEn: "Report own teaching leave" });
     expect(code(src("src/routes/me.ts"))).toContain("teacherId: u.teacherId }");
   });
@@ -265,7 +265,7 @@ describe("🔴 `attend` only, the leave for a LINKED account only, the users pag
   });
 });
 
-describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's NEW notice (placeholder by form); the other teachers told, never me (value + source)", () => {
+describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's notice (TASK-410: by VALUE, two producers); the other teachers told, never me (value + source)", () => {
   test("the reason set: four, the validator reads the SAME set (no copy), the label TH `ครูลา` / EN `Teacher leave`", () => {
     expect([...END_REASONS]).toEqual(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", "TEACHER_LEAVE"]);
     expect(isEndReason("TEACHER_LEAVE")).toBe(true);
@@ -293,9 +293,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's NE
     expect(L).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
     expect(L).toContain("if (b.courseId) await reconcileCoursePlan(tx, b.courseId);");
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
-    expect(L).toContain('kind: "class_cancelled_parent"');
-    expect(L).toContain("await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: b.id, payload });");
-    expect(L).toContain('if (b.status === "CONFIRMED") {'); // a PENDING session was never announced
+    expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE");'); // 🔻 TASK-410: the ONE family sender
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off
     expect(L).toContain("return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };");
     // the other teachers: minus me, CONFIRMED only
@@ -306,24 +304,80 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's NE
     // the route: literal before the param routes (TASK-029), the linked assertion inline
     expect(API.indexOf('.post("/teachers/me/leave"')).toBeLessThan(API.indexOf('.get("/teachers", zValidator("query", v.teachersQuery)'));
     expect(API).toContain('c.json(await svc.reportOwnLeave(assertLinked(c.get("user")), c.req.valid("json"), actorOf(c))),');
-    // 🚫 the admin's cancel is still coach-only (the owner's call): the family kind has ONE producer
-    expect((SCHED.match(/class_cancelled_parent/g) ?? []).length).toBe(1);
-    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).not.toContain("enqueueParentCopies");
+    // 🔻 TASK-410 (§3.7 YES): TWO producers, ONE sender — the admin's cancel branch calls the same function; the kind's
+    // string appears once (inside the sender); the sender is CONFIRMED-gated and fans out per seat on a GROUP row
+    expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
+    expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2);
+    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, current, enumReason ?? null);");
+    const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
+    expect(FS).toContain('if (current.status !== "CONFIRMED") return 0;');
+    expect(FS).toContain("await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: current.id, payload });");
+    expect(FS).toContain('current.bookingType === "GROUP"');
   });
-  test("📖 the family notice by FORM (PLACEHOLDER `cl_title` — the words are the owner's): the coach's block for a parent, the reason line `ครูลา`, both languages", () => {
-    const payload = { kind: "class_cancelled_parent", bookingId: B1, bookingType: "COURSE_PACKAGE", size: 10, cancelReason: "TEACHER_LEAVE", note: "ป่วย" };
+  test("🔴 TASK-410 — the family notice by VALUE (the owner's copy): a course session on a teacher's leave, TH and EN, byte-for-byte", () => {
     const ctx = { studentName: "น้องเอ", subject: "Freeskate", date: "2026-10-05", startTime: "10:00", endTime: "11:00", coach: "ครูเอก" } as any;
-    const th = formatOutboxMessage(payload as any, ctx, "TH", "parent");
-    const en = formatOutboxMessage(payload as any, ctx, "EN", "parent");
-    for (const m of [th, en]) { expect(m).toContain("น้องเอ"); expect(m).toContain("05-10-2026"); expect(m).toContain("10:00-11:00"); expect(m).not.toMatch(/[{}]/); expect(m).toBe(m.trimEnd()); expect(m).not.toContain("2026-10-05"); }
-    expect(th).toContain("ครูลา");
-    expect(en).toContain("Teacher leave");
-    expect(th.split("\n")[0]).toBe(t("cl_title", "TH"));
-    expect(src("src/lib/line-i18n.ts")).toContain("PLACEHOLDER — MINE, and the owner has NOT seen it.** The FAMILY's cancel notice");
-    // the coach's own message is untouched by the new kind
-    const coach = formatOutboxMessage({ ...payload, kind: "class_cancelled_teacher" } as any, ctx, "TH", "teacher");
+    const p = (bookingType: string, cancelReason: string) => ({ kind: "class_cancelled_parent", bookingId: B1, bookingType, size: 10, cancelReason });
+    expect(formatOutboxMessage(p("COURSE_PACKAGE", "TEACHER_LEAVE") as any, ctx, "EN", "parent")).toBe(
+      "❌ CLASS CANCELLED:\nStudent : น้องเอ\nProgram : Freeskate 10 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nReason : Teacher leave\nNote : A make-up session has been added to the schedule.",
+    );
+    expect(formatOutboxMessage(p("COURSE_PACKAGE", "TEACHER_LEAVE") as any, ctx, "TH", "parent")).toBe(
+      "❌ ยกเลิกคาบเรียน:\nStudent : น้องเอ\nProgram : Freeskate 10 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nเหตุผล : ครูลา\nNote : ระบบเพิ่มคาบชดเชยให้แล้ว",
+    );
+    // the coach is NEVER on the family's copy, even when the ctx carries one
+    for (const lang of ["EN", "TH"] as const) expect(formatOutboxMessage(p("COURSE_PACKAGE", "TEACHER_LEAVE") as any, ctx, lang, "parent")).not.toContain("ครูเอก");
+  });
+  test("🔴 TASK-410 — the reason line ONLY for TEACHER_LEAVE (the shop's three codes are hidden); the Note by SHAPE: 1-hour / voucher / trial ⇒ the hour returned, a course or a GROUP seat ⇒ the make-up", () => {
+    const ctx = { studentName: "น้องเอ", subject: "Freeskate", date: "2026-10-05", startTime: "10:00", endTime: "11:00" } as any;
+    const p = (bookingType: string, cancelReason: string | null) => ({ kind: "class_cancelled_parent", bookingId: B1, bookingType, size: 10, cancelReason });
+    expect(formatOutboxMessage(p("SINGLE_SESSION", "ADMIN_ERROR") as any, ctx, "EN", "parent")).toBe(
+      "❌ CLASS CANCELLED:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : The hour has been returned to your balance.",
+    );
+    expect(formatOutboxMessage(p("SINGLE_SESSION", "ADMIN_ERROR") as any, ctx, "TH", "parent")).toBe(
+      "❌ ยกเลิกคาบเรียน:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : คืนชั่วโมงเข้ายอดคงเหลือแล้ว",
+    );
+    for (const code of ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", null]) for (const lang of ["EN", "TH"] as const) {
+      const m = formatOutboxMessage(p("VOUCHER", code) as any, ctx, lang, "parent");
+      expect(m).not.toMatch(/Reason|เหตุผล/);
+      expect(m).toContain(lang === "EN" ? "Note : The hour has been returned to your balance." : "Note : คืนชั่วโมงเข้ายอดคงเหลือแล้ว");
+    }
+    expect(formatOutboxMessage(p("VOUCHER", "TEACHER_LEAVE") as any, ctx, "EN", "parent")).toContain("Reason : Teacher leave\nNote : The hour has been returned to your balance.");
+    expect(formatOutboxMessage(p("FIRST_TRIAL", "TEACHER_LEAVE") as any, ctx, "TH", "parent")).toContain("เหตุผล : ครูลา\nNote : คืนชั่วโมงเข้ายอดคงเหลือแล้ว");
+    expect(formatOutboxMessage(p("GROUP", "CUSTOMER_CANCELLED") as any, ctx, "EN", "parent")).toContain("Note : A make-up session has been added to the schedule.");
+    // the keys, no Kids, the placeholder sentence gone; every message trimmed, no raw ISO, no leak
+    const I = src("src/lib/line-i18n.ts");
+    for (const k of ["cl_title:", "cl_reason:", "cl_note:", "cl_note_makeup:", "cl_note_hour:"]) expect(I).toContain(k);
+    expect(I).not.toContain("PLACEHOLDER — MINE, and the owner has NOT seen it.** The FAMILY's cancel notice");
+    expect(code(I)).not.toMatch(/Kids/);
+    for (const m of [formatOutboxMessage(p("COURSE_PACKAGE", "TEACHER_LEAVE") as any, ctx, "TH", "parent"), formatOutboxMessage(p("SINGLE_SESSION", null) as any, ctx, "EN", "parent")]) { expect(m).toBe(m.trimEnd()); expect(m).not.toContain("2026-10-05"); expect(m).not.toMatch(/[{}]/); }
+    // the coach's own message is untouched
+    const coach = formatOutboxMessage({ ...p("COURSE_PACKAGE", "TEACHER_LEAVE"), kind: "class_cancelled_teacher", note: "ป่วย" } as any, ctx, "TH", "teacher");
     expect(coach.split("\n")[0]).toBe(t("ob_class_cancelled_title", "TH"));
-    expect(coach).toContain("ครูลา");
+    expect(coach).toContain("Reason : ครูลา");
+  });
+  test("🔴 TASK-410 — the DB's CHECK on cancel_reason ⇔ END_REASONS: the LAST migration touching `bookings_cancel_reason_chk` lists EXACTLY the set (a 5th code fails here until a migration carries it); 0045 by text", () => {
+    const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
+    const touching = files.filter((f) => readFileSync(resolve(root, "drizzle", f), "utf8").includes("bookings_cancel_reason_chk"));
+    expect(touching).toEqual(["0025_booking_cancel_reason.sql", "0045_cancel_reason_teacher_leave.sql"]);
+    const last = readFileSync(resolve(root, "drizzle", touching.at(-1)!), "utf8");
+    const list = last.match(/"cancel_reason" IN \(([^)]*)\)/)![1]!.split(",").map((x) => x.trim().replace(/^'|'$/g, ""));
+    expect(list).toEqual([...END_REASONS]);
+    // the leave writes only a member of the set (the third copy is the DB's; the code's two agree with it)
+    const L = region(SCHED, "export async function reportOwnLeave(", "async function sendCourseDroppedToTeachers(");
+    const written = [...L.matchAll(/cancelReason: "([A-Z_]+)"/g)].map((m) => m[1]);
+    expect(written.length).toBeGreaterThan(0);
+    for (const w of written) expect(isEndReason(w)).toBe(true);
+    // 0045: DROP + ADD … NOT VALID + VALIDATE (the hot table's scan under SHARE UPDATE EXCLUSIVE), the witness is the DEFINITION
+    const stmts = last.split("\n").filter((l) => !l.startsWith("--") && l.trim()).join("\n").split(";").map((x) => x.trim()).filter(Boolean);
+    expect(stmts.length).toBe(3);
+    expect(stmts[0]).toBe('ALTER TABLE "bookings" DROP CONSTRAINT IF EXISTS "bookings_cancel_reason_chk"');
+    expect(stmts[1]!.replace(/\s+/g, " ")).toBe(`ALTER TABLE "bookings" ADD CONSTRAINT "bookings_cancel_reason_chk" CHECK ("cancel_reason" IS NULL OR "cancel_reason" IN ('PROGRAM_CHANGED', 'CUSTOMER_CANCELLED', 'ADMIN_ERROR', 'TEACHER_LEAVE')) NOT VALID`);
+    expect(stmts[2]).toBe('ALTER TABLE "bookings" VALIDATE CONSTRAINT "bookings_cancel_reason_chk"');
+    expect(last).toContain("SHARE UPDATE EXCLUSIVE");
+    expect(last).toContain("`db:verify` expects 46");
+    expect(files.length).toBe(47);
+    expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
+    expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
+    expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");
   });
   test("through the ROOT app (service spied): the linked user's leave reaches the service with `me`; the 409 envelope passes by value", async () => {
     process.env.SKIP_AUTH = "true";
@@ -353,6 +407,35 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's NE
         expect(st).not.toHaveBeenCalled();
       } finally { st.mockRestore(); }
     } finally { (DEV_USER as any).teacherId = saved; s.mockRestore(); }
+  });
+  test("🔴 TASK-410 — the ONE family sender by VALUE through a fake tx: CONFIRMED ⇒ one outbox row per linked device carrying the code; an unlinked family ⇒ a SKIPPED row; a GROUP ⇒ every seat's family; PENDING ⇒ nothing", async () => {
+    const inserted: any[] = [];
+    const tx = (o: { seats?: { studentId: string }[]; parents: Record<string, { lineUserId: string | null; links: string[] }>; student: Record<string, string> }) => ({
+      insert: () => ({ values: async (v: any) => { inserted.push(v); } }),
+      query: {
+        bookings: { findMany: async () => o.seats ?? [] },
+        students: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, v: string) => { probe.push(v); return null; } }); const sid = probe[0]!; return o.student[sid] ? { id: sid, parentId: o.student[sid] } : null; } },
+        parents: { findMany: async () => Object.entries(o.parents).map(([id, p]) => ({ id, lineUserId: p.lineUserId })) },
+      },
+      select: () => ({ from: () => ({ where: async () => Object.entries(o.parents).flatMap(([parentId, p]) => p.links.map((lineUserId) => ({ parentId, lineUserId }))) }) }),
+    });
+    const t1 = tx({ parents: { p1: { lineUserId: "Up1", links: ["Up1b"] } }, student: { s1: "p1" } });
+    expect(await sched.sendClassCancelledToFamilies(t1, { id: B1, status: "CONFIRMED", studentId: "s1", bookingType: "COURSE_PACKAGE", course: { size: 10 } }, "ADMIN_ERROR")).toBe(1);
+    expect(inserted.map((r) => [r.recipientType, r.recipientLineUserId, r.status])).toEqual([["parent", "Up1", "PENDING"], ["parent", "Up1b", "PENDING"]]);
+    expect(inserted[0].payload).toEqual({ kind: "class_cancelled_parent", bookingId: B1, bookingType: "COURSE_PACKAGE", size: 10, cancelReason: "ADMIN_ERROR" });
+    inserted.length = 0;
+    expect(await sched.sendClassCancelledToFamilies(t1, { id: B1, status: "PENDING", studentId: "s1", bookingType: "COURSE_PACKAGE" }, "TEACHER_LEAVE")).toBe(0);
+    expect(inserted).toEqual([]);
+    inserted.length = 0;
+    const t2 = tx({ parents: { p2: { lineUserId: null, links: [] } }, student: { s2: "p2" } });
+    expect(await sched.sendClassCancelledToFamilies(t2, { id: B1, status: "CONFIRMED", studentId: "s2", bookingType: "VOUCHER", voucher: { totalHours: 10 } }, "TEACHER_LEAVE")).toBe(1);
+    expect(inserted.map((r) => r.status)).toEqual(["SKIPPED"]);
+    expect(inserted[0].payload.cancelReason).toBe("TEACHER_LEAVE");
+    inserted.length = 0;
+    const t3 = tx({ seats: [{ studentId: "s1" }, { studentId: "s2" }], parents: { p1: { lineUserId: "Up1", links: [] }, p2: { lineUserId: "Up2", links: [] } }, student: { s1: "p1", s2: "p2" } });
+    expect(await sched.sendClassCancelledToFamilies(t3, { id: B1, status: "CONFIRMED", studentId: null, bookingType: "GROUP" }, "CUSTOMER_CANCELLED")).toBe(2);
+    expect(inserted.map((r) => r.recipientLineUserId).sort()).toEqual(["Up1", "Up2"]);
+    expect(inserted.every((r) => r.payload.bookingType === "GROUP")).toBe(true);
   });
   test("the check-in QR read for a linked user goes through `assertOwnBooking` before the service (source); the public scan has no user at all", () => {
     expect(region(API, '.get("/bookings/:id/checkin"', ".get(\"/bookings/:id/posted-sale\"")).toContain('await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));');

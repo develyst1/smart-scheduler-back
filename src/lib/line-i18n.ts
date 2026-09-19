@@ -308,6 +308,13 @@ const TABLE: Record<string, Entry> = {
   },
   // This chat is already bound to a DIFFERENT family. Says so plainly and offers a human — the one thing it
   // must never do is quietly re-point the account, which would show a parent another family's children.
+  // 📖 TASK-411 (REQ-098 Finding B) — **PLACEHOLDER — MINE, and the owner has NOT seen it.** The number belongs to an
+  // ARCHIVED family: the bot never restores it (the shop's decision) and never creates a duplicate. Porter's copy
+  // replaces these bytes — pinned by FORM (the admin is named), never by bytes.
+  verify_parent_archived: {
+    TH: "เบอร์นี้เคยลงทะเบียนไว้แต่ถูกเก็บแล้วค่ะ กรุณาติดต่อแอดมินเพื่อเปิดใช้งานอีกครั้ง",
+    EN: "This number was registered before but has been archived. Please contact an admin to reactivate it.",
+  },
   verify_parent_other_family: {
     TH: "บัญชี LINE นี้ผูกกับอีกครอบครัวไว้แล้วค่ะ หากไม่ถูกต้องกรุณาติดต่อแอดมิน",
     EN: "This LINE account is already linked to another family. Please contact an admin if that is wrong.",
@@ -570,10 +577,15 @@ const TABLE: Record<string, Entry> = {
   ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },
   ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
   ob_reason_TEACHER_LEAVE: { TH: "ครูลา", EN: "Teacher leave" }, // TASK-406 (REQ-097) — the 4th code
-  // 📖 TASK-406 (REQ-097) — **PLACEHOLDER — MINE, and the owner has NOT seen it.** The FAMILY's cancel notice
-  // (`class_cancelled_parent`): no such notice existed before (a cancel told the coach only); the leave path sends
-  // it. Porter's copy replaces these bytes after the owner approves — pinned by FORM (child, date, time, the reason).
-  cl_title: { TH: "ยกเลิกคาบเรียน / CLASS CANCELLED ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบเรียน ‼️" },
+  // TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice (`class_cancelled_parent`), THE OWNER'S WORDS via @Porter
+  // (2026-09-19): the title, the four lines (`ob_f_*`), `Reason` ONLY for a teacher's leave, then the system's `Note`
+  // by shape — a course session gets its make-up, a 1-hour/voucher keeps its hour. Both producers (the admin's cancel
+  // and the teacher's leave) render this one kind.
+  cl_title: { TH: "❌ ยกเลิกคาบเรียน:", EN: "❌ CLASS CANCELLED:" },
+  cl_reason: { TH: "เหตุผล", EN: "Reason" },
+  cl_note: { TH: "Note", EN: "Note" },
+  cl_note_makeup: { TH: "ระบบเพิ่มคาบชดเชยให้แล้ว", EN: "A make-up session has been added to the schedule." },
+  cl_note_hour: { TH: "คืนชั่วโมงเข้ายอดคงเหลือแล้ว", EN: "The hour has been returned to your balance." },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

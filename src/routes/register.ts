@@ -58,6 +58,7 @@ const REFUSAL: Record<string, [number, string]> = {
   "phone-invalid": [400, "PHONE_INVALID"],
   "phone-bound-to-other-line": [409, "PHONE_BOUND_TO_OTHER_LINE"],
   "line-bound-to-other-family": [409, "LINE_BOUND_TO_OTHER_FAMILY"],
+  "phone-archived": [409, "PHONE_ARCHIVED"], // TASK-411
   "not-linked": [403, "NOT_LINKED"],
   "name-required": [400, "NAME_REQUIRED"],
   "name-reserved": [400, "NAME_RESERVED"],

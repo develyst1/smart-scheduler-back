@@ -6,6 +6,7 @@
 
 import { db } from "../db";
 import { bangkokNow } from "../lib/bangkok-time";
+import { activeParentWhere } from "../lib/parent-archive";
 import { addDays } from "../lib/time";
 import { courseEligible, voucherEligible } from "../lib/eligibility";
 import {
@@ -30,7 +31,7 @@ export async function getSomReport() {
 
   const [students, parents, bookings, courses, vouchers, todayReport] = await Promise.all([
     db.query.students.findMany(),
-    db.query.parents.findMany(),
+    db.query.parents.findMany({ where: activeParentWhere() }), // TASK-411 — an archived household is not counted (Sober 09-19)
     db.query.bookings.findMany({ with: { subject: true } }),
     getCourses(),
     getVouchers(),

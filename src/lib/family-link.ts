@@ -12,7 +12,8 @@
 // ⇒ Nothing outside this file reads either source for this question. `familyLineUserIds` is primary-first, so
 // `[0]` is always `parents.line_user_id` and the existing single-account meaning survives everywhere.
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { activeParentWhere } from "./parent-archive";
 import { db } from "../db";
 import { familyLineLinks, parents } from "../db/schema";
 import { unlinkRichMenuFromUser } from "./line-rich-menu";
@@ -43,9 +44,11 @@ export async function familyLineUserIdsBulk(
   const out = new Map<string, string[]>();
   if (!parentIds.length) return out;
 
+  // TASK-411 — an ARCHIVED family receives nothing: the where TERM (the rule), even though the archive also clears
+  // every account it held (the coincidence). A restore without a re-link therefore resurrects nothing.
   const rows = await exec.query.parents.findMany({
     columns: { id: true, lineUserId: true },
-    where: (p: any, { inArray: inA }: any) => inA(p.id, parentIds),
+    where: (p: any, { inArray: inA }: any) => and(inA(p.id, parentIds), activeParentWhere()),
   });
   const links = await exec
     .select({ parentId: familyLineLinks.parentId, lineUserId: familyLineLinks.lineUserId })

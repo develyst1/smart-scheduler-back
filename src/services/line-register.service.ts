@@ -30,6 +30,7 @@ import {
   MAX_STUDENTS_PER_PARENT,
   assertCanAddStudent,
   createStudentForParent,
+  findArchivedParentByPhone,
   findOrCreateParentByPhone,
   findParentByLineUserId,
   findParentByPhone,
@@ -89,7 +90,9 @@ export type PhoneLookup =
   | { outcome: "new"; phone: string }
   | { outcome: "phone-invalid" }
   | { outcome: "phone-bound-to-other-line" }
-  | { outcome: "line-bound-to-other-family" };
+  | { outcome: "line-bound-to-other-family" }
+  /** TASK-411 (REQ-098 Finding B) — the number belongs to an ARCHIVED family: never a silent restore, never a duplicate; the shop restores. */
+  | { outcome: "phone-archived" };
 
 /**
  * READ-ONLY. `phone` as typed; the digits are the key (TASK-278 §6).
@@ -104,6 +107,7 @@ export async function lookupFamilyByPhone(lineUserId: string, code: string): Pro
   // 🔴 TASK-354 (`REQ-088 §10.3`) — ITEM 12: a bound account entering a phone that is not its family's is refused
   // EVEN WHEN THE PHONE IS NEW. Before this, `new` was returned and `link` created an orphan parent while the
   // account kept answering its old family — silently. The owner found it on his phone.
+  if (!existing && (await findArchivedParentByPhone(phone))) return { outcome: "phone-archived" }; // TASK-411 (REQ-098 Finding B)
   if (!existing) return current ? { outcome: "line-bound-to-other-family" } : { outcome: "new", phone };
   if (existing.lineUserId && existing.lineUserId !== lineUserId) return { outcome: "phone-bound-to-other-line" };
   if (current && current !== existing.id) return { outcome: "line-bound-to-other-family" };
@@ -145,6 +149,7 @@ export async function linkFamilyByPhone(lineUserId: string, code: string): Promi
   // B carrying its id while the account kept answering A, with no error. ✅ Refused now, before any row exists.
   // ⚠️ THE CHAT CHANGES WITH IT (same writer): a linked parent typing `สมัคร` + another phone used to get
   // `verify_parent_ok_new`; they now get `verify_parent_other_family` — the reply that already means this.
+  if (await findArchivedParentByPhone(phone)) return { outcome: "phone-archived" }; // TASK-411 — before the insert (23505 otherwise); never a silent restore
   if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" };
   const parent = await findOrCreateParentByPhone(phone, { lineUserId });
   await moveRosterLink(lineUserId, "customer");

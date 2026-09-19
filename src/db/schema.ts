@@ -142,6 +142,11 @@ export const parents = pgTable(
      *  parent can't use the LINE bot and no new bookings can be made for their students (TASK-048). */
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),
     note: text("note"),
+    // TASK-411 (`0046`, REQ-098) — the archive: hidden from every working read, the phone kept, the LINE accounts
+    // cleared (audit list here — never read by a lookup), the students cascaded. NULL = active. Coexists with suspend.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: text("archived_by"),
+    archivedLineUserIds: text("archived_line_user_ids").array(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -153,6 +158,7 @@ export const parents = pgTable(
     uniqueIndex("parents_line_user_id_uq")
       .on(t.lineUserId)
       .where(sql`${t.lineUserId} is not null`),
+    index("parents_archived_idx").on(t.archivedAt).where(sql`${t.archivedAt} is not null`),
   ],
 );
 

@@ -46,13 +46,16 @@ export const api = new Hono()
   // children, and a child with no course, booking or voucher has nothing to keep — suspending the family for it
   // would punish the parent. One with history stays suspend-only; the service refuses with the counts.
   .get("/parents", zValidator("query", v.parentsQuery), async (c) => {
-    const { q, limit, offset } = c.req.valid("query");
-    return c.json(await parent.listParents(q, limit, offset));
+    const { q, limit, offset, archived } = c.req.valid("query");
+    return c.json(await parent.listParents(q, limit, offset, archived)); // TASK-411: ?archived=1 = the restore view
   })
   .post("/parents", zValidator("json", v.createParent), async (c) =>
     c.json(await parent.createParent(c.req.valid("json")), 201),
   )
-  .get("/parents/:id", async (c) => c.json(await parent.getParent(c.req.param("id"))))
+  .get("/parents/:id", zValidator("query", v.parentDetailQuery), async (c) => c.json(await parent.getParent(c.req.param("id"), c.req.valid("query")))) // TASK-411: 404 when archived unless ?archived=1
+  // TASK-411 (REQ-098) — archive / restore a parent (one key, the students' precedent). The archive cascades to the students.
+  .post("/parents/:id/archive", async (c) => c.json(await parent.archiveParent(c.req.param("id"), actorOf(c))))
+  .post("/parents/:id/unarchive", async (c) => c.json(await parent.unarchiveParent(c.req.param("id"))))
   .patch("/parents/:id", zValidator("json", v.updateParent), async (c) =>
     c.json(await parent.updateParent(c.req.param("id"), c.req.valid("json"))),
   )

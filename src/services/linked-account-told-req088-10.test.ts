@@ -44,7 +44,7 @@ describe("🔴 ITEM 12 — a bound account + a phone that is not its family's is
     expect(verify.indexOf('"line-bound-to-other-family"')).toBeLessThan(verify.indexOf("if (r.isNew)"));
     // 🚫 no new key, no new copy: the chat's five verify keys are still five.
     // (`verify_parent_ok_existing` is rendered twice — with and without the 2FA note — so count DISTINCT keys.)
-    expect(new Set(verify.match(/t\("verify_parent_[a-z_]+"/g) ?? []).size).toBe(5);
+    expect(new Set(verify.match(/t\("verify_parent_[a-z_]+"/g) ?? []).size).toBe(6); // 🔻 TASK-411: + verify_parent_archived (Finding B)
   });
 });
 
