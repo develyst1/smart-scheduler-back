@@ -141,7 +141,7 @@ describe("🔴 the three outbound senders all ask the ONE accessor", () => {
 
   test("both scheduler senders go through `enqueueParentCopies`", () => {
     expect(code(SCHED)).toContain("return familyLineUserIds(student.parentId, exec)");
-    expect(code(SCHED).match(/enqueueParentCopies\(/g)).toHaveLength(3); // the definition + two call sites
+    expect(code(SCHED).match(/enqueueParentCopies\(/g)).toHaveLength(4); // the definition + three call sites (🔻 TASK-406: the leave's family notice)
     expect(code(SCHED)).not.toContain("parent?.lineUserId ?? null");
   });
 

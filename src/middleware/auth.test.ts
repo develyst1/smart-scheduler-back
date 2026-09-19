@@ -49,7 +49,7 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     process.env.SKIP_AUTH = "true";
     const res = await makeApp().request("/api/ping");
     expect(res.status).toBe(200);
-    expect(((await res.json()) as any).user).toEqual({ id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [] }); // 🔻 TASK-387: + roleId
+    expect(((await res.json()) as any).user).toEqual({ id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [], teacherId: null }); // 🔻 TASK-406: + teacherId // 🔻 TASK-387: + roleId
   });
 
   test("enforced + no token → 401", async () => {
@@ -71,11 +71,11 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     const login = await app.request("/api/auth/login", json({ username: "admin", password: "admin" }));
     expect(login.status).toBe(200);
     const { token, user } = (await login.json()) as any;
-    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleId: null, roleName: null, grants: { fromRole: [], own: [] } }); // 🔻 TASK-387: + role fields; 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
+    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleId: null, roleName: null, teacherId: null, teacherName: null, grants: { fromRole: [], own: [] } }); // 🔻 TASK-387: + role fields; 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
     expect("passwordHash" in user).toBe(false);
     const ping = await app.request("/api/ping", { headers: { authorization: `Bearer ${token}` } });
     expect(ping.status).toBe(200);
-    expect(((await ping.json()) as any).user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [] }); // 🔻 TASK-387: + roleId
+    expect(((await ping.json()) as any).user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, role: "super_admin", roleId: null, grants: [], teacherId: null }); // 🔻 TASK-387: + roleId; 🔻 TASK-406: + teacherId
   });
 
   test("login with the wrong password → 401, ONE sentence (no enumeration)", async () => {

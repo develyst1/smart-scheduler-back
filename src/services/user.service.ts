@@ -26,6 +26,9 @@ export type UserDTO = {
   isSuperAdmin: boolean;
   disabledAt: string | null;
   createdAt: string;
+  /** TASK-406 (REQ-097) — the teacher this account IS (null = an admin); the name for the Users page. */
+  teacherId: string | null;
+  teacherName: string | null;
   /** TASK-381 — the user's `menu:*` grants (a super admin: all of them). */
   menus: MenuKey[];
   /** TASK-385 — the user's `action:*` grants (a super admin: all of them). 🔻 TASK-387: EFFECTIVE (role ∪ own). */
@@ -46,6 +49,8 @@ export const toUserDTO = (u: {
   isSuperAdmin: boolean;
   disabledAt: Date | string | null;
   createdAt: Date | string;
+  teacherId?: string | null;
+  teacher?: { nickname?: string | null; name?: string | null } | null;
 }, own: Iterable<string> = [], role: RoleGrants | null = null): UserDTO => {
   // 🔴 TASK-387: `menus`/`actions` are EFFECTIVE = the role's keys ∪ the user's own rows (a super admin: all).
   const ownKeys = [...own];
@@ -57,6 +62,8 @@ export const toUserDTO = (u: {
     isSuperAdmin: u.isSuperAdmin,
     disabledAt: u.disabledAt ? new Date(u.disabledAt).toISOString() : null,
     createdAt: new Date(u.createdAt).toISOString(),
+    teacherId: u.teacherId ?? null,
+    teacherName: u.teacher ? (u.teacher.nickname ?? u.teacher.name ?? null) : null,
     menus: u.isSuperAdmin ? [...MENU_KEYS] : MENU_KEYS.filter((m) => effective.has(m)),
     actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => effective.has(a)),
     roleId: role?.id ?? null,
@@ -110,7 +117,8 @@ export async function effectiveGrantKeys(userId: string, roleId: string | null |
 /** The DTO of one row: its own rows + its role (two small reads; the list uses the grouped readers instead). */
 export async function userDTO(row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; disabledAt: Date | string | null; createdAt: Date | string; roleId?: string | null }): Promise<UserDTO> {
   const [own, role] = await Promise.all([userGrantKeys(row.id), roleGrantsOf(row.roleId)]);
-  return toUserDTO(row, own, role);
+  const teacher = (row as any).teacherId ? await db.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, (row as any).teacherId) }) : null; // TASK-406
+  return toUserDTO({ ...row, teacher: teacher ?? null }, own, role);
 }
 
 export async function roleGrantsOf(roleId: string | null | undefined): Promise<RoleGrants | null> {
@@ -130,7 +138,7 @@ async function grantsByUser(userIds: string[], exec: any = db): Promise<Map<stri
 
 /** THREE reads for the whole list (users with their role · own rows grouped · the listed roles' keys grouped), never per user. */
 export async function listUsers() {
-  const rows = await db.query.users.findMany({ orderBy: (u, { asc: a }) => [a(u.username)], with: { role: true } });
+  const rows = await db.query.users.findMany({ orderBy: (u, { asc: a }) => [a(u.username)], with: { role: true, teacher: true } }); // TASK-406: + the linked teacher's name
   const roleIds = [...new Set(rows.map((r) => r.roleId).filter((x): x is string => !!x))];
   const [grants, roleKeys] = await Promise.all([grantsByUser(rows.map((r) => r.id)), roleKeysByIds(roleIds)]); // grouped reads, not one per user
   return rows.map((r) => toUserDTO(r, grants.get(r.id) ?? [], r.role ? { id: r.role.id, name: r.role.name, keys: roleKeys.get(r.role.id) ?? [] } : null));
@@ -190,8 +198,16 @@ export async function changeOwnPassword(id: string, currentPassword: string, new
   return { ok: true };
 }
 
+/** TASK-406 — one user per teacher: the service answers first; the partial unique index (0044) is the backstop under a race. */
+async function assertTeacherFree(teacherId: string, exceptUserId: string | null, exec: any = db): Promise<void> {
+  const t = await exec.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, teacherId) });
+  if (!t) throw notFound("ไม่พบครู");
+  const [taken] = await exec.select({ id: users.id }).from(users).where(and(eq(users.teacherId, teacherId), ...(exceptUserId ? [ne(users.id, exceptUserId)] : []))).limit(1);
+  if (taken) throw conflict("TEACHER_LINKED", "ครูคนนี้มีบัญชีแล้ว");
+}
+
 export async function createUser(
-  input: { username: string; password: string; displayName: string; isSuperAdmin?: boolean },
+  input: { username: string; password: string; displayName: string; isSuperAdmin?: boolean; teacherId?: string | null },
   actor: string | null,
 ): Promise<UserDTO> {
   const username = normalizeUsername(input.username);
@@ -199,15 +215,17 @@ export async function createUser(
   assertPassword(input.password);
   const displayName = input.displayName.trim();
   if (!displayName) throw new ApiException(400, "VALIDATION", "กรุณาระบุชื่อที่แสดง");
+  if (input.teacherId) await assertTeacherFree(input.teacherId, null);
   try {
     const [row] = await db
       .insert(users)
-      .values({ username, passwordHash: await hashPassword(input.password), displayName, isSuperAdmin: !!input.isSuperAdmin, createdBy: actor })
+      .values({ username, passwordHash: await hashPassword(input.password), displayName, isSuperAdmin: !!input.isSuperAdmin, createdBy: actor, teacherId: input.teacherId ?? null })
       .returning();
-    return toUserDTO(row!);
+    return userDTO(row!);
   } catch (e) {
     // 🔴 The UNIQUE's 23505 is caught HERE — `onError` renders every 23505 as `409 SLOT_TAKEN` ("the slot is taken").
     if (pgErrorCode(e) !== "23505") throw e;
+    if (String((e as any)?.constraint ?? (e as any)?.cause?.constraint ?? "").includes("teacher")) throw conflict("TEACHER_LINKED", "ครูคนนี้มีบัญชีแล้ว"); // TASK-406: the race backstop
     throw conflict("USERNAME_TAKEN", "ชื่อผู้ใช้นี้มีอยู่แล้ว");
   }
 }
@@ -235,9 +253,13 @@ async function mustFind(id: string) {
 
 const LAST_SUPER_ADMIN = () => conflict("LAST_SUPER_ADMIN", "ต้องมีผู้ดูแลระบบสูงสุดที่ใช้งานได้อย่างน้อย 1 คน");
 
-export async function updateUser(id: string, input: { displayName?: string; isSuperAdmin?: boolean }): Promise<UserDTO> {
+export async function updateUser(id: string, input: { displayName?: string; isSuperAdmin?: boolean; teacherId?: string | null }): Promise<UserDTO> {
   const row = await mustFind(id);
   const patch: Record<string, unknown> = {};
+  if (input.teacherId !== undefined) {
+    if (input.teacherId) await assertTeacherFree(input.teacherId, id);
+    patch.teacherId = input.teacherId; // null clears the link ⇒ the account is an admin again
+  }
   if (input.displayName !== undefined) {
     const d = input.displayName.trim();
     if (!d) throw new ApiException(400, "VALIDATION", "กรุณาระบุชื่อที่แสดง");

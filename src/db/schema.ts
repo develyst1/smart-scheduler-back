@@ -614,8 +614,10 @@ export const users = pgTable(
       .$onUpdate(() => new Date()),
     /** TASK-387 (`0037`) — the LIVE role: effective grants = the role's keys ∪ this user's own rows. NULL = none. */
     roleId: uuid("role_id").references(() => roles.id, { onDelete: "restrict" }),
+    /** TASK-406 (`0044`, REQ-097) — the teacher this account IS. Set ⇒ the account is SCOPED to its own calendar (`lib/own-scope.ts`). NULL = an admin. */
+    teacherId: uuid("teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
   },
-  (t) => [uniqueIndex("users_username_uq").on(t.username)],
+  (t) => [uniqueIndex("users_username_uq").on(t.username), uniqueIndex("users_teacher_id_uq").on(t.teacherId).where(sql`${t.teacherId} is not null`)],
 );
 
 // ───────────── TASK-387 (REQ-092 RBAC, SPEC-079 Stage 4) — roles, `0037` ─────────────
@@ -1074,6 +1076,7 @@ export const campWeeksRelations = relations(campWeeks, ({ many }) => ({ days: ma
 export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),
   role: one(roles, { fields: [users.roleId], references: [roles.id] }),
+  teacher: one(teachers, { fields: [users.teacherId], references: [teachers.id] }), // TASK-406
 }));
 
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({

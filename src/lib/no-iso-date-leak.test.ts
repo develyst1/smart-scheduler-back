@@ -101,7 +101,7 @@ describe("🔴 TASK-345 — NO message emits a RAW ISO date. ONE assertion, ever
     // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
     // class is gone). The number moved because the walkers reached them — which is the point.
     // 🔻 TASK-375 — EIGHTEEN: `rental_added_teacher` (a rental added today after the reminder went).
-    expect(KINDS.length).toBe(19); // TASK-403: +1 — `camp_reminder`
+    expect(KINDS.length).toBe(20); // TASK-403: +1 — `camp_reminder`; TASK-406: +1 — `class_cancelled_parent`
     // …and every rendering is non-trivial: a builder returning `""` would satisfy the ISO assertion perfectly.
     for (const { where, out } of all) expect({ where, empty: out.trim().length === 0 }).toEqual({ where, empty: false });
   });

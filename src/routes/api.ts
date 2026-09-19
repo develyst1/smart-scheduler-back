@@ -19,11 +19,12 @@ import { isSettingKey } from "../lib/settings";
 import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
 import { actorOf } from "../services/user.service";
+import { assertLinked, assertOwnBooking, assertScopedStatusAction, scopeOf } from "../lib/own-scope";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
   .get("/calendar", zValidator("query", v.calendarQuery), async (c) =>
-    c.json(await svc.getCalendar(c.req.valid("query"))),
+    c.json(await svc.getCalendar(c.req.valid("query"), scopeOf(c.get("user")))), // TASK-406: a linked account sees its own
   )
   // ⚠️ Literal `/students/<word>` routes go BEFORE any `/students/:id` param route (the TASK-029 lesson).
   // Who can be booked against an existing course/voucher, with the context staff pick from (REQ-022).
@@ -149,6 +150,10 @@ export const api = new Hono()
   // codes, and charging an อื่นๆ booking as "a course-6" would post course revenue with no course behind it.
   .get("/catalog-items", async (c) => c.json(await svc.getCatalogItems()))
   .get("/crm/levels", (c) => c.json(crmLevelLadder()))
+  // TASK-406 (REQ-097 C-2) — a LINKED teacher's own leave. ⚠️ Literal `/teachers/me/...` BEFORE any `/teachers/:id` route (TASK-029).
+  .post("/teachers/me/leave", zValidator("json", v.teacherLeave), async (c) =>
+    c.json(await svc.reportOwnLeave(assertLinked(c.get("user")), c.req.valid("json"), actorOf(c))),
+  )
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
     c.json(await svc.getTeachers({ archived: c.req.valid("query").archived })),
   )
@@ -232,7 +237,7 @@ export const api = new Hono()
     return c.json(await svc.createVoucher({ ...body, actor: actorOf(c) }), 201);
   })
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
-    c.json(await svc.getBookings(c.req.valid("query"))),
+    c.json(await svc.getBookings(c.req.valid("query"), scopeOf(c.get("user")))), // TASK-406
   )
   .get("/reports/daily", zValidator("query", v.reportQuery), async (c) =>
     c.json(await svc.getDailyReport(c.req.valid("query").date)),
@@ -252,6 +257,9 @@ export const api = new Hono()
     const { action, reason, override, reasonCode } = c.req.valid("json");
     // TASK-385: the override waives a rule written for parents — a grant (`action:calendar.leave-override`), like the discount.
     assertMayOverrideLeave(override, c.get("user"));
+    // TASK-406: a LINKED account may `attend` only, and only its own row (404 outside scope — the row is not theirs to know about).
+    assertScopedStatusAction(c.get("user"), action);
+    await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));
     return c.json(
       await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode),
     );
@@ -327,18 +335,20 @@ export const api = new Hono()
   .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
     c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
   )
-  .get("/bookings/:id/checkin", async (c) =>
-    c.json(await checkin.getCheckinQr(c.req.param("id"))),
-  )
+  .get("/bookings/:id/checkin", async (c) => {
+    await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user"))); // TASK-406
+    return c.json(await checkin.getCheckinQr(c.req.param("id")));
+  })
   // SPEC-069 / TASK-221 — read-only: was this booking's revenue already posted, and how much?
   //
   // 🔴 Deliberately NOT wrapped in a try/catch. Everywhere else here a sale read is best-effort so it can never
   // fail the booking it describes; this read IS the warning the cancel dialog shows, and an error swallowed
   // into `{ posted: null }` renders as "no money posted" — the whole defect. A 500 costs nothing (the cancel
   // path is untouched) and the FE turns it into a visible "could not verify".
-  .get("/bookings/:id/posted-sale", async (c) =>
-    c.json({ posted: await postedSaleForBooking(c.req.param("id")) }),
-  )
+  .get("/bookings/:id/posted-sale", async (c) => {
+    await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user"))); // TASK-406
+    return c.json({ posted: await postedSaleForBooking(c.req.param("id")) });
+  })
   // ── Badges (admin-defined tags on bookings) ──
   .get("/badges", zValidator("query", v.badgesQuery), async (c) =>
     c.json(await badge.listBadges(c.req.valid("query").includeInactive)),

@@ -569,6 +569,11 @@ const TABLE: Record<string, Entry> = {
   ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },
   ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },
   ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
+  ob_reason_TEACHER_LEAVE: { TH: "ครูลา", EN: "Teacher leave" }, // TASK-406 (REQ-097) — the 4th code
+  // 📖 TASK-406 (REQ-097) — **PLACEHOLDER — MINE, and the owner has NOT seen it.** The FAMILY's cancel notice
+  // (`class_cancelled_parent`): no such notice existed before (a cancel told the coach only); the leave path sends
+  // it. Porter's copy replaces these bytes after the owner approves — pinned by FORM (child, date, time, the reason).
+  cl_title: { TH: "ยกเลิกคาบเรียน / CLASS CANCELLED ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบเรียน ‼️" },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },

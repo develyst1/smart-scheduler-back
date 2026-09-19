@@ -35,11 +35,11 @@ describe("🔴 the migration — 0037, counted, witnessed, the `users` lock name
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0037_roles.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("44 = 44 (0038 … 0043 added since): `0037_roles` is the 38th file, idx 37", () => {
-    expect(files.length).toBe(44);
+  test("45 = 45 (0038 … 0044 added since): `0037_roles` is the 38th file, idx 37", () => {
+    expect(files.length).toBe(45);
     expect(files[37]).toBe("0037_roles.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(44);
+    expect(j.entries.length).toBe(45);
     expect(j.entries[37]).toMatchObject({ idx: 37, tag: "0037_roles" });
   });
   test("five statements in the contract's order: roles · lower(name) UNIQUE · users.role_id RESTRICT · role_permissions CASCADE · the (role_id, key) UNIQUE LAST; all IF NOT EXISTS", () => {
@@ -249,7 +249,7 @@ describe("🔑 the routes — `/roles` CRUD (super admin), `PUT /users/:id/role`
     try {
       const token = await signToken({ sub: id, username: "front", role: "admin", isSuperAdmin: false });
       const me = await json("GET", "/api/me", undefined, { authorization: `Bearer ${token}` });
-      expect(await me.json()).toEqual({ user: { id, username: "front", displayName: "Front", isSuperAdmin: false, menus: ["menu:calendar"], actions: [], roleName: "Front desk" } });
+      expect(await me.json()).toEqual({ user: { id, username: "front", displayName: "Front", isSuperAdmin: false, menus: ["menu:calendar"], actions: [], roleName: "Front desk", teacherId: null } });
       expect(nameReads).toEqual([null, "r-1"]);
     } finally { s1.mockRestore(); s2.mockRestore(); }
     // the real `roleNameOf` issues no query for a null id (it would need a DB otherwise)
@@ -283,7 +283,7 @@ describe("🔴 the services and the wiring (source)", () => {
   });
   test("`listUsers`: the users with their role, own rows grouped, the listed roles' keys grouped — three reads, none per user", () => {
     const S = region(USR, "export async function listUsers(", "\n}\n");
-    expect(S).toContain("with: { role: true }");
+    expect(S).toContain("with: { role: true, teacher: true }"); // 🔻 TASK-406: + the linked teacher (one relation, still three reads)
     expect(S).toContain("const [grants, roleKeys] = await Promise.all([grantsByUser(rows.map((r) => r.id)), roleKeysByIds(roleIds)]);");
     expect((S.match(/await /g) ?? []).length).toBe(2);
   });

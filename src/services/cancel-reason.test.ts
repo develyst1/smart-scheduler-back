@@ -20,8 +20,8 @@ describe("the reason is the SAME enum as a course ending (TASK-211)", () => {
     expect(CANCEL).not.toMatch(/\["ADMIN_ERROR"/); // no second literal list here
   });
 
-  test("the three values are exactly REQ-036's", () => {
-    expect([...END_REASONS]).toEqual(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"]);
+  test("the four values: REQ-036's three + TASK-406's TEACHER_LEAVE", () => {
+    expect([...END_REASONS]).toEqual(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", "TEACHER_LEAVE"]); // 🔻 TASK-406: the 4th — a teacher's own leave
     expect(isEndReason("ADMIN_ERROR")).toBe(true);
     expect(isEndReason("OTHER")).toBe(false);
   });

@@ -126,8 +126,8 @@ describe("R4.2 — what an ending touches, and what it must not", () => {
 });
 
 describe("R4.6 — the reasons are a closed, queryable set", () => {
-  test("exactly the three, and nothing else is accepted", () => {
-    expect([...END_REASONS]).toEqual(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"]);
+  test("exactly the four (TASK-406 added TEACHER_LEAVE), and nothing else is accepted", () => {
+    expect([...END_REASONS]).toEqual(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", "TEACHER_LEAVE"]); // 🔻 TASK-406: the 4th — a teacher's own leave
     for (const r of END_REASONS) expect(isEndReason(r)).toBe(true);
     for (const bad of ["", "admin_error", "OTHER", null, undefined, 42, {}]) {
       expect(isEndReason(bad)).toBe(false);

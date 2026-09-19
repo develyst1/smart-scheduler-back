@@ -69,7 +69,7 @@ describe("🔑 the TRAY — on request only, every CANCELLED row in range, date/
   const CAL = () => region(SVC, "export async function getCalendar(", "export async function getTeachers(");
   const TRAY = () => region(CAL(), "const cancelled = input.includeCancelled", ": undefined;");
   test("a separate read, gated on the flag, status = CANCELLED, the same range, ordered by date then time", () => {
-    expect(TRAY()).toContain('and(gte(b.date, range.start), lte(b.date, range.end), eq(b.status, "CANCELLED"))');
+    expect(TRAY()).toContain('and(gte(b.date, range.start), lte(b.date, range.end), eq(b.status, "CANCELLED"), scope ? ownScopeWhere(scope) : undefined)'); // 🔻 TASK-406: + the own-scope term (null for an admin ⇒ `and` drops it)
     expect(TRAY()).toContain("orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)]");
     expect(TRAY()).toContain("with: withBookingRelations,");
     expect(TRAY()).not.toContain("pendingSlot"); // every cancelled row, no B.1 filter — the tray is a list, not a grid
@@ -84,6 +84,6 @@ describe("🔑 the TRAY — on request only, every CANCELLED row in range, date/
     expect(CAL()).toContain(": undefined;");
   });
   test("the route passes the validated query through", () => {
-    expect(code(src("src/routes/api.ts"))).toContain('.get("/calendar", zValidator("query", v.calendarQuery), async (c) =>\n    c.json(await svc.getCalendar(c.req.valid("query"))),');
+    expect(code(src("src/routes/api.ts"))).toContain('.get("/calendar", zValidator("query", v.calendarQuery), async (c) =>\n    c.json(await svc.getCalendar(c.req.valid("query"), scopeOf(c.get("user")))),'); // 🔻 TASK-406: + the scope
   });
 });

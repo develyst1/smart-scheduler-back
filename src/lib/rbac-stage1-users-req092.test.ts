@@ -51,7 +51,7 @@ describe("🔑 the rules — pure, with values", () => {
   });
   test("the DTO never carries the hash", () => {
     const dto = usersSvc.toUserDTO({ id: "u", username: "a", displayName: "A", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00Z", passwordHash: "x" } as any);
-    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "grants", "id", "isSuperAdmin", "menus", "roleId", "roleName", "username"]); // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions; 🔻 TASK-387: + roleId, roleName, grants
+    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "grants", "id", "isSuperAdmin", "menus", "roleId", "roleName", "teacherId", "teacherName", "username"]); // 🔻 TASK-406: + teacherId/teacherName (never the hash) // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions; 🔻 TASK-387: + roleId, roleName, grants
   });
   test("`Bun.password` round-trips (argon2id) and a wrong password fails", async () => {
     const h = await usersSvc.hashPassword("correct horse");
@@ -165,7 +165,7 @@ describe("🔑 the routes — super admin only, through the ROOT app (the dev us
 describe("🔴 the source — actor = username everywhere, the env login retired, the guard, the migration", () => {
   test("🔑 zero `.sub` actors: every actor site in the router is `actorOf(c)` — 14 of them — and no route reads `c.get(\"user\")?.sub`", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(14); // 🔻 TASK-390: + `DELETE /courses/:id/rental`; 🔻 TASK-392: + `POST /students/:id/archive`
+    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(15); // 🔻 TASK-406: + `POST /teachers/me/leave` // 🔻 TASK-390: + `DELETE /courses/:id/rental`; 🔻 TASK-392: + `POST /students/:id/archive`
     for (const f of ["src/routes/api.ts", "src/routes/users.ts", "src/routes/auth.ts", "src/routes/register.ts", "src/routes/checkin.ts"]) {
       expect({ f, subActor: code(src(f)).includes('c.get("user")?.sub') }).toEqual({ f, subActor: false });
     }
@@ -213,12 +213,12 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(SVC).toContain("if (!input.isSuperAdmin && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
     expect(SVC).toContain("if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
   });
-  test("🔴 44 = 44 (0037 … 0043 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
+  test("🔴 45 = 45 (0037 … 0044 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(44);
+    expect(files.length).toBe(45);
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(44);
+    expect(j.entries.length).toBe(45);
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");

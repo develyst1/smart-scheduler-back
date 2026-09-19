@@ -14,7 +14,7 @@ export const meRoutes = new Hono()
   .get("/", async (c) => {
     const u = c.get("user");
     // TASK-387: `menus`/`actions` are EFFECTIVE (the guard's own set); `roleName` for the header — one small read, none without a role.
-    return c.json({ user: { id: u.id, username: u.username, displayName: u.displayName, isSuperAdmin: u.isSuperAdmin, menus: menusOf(u), actions: actionsOf(u), roleName: await roleNameOf(u.roleId) } });
+    return c.json({ user: { id: u.id, username: u.username, displayName: u.displayName, isSuperAdmin: u.isSuperAdmin, menus: menusOf(u), actions: actionsOf(u), roleName: await roleNameOf(u.roleId), teacherId: u.teacherId } }); // TASK-406: the FE learns it is scoped (never decides by it)
   })
   .post("/password", zValidator("json", v.changeOwnPassword), async (c) => {
     const { currentPassword, newPassword } = c.req.valid("json");

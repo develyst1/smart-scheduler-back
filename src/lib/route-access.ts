@@ -34,6 +34,25 @@ const SETTINGS: MenuKey[] = ["menu:settings"];
 const read = (menus: readonly MenuKey[]): RouteAccess => ({ menus });
 const act = (menus: readonly MenuKey[], action: ActionKey): RouteAccess => ({ menus, action });
 
+/**
+ * TASK-406 (REQ-097) — the routes a LINKED (teacher) account may reach at all, whatever its role grants; the access
+ * guard refuses everything else with `403 SCOPE_TEACHER` (fails closed). Taken from the FE's calendar page and its
+ * booking modal (TASK-407 keeps the two lists the same): the grid (`GET /calendar`), the month/paused reads
+ * (`GET /bookings`), the roster and badge lookups the page renders with, the modal's check-in and posted-sale reads,
+ * the check-in action, and the leave. 🚫 Nothing that returns another person's booking rows or people data
+ * (`/students*`, `/parents*`, `/courses*`, `/attention`, `/reports*`). `/me` and `/permissions` are outside the table.
+ */
+export const TEACHER_ALLOWED: ReadonlySet<string> = new Set([
+  "GET /calendar",
+  "GET /bookings",
+  "GET /teachers",
+  "GET /badges",
+  "GET /bookings/:id/checkin",
+  "GET /bookings/:id/posted-sale",
+  "PATCH /bookings/:id/status", // `attend` only — the body is checked at the route (`assertScopedStatusAction`)
+  "POST /teachers/me/leave",
+]);
+
 export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── the grid ──
   "GET /calendar": read(["menu:calendar"]),
@@ -54,6 +73,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /bookings/:id/rental": act(CAL_BOOK, "action:calendar.rental"),
   "POST /bookings/:id/rental/paid": act(CAL_BOOK, "action:calendar.rental"),
   "POST /bookings/:id/resume": act(CAL_BOOK, "action:calendar.pause"),
+  "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
   "PATCH /bookings/:id/status": act(CAL_BOOK, "action:calendar.status"), // + `action:calendar.leave-override` on its `override` flag (route)
   "POST /bookings/bulk-confirm": act(BOOKINGS, "action:bookings.bulk-confirm"),
   // ── the booking FORM's reads (opened from both pages) ──

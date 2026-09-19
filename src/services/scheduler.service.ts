@@ -2,6 +2,7 @@
 // these; all domain rules (quota/extension/idempotency) live here.
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { ownScopeWhere } from "../lib/own-scope";
 import { db } from "../db";
 import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
@@ -469,7 +470,10 @@ export async function liveEndDatesForCourses(courseIds: string[], exec: any = db
   return liveEndDateByCourse(rows);
 }
 
-export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }) {
+// TASK-406 (REQ-097) — `scope` = the linked teacher's id (`scopeOf(user)`), `null` for an admin: every read below is
+// byte-identical for `null`. Scoped: MY column only (an empty column for another coach would read "nothing booked" —
+// a false statement), my rows (the ONE predicate) on the grid and the tray, my camp weeks.
+export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }, scope: string | null = null) {
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
   const days = datesBetween(range.start, range.end);
 
@@ -481,6 +485,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
     readTeacherTypeOrder(),
   ]);
   const teacherDtos = teacherRows
+    .filter((t) => !scope || t.id === scope) // TASK-406: a scoped calendar is MY column
     .map(toTeacherDTO)
     .sort(
       (a, b) =>
@@ -510,6 +515,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
         // Hide bookings still waiting for an overbooked slot (B.1) — the grid shows
         // the existing PENDING_RESCHEDULE occupant until the move is confirmed.
         eq(b.pendingSlot, false),
+        scope ? ownScopeWhere(scope) : undefined, // TASK-406 — the ONE predicate; `and` drops an undefined
       ),
     with: withBookingRelations,
   });
@@ -537,7 +543,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
   const cancelled = input.includeCancelled
     ? await (async () => {
         const rows = await db.query.bookings.findMany({
-          where: (b, { and, eq, gte, lte }) => and(gte(b.date, range.start), lte(b.date, range.end), eq(b.status, "CANCELLED")),
+          where: (b, { and, eq, gte, lte }) => and(gte(b.date, range.start), lte(b.date, range.end), eq(b.status, "CANCELLED"), scope ? ownScopeWhere(scope) : undefined), // TASK-406
           with: withBookingRelations,
           orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)],
         });
@@ -546,7 +552,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
     : undefined;
 
   // TASK-401 — the camp DAY BANNER: weeks overlapping the range, per-date counts; no hour cells, no slot block (§8).
-  const campWeeksInRange = await weeksForCalendar(range);
+  const campWeeksInRange = (await weeksForCalendar(range)).filter((w: any) => !scope || (w.teacherIds ?? []).includes(scope)); // TASK-406: my weeks
   return {
     view: input.view,
     range: { from: range.start, to: range.end },
@@ -813,7 +819,7 @@ export async function getBookings(f: {
   sort?: BookingSort;
   page: number;
   limit: number;
-}) {
+}, scope: string | null = null) {
   // q searches student & subject names → resolve to ids first (keeps it one query each)
   let studentIds: string[] | null = null;
   let subjectIds: string[] | null = null;
@@ -828,6 +834,7 @@ export async function getBookings(f: {
   if (f.type) conds.push(eq(bookings.bookingType, f.type));
   if (f.status) conds.push(eq(bookings.status, f.status));
   if (f.teacherId) conds.push(eq(bookings.teacherId, f.teacherId));
+  if (scope) conds.push(ownScopeWhere(scope)); // TASK-406 — the ONE predicate, on the page AND the count (one `cond`)
   if (f.from) conds.push(gte(bookings.date, f.from));
   if (f.to) conds.push(lte(bookings.date, f.to));
   if (f.q) {
@@ -2869,6 +2876,81 @@ async function sendClassCancelledToTeacher(
     },
     tx,
   );
+}
+
+/**
+ * TASK-406 (REQ-097 C-2) — the leave's COACH notice: the OTHER teachers on the row (primary + extras minus me) — a row
+ * where I am an extra still has a primary coach who loses the session; when I am the only teacher, nobody (I am the
+ * coach). The same `class_cancelled_teacher` payload the admin's cancel sends; the same CONFIRMED-only rule.
+ */
+async function sendClassCancelledToOtherTeachers(
+  tx: any,
+  current: { id: string; status: string; teacherId: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; additionalTeachers?: { teacherId: string }[] | null },
+  reason: { cancelReason: string | null; note: string | null },
+  me: string,
+): Promise<number> {
+  if (current.status !== "CONFIRMED") return 0;
+  const ids = [...new Set([current.teacherId, ...(current.additionalTeachers ?? []).map((a) => a.teacherId)].filter((x): x is string => !!x && x !== me))];
+  if (!ids.length) return 0;
+  const rows = await tx.query.teachers.findMany({ where: (x: any, { inArray: inA }: any) => inA(x.id, ids) });
+  for (const t of rows) {
+    await enqueueLine(
+      {
+        recipientType: "teacher",
+        recipientLineUserId: t.lineUserId ?? null,
+        bookingId: current.id,
+        payload: { kind: "class_cancelled_teacher", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, cancelReason: reason.cancelReason, note: reason.note },
+      },
+      tx,
+    );
+  }
+  return rows.length;
+}
+
+/**
+ * TASK-406 (REQ-097 C-2, SPEC-083 §1.4) — a LINKED teacher reports their OWN leave for a date: every LIVE session I
+ * teach that day (primary or extra, `groupId IS NULL` — seats ride their GROUP row), or the named subset (each must
+ * be one of them, else 404), becomes an ordinary cancel with a truthful reason: `CANCELLED` + `cancel_reason =
+ * TEACHER_LEAVE` + `note = reason`; a GROUP row cancels its seats first (`cancelSeatsOfGroup`); a course row re-owes
+ * its make-up (`reconcileCoursePlan`). Pre-checked ALL first: a delivered (ATTENDED) session ⇒ `409 SESSION_DELIVERED`
+ * naming it, nothing written. ONE transaction. No cut-off (§0).
+ *
+ * Notices: the FAMILY — the NEW `class_cancelled_parent` (one row per linked device, the confirm's shape; a seat's
+ * family on a GROUP row too); the OTHER teachers on the row — the coach notice; never me. Both CONFIRMED-only, as the
+ * admin's cancel is (a PENDING session was never announced).
+ */
+export async function reportOwnLeave(me: string, input: { date: string; sessionIds?: string[]; reason: string }, actor: string | null) {
+  const mine = await db.query.bookings.findMany({
+    where: (b, { and: a, eq: e, isNull: nul, inArray: inA }) => a(e(b.date, input.date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES, "ATTENDED"]), ownScopeWhere(me)),
+    with: { course: true, voucher: true, additionalTeachers: true, seats: { with: { student: true } } },
+    orderBy: (b, { asc: a }) => [a(b.startTime)],
+  });
+  const wanted = input.sessionIds ? new Set(input.sessionIds) : null;
+  if (wanted) for (const id of wanted) if (!mine.some((b) => b.id === id)) throw notFound("ไม่พบคาบเรียน");
+  const targets = mine.filter((b) => !wanted || wanted.has(b.id));
+  const delivered = targets.find((b) => b.status === "ATTENDED");
+  if (delivered) throw conflict("SESSION_DELIVERED", `คาบ ${hhmm(delivered.startTime)} สอนไปแล้ว — แจ้งลาไม่ได้`);
+  const live = targets.filter((b) => (COURSE_LIVE_STATUSES as readonly string[]).includes(b.status));
+  let familiesNotified = 0;
+  await db.transaction(async (tx) => {
+    for (const b of live) {
+      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);
+      await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
+      if (b.courseId) await reconcileCoursePlan(tx, b.courseId);
+      await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);
+      if (b.status === "CONFIRMED") {
+        const payload = { kind: "class_cancelled_parent", bookingId: b.id, bookingType: b.bookingType ?? null, size: b.course?.size ?? b.voucher?.totalHours ?? null, cancelReason: "TEACHER_LEAVE", note: input.reason };
+        const studentIds = b.bookingType === "GROUP" ? (b.seats ?? []).map((s: any) => s.studentId).filter(Boolean) : [b.studentId];
+        for (const sid of studentIds) {
+          if (!sid) continue;
+          await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: b.id, payload });
+          familiesNotified++;
+        }
+      }
+    }
+  });
+  void actor;
+  return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };
 }
 
 async function sendCourseDroppedToTeachers(

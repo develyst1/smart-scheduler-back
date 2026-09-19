@@ -122,6 +122,9 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // TASK-397 (REQ-095 Stage 2a) — a GROUP row never names a course (it has no student); the swap moves seats of LIVE
   // group dates only, and an ended course's rows are not live. Classified deliberately, not by default.
   "POST /bookings/group-series": "unrelated",
+  // TASK-406 (REQ-097 C-2) — a teacher's own leave cancels the LIVE sessions they teach that day; an ended course's
+  // rows are all CANCELLED, so none is ever selected. Classified deliberately, not by default.
+  "POST /teachers/me/leave": "unrelated",
   "PATCH /bookings/:id/group-teacher": "unrelated",
   // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
   // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,

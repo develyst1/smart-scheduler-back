@@ -282,6 +282,28 @@ function buildOutboxMessage(
     // constraint is the HOUSE FORMAT, so both bodies are `leave_notice`'s shape: the bilingual stamp, the
     // customer's block, then `extra`-shaped appended lines. ✅ The words in the stamps and the `Reason` labels
     // are the owner's, approved as drafted (`§6.1`) and byte-frozen — see `line-i18n.ts`.
+    // TASK-406 (REQ-097) — the FAMILY's cancel notice, NEW: the coach's block under a PLACEHOLDER title (`cl_title`), the
+    // reason line (`TEACHER_LEAVE` ⇒ "ครูลา"). Enqueued by `reportOwnLeave` only (the admin's cancel stays coach-only —
+    // the owner's call); wiring it there later is one `enqueueParentCopies` call. The audience rule hides `coach`
+    // for a parent as it does on every other message.
+    case "class_cancelled_parent": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      return (
+        t("cl_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_cancelled",
+          {
+            student: ctx.studentName, // the worker enriches from the booking; no payload fallback
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: ctx.coach,
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
+      );
+    }
     case "class_cancelled_teacher": {
       const type = notifyTypeOf(payload.bookingType as string);
       return (

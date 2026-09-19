@@ -455,6 +455,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "on a young table; every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0044_user_teacher_link",
+    probe: { kind: "index", index: "users_teacher_id_uq" },
+    why:
+      "TASK-406 (REQ-097). One nullable FK column `users.teacher_id` and the partial unique index on it — the LAST " +
+      "object, invented here, is the witness. Catalog-only (SHARE ROW EXCLUSIVE on `teachers` for the FK's blink); " +
+      "every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

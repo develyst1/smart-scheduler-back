@@ -4,7 +4,7 @@ import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATU
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
-import { plannedRowExists } from "./lib/course-plan";
+import { END_REASONS, plannedRowExists } from "./lib/course-plan";
 
 // TASK-160: declared early so the sale schemas below can reference it.
 export const discountInput = z.object({
@@ -368,7 +368,7 @@ export const updateStatus = z.object({
   /** SPEC-067 / TASK-211 (REQ-074) — the closed-set cancel reason, beside `reason`'s free text. Optional here
    *  and REQUIRED by the service for 1HR / voucher cancels: the rule lives in one place, and zod holding a
    *  second copy of a domain rule is how the two drift. */
-  reasonCode: z.enum(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"]).optional(),
+  reasonCode: z.enum(END_REASONS).optional(), // TASK-406: the ONE set (`lib/course-plan.ts`), no second copy here
   // Admin override for the advance-notice leave rule (UC-029).
   override: z.boolean().optional(),
 });
@@ -583,10 +583,18 @@ export const createUser = z.object({
   password: z.string(),
   displayName: z.string().trim().min(1),
   isSuperAdmin: z.boolean().optional(),
+  teacherId: ID.nullable().optional(), // TASK-406 — the link; null/absent = an admin
 });
 export const updateUser = z.object({
   displayName: z.string().trim().optional(),
   isSuperAdmin: z.boolean().optional(),
+  teacherId: ID.nullable().optional(), // TASK-406 — set, change or clear (null) the link
+});
+// TASK-406 (REQ-097 C-2) — a LINKED teacher's own leave: the date, optionally the subset (else every live session that day), the reason.
+export const teacherLeave = z.object({
+  date: DATE,
+  sessionIds: z.array(ID).min(1).max(50).optional(),
+  reason: z.string().trim().min(3).max(200),
 });
 export const resetPassword = z.object({ password: z.string() });
 // TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.

@@ -309,6 +309,13 @@
       "when": 1783000000039,
       "tag": "0043_camp_checkin_token",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1783000000040,
+      "tag": "0044_user_teacher_link",
+      "breakpoints": true
     }
   ]
 }

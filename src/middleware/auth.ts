@@ -13,7 +13,8 @@ import { verifyToken } from "../lib/jwt";
 import { ApiException } from "../lib/http";
 import { effectiveGrantKeys, findUserById } from "../services/user.service";
 import { ACTION_FORBIDDEN_TH, hasAction, hasMenu, type ActionKey, type MenuKey } from "../lib/permissions";
-import { ROUTE_ACCESS, routeKey } from "../lib/route-access";
+import { ROUTE_ACCESS, TEACHER_ALLOWED, routeKey } from "../lib/route-access";
+import { SCOPE_TEACHER, isScoped } from "../lib/own-scope";
 
 export interface AuthUser {
   id: string;
@@ -25,6 +26,8 @@ export interface AuthUser {
   /** TASK-387 — the LIVE role's id (null = none); `/me` reads its name. */
   roleId: string | null;
   grants: Set<string>;
+  /** TASK-406 (REQ-097) — the teacher this account IS (`users.teacher_id`); set ⇒ SCOPED to own (`lib/own-scope.ts`). */
+  teacherId: string | null;
 }
 
 declare module "hono" {
@@ -39,9 +42,9 @@ export const authDisabled = () => process.env.SKIP_AUTH === "true";
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `SKIP_AUTH=true` (dev / tests): a full super-admin user object, so every guard and every actor site behaves. */
-export const DEV_USER: AuthUser = { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: new Set() };
+export const DEV_USER: AuthUser = { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, role: "super_admin", roleId: null, grants: new Set(), teacherId: null };
 
-export const toAuthUser = (row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; roleId?: string | null }, grants: Iterable<string> = []): AuthUser => ({
+export const toAuthUser = (row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; roleId?: string | null; teacherId?: string | null }, grants: Iterable<string> = []): AuthUser => ({
   id: row.id,
   username: row.username,
   displayName: row.displayName,
@@ -49,6 +52,7 @@ export const toAuthUser = (row: { id: string; username: string; displayName: str
   role: row.isSuperAdmin ? "super_admin" : "admin",
   roleId: row.roleId ?? null,
   grants: new Set(grants),
+  teacherId: row.teacherId ?? null,
 });
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -115,15 +119,24 @@ export async function accessGuard(c: Context, next: Next) {
   const handler = [...c.req.matchedRoutes].reverse().find((r) => !r.path.endsWith("*") && r.method !== "ALL");
   if (!handler) return next(); // no route matched at all — that is `notFound`'s 404 (TASK-297), not a menu refusal
   const path = handler.path;
+  const user = c.get("user");
+  // 🔴 TASK-408 — the SCOPE refusal for `/users*` and `/roles*` sits BEFORE their early exit: a LINKED super admin is
+  // scoped by TASK-406's rule ("the link, not the role"), and these groups' own `requireSuperAdmin` would have let it
+  // through to user/role admin. `/auth`, `/me`, `/permissions` stay exempt — a linked account must still log in,
+  // read `/me`, and see the labels.
+  if (/^\/api\/(users|roles)(\/|$)/.test(path) && isScoped(user)) throw SCOPE_TEACHER();
   if (/^\/api\/(auth|users|me|permissions|roles)(\/|$)/.test(path)) return next(); // TASK-383/385/387: not in the table (their own guards)
   const access = ROUTE_ACCESS[routeKey(c.req.method, path)];
   if (!access) {
     console.error(`[rbac] route not in ROUTE_ACCESS — refused closed: ${c.req.method} ${path} (add it to lib/route-access.ts)`);
     throw MENU_FORBIDDEN();
   }
-  const user = c.get("user");
   if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();
   if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();
+  // 🔴 TASK-406 (REQ-097) — a LINKED account reaches only `TEACHER_ALLOWED`, whatever its role grants: fails CLOSED.
+  // After the menu/action checks so an unmapped or ungranted route keeps its own sentence; the scope sentence is for
+  // a route the role would allow and the link forbids.
+  if (isScoped(user) && !TEACHER_ALLOWED.has(routeKey(c.req.method, path))) throw SCOPE_TEACHER();
   return next();
 }
 

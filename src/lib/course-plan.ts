@@ -380,7 +380,10 @@ export function planCourseMovesForCourse(c: EndableCourse, sessions: PlanSession
 /** SPEC-064 / TASK-181 — the closed set of reasons a course may be ended early. Closed so an `ADMIN_ERROR`
  *  course is findable later with one query; that findability is the entire reason the enum exists, since the
  *  money follow-up is a human decision taken elsewhere. */
-export const END_REASONS = ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"] as const;
+// TASK-406 (REQ-097): `TEACHER_LEAVE` — a teacher's own leave, written by `reportOwnLeave` on every row it cancels
+// (regardless of type); an admin's cancel never offers it. Readers: `isEndReason`, the validator's enum (this set —
+// no second copy), `ob_reason_TEACHER_LEAVE`.
+export const END_REASONS = ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", "TEACHER_LEAVE"] as const;
 export type EndReason = (typeof END_REASONS)[number];
 export const isEndReason = (v: unknown): v is EndReason =>
   typeof v === "string" && (END_REASONS as readonly string[]).includes(v);

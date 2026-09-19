@@ -75,7 +75,7 @@ describe("🔴 the enumeration — every route in `routes/api.ts` has a ROUTE_ME
     expect(ROUTE_ACCESS["GET /calendar"]!.menus).toEqual(["menu:calendar"]);
   });
   test("`/auth/*`, `/users/*`, `/roles/*`, `/me*` and `/permissions` are NOT in the table (login is public; users + roles are `requireSuperAdmin`; me + permissions are the JWT alone — TASK-383/385/387)", () => {
-    expect(Object.keys(ROUTE_ACCESS).some((k) => /\/(auth|users|me|permissions|roles)(\/|$)/.test(k))).toBe(false);
+    expect(Object.keys(ROUTE_ACCESS).some((k) => /^[A-Z]+ \/(auth|users|me|permissions|roles)(\/|$)/.test(k))).toBe(false); // 🔻 TASK-406: anchored at the path root — `POST /teachers/me/leave` is a table route, not `/me`
     // the guard's own exclusion names the same five — the table and the guard agree by source
     expect(code(src("src/middleware/auth.ts"))).toContain("if (/^\\/api\\/(auth|users|me|permissions|roles)(\\/|$)/.test(path)) return next();");
     expect(routeKey("get", "/api/calendar")).toBe("GET /calendar");
@@ -167,7 +167,7 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
     process.env.SKIP_AUTH = "true";
     const res = await app.fetch(new Request("http://localhost/api/me"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleName: null } });
+    expect(await res.json()).toEqual({ user: { id: "dev", username: "dev", displayName: "dev", isSuperAdmin: true, menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleName: null, teacherId: null } }); // 🔻 TASK-406: + teacherId
   });
   test("🔴 GET /api/me WITHOUT a token ⇒ 401 — the `me` routes sit under the normal `/api/*` guard; login stays public", async () => {
     process.env.SKIP_AUTH = "false";
@@ -195,7 +195,7 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
       const token = await signToken({ sub: id, username: "nobody", role: "admin", isSuperAdmin: false });
       const res = await app.fetch(new Request("http://localhost/api/me", { headers: { authorization: `Bearer ${token}` } }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [], actions: [], roleName: null } });
+      expect(await res.json()).toEqual({ user: { id, username: "nobody", displayName: "Nobody", isSuperAdmin: false, menus: [], actions: [], roleName: null, teacherId: null } });
       const s3 = spyOn(usersSvc, "changeOwnPassword").mockImplementation((async () => ({ ok: true as const })) as any);
       try {
         const pw = await app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ currentPassword: "old-pass-1", newPassword: "new-pass-1" }) }));
@@ -272,7 +272,7 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/permissions", permissionRoutes);')); // TASK-385
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
-  test("44 = 44 — Stage 2 added no migration (0037 … 0043 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(44);
+  test("45 = 45 — Stage 2 added no migration (0037 … 0044 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(45);
   });
 });
