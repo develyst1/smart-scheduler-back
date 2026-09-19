@@ -1,7 +1,7 @@
 // TASK-401 (`REQ-095` Stage 3a, SPEC-082) — the Balance CAMP: migration `0042_camp` (three tables, NO expiry by
 // structure, the unique index as witness, the `students` lock named), the pure unit/credit/transition rules by value,
 // the ONE redeem writer's refusals naming the date, the day cut INSIDE the day-end tx, the sale in the voucher's shape,
-// the four sale items, the RBAC keys (13 menus / 54 acts), the nine routes through the ROOT app. 43 = 43.
+// the four sale items, the RBAC keys (13 menus / 54 acts), the nine routes through the ROOT app. 44 = 44.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0042, counted, witnessed by the UNIQUE index, n
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0042_camp.sql"), "utf8");
-  test("43 = 43: `0042_camp` is the 43rd file, idx 42, the last; the order 0038 → 0042 named in the header", () => {
-    expect(files.length).toBe(43);
-    expect(journal.entries.length).toBe(43);
+  test("44 = 44: `0042_camp` is the 43rd file, idx 42 (TASK-403 added 0043 after it); the order 0038 → 0042 named in the header", () => {
+    expect(files.length).toBe(44);
+    expect(journal.entries.length).toBe(44);
     expect(files[42]).toBe("0042_camp.sql");
     expect(journal.entries[42]).toMatchObject({ idx: 42, tag: "0042_camp" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → THIS");
@@ -117,7 +117,7 @@ describe("🔴 the pure rules by value — one currency (half-day units), the we
     expect(unitsDelta("ATTENDED", "ABSENT", 2)).toBe(0); // the same-day correction moves nothing
     expect(unitsDelta("ABSENT", "ATTENDED", 2)).toBe(0);
   });
-  test("transitions: PLANNED → the three; ATTENDED ↔ ABSENT; CANCELLED only BEFORE the day; everything else 409 (undo to PLANNED is 3b)", () => {
+  test("transitions: PLANNED → the three; ATTENDED ↔ ABSENT; the 3b undo to PLANNED (TASK-403); CANCELLED only BEFORE the day; everything else 409", () => {
     const today = "2026-10-05";
     expect(() => assertDayTransition("PLANNED", "ATTENDED", "2026-10-05", today)).not.toThrow();
     expect(() => assertDayTransition("PLANNED", "ABSENT", "2026-10-05", today)).not.toThrow();
@@ -130,8 +130,11 @@ describe("🔴 the pure rules by value — one currency (half-day units), the we
     expect(thrown("ATTENDED", "CANCELLED")).toMatchObject({ status: 409, code: "CAMP_DAY_TRANSITION" });
     expect(thrown("ABSENT", "CANCELLED")).toMatchObject({ code: "CAMP_DAY_TRANSITION" });
     expect(thrown("CANCELLED", "ATTENDED")).toMatchObject({ code: "CAMP_DAY_TRANSITION" });
-    expect(thrown("ATTENDED", "PLANNED")).toMatchObject({ code: "CAMP_DAY_TRANSITION" });
+    // 🔻 TASK-403 (3b): the UNDO — ATTENDED | ABSENT → PLANNED — is now a transition (its reason is the boundary's); CANCELLED stays final
+    expect(() => assertDayTransition("ATTENDED", "PLANNED", "2026-10-05", today)).not.toThrow();
+    expect(() => assertDayTransition("ABSENT", "PLANNED", "2026-10-01", today)).not.toThrow();
     expect(thrown("CANCELLED", "PLANNED")).toMatchObject({ code: "CAMP_DAY_TRANSITION" });
+    expect(thrown("PLANNED", "PLANNED")).toMatchObject({ code: "CAMP_DAY_TRANSITION" });
   });
   test("datesOfWeek: inclusive, consecutive, capped", () => {
     expect(datesOfWeek("2026-10-05", "2026-10-09")).toEqual(["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"]);
@@ -211,7 +214,8 @@ describe("🔴 the service (source) — ONE redeem writer, the 409s name the dat
     expect(C.indexOf("void recordSale")).toBeGreaterThan(C.lastIndexOf("planDays(tx,"));
     expect((SVC.match(/recordSale\(/g) ?? []).length).toBe(1);
     expect(C).not.toMatch(/expir/i);
-    expect(SVC).not.toMatch(/expir/i);
+    // 🔻 TASK-403: the camp DAY's check-in token has an expiry (the session QR's pattern) — the PACKAGE still has none
+    expect(SVC.replace(/checkinTokenExpiresAt|campTokenExpiry|expiresAt/g, "")).not.toMatch(/expir/i);
     expect(code(src("src/routes/camp.ts"))).toContain('assertMayDiscount(body.discount, c.get("user"));');
   });
   test("`markDay` = the transition rule + the delta on the package; `cutCampDays` runs INSIDE the day-end tx by START (date <= runDate) and reports its count", () => {
@@ -233,7 +237,7 @@ describe("🔴 the service (source) — ONE redeem writer, the 409s name the dat
   });
 });
 
-describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54), nine rows in the access table", () => {
+describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54), ten rows in the access table (TASK-403 added the QR)", () => {
   test("keys by value", () => {
     expect(MENU_KEYS.length).toBe(13);
     expect(MENU_KEYS[MENU_KEYS.indexOf("menu:badges") + 1]).toBe("menu:camp");
@@ -253,7 +257,8 @@ describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54)
     expect(A["POST /camp/packages"]).toEqual({ menus: ["menu:camp"], action: "action:camp.sell" });
     expect(A["POST /camp/packages/:id/days"]).toEqual({ menus: ["menu:camp"], action: "action:camp.redeem" });
     expect(A["PATCH /camp/days/:id"]).toEqual({ menus: ["menu:camp"], action: "action:camp.day-mark" });
-    expect(Object.keys(A).filter((k) => k.includes("/camp/")).length).toBe(9);
+    expect(A["GET /camp/days/:id/checkin"]).toEqual({ menus: ["menu:camp"] }); // TASK-403
+    expect(Object.keys(A).filter((k) => k.includes("/camp/")).length).toBe(10); // TASK-403: +1 (the QR)
     expect(code(src("src/index.ts"))).toContain('app.route("/api/camp", campRoutes);');
   });
 });

@@ -42,21 +42,47 @@ export const creditOf = (p: { totalUnits: number; usedUnits: number }, plannedUn
 export const consumes = (status: CampDayStatus): boolean => status === "ATTENDED" || status === "ABSENT";
 
 /**
- * The 3a transitions: from PLANNED to any of the three; between ATTENDED and ABSENT (the staff correcting the same
- * day — both consumed, so no units move); nothing else (an undo to PLANNED is 3b). CANCELLED only BEFORE the day
- * has started (`date <= today` ⇒ refused: the owner's §4.4 — on the day it is ABSENT, consumed).
+ * The transitions: from PLANNED to any of the three; between ATTENDED and ABSENT (the staff correcting the same
+ * day — both consumed, so no units move); the UNDO (3b, TASK-403): ATTENDED | ABSENT → PLANNED (the units go back,
+ * no money — a required reason at the boundary); nothing else — a CANCELLED row is final. CANCELLED only BEFORE
+ * the day has started (`date <= today` ⇒ refused: the owner's §4.4 — on the day it is ABSENT, consumed).
  */
 export function assertDayTransition(from: string, to: CampDayStatus, date: string, today: string): void {
-  const ok = (from === "PLANNED" && (to === "ATTENDED" || to === "ABSENT" || to === "CANCELLED")) || (from === "ATTENDED" && to === "ABSENT") || (from === "ABSENT" && to === "ATTENDED");
+  const ok = (from === "PLANNED" && (to === "ATTENDED" || to === "ABSENT" || to === "CANCELLED")) || (from === "ATTENDED" && to === "ABSENT") || (from === "ABSENT" && to === "ATTENDED") || isUndo(from, to);
   if (!ok) throw conflict("CAMP_DAY_TRANSITION", `เปลี่ยนสถานะจาก ${from} เป็น ${to} ไม่ได้`);
   if (to === "CANCELLED" && date <= today) throw conflict("CAMP_DAY_STARTED", "วันแคมป์เริ่มแล้ว — บันทึกขาดแทน");
 }
 
-/** The units delta on a package for a transition (positive = consume more). */
+/** The UNDO (3b): a consumed day back to PLANNED. */
+export const isUndo = (from: string, to: string): boolean => to === "PLANNED" && (from === "ATTENDED" || from === "ABSENT");
+
+/** The units delta on a package for a transition (positive = consume more; the undo is negative). */
 export function unitsDelta(from: string, to: CampDayStatus, units: number): number {
   const before = consumes(from as CampDayStatus) ? units : 0;
   const after = consumes(to) ? units : 0;
   return after - before;
+}
+
+/** `used_units` after a delta — never below zero, whatever the row holds (the check-in-correction floor). */
+export const usedAfter = (used: number, delta: number): number => Math.max(0, (used ?? 0) + delta);
+
+/** A camp day's token lives the whole DATE (no start time): 23:59:59 Bangkok of that date. */
+export const campTokenExpiry = (date: string): Date => new Date(`${date}T23:59:59+07:00`);
+
+/**
+ * The camp SCAN (TASK-403, the public `POST /checkin/camp`): what one scan means for a day row. Pure — the service
+ * does the write through `markDay`. `"already"` = ATTENDED (idempotent, nothing written); `"attend"` = PLANNED or
+ * ABSENT (the child turned up — the ATTENDED ↔ ABSENT correction through the SAME transition); a CANCELLED row is
+ * `409 CAMP_DAY_TRANSITION`; a scan on any other date than the day's is `409 CAMP_DAY_NOT_TODAY` (the token exists
+ * from the first QR view, so the wrong day must refuse); an expired token is `410 CAMP_TOKEN_EXPIRED` — the camp's
+ * code; the session's page keeps its 400, on purpose.
+ */
+export function campScanOutcome(day: { status: string; date: string; checkinTokenExpiresAt?: Date | null }, today: string, now: Date): "already" | "attend" {
+  if (day.status === "ATTENDED") return "already";
+  if (day.status === "CANCELLED") throw conflict("CAMP_DAY_TRANSITION", "วันแคมป์นี้ถูกยกเลิกแล้ว");
+  if (day.checkinTokenExpiresAt && day.checkinTokenExpiresAt < now) throw new ApiException(410, "CAMP_TOKEN_EXPIRED", "โทเคนเช็คอินหมดอายุแล้ว");
+  if (day.date !== today) throw conflict("CAMP_DAY_NOT_TODAY", `วันแคมป์นี้คือวันที่ ${day.date} — เช็คอินได้เฉพาะวันนั้น`);
+  return "attend";
 }
 
 /** Consecutive dates from start to end inclusive (ISO). Pure. */

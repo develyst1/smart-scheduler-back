@@ -256,7 +256,7 @@ describe("🔴 the service and the wiring (source)", () => {
     const G = MW.slice(MW.indexOf("export async function accessGuard("));
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();"));
   });
-  test("43 = 43 — Stage 3 added no migration (0037 … 0042 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(43);
+  test("44 = 44 — Stage 3 added no migration (0037 … 0043 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(44);
   });
 });

@@ -74,7 +74,11 @@ export interface ReminderGroup {
 }
 
 /** Statuses that mean "there is a class today". A cancelled or leave row must never produce a reminder. */
-export const REMINDABLE = new Set(["PENDING", "CONFIRMED", "EXTENDED"]); // TASK-397: exported — the job filters a GROUP row's seats by the same list
+// 🔴 REQ-096 (TASK-403) — CONFIRMED ONLY. The set carried PENDING (and, since REQ-094's make-ups, EXTENDED) from the day
+// the job was born, so a family was reminded of a session the shop had not confirmed — the owner's report. REQ-094's
+// ruling makes EXTENDED "not yet confirmed" (the bulk confirm turns it CONFIRMED; the day-end ignores it), so it goes
+// with PENDING. ONE constant, both audiences, and the GROUP seats (TASK-397: the job filters a row's seats by it).
+export const REMINDABLE = new Set(["CONFIRMED"]);
 
 /**
  * Group today's sessions into **one entry per person** — every teacher who teaches today, every parent whose

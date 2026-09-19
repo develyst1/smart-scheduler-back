@@ -22,4 +22,10 @@ export const campRoutes = new Hono()
     return c.json(await camp.createPackage({ ...body, actor: actorOf(c) }), 201);
   })
   .post("/packages/:id/days", zValidator("json", v.redeemCampDays), async (c) => c.json(await camp.redeemDays(c.req.param("id"), c.req.valid("json"), actorOf(c)), 201))
-  .patch("/days/:id", zValidator("json", v.markCampDay), async (c) => c.json(await camp.markDay(c.req.param("id"), c.req.valid("json").status, actorOf(c))));
+  // TASK-403: `status: "PLANNED"` + `reason` is the UNDO (units back, no money); the same act key — a mark is a mark.
+  .patch("/days/:id", zValidator("json", v.markCampDay), async (c) => {
+    const body = c.req.valid("json");
+    return c.json(await camp.markDay(c.req.param("id"), body.status, actorOf(c), body.reason ?? null));
+  })
+  // TASK-403: the day's check-in QR — the token is minted on the first view (lazy), lives to 23:59:59 of the date.
+  .get("/days/:id/checkin", async (c) => c.json(await camp.getDayCheckinQr(c.req.param("id"))));

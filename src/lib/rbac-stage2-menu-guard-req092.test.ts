@@ -272,7 +272,7 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/permissions", permissionRoutes);')); // TASK-385
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
-  test("43 = 43 — Stage 2 added no migration (0037 … 0042 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(43);
+  test("44 = 44 — Stage 2 added no migration (0037 … 0043 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(44);
   });
 });

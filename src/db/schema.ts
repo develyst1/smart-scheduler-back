@@ -1047,9 +1047,18 @@ export const campDays = pgTable(
     status: text("status").notNull().default("PLANNED"),
     markedBy: text("marked_by"),
     markedAt: timestamp("marked_at", { withTimezone: true }),
+    // TASK-403 (0043) — the camp day's check-in token (the session QR's pattern), issued lazily on the first QR view;
+    // the undo's reason (ATTENDED | ABSENT → PLANNED), cleared by the next mark.
+    checkinToken: text("checkin_token"),
+    checkinTokenExpiresAt: timestamp("checkin_token_expires_at", { withTimezone: true }),
+    undoReason: text("undo_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("camp_days_week_date_idx").on(t.campWeekId, t.date), uniqueIndex("camp_days_package_date_uq").on(t.campPackageId, t.date)],
+  (t) => [
+    index("camp_days_week_date_idx").on(t.campWeekId, t.date),
+    uniqueIndex("camp_days_package_date_uq").on(t.campPackageId, t.date),
+    uniqueIndex("camp_days_checkin_token_uq").on(t.checkinToken).where(sql`${t.checkinToken} is not null`),
+  ],
 );
 
 export const campPackagesRelations = relations(campPackages, ({ one, many }) => ({

@@ -36,6 +36,9 @@ import { enqueueLine } from "../lib/line";
 import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
 import { rentalPrintLine } from "../lib/rental-row";
 import { REMINDABLE, dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
+import { campReminderSends } from "../lib/camp-reminder";
+import { campReminderInputs } from "./camp.service";
+import { getSetting } from "./settings.service";
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -502,13 +505,38 @@ export async function runDailyReminderJob(date?: string) {
     else sent++;
   }
 
+  // 🔴 TASK-403 (REQ-095 Stage 3b) — the CAMP-day reminder, AFTER the session sends and behind a settings flag.
+  // `camp_reminder_enabled` is `off` by default (the words are PLACEHOLDER until the owner approves Porter's copy):
+  // OFF ⇒ nothing is read, built or enqueued — `campReminded: 0`, `campEnabled: false` in the run summary. ON ⇒ a
+  // SEPARATE select on `camp_days` (the session select above is REQ-094's byte-frozen one and stays untouched), the
+  // pure builder, and `enqueueLine` per send under its own `camp-reminder:` key (a family with a session AND a camp
+  // day today gets both messages; a second run the same morning enqueues nothing).
+  const campEnabled = (await getSetting("camp_reminder_enabled")).value === "on";
+  let campReminded = 0, campSkipped = 0, campAlready = 0;
+  if (campEnabled) {
+    const { days, weeks } = await campReminderInputs(runDate);
+    const campSends = campReminderSends(days, weeks, runDate);
+    for (const g of campSends) {
+      const result = await enqueueLine({
+        recipientType: g.recipientType,
+        recipientLineUserId: g.lineUserId,
+        payload: g.payload,
+        skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
+        idempotencyKey: g.key,
+      });
+      if (result.status === "duplicate") campAlready++;
+      else if (result.status === "skipped") campSkipped++;
+      else campReminded++;
+    }
+  }
+
   await db.insert(jobRuns).values({
     job: REMINDER_JOB,
     runDate,
     status: "success",
-    summary: { attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach },
+    summary: { attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach, campEnabled, campReminded, campSkipped, campAlready },
     finishedAt: new Date(),
   });
 
-  return { date: runDate, attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach };
+  return { date: runDate, attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach, campEnabled, campReminded, campSkipped, campAlready };
 }

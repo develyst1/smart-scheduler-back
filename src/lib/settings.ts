@@ -37,6 +37,7 @@ const oneOf =
 
 /** SPEC-071 Amendment #2 / TASK-232 — the LINE parent 2FA step. Shipped `off`; see the entry below. */
 export const LINE_PARENT_2FA_OPTIONS = ["off", "on"] as const;
+export const CAMP_REMINDER_OPTIONS = ["off", "on"] as const; // TASK-403
 
 export const SETTINGS = {
   teacher_change_notice_days: {
@@ -104,6 +105,19 @@ export const SETTINGS = {
     options: LINE_PARENT_2FA_OPTIONS,
     label: "ยืนยันตัวตน 6 หลัก ก่อนแสดงรายชื่อนักเรียน (LINE)",
     parse: oneOf(LINE_PARENT_2FA_OPTIONS),
+  },
+  // TASK-403 (REQ-095 Stage 3b) — the camp-day LINE reminder's SEND PATH ships today behind this flag; the words are
+  // PLACEHOLDER (`cp_*`) until the owner approves Porter's copy. Default OFF: the 08:15 job builds and enqueues
+  // NOTHING for camp days. The owner flips it in Settings after the copy lands — no deploy. (The registry has no
+  // boolean type; `off | on` is the `line_parent_2fa` shape.)
+  camp_reminder_enabled: {
+    key: "camp_reminder_enabled",
+    type: "enum",
+    default: "off",
+    unit: "option",
+    options: CAMP_REMINDER_OPTIONS,
+    label: "ส่งแจ้งเตือน LINE วันแคมป์ (08:15)",
+    parse: oneOf(CAMP_REMINDER_OPTIONS),
   },
 } as const satisfies Record<string, SettingSpec>;
 

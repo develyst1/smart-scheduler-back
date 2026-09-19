@@ -39,6 +39,9 @@ describe("registry shape (TASK-101)", () => {
   // rule (`notify_on_leave`); `line_parent_2fa` is the enum the check now rests on.
   test("the registered keys, each with type/default/unit/label/parse", () => {
     expect(Object.keys(SETTINGS).sort()).toEqual([
+      // TASK-403 (REQ-095 Stage 3b) — the camp-day LINE reminder's send path ships behind this, default `off`,
+      // until the owner approves the copy. A SETTING so that turning it on is a decision, never a deploy.
+      "camp_reminder_enabled",
       "checkin_early_minutes",
       "leave_cutoff_hours_freelance", // TASK-146 (REQ-047) — the leave cut-off stopped being a constant
       "leave_cutoff_hours_fulltime",

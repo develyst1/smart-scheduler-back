@@ -10,7 +10,11 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
-import { assertDayTransition, creditOf, datesOfWeek, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
+import { assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, usedAfter, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
+import { generateCheckinToken } from "../lib/checkin";
+import { checkinUrl } from "../lib/checkin-token";
+import { type CampDayInput, type CampWeekInput } from "../lib/camp-reminder";
+import { familyLineUserIdsBulk } from "../lib/family-link";
 import { assertStudentActive } from "./parent.service";
 import { assertHouseholdNotSuspended } from "./scheduler.service";
 
@@ -67,7 +71,7 @@ export async function weekDays(id: string) {
   const byDate = new Map<string, any[]>();
   for (const r of rows) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
   const days = datesOfWeek(w.startDate, w.endDate).map((date) => {
-    const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status }));
+    const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
     return { date, entries, count: entries.filter((e: any) => e.status !== "CANCELLED").length, capacity: w.capacity ?? null };
   });
   return { week: toWeekDTO(w), days };
@@ -80,7 +84,7 @@ const toPackageDTO = (p: any, days: any[]) => {
     id: p.id, studentId: p.studentId, kind: p.kind, plan: p.plan, totalUnits: p.totalUnits, usedUnits: p.usedUnits, plannedUnits: planned, credit: creditOf(p, planned),
     saleId: p.saleId ?? null, note: p.note ?? null,
     discount: p.discountKind ? { kind: p.discountKind, value: p.discountValue, reason: p.discountReason, actor: p.discountActor } : null,
-    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status })),
+    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null })),
     createdBy: p.createdBy ?? null, createdAt: new Date(p.createdAt).toISOString(),
   };
 };
@@ -176,19 +180,87 @@ export async function redeemDays(packageId: string, input: { weekId: string; dat
   return { planned, package: await packageDTO(packageId) };
 }
 
-/** Mark a day: the transitions + the units delta on the package, in one tx. */
-export async function markDay(dayId: string, status: CampDayStatus, actor: string | null) {
+/**
+ * Mark a day: the transitions + the units delta on the package, in one tx. TASK-403: `status: "PLANNED"` is the UNDO
+ * (ATTENDED | ABSENT → PLANNED): the units go BACK (`used` floored at 0), the reason is stored on the row, no money
+ * moves (there is no sale here — by absence). A mark clears a previous undo's reason. The day-end cut's rows
+ * (`marked_by = "end-of-day"`) and a staff mark undo alike — only `status` is read.
+ */
+export async function markDay(dayId: string, status: CampDayStatus, actor: string | null, reason?: string | null) {
   const { date: today } = bangkokNow();
   const packageId = await db.transaction(async (tx) => {
     const d = await tx.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId) });
     if (!d) throw notFound("ไม่พบวันแคมป์");
     assertDayTransition(d.status, status, d.date, today);
+    const undo = isUndo(d.status, status);
+    if (undo && !reason) throw badRequest("การยกเลิกการบันทึกต้องระบุเหตุผล");
     const delta = unitsDelta(d.status, status, d.units);
-    await tx.update(campDays).set({ status, markedBy: actor, markedAt: new Date() }).where(eq(campDays.id, dayId));
-    if (delta !== 0) await tx.update(campPackages).set({ usedUnits: sql`${campPackages.usedUnits} + ${delta}` }).where(eq(campPackages.id, d.campPackageId));
+    await tx.update(campDays).set({ status, markedBy: actor, markedAt: new Date(), undoReason: undo ? reason : null }).where(eq(campDays.id, dayId));
+    if (delta !== 0) {
+      const p = await tx.query.campPackages.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, d.campPackageId) });
+      await tx.update(campPackages).set({ usedUnits: usedAfter(p?.usedUnits ?? 0, delta) }).where(eq(campPackages.id, d.campPackageId));
+    }
     return d.campPackageId;
   });
   return { package: await packageDTO(packageId) };
+}
+
+// ───────────── the check-in QR (TASK-403) ─────────────
+/**
+ * The staff's QR for ONE camp day — the token is minted LAZILY here on the first view (a day may be planned weeks
+ * ahead; a token minted at redeem would sit live for weeks), and lives to 23:59:59 of the day's date. The QR image
+ * is the FE's, as the session's.
+ */
+export async function getDayCheckinQr(dayId: string) {
+  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId), with: { package: { with: { student: true } } } });
+  if (!d) throw notFound("ไม่พบวันแคมป์");
+  let token = d.checkinToken, expiresAt = d.checkinTokenExpiresAt;
+  if (!token) {
+    token = generateCheckinToken();
+    expiresAt = campTokenExpiry(d.date);
+    await db.update(campDays).set({ checkinToken: token, checkinTokenExpiresAt: expiresAt }).where(eq(campDays.id, dayId));
+  }
+  return { dayId: d.id, token, url: checkinUrl(`/checkin/camp?token=${token}`), expiresAt: expiresAt!.toISOString(), studentName: (d as any).package?.student?.nickname ?? (d as any).package?.student?.name ?? "", date: d.date, half: d.half };
+}
+
+/**
+ * The public scan (`POST /checkin/camp { token }`, no JWT — the token is the credential). The outcome is the pure
+ * rule (`campScanOutcome`); an attend goes through the SAME `markDay` transition (consumes the units). 🚫 No CRM
+ * points — a camp day has no "on time" (Sober 09-19: on the owner's list, not built).
+ */
+export async function checkinCampByToken(token: string) {
+  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token) });
+  if (!d) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
+  const { date: today } = bangkokNow();
+  const outcome = campScanOutcome(d, today, new Date());
+  if (outcome === "already") return { already: true, day: dayDTO(d) };
+  const { package: pkg } = await markDay(d.id, "ATTENDED", "checkin-qr");
+  return { already: false, day: pkg.days.find((x) => x.dayId === d.id) ?? dayDTO({ ...d, status: "ATTENDED" }) };
+}
+const dayDTO = (d: any) => ({ dayId: d.id, weekId: d.campWeekId, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null });
+
+// ───────────── the reminder's inputs (TASK-403) ─────────────
+/**
+ * The camp rows for the 08:15 job — a SEPARATE select on `camp_days` (the session reminder's select is REQ-094's
+ * byte-frozen one). Every PLANNED day dated `runDate` with its student's family accounts, and every OPEN week
+ * covering `runDate` with its teachers. The builder (`lib/camp-reminder.ts`) decides who gets what.
+ */
+export async function campReminderInputs(runDate: string): Promise<{ days: CampDayInput[]; weeks: CampWeekInput[] }> {
+  const weeksRows = await db.query.campWeeks.findMany({ where: (w: any, { and: a, lte: le, gte: ge, eq: e }: any) => a(le(w.startDate, runDate), ge(w.endDate, runDate), e(w.status, "OPEN")) });
+  const teacherIds = [...new Set(weeksRows.flatMap((w: any) => w.teacherIds ?? []))] as string[];
+  const teacherRows = teacherIds.length ? await db.query.teachers.findMany({ where: (t: any, { inArray: inA }: any) => inA(t.id, teacherIds) }) : [];
+  const teacherById = new Map(teacherRows.map((t: any) => [t.id, t]));
+  const weeks: CampWeekInput[] = weeksRows.map((w: any) => ({ id: w.id, name: w.name, status: w.status, teachers: (w.teacherIds ?? []).map((id: string) => ({ id, lineUserId: teacherById.get(id)?.lineUserId ?? null })) }));
+  const dayRows = await db.query.campDays.findMany({ where: (d: any, { eq: e }: any) => e(d.date, runDate), with: { package: { with: { student: true } } } });
+  const parentIds = [...new Set(dayRows.map((d: any) => d.package?.student?.parentId).filter(Boolean))] as string[];
+  const familyAccounts = await familyLineUserIdsBulk(parentIds);
+  const days: CampDayInput[] = dayRows.map((d: any) => ({
+    dayId: d.id, weekId: d.campWeekId, half: d.half, status: d.status, studentId: d.package?.studentId,
+    studentName: d.package?.student?.nickname ?? d.package?.student?.name ?? "-",
+    parentId: d.package?.student?.parentId ?? null,
+    parentLineUserIds: d.package?.student?.parentId ? (familyAccounts.get(d.package.student.parentId) ?? []) : [],
+  }));
+  return { days, weeks };
 }
 
 /**

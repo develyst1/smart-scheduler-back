@@ -502,7 +502,11 @@ export const createCampPackage = z
   })
   .refine((d) => (d.plan === "DAILY") === (d.days !== undefined), { message: "แพ็กเกจรายวันต้องระบุ days; แพ็กเกจรายสัปดาห์ต้องไม่ระบุ", path: ["days"] });
 export const campPackagesQuery = z.object({ studentId: ID });
-export const markCampDay = z.object({ status: z.enum(CAMP_DAY_STATUSES).exclude(["PLANNED"]) });
+// TASK-403: `PLANNED` is the UNDO (3b) and needs a reason (3..200 — the check-in-correction precedent); a mark never carries one.
+export const markCampDay = z
+  .object({ status: z.enum(CAMP_DAY_STATUSES), reason: z.string().trim().min(3).max(200).optional() })
+  .refine((d) => (d.status === "PLANNED") === (d.reason !== undefined), { message: "การยกเลิกการบันทึกต้องระบุเหตุผล (3–200 ตัวอักษร) — การบันทึกปกติไม่ต้องระบุ", path: ["reason"] });
+export const campCheckinBody = z.object({ token: z.string().trim().min(8) });
 
 export const moveBooking = z
   .object({

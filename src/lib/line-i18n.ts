@@ -597,6 +597,15 @@ const TABLE: Record<string, Entry> = {
   ob_default: { TH: "🔔 แจ้งเตือนจากระบบตารางเรียน", EN: "🔔 Notification from the scheduler" },
   // TASK-094: a per-session teacher swap notifies BOTH teachers — the one it leaves and the one it lands on.
   ob_teacher_assigned_title: { TH: "👩‍🏫 คุณได้รับมอบหมายคาบสอนใหม่", EN: "👩‍🏫 A class has been assigned to you" },
+  // TASK-405 (REQ-095 §10, Stage 3b close) — the camp-day reminder's labels, THE OWNER'S WORDS via @Porter (2026-09-19).
+  // 🔑 `Students`, never `Kids` — the app's term (a customer may be a teen/adult). `Student`/`Date` reuse the
+  // `ob_f_*` keys; these are the camp's own. The labels ride the per-audience language rule like every other message.
+  cp_camp: { TH: "แคมป์", EN: "Camp" },
+  cp_students: { TH: "Students", EN: "Students" },
+  cp_time: { TH: "ช่วง", EN: "Time" },
+  cp_half_full: { TH: "เต็มวัน", EN: "Full day" },
+  cp_half_am: { TH: "ช่วงเช้า", EN: "Morning (AM)" },
+  cp_half_pm: { TH: "ช่วงบ่าย", EN: "Afternoon (PM)" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };
 

@@ -21,6 +21,9 @@ import {
   type TemplateKey,
 } from "./line-message-fields";
 
+/** TASK-405 — the camp teacher block lists at most this many children, then `+n` (the owner's rule). */
+export const CAMP_NAMES_MAX = 12;
+
 export interface OutboxPayload {
   kind?: string;
   to?: { date?: string; startTime?: string };
@@ -347,6 +350,25 @@ function buildOutboxMessage(
     }
     case "daily_reminder":
       return renderTodaySchedule((payload.rows as TodayRow[]) ?? [], lang, recipientType);
+    // TASK-403 / TASK-405 (REQ-095 Stage 3b) — the camp-day reminder, THE OWNER'S copy (§0 via @Porter). Everything is IN
+    // THE PAYLOAD (`lib/camp-reminder.ts` builds the rows). Under the same `⏱️TODAY'S SCHEDULE:` title:
+    //   teacher — per OPEN week: `Camp : <week>` · `Date : DD/MM/YYYY` · `Students : n (Full x · AM y · PM z)` · the
+    //             children beneath, `  - name`, up to CAMP_NAMES_MAX then `  +n` (the group's `Seats` shape);
+    //   parent  — per child: `Student : <child>` · `Camp : <week>` · `Date : DD/MM/YYYY` · `Time : Full day | Morning (AM) | Afternoon (PM)`.
+    // Blocks are separated by a blank line. 🔑 `Students`, never `Kids`.
+    case "camp_reminder": {
+      const rows = (payload.rows as any[]) ?? [];
+      const half = (h: string) => t(h === "AM" ? "cp_half_am" : h === "PM" ? "cp_half_pm" : "cp_half_full", lang);
+      const blocks = payload.audience === "teacher"
+        ? rows.map((r) => {
+            const names: string[] = r.names ?? [];
+            const shown = names.slice(0, CAMP_NAMES_MAX).map((n) => `  - ${n}`);
+            const more = names.length > CAMP_NAMES_MAX ? [`  +${names.length - CAMP_NAMES_MAX}`] : [];
+            return [`${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_students", lang)} : ${r.total} (Full ${r.full} · AM ${r.am} · PM ${r.pm})`, ...shown, ...more].join("\n");
+          })
+        : rows.map((r) => [`${t("ob_f_student", lang)} : ${r.child}`, `${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_time", lang)} : ${half(r.half)}`].join("\n"));
+      return [t("ob_today_title", lang), ...blocks].join("\n\n");
+    }
     // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
     //
     // 🔴 Everything it needs is IN THE PAYLOAD, not enriched from a booking. A course summary is not a fact

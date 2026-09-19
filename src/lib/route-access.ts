@@ -138,7 +138,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /camp/packages": read(["menu:camp", "menu:people"]), // the student's Camp card reads it from the People page too
   "POST /camp/packages": act(["menu:camp"], "action:camp.sell"),
   "POST /camp/packages/:id/days": act(["menu:camp"], "action:camp.redeem"),
-  "PATCH /camp/days/:id": act(["menu:camp"], "action:camp.day-mark"),
+  "PATCH /camp/days/:id": act(["menu:camp"], "action:camp.day-mark"), // TASK-403: the undo (status PLANNED + reason) rides the same act
+  "GET /camp/days/:id/checkin": read(["menu:camp"]), // TASK-403: the day's QR (lazy token)
   // ── the single-page reads ──
   "GET /attention": read(["menu:attention"]),
   "GET /reports/daily": read(["menu:reports"]),

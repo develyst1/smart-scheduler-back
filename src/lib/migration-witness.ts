@@ -446,6 +446,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "not called applied. No enum, no hot table; every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0043_camp_checkin_token",
+    probe: { kind: "index", index: "camp_days_checkin_token_uq" },
+    why:
+      "TASK-403 (REQ-095 Stage 3b). Three nullable columns on `camp_days` (the check-in token, its expiry, the undo's " +
+      "reason) and the partial unique index on the token — the LAST object, invented here, is the witness. Catalog-only " +
+      "on a young table; every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";
