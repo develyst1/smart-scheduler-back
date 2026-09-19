@@ -21,9 +21,9 @@ const root = resolve(import.meta.dir, "..", "..");
 const src = (f: string) => readSrc(readFileSync(resolve(root, f), "utf8"));
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 
-describe("🔑 the registry — 12 keys, one per nav entry, `users` is not a key", () => {
+describe("🔑 the registry — 13 keys (12 + TASK-401's `menu:camp`), one per nav entry, `users` is not a key", () => {
   test("the list", () => {
-    expect([...MENU_KEYS]).toEqual(["menu:calendar", "menu:teachers", "menu:people", "menu:link-requests", "menu:bookings", "menu:badges", "menu:som", "menu:attention", "menu:reports", "menu:settings", "menu:dashboard", "menu:overview"]);
+    expect([...MENU_KEYS]).toEqual(["menu:calendar", "menu:teachers", "menu:people", "menu:link-requests", "menu:bookings", "menu:badges", "menu:camp", "menu:som", "menu:attention", "menu:reports", "menu:settings", "menu:dashboard", "menu:overview"]); // 🔻 TASK-401: + camp after badges
     expect(isMenuKey("menu:users")).toBe(false);
     expect(isMenuKey("action:sales.discount")).toBe(false);
   });
@@ -48,7 +48,13 @@ describe("🔑 the registry — 12 keys, one per nav entry, `users` is not a key
 describe("🔴 the enumeration — every route in `routes/api.ts` has a ROUTE_MENUS entry, and every entry names a route", () => {
   const ROUTES = readSrc(readFileSync(resolve(root, "src/routes/api.ts"), "utf8"));
   // `c.get("user")` has the same shape as `.get("/path")` — a ROUTE path starts with `/`; that is the only filter.
-  const declared = [...ROUTES.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`);
+  // 🔻 TASK-401: the Camp routes live in their own file, mounted at `/camp` — the enumeration reads BOTH files, the second
+  // with its mount prefix, so the table's "declared" set is every menu-gated route the app serves.
+  const CAMP = readSrc(readFileSync(resolve(root, "src/routes/camp.ts"), "utf8"));
+  const declared = [
+    ...[...ROUTES.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`),
+    ...[...CAMP.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} /camp${m[2]}`),
+  ];
   test("the router declares 85 routes (the floor that keeps this list non-empty), and every one is mapped", () => {
     expect(declared.length).toBeGreaterThanOrEqual(85);
     const unmapped = declared.filter((r) => !(r in ROUTE_ACCESS));
@@ -266,7 +272,7 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(IDX.indexOf('app.use("/api/*", accessGuard);')).toBeLessThan(IDX.indexOf('app.route("/api/permissions", permissionRoutes);')); // TASK-385
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
-  test("42 = 42 — Stage 2 added no migration (0037 … 0041 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(42);
+  test("43 = 43 — Stage 2 added no migration (0037 … 0042 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(43);
   });
 });

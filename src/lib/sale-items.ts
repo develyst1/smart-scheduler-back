@@ -31,21 +31,27 @@ export const SALE_SOURCE = "smart-scheduler";
  */
 export const PRICES_ARE_VAT_INCLUSIVE = true;
 
-export type PriceGroup = "bike-skate" | "onewheel" | "balance-private" | "balance-group";
+// TASK-399 (REQ-095 Stage 2b, §8) — `balance-duo`: the DUO price group. A DUO/Group course or walk-in is priced by the
+// GROUP's kind, not the subject (`resolvePriceGroup(subjectId, groupKind)` — the owner's ruling "เอาตามแนะนำ").
+export type PriceGroup = "bike-skate" | "onewheel" | "balance-private" | "balance-group" | "balance-duo";
 
 export const PRICE_GROUPS: PriceGroup[] = [
   "bike-skate",
   "onewheel",
   "balance-private",
   "balance-group",
+  "balance-duo",
 ];
+
+/** TASK-399 — the group kind → its price group. ONE mapping; `resolvePriceGroup` and the DTO both read it. */
+export const GROUP_KIND_PRICE_GROUP: Record<"DUO" | "GROUP", PriceGroup> = { DUO: "balance-duo", GROUP: "balance-group" };
 
 /**
  * SPEC-030 / TASK-106 (REQ-027b) — programs a VOUCHER (hour-bucket) may NOT be used on. Onewheel and both Balance
  * Play programs are course-only per the owner; a voucher only books the drop-in bike/skate program. Enforced at
  * booking time, and exposed so the FE filters from this one source, not a hardcoded list.
  */
-export const VOUCHER_EXCLUDED_GROUPS = new Set<PriceGroup>(["onewheel", "balance-private", "balance-group"]);
+export const VOUCHER_EXCLUDED_GROUPS = new Set<PriceGroup>(["onewheel", "balance-private", "balance-group", "balance-duo"]); // TASK-399: DUO joins — course-only like the other Balance programs
 
 /** True when a voucher may book this program. A null/unknown group is NOT allowed (1st Trial etc. — no special case). */
 export const voucherAllowsProgram = (group: string | null | undefined): boolean =>
@@ -72,6 +78,8 @@ const CARD: Record<PriceGroup, Partial<Record<1 | 4 | 6 | 10, number>>> = {
   onewheel: { 1: THB(1690), 4: THB(5790), 6: THB(7900), 10: THB(11900) },
   "balance-private": { 1: THB(1390), 6: THB(7490), 10: THB(11390) },
   "balance-group": { 1: THB(1090), 6: THB(5290), 10: THB(7790) },
+  // TASK-399 (REQ-095 §8, owner 2026-09-19) — DUO, VAT-inclusive: 1h 1,900 · 4h 6,800 · 6h 9,360 · 10h 14,200.
+  "balance-duo": { 1: THB(1900), 4: THB(6800), 6: THB(9360), 10: THB(14200) },
 };
 
 export const COURSE_SIZES = [4, 6, 10] as const;
@@ -189,6 +197,29 @@ export const rentalIdBase = (
 export const OTHER_BOOKING_REF = "other-booking";
 
 /** Every INCOME item a sale can post to — exactly the combinations the card offers. */
+// ═══ TASK-401 (REQ-095 Stage 3a, SPEC-082) — the four Balance camp products, VAT-inclusive (the owner, 2026-09-19) ═══
+// Full day / Full week 11,500 · Half day / Full week 5,900 · Full day / Daily 2,600 · Half day / Daily 1,300.
+// Early bird (10,500) is a DISCOUNT at sale with a reason — never a product here.
+export const CAMP_CARD = {
+  "camp-full-week": { kind: "FULL", plan: "FULL_WEEK", priceMinor: THB(11500), name: "Camp — full day, full week" },
+  "camp-half-week": { kind: "HALF", plan: "FULL_WEEK", priceMinor: THB(5900), name: "Camp — half day, full week" },
+  "camp-full-day": { kind: "FULL", plan: "DAILY", priceMinor: THB(2600), name: "Camp — full day (per day)" },
+  "camp-half-day": { kind: "HALF", plan: "DAILY", priceMinor: THB(1300), name: "Camp — half day (per day)" },
+} as const;
+export type CampItemRef = keyof typeof CAMP_CARD;
+/** kind × plan → the item. ONE mapping; the sale and the price list both read it. */
+export const campItemRef = (kind: "FULL" | "HALF", plan: "FULL_WEEK" | "DAILY"): CampItemRef =>
+  (plan === "FULL_WEEK" ? (kind === "FULL" ? "camp-full-week" : "camp-half-week") : kind === "FULL" ? "camp-full-day" : "camp-half-day");
+/** For the FE (`GET /camp/prices`) — derived from the card, never hardcoded. */
+export const campPriceList = (): { externalRef: CampItemRef; kind: string; plan: string; priceMinor: number }[] =>
+  (Object.keys(CAMP_CARD) as CampItemRef[]).map((ref) => ({ externalRef: ref, kind: CAMP_CARD[ref].kind, plan: CAMP_CARD[ref].plan, priceMinor: CAMP_CARD[ref].priceMinor }));
+const CAMP_ITEMS: SaleItemSeed[] = (Object.keys(CAMP_CARD) as CampItemRef[]).map((ref) => ({
+  externalRef: ref,
+  name: CAMP_CARD[ref].name,
+  unitPriceMinor: CAMP_CARD[ref].priceMinor,
+  metadata: { revenueKind: "CAMP", priceSource: "owner (REQ-095 §8, 2026-09-19), VAT-inclusive" },
+}));
+
 export const SALE_ITEMS: SaleItemSeed[] = [
   { externalRef: "first-trial", name: "First Trial (1h)", unitPriceMinor: FIRST_TRIAL_MINOR },
   // TASK-225 — the typed-amount อื่นๆ bucket. The price is a placeholder; see `OTHER_BOOKING_REF` above.
@@ -224,6 +255,7 @@ export const SALE_ITEMS: SaleItemSeed[] = [
     }),
   ),
   ...RENTAL_ITEMS, // SPEC-031 / TASK-108 — the four equipment-rental codes
+  ...CAMP_ITEMS, // TASK-401 (REQ-095 Stage 3a) — the four Balance camp packages
 ];
 
 /** Is this a product code we know how to post? Guards against a sale silently going nowhere. */

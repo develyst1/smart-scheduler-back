@@ -136,6 +136,8 @@ import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../li
 import { TIME_SLOTS, addDays, addHour, datesBetween, fmtDate, hhmm, weekRange } from "../lib/time";
 import { inheritCourseRental, recordRental } from "./rental.service";
 import { courseRentalOf, courseRentalSummary, rentalPrintLine, rentalRemarkRequired, type CourseRentalSummary } from "../lib/rental-row";
+import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
+import { weeksForCalendar } from "./camp.service";
 
 const DEFAULT_TEACHER_TYPE_ORDER: TeacherType[] = ["FULL_TIME", "PART_TIME", "FREELANCE"];
 const TEACHER_TYPE_ORDER_KEY = "teacher_type_order";
@@ -543,9 +545,12 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
       })()
     : undefined;
 
+  // TASK-401 — the camp DAY BANNER: weeks overlapping the range, per-date counts; no hour cells, no slot block (§8).
+  const campWeeksInRange = await weeksForCalendar(range);
   return {
     view: input.view,
     range: { from: range.start, to: range.end },
+    campWeeks: campWeeksInRange,
     timeSlots: [...TIME_SLOTS],
     days: days.map((date) => {
       const weekday = weekdayOf(date);
@@ -962,7 +967,7 @@ const SUSPENDED_MESSAGE = "บัญชีผู้ปกครองถูก�
 
 /** Refuse a purchase when the student's household is suspended (TASK-058). Walk-in students with no parent
  *  are never blocked — same carve-out as the booking gate, via the same `blockedBySuspension`. */
-async function assertHouseholdNotSuspended(exec: any, studentId: string) {
+export async function assertHouseholdNotSuspended(exec: any, studentId: string) { // TASK-401: exported — the camp sale/redeem use the ONE guard
   if (blockedBySuspension(await findParentOfStudent(studentId, exec))) {
     throw badRequest(SUSPENDED_MESSAGE);
   }
@@ -1199,7 +1204,7 @@ async function insertBooking(
   // SPEC-030 / TASK-106: a voucher can't book Onewheel or Balance Play (course-only programs). Enforced here —
   // insertBooking is the single chokepoint every VOUCHER booking passes. A null/unknown group is refused too
   // (same null-group path, no special case for 1st Trial). Already-sold voucher hours are untouched (AC #5).
-  if (input.bookingType === "VOUCHER" && !voucherAllowsProgram(await resolvePriceGroup(input.subjectId, exec))) {
+  if (input.bookingType === "VOUCHER" && !voucherAllowsProgram(await resolvePriceGroup(input.subjectId, input.groupKind ?? null, exec))) {
     throw conflict("VOUCHER_PROGRAM_EXCLUDED", "วอยเชอร์ใช้กับคลาส Onewheel หรือ Balance Play ไม่ได้");
   }
   // REQ-061 / TASK-158 (AC-6/AC-7): a single paid hour only exists where the card prices one — booking one
@@ -1210,7 +1215,7 @@ async function insertBooking(
   // wrong — the card charges ฿1,390 — and the guard was refusing every single-session booking on the busiest
   // program. The guard is deliberately KEPT: with all four groups priced it simply stops firing, and it still
   // refuses a program whose price group is NULL (AC-4) — the silent-revenue-loss hole it was built for.
-  if (input.bookingType === "SINGLE_SESSION" && !isSellable(await resolvePriceGroup(input.subjectId, exec), 1)) {
+  if (input.bookingType === "SINGLE_SESSION" && !isSellable(await resolvePriceGroup(input.subjectId, input.groupKind ?? null, exec), 1)) {
     throw conflict(
       "SINGLE_SESSION_NOT_PRICED",
       "โปรแกรมนี้ไม่มีราคาแบบรายชั่วโมง — ครั้งแรกให้ใช้ 1st Trial หรือขายเป็นคอร์ส/บัตร " +
@@ -1303,7 +1308,7 @@ async function captureBookingDiscount(input: any) {
   if (input.bookingType !== "FIRST_TRIAL" && input.bookingType !== "SINGLE_SESSION") {
     throw badRequest("ส่วนลดสำหรับคาบเดี่ยว/ทดลองเท่านั้น — คอร์สและบัตรให้ลดตอนขาย");
   }
-  const priceGroup = await resolvePriceGroup(input.subjectId);
+  const priceGroup = await resolvePriceGroup(input.subjectId, input.groupKind ?? null); // TASK-399 — a seat's % discount is of the GROUP's price
   const ref = revenueItemRef(input.bookingType, priceGroup);
   // No price ⇒ no line total ⇒ nothing a discount could be a percentage OF. Refuse rather than guess.
   const lineTotalMinor = ref ? listPriceMinor(ref) : undefined;
@@ -1380,6 +1385,16 @@ export async function createBooking(input: any) {
   // The admin is present HERE, so the discount is validated and captured now — against this booking's own line
   // total (one hour at its program's rate) — and the day-end job only posts what was already authorised.
   // Validated before the booking exists, so an invalid discount refuses the booking rather than storing junk.
+  // TASK-399 (REQ-095 Stage 2b) — the WALK-IN seat: `groupId` on a SINGLE_SESSION. The row must be a live GROUP row
+  // (404), the body's teacher / date / start must be the group's (400), and the kind prices everything below. No
+  // extend: a walk-in names a ROW — a date with no group row has nothing to name.
+  if (input.groupId) {
+    const g = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, input.groupId) });
+    if (!g || g.bookingType !== "GROUP" || !COURSE_LIVE.has(g.status)) throw notFound("ไม่พบกลุ่ม");
+    const same = g.teacherId === input.teacherId && g.date === input.date && hhmm(g.startTime) === hhmm(input.startTime);
+    if (!same) throw badRequest("คาบต้องใช้ครู/วัน/เวลาเดียวกับกลุ่ม");
+    input = { ...input, groupKind: await groupKindOf(db, input.groupId) };
+  }
   const discountCapture = await captureBookingDiscount(input);
   // TASK-394 — a rate for a teacher who is not on the booking is refused BEFORE anything is written.
   assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
@@ -1391,6 +1406,8 @@ export async function createBooking(input: any) {
     if (input.bookingType === "VOUCHER" && input.voucherId) {
       await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);
     }
+    // TASK-399 — the cap, through the SAME count the course seat uses (the cap half of `seatOnGroup`), inside the tx.
+    if (input.groupId) await assertSeatFree(tx, input.groupId, input.date);
     const id = await insertBooking(tx, studentId, input);
     if (discountCapture) {
       await tx.update(bookings).set(discountCapture).where(eq(bookings.id, id));
@@ -1549,11 +1566,23 @@ async function seatOnGroup(tx: any, groupKey: string, date: string): Promise<str
     }
     return id;
   }
-  const [c] = await tx.select({ n: count() }).from(bookings).where(and(eq(bookings.groupId, row.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
-  const live = Number(c?.n ?? 0);
-  const cap = row.headCount ?? 0;
-  if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);
+  await assertSeatFree(tx, row.id, date);
   return row.id;
+}
+
+/** TASK-399 — the CAP half of `seatOnGroup`, shared with the walk-in seat: live seats on the group row < `head_count`. */
+async function assertSeatFree(tx: any, groupRowId: string, date: string): Promise<void> {
+  const row = await tx.query.bookings.findFirst({ columns: { headCount: true }, where: (b: any, { eq: e }: any) => e(b.id, groupRowId) });
+  const [c] = await tx.select({ n: count() }).from(bookings).where(and(eq(bookings.groupId, groupRowId), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  const live = Number(c?.n ?? 0);
+  const cap = row?.headCount ?? 0;
+  if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);
+}
+
+/** TASK-399 — a series' kind, from its template row (the same read `assertCourseMatchesGroup` makes). */
+async function groupKindOfKey(exec: any, groupKey: string): Promise<"DUO" | "GROUP" | null> {
+  const t = await groupTemplate(exec, groupKey);
+  return t.otherKind === "DUO" || t.otherKind === "GROUP" ? t.otherKind : null;
 }
 
 /**
@@ -1638,11 +1667,28 @@ export async function addExtraSession(
  * A program's price group (TASK-077). `null` when the subject has none — the caller must refuse loudly
  * rather than fall back to a default price.
  */
-export async function resolvePriceGroup(subjectId: string, exec: any = db): Promise<string | null> {
+/**
+ * 🔴 TASK-399 (REQ-095 Stage 2b) — the price group of a sale: **the GROUP's kind wins** (DUO ⇒ `balance-duo`, GROUP ⇒
+ * `balance-group`); a solo session/course ⇒ the subject's group as before. ONE function; every caller passes what it
+ * knows (`groupKind` from `groupKindOf` — the course create via its `groupKey`, the single-session create via its
+ * `groupId`, and the day-end revenue SWEEP via the seat's `group_id`). Five callers; the sweep is the one that POSTS.
+ */
+export async function resolvePriceGroup(subjectId: string | null | undefined, groupKind?: string | null, exec: any = db): Promise<string | null> {
+  if (groupKind === "DUO" || groupKind === "GROUP") return GROUP_KIND_PRICE_GROUP[groupKind];
+  if (!subjectId) return null;
   const row = await exec.query.subjects.findFirst({
     where: (s: any, { eq: e }: any) => e(s.id, subjectId),
   });
   return row?.priceGroup ?? null;
+}
+
+/** TASK-399 — a GROUP row's kind (`DUO` | `GROUP`), or `null` when the id is not a live GROUP row. The one reader the
+ *  create and the sweep share. */
+export async function groupKindOf(exec: any, groupId: string | null | undefined): Promise<"DUO" | "GROUP" | null> {
+  if (!groupId) return null;
+  const row = await exec.query.bookings.findFirst({ columns: { bookingType: true, otherKind: true }, where: (b: any, { eq: e }: any) => e(b.id, groupId) });
+  if (!row || row.bookingType !== "GROUP") return null;
+  return row.otherKind === "DUO" || row.otherKind === "GROUP" ? row.otherKind : null;
 }
 
 /**
@@ -1881,7 +1927,9 @@ export async function createCoursePackage(input: any) {
   // (program, size) isn't on the card. Onewheel has no 10 h and Balance Play has no 4 h; staff could
   // previously sell those, and the sale would then post a price the owner doesn't charge.
   // A subject with no price_group is refused too — it must never fall back to a default price.
-  const priceGroup = await resolvePriceGroup(input.subjectId);
+  // TASK-399 — a course sold INTO a group is priced by the group's kind (DUO ⇒ balance-duo, Group ⇒ balance-group).
+  const courseGroupKind = input.groupKey ? await groupKindOfKey(db, input.groupKey) : null;
+  const priceGroup = await resolvePriceGroup(input.subjectId, courseGroupKind);
   if (!priceGroup) {
     throw badRequest(
       "โปรแกรมนี้ยังไม่ได้ตั้งกลุ่มราคา — ตั้งค่าก่อนจึงจะขายคอร์สได้ (subjects.price_group)",

@@ -5,6 +5,7 @@ import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
+import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -118,12 +119,14 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
-const groupFacts = (b: any): { key: string | null; kind: string | null; name: string | null; seatCap: number | null; seats: Array<{ bookingId: string; studentId: string | null; studentName: string | null; status: string; courseId: string | null }>; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
+const groupFacts = (b: any): { key: string | null; kind: string | null; priceGroup: string | null; name: string | null; seatCap: number | null; seats: Array<{ bookingId: string; studentId: string | null; studentName: string | null; status: string; courseId: string | null }>; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
   if (b.bookingType !== "GROUP") return null;
   const o = otherFacts({ ...b, bookingType: "OTHER" })!;
   return {
     key: b.groupKey ?? null,
     kind: o.kind,
+    // TASK-399 — the resolver's own mapping, so the FE never maps kind → price group itself.
+    priceGroup: o.kind === "DUO" || o.kind === "GROUP" ? GROUP_KIND_PRICE_GROUP[o.kind] : null,
     name: b.otherTitle ?? null,
     seatCap: b.headCount ?? null,
     seats: (b.seats ?? []).map((s: any) => ({ bookingId: s.id, studentId: s.studentId ?? null, studentName: s.student?.nickname ?? s.student?.name ?? null, status: s.status, courseId: s.courseId ?? null })),

@@ -988,6 +988,80 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   rental: one(bookingRentals, { fields: [bookings.id], references: [bookingRentals.bookingId] }),
 }));
 
+// ───────────── TASK-401 (REQ-095 Stage 3a, SPEC-082) — "Balance camp", `0042` ─────────────
+//
+// A PREPAID bucket of half-day UNITS (full day 2 · half 1 — integers, one currency) spent on dates inside
+// admin-opened WEEKS, cut BY DAY. 🚫 NO expiry column, by structure (the owner's rule). Every code list is TEXT
+// (`lib/camp.ts`), never an enum.
+export const campWeeks = pgTable(
+  "camp_weeks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    /** Per DATE; NULL = unlimited. */
+    capacity: integer("capacity"),
+    /** INFORMATIONAL — no slot block in 3a (§8). */
+    teacherIds: uuid("teacher_ids").array(),
+    status: text("status").notNull().default("OPEN"),
+    openedBy: text("opened_by"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("camp_weeks_dates_idx").on(t.startDate, t.endDate)],
+);
+
+export const campPackages = pgTable(
+  "camp_packages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentId: uuid("student_id").notNull().references(() => students.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    plan: text("plan").notNull(),
+    totalUnits: integer("total_units").notNull(),
+    usedUnits: integer("used_units").notNull().default(0),
+    saleId: text("sale_id"),
+    // TASK-160's four — early bird is a DISCOUNT with a reason, never a product.
+    discountKind: text("discount_kind"),
+    discountValue: integer("discount_value"),
+    discountReason: text("discount_reason"),
+    discountActor: text("discount_actor"),
+    note: text("note"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("camp_packages_student_idx").on(t.studentId)],
+);
+
+export const campDays = pgTable(
+  "camp_days",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campPackageId: uuid("camp_package_id").notNull().references(() => campPackages.id, { onDelete: "restrict" }),
+    campWeekId: uuid("camp_week_id").notNull().references(() => campWeeks.id, { onDelete: "restrict" }),
+    date: date("date").notNull(),
+    half: text("half").notNull(),
+    units: integer("units").notNull(),
+    status: text("status").notNull().default("PLANNED"),
+    markedBy: text("marked_by"),
+    markedAt: timestamp("marked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("camp_days_week_date_idx").on(t.campWeekId, t.date), uniqueIndex("camp_days_package_date_uq").on(t.campPackageId, t.date)],
+);
+
+export const campPackagesRelations = relations(campPackages, ({ one, many }) => ({
+  student: one(students, { fields: [campPackages.studentId], references: [students.id] }),
+  days: many(campDays),
+}));
+export const campDaysRelations = relations(campDays, ({ one }) => ({
+  package: one(campPackages, { fields: [campDays.campPackageId], references: [campPackages.id] }),
+  week: one(campWeeks, { fields: [campDays.campWeekId], references: [campWeeks.id] }),
+}));
+export const campWeeksRelations = relations(campWeeks, ({ many }) => ({ days: many(campDays) }));
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),
   role: one(roles, { fields: [users.roleId], references: [roles.id] }),

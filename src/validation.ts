@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GROUP_KINDS, OTHER_KINDS } from "./lib/other-kind";
+import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATUSES, MAX_DAILY_DAYS } from "./lib/camp";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
@@ -160,6 +161,8 @@ export const createBooking = z
     otherPriceItemId: ID.optional(),
     /** AC-18/19/20 — the teachers BEYOND `teacherId`. `OTHER` only; `teacherId` is always the first. */
     additionalTeacherIds: z.array(ID).optional(),
+    /** TASK-399 (REQ-095 Stage 2b) — the WALK-IN seat: the GROUP row this single session sits in. `SINGLE_SESSION` only. */
+    groupId: ID.optional(),
     // ── TASK-394 (REQ-095 Stage 1) — ECA · Free/KOL. `OTHER` only; refused on the four lesson types below. ──
     /** ECA | FREE | KOL — the code list in `lib/other-kind.ts`; an unknown kind ⇒ 400. */
     otherKind: z.enum(OTHER_KINDS).optional(),
@@ -216,6 +219,11 @@ export const createBooking = z
   .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), {
     message: "ครูซ้ำกับครูคนแรก",
     path: ["additionalTeacherIds"],
+  })
+  // TASK-399 — `groupId` is the walk-in seat's field: SINGLE_SESSION only (a course seat comes through the course create).
+  .refine((d) => d.groupId === undefined || d.bookingType === "SINGLE_SESSION", {
+    message: "ที่นั่งในกลุ่มใช้ได้เฉพาะคาบเดี่ยว (SINGLE_SESSION)",
+    path: ["groupId"],
   })
   // ── TASK-224 — the four LESSON types must REFUSE every `OTHER` field ──
   //
@@ -470,6 +478,31 @@ export const otherSeries = z
   .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] })
   .refine((d) => !d.additionalTeacherIds || new Set(d.additionalTeacherIds).size === d.additionalTeacherIds.length, { message: "ครูซ้ำกัน", path: ["additionalTeacherIds"] })
   .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), { message: "ครูซ้ำกับครูคนแรก", path: ["additionalTeacherIds"] });
+
+// ── TASK-401 (REQ-095 Stage 3a) — Balance camp. Shapes only; the rules (units, credit, capacity, transitions) are the service's. ──
+export const campWeeksQuery = z.object({ from: DATE, to: DATE });
+export const createCampWeek = z
+  .object({ name: z.string().trim().min(1).max(80), startDate: DATE, endDate: DATE, capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional() })
+  .refine((d) => d.endDate >= d.startDate, { message: "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม", path: ["endDate"] });
+export const updateCampWeek = z
+  .object({ name: z.string().trim().min(1).max(80).optional(), capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional(), status: z.enum(CAMP_WEEK_STATUSES).optional() })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+export const redeemCampDays = z
+  .object({ weekId: ID, dates: z.array(DATE).min(1).max(7), half: z.enum(CAMP_HALVES) })
+  .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
+export const createCampPackage = z
+  .object({
+    studentId: ID,
+    kind: z.enum(CAMP_KINDS),
+    plan: z.enum(CAMP_PLANS),
+    days: z.number().int().min(1).max(MAX_DAILY_DAYS).optional(),
+    discount: discountInput.optional(),
+    note: z.string().trim().max(200).optional(),
+    firstWeek: redeemCampDays.optional(),
+  })
+  .refine((d) => (d.plan === "DAILY") === (d.days !== undefined), { message: "แพ็กเกจรายวันต้องระบุ days; แพ็กเกจรายสัปดาห์ต้องไม่ระบุ", path: ["days"] });
+export const campPackagesQuery = z.object({ studentId: ID });
+export const markCampDay = z.object({ status: z.enum(CAMP_DAY_STATUSES).exclude(["PLANNED"]) });
 
 export const moveBooking = z
   .object({

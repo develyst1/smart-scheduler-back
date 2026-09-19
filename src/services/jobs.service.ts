@@ -27,7 +27,8 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
-import { getDailyReport, resolvePriceGroup } from "./scheduler.service";
+import { getDailyReport, groupKindOf, resolvePriceGroup } from "./scheduler.service";
+import { cutCampDays } from "./camp.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
@@ -112,9 +113,13 @@ export async function runEndOfDayJob(date?: string) {
       }
     }
 
+    // TASK-401 (REQ-095 Stage 3a) — the CAMP DAY CUT, in the SAME transaction: every PLANNED camp day whose date has
+    // started (`date <= runDate`) ⇒ ATTENDED, its units consumed. A day has no start time, so "started" is the date.
+    const campDaysAutoAttended = await cutCampDays(tx, runDate);
+
     // Named for what they now are: sessions the job marked attended because nobody marked them. A `job_runs`
     // reader must not be able to read "noShow" out of a system that can no longer produce one.
-    return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended };
+    return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended, campDaysAutoAttended };
   });
 
   // 🔴 REQ-070 / TASK-180 — a consequence worth naming, because it is money. This select is
@@ -140,6 +145,8 @@ export async function runEndOfDayJob(date?: string) {
       id: bookings.id,
       bookingType: bookings.bookingType,
       subjectId: bookings.subjectId,
+      // TASK-399 — a walk-in SEAT posts by its GROUP's kind, not its subject (else a DUO seat would post the Private price).
+      groupId: bookings.groupId,
       // TASK-225 — the อื่นๆ charge, as chosen at booking time. Exactly one of the two is ever set
       // (`booking_other_price_chk`); both null means the booking was not charged.
       otherPriceMinor: bookings.otherPriceMinor,
@@ -170,7 +177,8 @@ export async function runEndOfDayJob(date?: string) {
     }
     // TASK-077: a SINGLE_SESSION is priced by PROGRAM (1,690 / 1,390 / 1,090 an hour), so the item depends
     // on the booking's subject. FIRST_TRIAL is one price for everyone and ignores the group.
-    const priceGroup = await resolvePriceGroup(b.subjectId);
+    // TASK-399 — the FIFTH caller of the resolver, and the one that POSTS: a seat's price is its group's kind.
+    const priceGroup = await resolvePriceGroup(b.subjectId, b.groupId ? await groupKindOf(db, b.groupId) : null);
     const ref = revenueItemRef(b.bookingType, priceGroup);
     if (!ref) {
       // Loud, not silent — TASK-066's lesson. A single session on a program with no price group (or on

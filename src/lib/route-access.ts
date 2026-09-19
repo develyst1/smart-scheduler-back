@@ -129,6 +129,16 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /badges/values": act(BADGES, "action:badges.value-create"),
   "PATCH /badges/values/:id": act(BADGES, "action:badges.value-edit"),
   "GET /badges/report": read(["menu:dashboard"]),
+  // ── camp (TASK-401) — its own menu; reads on the menu, each write on its act ──
+  "GET /camp/prices": read(["menu:camp"]),
+  "GET /camp/weeks": read(["menu:camp"]),
+  "POST /camp/weeks": act(["menu:camp"], "action:camp.week-open"),
+  "PATCH /camp/weeks/:id": act(["menu:camp"], "action:camp.week-open"),
+  "GET /camp/weeks/:id/days": read(["menu:camp"]),
+  "GET /camp/packages": read(["menu:camp", "menu:people"]), // the student's Camp card reads it from the People page too
+  "POST /camp/packages": act(["menu:camp"], "action:camp.sell"),
+  "POST /camp/packages/:id/days": act(["menu:camp"], "action:camp.redeem"),
+  "PATCH /camp/days/:id": act(["menu:camp"], "action:camp.day-mark"),
   // ── the single-page reads ──
   "GET /attention": read(["menu:attention"]),
   "GET /reports/daily": read(["menu:reports"]),

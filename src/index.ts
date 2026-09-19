@@ -11,6 +11,7 @@ import { userRoutes } from "./routes/users";
 import { meRoutes } from "./routes/me";
 import { permissionRoutes } from "./routes/permissions";
 import { roleRoutes } from "./routes/roles";
+import { campRoutes } from "./routes/camp";
 import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
 import { publicCalendar } from "./routes/calendar";
@@ -59,6 +60,7 @@ app.route("/api/users", userRoutes); // TASK-377 — super admin only (its own m
 app.route("/api/me", meRoutes); // TASK-383 — the signed-in user's own routes, behind the JWT guard, not menu-gated
 app.route("/api/permissions", permissionRoutes); // TASK-385 — the key registry with labels, any signed-in user
 app.route("/api/roles", roleRoutes); // TASK-387 — super admin only (its own middleware), behind the guard
+app.route("/api/camp", campRoutes); // TASK-401 — Balance camp, behind the guard; the access table gates it
 
 // Mount the scheduling API. `routes` carries the type for the FE's hc<AppType>.
 const routes = app.route("/api", api);

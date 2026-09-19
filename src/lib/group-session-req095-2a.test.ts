@@ -41,12 +41,12 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("42 = 42: `0041_group_session` is the 42nd file, idx 41, the last; the order 0038 → 0041", () => {
-    expect(files.length).toBe(42);
-    expect(files.at(-1)).toBe("0041_group_session.sql");
+  test("43 = 43 (TASK-401 added 0042): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
+    expect(files.length).toBe(43);
+    expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(42);
-    expect(j.entries.slice(38).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
+    expect(j.entries.length).toBe(43);
+    expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
     const order = [
@@ -75,8 +75,8 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
     expect(SQL).toContain("WITNESS — the unique index's **PREDICATE**, never its existence");
     expect(SQL).toContain("`drizzle/*.sql` = 41 (0000–0040) and journal tags = 41 before this, newest `0040`, so this is `0041`");
   });
-  test("🔑 the witness is the index PREDICATE (`index-predicate`, contains `group_id`), registered last; the schema mirrors: the enum label, the two columns, the index's `.where` + `group_id` index, the self-relation", () => {
-    const w = SCHEDULING_WITNESSES.at(-1)!;
+  test("🔑 the witness is the index PREDICATE (`index-predicate`, contains `group_id`), registered; the schema mirrors: the enum label, the two columns, the index's `.where` + `group_id` index, the self-relation", () => {
+    const w = SCHEDULING_WITNESSES.find((x) => x.tag === "0041_group_session")!; // 🔻 TASK-401: no longer last — by tag
     expect(w).toMatchObject({ tag: "0041_group_session", probe: { kind: "index-predicate", index: "bookings_teacher_slot_uq", contains: "group_id" }, rerunnable: true });
     expect(w.why).toContain("NOT the index's existence");
     const S = code(src("src/db/schema.ts"));
@@ -184,9 +184,11 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(S).toContain("const t = await groupTemplate(tx, groupKey);");
     expect(S).toContain('id = await insertBooking(tx, null, { teacherId: t.teacherId, subjectId: null, startTime: hhmm(t.startTime), bookingType: "GROUP", otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates, date });');
     expect(S).toContain('throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ขยายกลุ่มไม่ได้ (${e.message})`);');
-    expect(S).toContain("inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
-    expect(S).toContain('if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);');
-    expect(S.indexOf("GROUP_FULL")).toBeLessThan(S.indexOf("return row.id;"));
+    // 🔻 TASK-399: the CAP half lives in `assertSeatFree` (shared with the walk-in seat); `seatOnGroup` calls it before returning the row
+    expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  return row.id;");
+    const F = region(SCHED, "async function assertSeatFree(", "\n}\n");
+    expect(F).toContain("inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    expect(F).toContain('if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);');
   });
   test("`swapGroupTeacher`: a GROUP row only · the targets by key (from here on | this date) · ONE tx · teacher-bookable per date · the group row moves (23505 ⇒ 409 naming the date, nothing moved) · its holds reconciled · EVERY live seat follows · NO notice", () => {
     const S = region(SCHED, "export async function swapGroupTeacher(", "\n}\n");
@@ -240,7 +242,7 @@ describe("🔴 the DTO — a GROUP row's `group {…}` with its seats; a seat's 
     seats: [{ id: "s1", studentId: "st1", status: "CONFIRMED", courseId: "c1", student: { id: "st1", name: "เด็กชายเอ", nickname: "น้องเอ" } }, { id: "s2", studentId: "st2", status: "SICK_LEAVE", courseId: "c2", student: { id: "st2", name: "เด็กหญิงบี", nickname: null } }] };
   test("by value", () => {
     const dto: any = toBookingDTO(groupRow);
-    expect(dto.group).toEqual({ key: "k-1", kind: "DUO", name: "DUO A+B", seatCap: 2, seats: [{ bookingId: "s1", studentId: "st1", studentName: "น้องเอ", status: "CONFIRMED", courseId: "c1" }, { bookingId: "s2", studentId: "st2", studentName: "เด็กหญิงบี", status: "SICK_LEAVE", courseId: "c2" }], teacherRates: { [T1]: 60000 }, ratePostedAt: null });
+    expect(dto.group).toEqual({ key: "k-1", kind: "DUO", priceGroup: "balance-duo", name: "DUO A+B", seatCap: 2, seats: [{ bookingId: "s1", studentId: "st1", studentName: "น้องเอ", status: "CONFIRMED", courseId: "c1" }, { bookingId: "s2", studentId: "st2", studentName: "เด็กหญิงบี", status: "SICK_LEAVE", courseId: "c2" }], teacherRates: { [T1]: 60000 }, ratePostedAt: null });
     expect(dto.other).toBeNull(); // `other` is the OTHER row's fact; a GROUP row answers through `group`
     expect(dto.groupId).toBeNull();
     expect(dto.displayName).toBe("DUO A+B");

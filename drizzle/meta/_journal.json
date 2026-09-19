@@ -295,6 +295,13 @@
       "when": 1783000000037,
       "tag": "0041_group_session",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783000000038,
+      "tag": "0042_camp",
+      "breakpoints": true
     }
   ]
 }

@@ -253,20 +253,20 @@ describe("revenueItemRef — the day-end path is now program-priced too", () => 
 });
 
 describe("shape", () => {
-  test("14 program items + 3 vouchers + first trial + 4 rentals + the อื่นๆ bucket", () => {
+  test("18 program items (14 + TASK-399's four balance-duo) + 3 vouchers + first trial + 4 rentals + the อื่นๆ bucket + TASK-401's four camp items", () => {
     // 3 single-session rows (onewheel · balance-private · balance-group — bike/skate has no 1h rate)
     // + 10 course rows (bike-skate 4/6/10 · onewheel 4/6/10 · balance-private 6/10 · balance-group 6/10) —
     // onewheel 10 h added by REQ-061.
 
     const sessions = sellablePackages().filter((p) => p.size === 1);
     const courses = sellablePackages().filter((p) => p.size !== 1);
-    expect(sessions).toHaveLength(4); // REQ-066: bike-skate joined the other three at ฿1,390
-    expect(courses).toHaveLength(10);
+    expect(sessions).toHaveLength(5); // REQ-066: bike-skate joined the other three at ฿1,390; 🔻 TASK-399: + balance-duo 1h
+    expect(courses).toHaveLength(13); // 🔻 TASK-399: + balance-duo 4/6/10
     // + TASK-108: the 4 equipment-rental codes.
     // + TASK-225: `other-booking`, the typed-amount อื่นๆ bucket — the `+ 1` at the end. Counted explicitly so
     // that adding a code is always a deliberate edit here, which is the only reason this assertion is worth
     // having (it is how REQ-061's and REQ-066's missing card rows would have been noticed).
-    expect(SALE_ITEMS).toHaveLength(14 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length + 1);
+    expect(SALE_ITEMS).toHaveLength(18 + VOUCHER_HOURS.length + 1 + RENTAL_ITEMS.length + 1 + 4); // 🔻 TASK-399: 14 → 18; 🔻 TASK-401: + 4 camp
   });
 
   test("every course size the DB allows is priced for at least one group", () => {

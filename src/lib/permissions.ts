@@ -12,6 +12,7 @@ export const MENU_KEYS = [
   "menu:link-requests",
   "menu:bookings",
   "menu:badges",
+  "menu:camp", // TASK-401 (REQ-095 Stage 3a) — the Camp menu, after Badges (the operational menus, before the reports)
   "menu:som",
   "menu:attention",
   "menu:reports",
@@ -54,7 +55,7 @@ export const menusOf = (user: { isSuperAdmin: boolean; grants: ReadonlySet<strin
 
 import { ApiException } from "./http";
 
-export const ACTION_AREAS = ["calendar", "bookings", "people", "teachers", "link-requests", "badges", "settings", "sales"] as const;
+export const ACTION_AREAS = ["calendar", "bookings", "people", "teachers", "link-requests", "badges", "camp", "settings", "sales"] as const; // TASK-401: + camp
 export type ActionArea = (typeof ACTION_AREAS)[number];
 
 export type ActionEntry = { readonly key: `action:${ActionArea}.${string}`; readonly area: ActionArea; readonly labelTh: string; readonly labelEn: string };
@@ -117,6 +118,11 @@ export const ACTION_REGISTRY = [
   A("action:badges.type-edit", "แก้ไขประเภทป้าย", "Edit a badge type"),
   A("action:badges.value-create", "เพิ่มค่าป้าย", "Add a badge value"),
   A("action:badges.value-edit", "แก้ไขค่าป้าย", "Edit a badge value"),
+  // ── camp (TASK-401, REQ-095 Stage 3a) ──
+  A("action:camp.week-open", "เปิด/แก้ไข/ปิดสัปดาห์แคมป์", "Open, edit & close a camp week"),
+  A("action:camp.sell", "ขายแคมป์", "Sell a camp package"),
+  A("action:camp.redeem", "ใช้เครดิตแคมป์", "Redeem camp days"),
+  A("action:camp.day-mark", "บันทึกสถานะวันแคมป์", "Mark a camp day"),
   // ── settings ──
   A("action:settings.edit", "แก้ไขการตั้งค่า", "Edit settings"),
   // ── sales (body-level: the `discount` field on four creates) ──

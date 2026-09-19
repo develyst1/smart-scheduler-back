@@ -437,6 +437,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "the LAST statement, so the predicate is the witness of the whole file.",
     rerunnable: true,
   },
+  {
+    tag: "0042_camp",
+    probe: { kind: "index", index: "camp_days_package_date_uq" },
+    why:
+      "TASK-401 (REQ-095 Stage 3a). Three new tables; the LAST object — the unique index on `camp_days`, a table " +
+      "invented here — is the witness (0034's two rules), so a run that died after `camp_weeks` or `camp_packages` is " +
+      "not called applied. No enum, no hot table; every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";
