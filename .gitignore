@@ -118,3 +118,4 @@ dist
 # TASK-267 — `db:migrate:through` builds its scratch migrations folder INSIDE the repo, so the generated
 # drizzle config resolves `drizzle-kit` from node_modules. Removed on every exit path; this line is the net.
 .migrate-through-*
+dist.zip
