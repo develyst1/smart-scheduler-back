@@ -90,7 +90,16 @@ export const studentsQuery = z.object({
   // TASK-058 retired the `bookable` opt-in — suspended households are now excluded by default for every
   // consumer. Zod strips unknown keys, so an older client still sending `bookable=true` is simply ignored
   // (it asked for the behaviour that is now the default), which is what makes the FE/BE deploy order free.
-});
+  // TASK-414 (REQ-099) — the birthday filter: a MONTH range (both or neither; wraps past December) or `noDob`.
+  birthMonthFrom: z.coerce.number().int().min(1).max(12).optional(),
+  birthMonthTo: z.coerce.number().int().min(1).max(12).optional(),
+  noDob: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+})
+  .refine((d) => (d.birthMonthFrom === undefined) === (d.birthMonthTo === undefined), { message: "ต้องระบุเดือนเกิดทั้งช่วง (birthMonthFrom และ birthMonthTo)", path: ["birthMonthTo"] })
+  .refine((d) => !(d.noDob && d.birthMonthFrom !== undefined), { message: "noDob ใช้ร่วมกับช่วงเดือนเกิดไม่ได้", path: ["noDob"] });
 
 // Staff student creation — under an existing parent (parentId) or a phone
 // (find-or-create the parent). At most 5 students per parent (enforced in service).

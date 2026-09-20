@@ -202,9 +202,15 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
     expect(code(src("src/services/line-webhook.service.ts"))).toContain('if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) };');
     expect(code(src("src/routes/register.ts"))).toContain('"phone-archived": [409, "PHONE_ARCHIVED"],');
   });
-  test("📖 the reply by FORM (PLACEHOLDER — the words are the owner's): both languages name the admin; the key exists; the sentence is marked", () => {
-    for (const lang of ["TH", "EN"] as const) { const m = t("verify_parent_archived", lang); expect(m).not.toBe("verify_parent_archived"); expect(m).toMatch(/แอดมิน|admin/); expect(m).not.toMatch(/[{}]/); }
-    expect(src("src/lib/line-i18n.ts")).toContain("PLACEHOLDER — MINE, and the owner has NOT seen it.** The number belongs to an");
+  test("🔴 TASK-413 — the reply by VALUE (the owner's words), both languages; the webhook's `phone-archived` branch reaches them through the reply mapper; the placeholder sentence is gone", () => {
+    expect(t("verify_parent_archived", "TH")).toBe("เบอร์นี้เคยลงทะเบียนไว้แล้ว กรุณาติดต่อร้านเพื่อคืนสถานะ");
+    expect(t("verify_parent_archived", "EN")).toBe("This number was registered before — please contact the shop to restore it.");
+    const I = src("src/lib/line-i18n.ts");
+    expect(I).not.toContain("PLACEHOLDER — MINE, and the owner has NOT seen it.** The number belongs to an");
+    expect(code(I)).not.toMatch(/reactivate|แอดมินเพื่อเปิดใช้งาน/);
+    const W = code(src("src/services/line-webhook.service.ts"));
+    expect(W).toContain('if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) };');
+    expect(W.indexOf('"phone-archived"')).toBeLessThan(W.indexOf("if (r.isNew)")); // refused before the success branches
   });
   test("by VALUE: `lookupFamilyByPhone` on an archived family's number ⇒ `phone-archived` (the active lookup null, the archived one found); a fresh number ⇒ `new`", async () => {
     const s1 = spyOn(parent, "findParentByPhone").mockImplementation((async () => null) as any);

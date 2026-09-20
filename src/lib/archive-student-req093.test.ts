@@ -121,7 +121,7 @@ describe("🔴 the WORKING reads — hidden, each by name (the enumeration IS th
     expect(v.studentsQuery.parse({}).archived).toBe(false);
     expect(v.studentsQuery.parse({ archived: "true" }).archived).toBe(true);
     expect(v.studentsQuery.safeParse({ archived: "yes" }).success).toBe(false);
-    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived));");
+    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, noDob }));"); // 🔻 TASK-414: + the birthday filter, the archived flag unchanged
   });
   test("2 · `getEligibleStudents` (`GET /students/eligible`): the archived id set excluded on BOTH branches, beside the suspended one", () => {
     const E = region(SCHED, "export async function getEligibleStudents(", "\n}\n");

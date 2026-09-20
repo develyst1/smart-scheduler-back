@@ -11,6 +11,7 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
 import { PARENT_ARCHIVED, activeParentWhere, cascadeMarker, isParentArchived } from "../lib/parent-archive";
+import { birthMonthOrder, withBirthdayFilter } from "../lib/birth-month";
 export { activeParentWhere, isParentArchived } from "../lib/parent-archive";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
@@ -614,12 +615,17 @@ export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> 
  */
 // 🔻 TASK-392 (REQ-093) — `archived` = false (default): ARCHIVED children are hidden — this IS the picker and the
 // People page's student list. `archived = true`: ONLY the archived ones (the restore view), same rows + `archivedAt`.
-export async function searchStudents(q?: string, limit = 50, archived = false) {
+// TASK-414 (REQ-099) — `birthday`: a birth-MONTH range (wraps past December) or `noDob`, COMPOSED with the search, the
+// suspended exclusion and the archived default (never replacing them); a range orders from its first month around the
+// year, then the day, then the name.
+export async function searchStudents(q?: string, limit = 50, archived = false, birthday: { birthMonthFrom?: number; birthMonthTo?: number; noDob?: boolean } = {}) {
   const excluded = [...(await suspendedStudentIds())];
   const searchWhere = and(
     q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`,
     archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),
   );
+  const baseWhere = excluded.length ? and(searchWhere, notInArray(students.id, excluded))! : searchWhere!;
+  const ranged = birthday.birthMonthFrom !== undefined && birthday.birthMonthTo !== undefined && !birthday.noDob;
   const rows = await db
     .select({
       id: students.id,
@@ -629,13 +635,12 @@ export async function searchStudents(q?: string, limit = 50, archived = false) {
       phone: parents.phone,
       parentName: parents.name,
       archivedAt: students.archivedAt,
+      birthDate: students.birthDate, // TASK-414
     })
     .from(students)
     .leftJoin(parents, eq(parents.id, students.parentId))
-    .where(
-      excluded.length ? and(searchWhere, notInArray(students.id, excluded)) : searchWhere,
-    )
-    .orderBy(asc(students.name))
+    .where(withBirthdayFilter(baseWhere, birthday))
+    .orderBy(...(ranged ? birthMonthOrder(birthday.birthMonthFrom!) : [asc(students.name)]))
     .limit(Math.min(limit, 200));
 
   return rows.map((r) => ({
@@ -647,5 +652,6 @@ export async function searchStudents(q?: string, limit = 50, archived = false) {
     parentName: r.parentName ?? null,
     label: r.phone ? `${r.name} (${r.phone})` : r.name,
     archivedAt: r.archivedAt ? new Date(r.archivedAt).toISOString() : null, // TASK-392
+    birthDate: r.birthDate ?? null, // TASK-414 — ISO YYYY-MM-DD | null (the FE renders DD-MM-YYYY or —)
   }));
 }

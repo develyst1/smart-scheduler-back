@@ -308,12 +308,11 @@ const TABLE: Record<string, Entry> = {
   },
   // This chat is already bound to a DIFFERENT family. Says so plainly and offers a human — the one thing it
   // must never do is quietly re-point the account, which would show a parent another family's children.
-  // 📖 TASK-411 (REQ-098 Finding B) — **PLACEHOLDER — MINE, and the owner has NOT seen it.** The number belongs to an
-  // ARCHIVED family: the bot never restores it (the shop's decision) and never creates a duplicate. Porter's copy
-  // replaces these bytes — pinned by FORM (the admin is named), never by bytes.
+  // TASK-411 / TASK-413 (REQ-098 Finding B) — the number belongs to an ARCHIVED family: the bot never restores it (the
+  // shop's decision) and never creates a duplicate. THE OWNER'S WORDS via @Porter (2026-09-20).
   verify_parent_archived: {
-    TH: "เบอร์นี้เคยลงทะเบียนไว้แต่ถูกเก็บแล้วค่ะ กรุณาติดต่อแอดมินเพื่อเปิดใช้งานอีกครั้ง",
-    EN: "This number was registered before but has been archived. Please contact an admin to reactivate it.",
+    TH: "เบอร์นี้เคยลงทะเบียนไว้แล้ว กรุณาติดต่อร้านเพื่อคืนสถานะ",
+    EN: "This number was registered before — please contact the shop to restore it.",
   },
   verify_parent_other_family: {
     TH: "บัญชี LINE นี้ผูกกับอีกครอบครัวไว้แล้วค่ะ หากไม่ถูกต้องกรุณาติดต่อแอดมิน",

@@ -46,7 +46,7 @@ afterAll(() => { if (origSkip === undefined) delete process.env.SKIP_AUTH; else 
 describe("🔴 the migration — 0044, counted, ONE nullable FK column + the partial unique index LAST = the witness (source)", () => {
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
-  const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8");
+  const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("47 = 47: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
     expect(files.length).toBe(47);
     expect(journal.entries.length).toBe(47);
