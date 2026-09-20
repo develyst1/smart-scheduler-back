@@ -41,11 +41,11 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("47 = 47 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(47);
+  test("48 = 48 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
+    expect(files.length).toBe(48);
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(47);
+    expect(j.entries.length).toBe(48);
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -118,7 +118,7 @@ describe("🔴 ONE definition of 'holds the slot' — `lib/slot-holder.ts` acros
 describe("🔑 `type ⇔ kind` — refused both ways; the kinds", () => {
   test("`GROUP_KINDS` = DUO · GROUP; `OTHER_KINDS` unchanged", () => {
     expect([...GROUP_KINDS]).toEqual(["DUO", "GROUP"]);
-    expect([...OTHER_KINDS]).toEqual(["ECA", "FREE", "KOL"]);
+    expect([...OTHER_KINDS]).toEqual(["ECA", "FREE", "KOL", "CAMP"]); // 🔻 TASK-418: CAMP, the derived 4th kind (the human validators keep HUMAN_OTHER_KINDS)
   });
   test("`assertKindForType`: GROUP needs DUO|GROUP (an ECA or nothing ⇒ 400); OTHER takes ECA|FREE|KOL or nothing (a DUO ⇒ 400); a lesson takes nothing", () => {
     expect(() => assertKindForType("GROUP", "DUO")).not.toThrow();
@@ -232,7 +232,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   test("the grid's ONE read hides seats (`isNull(b.groupId)`); the shared relation set carries `seats` + `group` for every other read", () => {
     const G = region(SCHED, "export async function getCalendar(", "\n}\n");
     expect(G).toMatch(/notInArray\(b\.status, \[\.\.\.CALENDAR_HIDDEN_STATUSES\]\),\s*isNull\(b\.groupId\),/);
-    expect(SCHED).toContain("  seats: { with: { student: true } },\n  group: true,\n} as const;");
+    expect(SCHED).toContain("  seats: { with: { student: true } },\n  group: true,\n  campWeekDay: true,\n} as const;"); // 🔻 TASK-418: + the camp day (still the ONE set)
   });
 });
 

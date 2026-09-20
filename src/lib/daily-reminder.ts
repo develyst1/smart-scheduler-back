@@ -13,6 +13,7 @@
 
 import type { TodayRow } from "./line-today-schedule";
 import { hhmm } from "./time";
+import { foldCampRows } from "./camp";
 
 export interface ReminderSession {
   id: string;
@@ -40,6 +41,9 @@ export interface ReminderSession {
   seats?: Array<{ studentName: string; remaining?: string | null }> | null;
   headCount?: number | null;
   groupId?: string | null;
+  /** TASK-418 — a DERIVED camp hour: its day object and kind; the builder folds one day's hours into one row. */
+  campWeekDayId?: string | null;
+  otherKind?: string | null;
   teacherId: string | null;
   teacherLineUserId: string | null;
   /**
@@ -90,7 +94,9 @@ export const REMINDABLE = new Set(["CONFIRMED"]);
  * never linked, and a feature that silently reaches nobody is the `sale:ensure-items` lesson.
  */
 export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
-  const live = sessions.filter((s) => REMINDABLE.has(s.status));
+  // TASK-418 (SPEC-085 §3.4) — the camp FOLD: a coach's camp hours of one day become ONE OTHER row spanning the window,
+  // so the existing block prints `Camp A` / `10:00-15:00` — no new copy, no renderer change.
+  const live = foldCampRows(sessions.filter((s) => REMINDABLE.has(s.status)));
   const byTeacher = new Map<string, ReminderGroup>();
   const byParent = new Map<string, ReminderGroup>();
 

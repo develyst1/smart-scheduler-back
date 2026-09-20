@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GROUP_KINDS, OTHER_KINDS } from "./lib/other-kind";
+import { GROUP_KINDS, HUMAN_OTHER_KINDS } from "./lib/other-kind";
 import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATUSES, MAX_DAILY_DAYS } from "./lib/camp";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
@@ -93,13 +93,19 @@ export const studentsQuery = z.object({
   // TASK-414 (REQ-099) — the birthday filter: a MONTH range (both or neither; wraps past December) or `noDob`.
   birthMonthFrom: z.coerce.number().int().min(1).max(12).optional(),
   birthMonthTo: z.coerce.number().int().min(1).max(12).optional(),
+  // TASK-416 — optional YEARS beside the months: both or neither, each only with its month, from <= to (no wrap on a dated range).
+  birthYearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
+  birthYearTo: z.coerce.number().int().min(1900).max(2100).optional(),
   noDob: z
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === "true"),
 })
   .refine((d) => (d.birthMonthFrom === undefined) === (d.birthMonthTo === undefined), { message: "ต้องระบุเดือนเกิดทั้งช่วง (birthMonthFrom และ birthMonthTo)", path: ["birthMonthTo"] })
-  .refine((d) => !(d.noDob && d.birthMonthFrom !== undefined), { message: "noDob ใช้ร่วมกับช่วงเดือนเกิดไม่ได้", path: ["noDob"] });
+  .refine((d) => (d.birthYearFrom === undefined) === (d.birthYearTo === undefined), { message: "ต้องระบุปีเกิดทั้งช่วง (birthYearFrom และ birthYearTo)", path: ["birthYearTo"] })
+  .refine((d) => d.birthYearFrom === undefined || d.birthMonthFrom !== undefined, { message: "ปีเกิดต้องใช้คู่กับเดือนเกิด", path: ["birthYearFrom"] })
+  .refine((d) => d.birthYearFrom === undefined || d.birthMonthFrom === undefined || d.birthYearFrom * 100 + d.birthMonthFrom <= d.birthYearTo! * 100 + d.birthMonthTo!, { message: "ช่วงวันเกิดต้องเริ่มก่อนหรือเท่ากับจุดสิ้นสุด", path: ["birthYearTo"] })
+  .refine((d) => !(d.noDob && d.birthMonthFrom !== undefined), { message: "noDob ใช้ร่วมกับช่วงเดือน/ปีเกิดไม่ได้", path: ["noDob"] }); // years imply months (the rule above), so this one clause covers all four
 
 // Staff student creation — under an existing parent (parentId) or a phone
 // (find-or-create the parent). At most 5 students per parent (enforced in service).
@@ -174,7 +180,7 @@ export const createBooking = z
     groupId: ID.optional(),
     // ── TASK-394 (REQ-095 Stage 1) — ECA · Free/KOL. `OTHER` only; refused on the four lesson types below. ──
     /** ECA | FREE | KOL — the code list in `lib/other-kind.ts`; an unknown kind ⇒ 400. */
-    otherKind: z.enum(OTHER_KINDS).optional(),
+    otherKind: z.enum(HUMAN_OTHER_KINDS).optional(),
     /** How many heads the slot serves (≥ 0). */
     headCount: z.number().int().min(0).optional(),
     /** ONE map keyed by teacher id (the primary AND the extras), satang ≥ 0; an id not on the booking ⇒ 400 (service). */
@@ -448,7 +454,7 @@ export const bulkConfirm = z.object({
 // re-times a session and TELLS the teacher; this must notify nobody (the note's precedent, TASK-178).
 export const editOtherBooking = z
   .object({
-    otherKind: z.enum(OTHER_KINDS).optional(),
+    otherKind: z.enum(HUMAN_OTHER_KINDS).optional(),
     headCount: z.number().int().min(0).optional(),
     teacherRates: z.record(ID, z.number().int().min(0)).optional(),
   })
@@ -478,7 +484,7 @@ export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(
 export const otherSeries = z
   .object({
     title: z.string().trim().min(1),
-    otherKind: z.enum(OTHER_KINDS),
+    otherKind: z.enum(HUMAN_OTHER_KINDS),
     headCount: z.number().int().min(0),
     note: z.string().optional(),
     teacherId: ID,
@@ -493,11 +499,16 @@ export const otherSeries = z
 
 // ── TASK-401 (REQ-095 Stage 3a) — Balance camp. Shapes only; the rules (units, credit, capacity, transitions) are the service's. ──
 export const campWeeksQuery = z.object({ from: DATE, to: DATE });
+const HHMM = z.string().regex(/^\d{2}:\d{2}$/, "ต้องเป็นรูปแบบ HH:MM");
 export const createCampWeek = z
-  .object({ name: z.string().trim().min(1).max(80), startDate: DATE, endDate: DATE, capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional() })
+  .object({ name: z.string().trim().min(1).max(80), startDate: DATE, endDate: DATE, capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional(), windowStart: HHMM.optional(), windowEnd: HHMM.optional() }) // TASK-418: the week's window (default 10:00–15:00)
   .refine((d) => d.endDate >= d.startDate, { message: "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม", path: ["endDate"] });
 export const updateCampWeek = z
-  .object({ name: z.string().trim().min(1).max(80).optional(), capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional(), status: z.enum(CAMP_WEEK_STATUSES).optional() })
+  .object({ name: z.string().trim().min(1).max(80).optional(), capacity: z.number().int().min(1).nullable().optional(), teacherIds: z.array(ID).optional(), status: z.enum(CAMP_WEEK_STATUSES).optional(), windowStart: HHMM.optional(), windowEnd: HHMM.optional() })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+// TASK-418 — the per-day swap: who holds the block that day, and when (the rules — whole hours, the bounds — are the service's).
+export const updateCampWeekDay = z
+  .object({ teacherIds: z.array(ID).optional(), startTime: HHMM.optional(), endTime: HHMM.optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 export const redeemCampDays = z
   .object({ weekId: ID, dates: z.array(DATE).min(1).max(7), half: z.enum(CAMP_HALVES) })

@@ -6,7 +6,7 @@ import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { and, sql } from "drizzle-orm";
-import { birthMonthOrder, birthMonthWhere, monthInRange, noDobWhere, withBirthdayFilter, wrapSortKey } from "./birth-month";
+import { birthDateOrder, birthDateRangeWhere, birthMonthOrder, birthMonthWhere, birthdayMode, birthdayOrder, dateInRange, monthEnd, monthInRange, monthStart, noDobWhere, withBirthdayFilter, wrapSortKey } from "./birth-month";
 import * as v from "../validation";
 import * as parent from "../services/parent.service";
 import { db } from "../db";
@@ -89,12 +89,11 @@ describe("🔴 the validator's two 400s; `birthDate` in the select and the DTO; 
     expect(S).toContain("archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),"); // REQ-093 untouched
     expect(S).toContain("const baseWhere = excluded.length ? and(searchWhere, notInArray(students.id, excluded))! : searchWhere!;"); // TASK-058 untouched
     expect(S).toContain(".where(withBirthdayFilter(baseWhere, birthday))");
-    expect(S).toContain("const ranged = birthday.birthMonthFrom !== undefined && birthday.birthMonthTo !== undefined && !birthday.noDob;");
-    expect(S).toContain(".orderBy(...(ranged ? birthMonthOrder(birthday.birthMonthFrom!) : [asc(students.name)]))");
+    expect(S).toContain(".orderBy(...birthdayOrder(birthday))"); // 🔻 TASK-416: the order follows the ONE branch decision
     expect(S).toContain(".limit(Math.min(limit, 200));");
     expect(S).not.toMatch(/extract\(|birth_date/); // the SQL lives in the helper, not here
-    expect(code(src("src/routes/api.ts"))).toContain("parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, noDob })");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(47); // no migration
+    expect(code(src("src/routes/api.ts"))).toContain("parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob })"); // 🔻 TASK-416
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(48); // no migration of its own (🔻 TASK-418 added 0047)
   });
   test("through the ROOT app (service spied): the range reaches the service; a lone month ⇒ 400 before the service; the contradiction ⇒ 400", async () => {
     process.env.SKIP_AUTH = "true";
@@ -103,13 +102,57 @@ describe("🔴 the validator's two 400s; `birthDate` in the select and the DTO; 
     try {
       const get = (qs: string) => rootApp.fetch(new Request(`http://localhost/api/students${qs}`));
       expect((await get("?birthMonthFrom=11&birthMonthTo=2")).status).toBe(200);
-      expect(calls.at(-1)).toEqual([undefined, 50, false, { birthMonthFrom: 11, birthMonthTo: 2, noDob: false }]);
+      expect(calls.at(-1)).toEqual([undefined, 50, false, { birthMonthFrom: 11, birthMonthTo: 2, birthYearFrom: undefined, birthYearTo: undefined, noDob: false }]);
       expect((await get("?noDob=true&q=a")).status).toBe(200);
-      expect(calls.at(-1)).toEqual(["a", 50, false, { birthMonthFrom: undefined, birthMonthTo: undefined, noDob: true }]);
+      expect(calls.at(-1)).toEqual(["a", 50, false, { birthMonthFrom: undefined, birthMonthTo: undefined, birthYearFrom: undefined, birthYearTo: undefined, noDob: true }]);
       expect(calls.length).toBe(2);
       expect((await get("?birthMonthFrom=11")).status).toBe(400);
       expect((await get("?noDob=true&birthMonthFrom=1&birthMonthTo=2")).status).toBe(400);
       expect(calls.length).toBe(2);
     } finally { s.mockRestore(); }
+  });
+});
+
+describe("🔴 TASK-416 — optional YEARS: the DATED branch by value (a real birth_date range, the whole To month, no wrap, date order); without years TASK-414 is byte-unchanged", () => {
+  test("the SQL: `birth_date BETWEEN make_date(yf, mf, 1) AND (make_date(yt, mt, 1) + interval '1 month' - interval '1 day')` with the four params; the order = the date, then the name", () => {
+    const d = q(birthDateRangeWhere(2018, 9, 2019, 2), birthDateOrder());
+    expect(d.sql).toMatch(/"students"\."birth_date" between make_date\(\$1, \$2, 1\) and \(make_date\(\$3, \$4, 1\) \+ interval '1 month' - interval '1 day'\)/);
+    expect(d.sql).toMatch(/order by "students"\."birth_date" asc, "students"\."name" asc/);
+    expect(d.params).toEqual([2018, 9, 2019, 2]);
+    expect(d.sql).not.toMatch(/extract\(month/); // a dated range never reads the month alone
+  });
+  test("the date table: Sep 2018 → Feb 2019 includes 15-01-2019 (and the edges 01-09-2018, 28-02-2019); excludes 15-03-2019, 15-01-2018, 01-03-2019, 31-08-2018", () => {
+    expect(monthStart(2018, 9)).toBe("2018-09-01");
+    expect(monthEnd(2019, 2)).toBe("2019-02-28");
+    expect(monthEnd(2020, 2)).toBe("2020-02-29"); // a leap year's whole To month
+    expect(monthEnd(2019, 12)).toBe("2019-12-31");
+    const inR = (iso: string) => dateInRange(iso, 2018, 9, 2019, 2);
+    for (const yes of ["2019-01-15", "2018-09-01", "2019-02-28", "2018-12-31"]) expect({ yes, in: inR(yes) }).toEqual({ yes, in: true });
+    for (const no of ["2019-03-15", "2018-01-15", "2019-03-01", "2018-08-31"]) expect({ no, in: inR(no) }).toEqual({ no, in: false });
+  });
+  test("the ONE branch decision: years + months ⇒ date; months only ⇒ month (wrap allowed); noDob wins; nothing ⇒ none — and the where/order follow it", () => {
+    expect(birthdayMode({ birthMonthFrom: 9, birthMonthTo: 2, birthYearFrom: 2018, birthYearTo: 2019 })).toBe("date");
+    expect(birthdayMode({ birthMonthFrom: 11, birthMonthTo: 2 })).toBe("month");
+    expect(birthdayMode({ noDob: true, birthMonthFrom: 1, birthMonthTo: 2 })).toBe("noDob");
+    expect(birthdayMode({ noDob: true, birthMonthFrom: 9, birthMonthTo: 2, birthYearFrom: 2018, birthYearTo: 2019 })).toBe("noDob"); // noDob wins over a DATED range too
+    expect(birthdayMode({})).toBe("none");
+    expect(birthdayMode({ birthMonthFrom: 1 })).toBe("none"); // a half range never filters (the validator refuses it anyway)
+    const base = sql`"students"."archived_at" is null`;
+    const dated = q(withBirthdayFilter(base, { birthMonthFrom: 9, birthMonthTo: 2, birthYearFrom: 2018, birthYearTo: 2019 }), birthdayOrder({ birthMonthFrom: 9, birthMonthTo: 2, birthYearFrom: 2018, birthYearTo: 2019 }));
+    expect(dated.sql).toMatch(/archived_at" is null.*make_date/s); expect(dated.sql).not.toMatch(/extract\(month/); expect(dated.sql).toMatch(/order by "students"\."birth_date" asc/); // the base survives beside the dated range
+    const monthly = q(withBirthdayFilter(base, { birthMonthFrom: 11, birthMonthTo: 2 }), birthdayOrder({ birthMonthFrom: 11, birthMonthTo: 2 }));
+    expect(monthly.sql).toMatch(/>= \$1 or extract\(month from "students"\."birth_date"\) <= \$2/); expect(monthly.sql).not.toMatch(/make_date/); expect(monthly.sql).toMatch(/% 12\) asc/);
+    expect(q(withBirthdayFilter(base, {}), birthdayOrder({})).sql).toMatch(/order by "students"\."name" asc/);
+  });
+  test("the validator's five 400s: a lone year · a year without its month · from > to (dated) · noDob with years · the month rule still; the happy dated shape parses", () => {
+    expect(v.studentsQuery.parse({ birthMonthFrom: "9", birthMonthTo: "2", birthYearFrom: "2018", birthYearTo: "2019" })).toMatchObject({ birthMonthFrom: 9, birthMonthTo: 2, birthYearFrom: 2018, birthYearTo: 2019 });
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "9", birthMonthTo: "2", birthYearFrom: "2018" }).success).toBe(false); // a lone year
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "9", birthMonthTo: "2", birthYearTo: "2019" }).success).toBe(false); // a lone To year — only the both-or-neither rule catches this one
+    expect(v.studentsQuery.safeParse({ birthYearFrom: "2018", birthYearTo: "2019" }).success).toBe(false); // years without months
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "9", birthMonthTo: "2", birthYearFrom: "2019", birthYearTo: "2018" }).success).toBe(false); // from > to
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "3", birthMonthTo: "2", birthYearFrom: "2019", birthYearTo: "2019" }).success).toBe(false); // same year, months backwards ⇒ from > to
+    expect(v.studentsQuery.safeParse({ noDob: "true", birthMonthFrom: "9", birthMonthTo: "2", birthYearFrom: "2018", birthYearTo: "2019" }).success).toBe(false); // noDob with years
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "9", birthMonthTo: "9", birthYearFrom: "2019", birthYearTo: "2019" }).success).toBe(true); // one month, one year
+    expect(v.studentsQuery.safeParse({ birthMonthFrom: "9", birthMonthTo: "2", birthYearFrom: "1899", birthYearTo: "2019" }).success).toBe(false); // the bounds
   });
 });

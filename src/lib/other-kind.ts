@@ -3,8 +3,13 @@
 // closed list here costs nothing and can grow (DUO/Group, Camp are their OWN objects — SPEC-080 §1 — not kinds).
 import { ApiException } from "./http";
 
-export const OTHER_KINDS = ["ECA", "FREE", "KOL"] as const;
+// TASK-418 (REQ-095 §11): `CAMP` is the 4th kind — a DERIVED row (a camp hour on the grid) that only `syncCampDayRows`
+// creates. The three HUMAN kinds are what the series / edit / walk-in validators accept; the `type ⇔ kind` pin below
+// knows all four.
+export const HUMAN_OTHER_KINDS = ["ECA", "FREE", "KOL"] as const;
+export const OTHER_KINDS = [...HUMAN_OTHER_KINDS, "CAMP"] as const;
 export type OtherKind = (typeof OTHER_KINDS)[number];
+export const CAMP_KIND = "CAMP" as const;
 export const isOtherKind = (k: unknown): k is OtherKind => typeof k === "string" && (OTHER_KINDS as readonly string[]).includes(k);
 
 // TASK-397 (REQ-095 Stage 2a) — the kinds of a GROUP row, in the SAME column (`other_kind`). 🔴 `booking_type ⇔ kind`:

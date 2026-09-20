@@ -11,7 +11,7 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
 import { PARENT_ARCHIVED, activeParentWhere, cascadeMarker, isParentArchived } from "../lib/parent-archive";
-import { birthMonthOrder, withBirthdayFilter } from "../lib/birth-month";
+import { birthdayOrder, withBirthdayFilter, type BirthdayFilter } from "../lib/birth-month";
 export { activeParentWhere, isParentArchived } from "../lib/parent-archive";
 
 /** Business rule: a single phone may register at most 5 students (their children). */
@@ -618,14 +618,13 @@ export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> 
 // TASK-414 (REQ-099) — `birthday`: a birth-MONTH range (wraps past December) or `noDob`, COMPOSED with the search, the
 // suspended exclusion and the archived default (never replacing them); a range orders from its first month around the
 // year, then the day, then the name.
-export async function searchStudents(q?: string, limit = 50, archived = false, birthday: { birthMonthFrom?: number; birthMonthTo?: number; noDob?: boolean } = {}) {
+export async function searchStudents(q?: string, limit = 50, archived = false, birthday: BirthdayFilter = {}) {
   const excluded = [...(await suspendedStudentIds())];
   const searchWhere = and(
     q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`,
     archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),
   );
   const baseWhere = excluded.length ? and(searchWhere, notInArray(students.id, excluded))! : searchWhere!;
-  const ranged = birthday.birthMonthFrom !== undefined && birthday.birthMonthTo !== undefined && !birthday.noDob;
   const rows = await db
     .select({
       id: students.id,
@@ -640,7 +639,7 @@ export async function searchStudents(q?: string, limit = 50, archived = false, b
     .from(students)
     .leftJoin(parents, eq(parents.id, students.parentId))
     .where(withBirthdayFilter(baseWhere, birthday))
-    .orderBy(...(ranged ? birthMonthOrder(birthday.birthMonthFrom!) : [asc(students.name)]))
+    .orderBy(...birthdayOrder(birthday)) // TASK-416: the order follows the ONE branch decision (date · month-wrap · name)
     .limit(Math.min(limit, 200));
 
   return rows.map((r) => ({

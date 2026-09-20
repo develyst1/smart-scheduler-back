@@ -447,6 +447,8 @@ export async function runDailyReminderJob(date?: string) {
       headCount: r.headCount ?? null,
       // TASK-397 — a GROUP row's seats, for the coach's folded entry; a seat's group id, so it is not its own entry there.
       groupId: r.groupId ?? null,
+      campWeekDayId: r.campWeekDayId ?? null, // TASK-418 — the fold key
+      otherKind: r.otherKind ?? null,
       seats: r.bookingType === "GROUP" ? (r.seats ?? []).filter((x: any) => REMINDABLE.has(x.status)).map((x: any) => ({ studentName: x.student?.nickname ?? x.student?.name ?? "", remaining: x.course ? remainingLabel("course", x.course.size - x.course.usedSessions, x.course.size) : null })) : null,
     })),
   );

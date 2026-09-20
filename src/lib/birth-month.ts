@@ -33,9 +33,51 @@ export function birthMonthOrder(from: number) {
   return [asc(sql`((${month} - ${from} + 12) % 12)`), asc(day), asc(students.name)];
 }
 
-/** The two filters composed with a base condition (the caller's search + suspended + archived terms). */
-export function withBirthdayFilter(base: SQL, f: { birthMonthFrom?: number; birthMonthTo?: number; noDob?: boolean }): SQL {
-  if (f.noDob) return and(base, noDobWhere())!;
-  if (f.birthMonthFrom !== undefined && f.birthMonthTo !== undefined) return and(base, birthMonthWhere(f.birthMonthFrom, f.birthMonthTo))!;
-  return base;
+// ───────────── TASK-416 (REQ-099 + years) — the DATED branch ─────────────
+/** The first day of a month as ISO (`YYYY-MM-01`) and the last day (the whole To month included). Pure, for the table pins. */
+export const monthStart = (y: number, m: number): string => `${y}-${String(m).padStart(2, "0")}-01`;
+export function monthEnd(y: number, m: number): string {
+  const d = new Date(Date.UTC(y, m, 0)); // day 0 of the NEXT month = the last day of this one
+  return d.toISOString().slice(0, 10);
+}
+
+/** Is the ISO date inside `[monthStart(yf, mf), monthEnd(yt, mt)]`? Pure (a dated range cannot wrap). */
+export const dateInRange = (iso: string, yf: number, mf: number, yt: number, mt: number): boolean => iso >= monthStart(yf, mf) && iso <= monthEnd(yt, mt);
+
+/**
+ * With years: `birth_date BETWEEN make_date(yf, mf, 1) AND (make_date(yt, mt, 1) + interval '1 month' - interval '1 day')`
+ * — the whole To month, no wrap (the validator refuses `from > to`). NULL never satisfies a BETWEEN.
+ */
+export function birthDateRangeWhere(yf: number, mf: number, yt: number, mt: number): SQL {
+  return sql`${students.birthDate} between make_date(${yf}, ${mf}, 1) and (make_date(${yt}, ${mt}, 1) + interval '1 month' - interval '1 day')`;
+}
+/** A dated range orders by the date itself, then the name. */
+export function birthDateOrder() {
+  return [asc(students.birthDate), asc(students.name)];
+}
+
+export interface BirthdayFilter { birthMonthFrom?: number; birthMonthTo?: number; birthYearFrom?: number; birthYearTo?: number; noDob?: boolean }
+/** Which branch a filter takes — the ONE decision the where and the order both read. */
+export function birthdayMode(f: BirthdayFilter): "none" | "noDob" | "month" | "date" {
+  if (f.noDob) return "noDob";
+  if (f.birthMonthFrom === undefined || f.birthMonthTo === undefined) return "none";
+  return f.birthYearFrom !== undefined && f.birthYearTo !== undefined ? "date" : "month";
+}
+
+/** The filters composed with a base condition (the caller's search + suspended + archived terms). */
+export function withBirthdayFilter(base: SQL, f: BirthdayFilter): SQL {
+  switch (birthdayMode(f)) {
+    case "noDob": return and(base, noDobWhere())!;
+    case "date": return and(base, birthDateRangeWhere(f.birthYearFrom!, f.birthMonthFrom!, f.birthYearTo!, f.birthMonthTo!))!;
+    case "month": return and(base, birthMonthWhere(f.birthMonthFrom!, f.birthMonthTo!))!;
+    default: return base;
+  }
+}
+/** The order that goes with the branch: dated ⇒ the date; month-only ⇒ the wrap key; else the name. */
+export function birthdayOrder(f: BirthdayFilter) {
+  switch (birthdayMode(f)) {
+    case "date": return birthDateOrder();
+    case "month": return birthMonthOrder(f.birthMonthFrom!);
+    default: return [asc(students.name)];
+  }
 }

@@ -4,25 +4,28 @@
 // `recordSale` after the tx on an idempotency key). 🚫 No expiry, no per-day revenue, no slot block, no LINE.
 import { and, asc, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { campDays, campPackages, campWeeks } from "../db/schema";
+import { bookings, campDays, campPackages, campWeekDays, campWeeks } from "../db/schema";
 import { ApiException, badRequest, conflict, notFound } from "../lib/http";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
-import { assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, usedAfter, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
+import { CAMP_WINDOW_DEFAULT, assertCampWindow, campSlotDiff, wantedCampSlots, assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, usedAfter, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
 import { generateCheckinToken } from "../lib/checkin";
 import { checkinUrl } from "../lib/checkin-token";
 import { type CampDayInput, type CampWeekInput } from "../lib/camp-reminder";
 import { familyLineUserIdsBulk } from "../lib/family-link";
 import { assertStudentActive } from "./parent.service";
-import { assertHouseholdNotSuspended } from "./scheduler.service";
+import { assertHouseholdNotSuspended, insertBooking } from "./scheduler.service";
+import { CAMP_KIND } from "../lib/other-kind";
 
 const CONSUMING_OR_PLANNED = ["PLANNED", "ATTENDED", "ABSENT"] as const;
 
 // ───────────── weeks ─────────────
+const hm = (t: string | null | undefined) => (t ? String(t).slice(0, 5) : null);
 const toWeekDTO = (w: any, dayCounts: Record<string, number> = {}) => ({
   id: w.id, name: w.name, startDate: w.startDate, endDate: w.endDate, capacity: w.capacity ?? null, teacherIds: w.teacherIds ?? [],
+  windowStart: hm(w.windowStart) ?? CAMP_WINDOW_DEFAULT.start, windowEnd: hm(w.windowEnd) ?? CAMP_WINDOW_DEFAULT.end, // TASK-418 — the effective window
   status: w.status, openedBy: w.openedBy ?? null, openedAt: new Date(w.openedAt).toISOString(), closedAt: w.closedAt ? new Date(w.closedAt).toISOString() : null,
   dates: datesOfWeek(w.startDate, w.endDate), dayCounts,
 });
@@ -43,14 +46,25 @@ export async function listWeeks(range: { from: string; to: string }) {
   return { weeks: rows.map((w) => toWeekDTO(w, counts.get(w.id) ?? {})) };
 }
 
-export async function createWeek(input: { name: string; startDate: string; endDate: string; capacity?: number | null; teacherIds?: string[] }, actor: string | null) {
+export async function createWeek(input: { name: string; startDate: string; endDate: string; capacity?: number | null; teacherIds?: string[]; windowStart?: string; windowEnd?: string }, actor: string | null) {
   const dates = datesOfWeek(input.startDate, input.endDate);
   if (dates.length < 1 || dates.length > MAX_WEEK_DAYS || dates.at(-1) !== input.endDate) throw badRequest(`สัปดาห์แคมป์ต้องมี 1–${MAX_WEEK_DAYS} วันติดกัน`);
-  const [w] = await db.insert(campWeeks).values({ name: input.name, startDate: input.startDate, endDate: input.endDate, capacity: input.capacity ?? null, teacherIds: input.teacherIds ?? null, openedBy: actor }).returning();
+  const ws = input.windowStart ?? CAMP_WINDOW_DEFAULT.start, we = input.windowEnd ?? CAMP_WINDOW_DEFAULT.end;
+  assertCampWindow(ws, we);
+  // TASK-418 — ONE tx: the week, one day row per date (the week's teachers + window), and the derived CAMP rows through
+  // the ONE sync. The first slot clash names the date, hour and teacher and NOTHING is written (the series shape).
+  const w = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(campWeeks).values({ name: input.name, startDate: input.startDate, endDate: input.endDate, capacity: input.capacity ?? null, teacherIds: input.teacherIds ?? null, windowStart: input.windowStart ?? null, windowEnd: input.windowEnd ?? null, openedBy: actor }).returning();
+    for (const date of dates) {
+      const [d] = await tx.insert(campWeekDays).values({ campWeekId: row!.id, date, teacherIds: input.teacherIds ?? [], startTime: ws, endTime: we }).returning();
+      await syncCampDayRows(tx, d!.id);
+    }
+    return row!;
+  });
   return { week: toWeekDTO(w) };
 }
 
-export async function updateWeek(id: string, input: { name?: string; capacity?: number | null; teacherIds?: string[]; status?: string }) {
+export async function updateWeek(id: string, input: { name?: string; capacity?: number | null; teacherIds?: string[]; status?: string; windowStart?: string; windowEnd?: string }) {
   const w = await db.query.campWeeks.findFirst({ where: (x, { eq: e }) => e(x.id, id) });
   if (!w) throw notFound("ไม่พบสัปดาห์แคมป์");
   const patch: Record<string, unknown> = {};
@@ -58,7 +72,28 @@ export async function updateWeek(id: string, input: { name?: string; capacity?: 
   if (input.capacity !== undefined) patch.capacity = input.capacity;
   if (input.teacherIds !== undefined) patch.teacherIds = input.teacherIds;
   if (input.status !== undefined) { patch.status = input.status; patch.closedAt = input.status === "CLOSED" ? new Date() : null; }
-  const [updated] = await db.update(campWeeks).set(patch).where(eq(campWeeks.id, id)).returning();
+  const ws = input.windowStart ?? hm(w.windowStart) ?? CAMP_WINDOW_DEFAULT.start, we = input.windowEnd ?? hm(w.windowEnd) ?? CAMP_WINDOW_DEFAULT.end;
+  if (input.windowStart !== undefined || input.windowEnd !== undefined) { assertCampWindow(ws, we); patch.windowStart = ws; patch.windowEnd = we; }
+  // TASK-418 — the cascades, ONE tx: a week-level teacher/window change re-derives ONLY the days nobody edited by hand
+  // (`edited_at IS NULL`); CLOSED ⇒ every derived row of the week gone; OPEN again ⇒ every day re-synced.
+  const [updated] = await db.transaction(async (tx) => {
+    const [u] = await tx.update(campWeeks).set(patch).where(eq(campWeeks.id, id)).returning();
+    const status = input.status ?? w.status;
+    if (status === "CLOSED") {
+      const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e }: any) => e(d.campWeekId, id) });
+      for (const d of days) await deleteCampDayRows(tx, d.id);
+    } else if (input.status === "OPEN" && w.status !== "OPEN") {
+      const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e }: any) => e(d.campWeekId, id) });
+      for (const d of days) await syncCampDayRows(tx, d.id);
+    } else if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {
+      const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e, isNull: nul, and: a }: any) => a(e(d.campWeekId, id), nul(d.editedAt)) });
+      for (const d of days) {
+        await tx.update(campWeekDays).set({ ...(input.teacherIds !== undefined ? { teacherIds: input.teacherIds } : {}), startTime: ws, endTime: we }).where(eq(campWeekDays.id, d.id));
+        await syncCampDayRows(tx, d.id);
+      }
+    }
+    return [u];
+  });
   const counts = await dayCountsByWeek([id]);
   return { week: toWeekDTO(updated, counts.get(id) ?? {}) };
 }
@@ -70,11 +105,79 @@ export async function weekDays(id: string) {
   const rows = await db.query.campDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { package: { with: { student: true } } }, orderBy: (d, { asc: a }) => [a(d.date)] });
   const byDate = new Map<string, any[]>();
   for (const r of rows) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
+  const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id) }); // TASK-418
+  const dayByDate = new Map(dayRows.map((d) => [d.date, d]));
   const days = datesOfWeek(w.startDate, w.endDate).map((date) => {
     const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
-    return { date, entries, count: entries.filter((e: any) => e.status !== "CANCELLED").length, capacity: w.capacity ?? null };
+    const d = dayByDate.get(date);
+    return { date, entries, count: entries.filter((e: any) => e.status !== "CANCELLED").length, capacity: w.capacity ?? null, ...toDayDTO(d) };
   });
   return { week: toWeekDTO(w), days };
+}
+
+// ───────────── TASK-418 (REQ-095 §11, SPEC-085 A) — the camp BLOCK on the grid ─────────────
+const toDayDTO = (d: any) => ({ campWeekDayId: d?.id ?? null, teacherIds: d?.teacherIds ?? [], startTime: hm(d?.startTime), endTime: hm(d?.endTime), editedAt: d?.editedAt ? new Date(d.editedAt).toISOString() : null });
+
+/** The live derived rows of a day, keyed `teacherId|HH:MM` ⇒ id. */
+async function existingCampRows(tx: any, dayId: string): Promise<Map<string, string>> {
+  const rows = await tx.select({ id: bookings.id, teacherId: bookings.teacherId, startTime: bookings.startTime }).from(bookings).where(eq(bookings.campWeekDayId, dayId));
+  return new Map(rows.map((r: any) => [`${r.teacherId}|${hm(r.startTime)}`, r.id]));
+}
+
+/**
+ * THE ONE SYNC: the day row says who holds the block and when; this makes the rows agree. Wanted = teachers × the
+ * window's hours; the diff against the existing CAMP rows inserts the missing (through `insertBooking` — the slot
+ * index, the roster check; a clash ⇒ `409 SLOT_TAKEN` naming the date, hour and teacher, and the CALLER's tx rolls
+ * back) and hard-DELETES the surplus (derived rows, no history, no money — the day row is the record). A CAMP row is
+ * born CONFIRMED (a block has no confirm step — and the coach's reminder is CONFIRMED-only). ⇒ { inserted, deleted }.
+ */
+export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserted: number; deleted: number }> {
+  const d = await tx.query.campWeekDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId), with: { week: true } });
+  if (!d) throw notFound("ไม่พบวันแคมป์");
+  const wanted = d.week.status === "OPEN" ? wantedCampSlots(d.teacherIds ?? [], hm(d.startTime)!, hm(d.endTime)!) : new Set<string>();
+  const existing = await existingCampRows(tx, dayId);
+  const { insert, remove } = campSlotDiff(wanted, existing);
+  if (remove.length) await tx.delete(bookings).where(inArray(bookings.id, remove));
+  for (const key of insert) {
+    const [teacherId, hour] = key.split("|") as [string, string];
+    try {
+      const id = await insertBooking(tx, null, { teacherId, subjectId: null, date: d.date, startTime: hour, bookingType: "OTHER", otherTitle: d.week.name, otherKind: CAMP_KIND, status: "CONFIRMED" });
+      await tx.update(bookings).set({ campWeekDayId: dayId, confirmedAt: new Date() }).where(eq(bookings.id, id));
+    } catch (e: any) {
+      if (e instanceof ApiException && e.code === "SLOT_TAKEN") {
+        const t = await tx.query.teachers.findFirst({ where: (x: any, { eq: e2 }: any) => e2(x.id, teacherId) });
+        throw conflict("SLOT_TAKEN", `วันที่ ${d.date} ${hour} ครู${t?.nickname ?? t?.name ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`);
+      }
+      throw e;
+    }
+  }
+  return { inserted: insert.length, deleted: remove.length };
+}
+
+/** A closed week (or a day with no teacher) holds nothing: every derived row of the day gone. */
+async function deleteCampDayRows(tx: any, dayId: string): Promise<number> {
+  const rows = await tx.delete(bookings).where(eq(bookings.campWeekDayId, dayId)).returning({ id: bookings.id });
+  return rows.length;
+}
+
+/**
+ * The per-day edit = the per-day SWAP (`PATCH /camp/weeks/:id/days/:date`): the day row changes, `edited_at` is
+ * stamped (a week-level change will leave this day alone), and the ONE sync re-derives it. A CLOSED week ⇒ 409.
+ */
+export async function updateWeekDay(weekId: string, date: string, input: { teacherIds?: string[]; startTime?: string; endTime?: string }) {
+  const w = await db.query.campWeeks.findFirst({ where: (x, { eq: e }) => e(x.id, weekId) });
+  if (!w) throw notFound("ไม่พบสัปดาห์แคมป์");
+  if (w.status !== "OPEN") throw conflict("CAMP_WEEK_CLOSED", `สัปดาห์ ${w.name} ปิดรับแล้ว`);
+  const d = await db.query.campWeekDays.findFirst({ where: (x, { and: a, eq: e }) => a(e(x.campWeekId, weekId), e(x.date, date)) });
+  if (!d) throw notFound("ไม่พบวันแคมป์");
+  const start = input.startTime ?? hm(d.startTime)!, end = input.endTime ?? hm(d.endTime)!;
+  assertCampWindow(start, end);
+  const result = await db.transaction(async (tx) => {
+    await tx.update(campWeekDays).set({ teacherIds: input.teacherIds ?? d.teacherIds, startTime: start, endTime: end, editedAt: new Date() }).where(eq(campWeekDays.id, d.id));
+    return syncCampDayRows(tx, d.id);
+  });
+  const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id) });
+  return { day: { date, ...toDayDTO(fresh) }, ...result };
 }
 
 // ───────────── packages (the sale) ─────────────

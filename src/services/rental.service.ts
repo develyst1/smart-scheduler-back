@@ -5,6 +5,7 @@
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
 import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../db";
+import { assertNotCampRow } from "./scheduler.service"; // TASK-418 — a derived camp hour is owned by its day
 import { bookingRentals, bookings, coursePackages } from "../db/schema";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { rentalBookingLive, rentalRemarkRequired, toRentalDTO } from "../lib/rental-row";
@@ -81,6 +82,7 @@ export async function recordBookingRental(
 ) {
   const booking = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, bookingId) });
   if (!booking) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(booking); // TASK-418 — a derived camp hour rents nothing
   if (!rentalBookingLive(booking.status)) throw conflict("BOOKING_NOT_LIVE", "คาบนี้ถูกยกเลิกหรือพักอยู่ — เพิ่มค่าเช่าไม่ได้");
   if (rentalRemarkRequired(input.code, input.remark)) {
     throw new ApiException(400, "RENTAL_REMARK_REQUIRED", "กรุณาระบุรายละเอียดอุปกรณ์ (ชุด/คู่/ไซส์)");
@@ -158,6 +160,7 @@ export async function inheritCourseRental(tx: any, courseId: string, newBookingI
 export async function payBookingRental(bookingId: string, actor: string | null) {
   const row = await rentalRowOf(bookingId);
   if (!row) throw notFound("คาบนี้ไม่มีรายการเช่าอุปกรณ์");
+  assertNotCampRow(await db.query.bookings.findFirst({ columns: { campWeekDayId: true }, where: (b, { eq: e }) => e(b.id, bookingId) })); // TASK-418
   // Paid twice ⇒ 200, no second post. (And if this guard were ever bypassed, `recordRental`'s idempotency key
   // makes the second post a `duplicate` — two guards on one boundary.)
   if (row.paidAt) return { rental: toRentalDTO(row) };
@@ -178,6 +181,7 @@ export async function payBookingRental(bookingId: string, actor: string | null) 
 export async function removeBookingRental(bookingId: string) {
   const row = await rentalRowOf(bookingId);
   if (!row) throw notFound("คาบนี้ไม่มีรายการเช่าอุปกรณ์");
+  assertNotCampRow(await db.query.bookings.findFirst({ columns: { campWeekDayId: true }, where: (b, { eq: e }) => e(b.id, bookingId) })); // TASK-418
   if (row.paidAt) throw conflict("RENTAL_PAID", "ชำระแล้ว — ลบไม่ได้ (เงินลงบัญชีแล้ว ให้หลังบ้านปรับ)");
   await db.delete(bookingRentals).where(eq(bookingRentals.id, row.id));
   return { removed: true as const };

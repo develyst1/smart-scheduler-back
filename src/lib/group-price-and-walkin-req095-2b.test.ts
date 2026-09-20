@@ -182,7 +182,7 @@ describe("🔑 the group DTO carries `priceGroup` from the resolver's own mappin
     expect(loop).toContain("WOULD be created");
     expect(S).toContain('DRY RUN — nothing written.');
   });
-  test("47 = 47 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046)", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(47);
+  test("48 = 48 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047)", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(48);
   });
 });

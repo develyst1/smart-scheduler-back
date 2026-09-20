@@ -85,6 +85,50 @@ export function campScanOutcome(day: { status: string; date: string; checkinToke
   return "attend";
 }
 
+// ───────────── TASK-418 (REQ-095 §11) — the camp BLOCK on the grid: the window and the wanted set (pure) ─────────────
+/** The owner's default window (§12): one window per day, 10:00–15:00, editable per week. */
+export const CAMP_WINDOW_DEFAULT = { start: "10:00", end: "15:00" } as const;
+/** The shop's day for a camp window. */
+export const CAMP_WINDOW_BOUNDS = { earliest: "06:00", latest: "22:00" } as const;
+
+const hm = (t: string) => t.slice(0, 5);
+/** A window is whole hours inside the bounds with start < end. `400` otherwise (the validator's shape check is the wrapper). */
+export function assertCampWindow(start: string, end: string): void {
+  const s = hm(start), e = hm(end);
+  if (!/^\d{2}:00$/.test(s) || !/^\d{2}:00$/.test(e)) throw new ApiException(400, "VALIDATION", "ช่วงเวลาแคมป์ต้องเป็นชั่วโมงเต็ม (เช่น 10:00–15:00)");
+  if (s < CAMP_WINDOW_BOUNDS.earliest || e > CAMP_WINDOW_BOUNDS.latest) throw new ApiException(400, "VALIDATION", `ช่วงเวลาแคมป์ต้องอยู่ระหว่าง ${CAMP_WINDOW_BOUNDS.earliest}–${CAMP_WINDOW_BOUNDS.latest}`);
+  if (s >= e) throw new ApiException(400, "VALIDATION", "เวลาเริ่มต้องก่อนเวลาสิ้นสุด");
+}
+/** The hours a window covers: [start, end) in whole hours — `10:00–15:00` ⇒ 10, 11, 12, 13, 14. */
+export function windowHours(start: string, end: string): string[] {
+  const out: string[] = [];
+  for (let h = Number(hm(start).slice(0, 2)); h < Number(hm(end).slice(0, 2)); h++) out.push(`${String(h).padStart(2, "0")}:00`);
+  return out;
+}
+/** The wanted set of a day: every (teacher, hour) — no teacher ⇒ none. Keys `teacherId|HH:MM`. */
+export function wantedCampSlots(teacherIds: readonly string[], start: string, end: string): Set<string> {
+  const out = new Set<string>();
+  for (const t of teacherIds) for (const h of windowHours(start, end)) out.add(`${t}|${h}`);
+  return out;
+}
+/** The diff the sync applies: what to insert (wanted − existing) and what to delete (existing − wanted). Pure. */
+export function campSlotDiff(wanted: ReadonlySet<string>, existing: ReadonlyMap<string, string>): { insert: string[]; remove: string[] } {
+  return { insert: [...wanted].filter((k) => !existing.has(k)).sort(), remove: [...existing.entries()].filter(([k]) => !wanted.has(k)).map(([, id]) => id) };
+}
+/** The reminder fold (SPEC-085 §3.4): CAMP rows of one (coach, date, day) become ONE row spanning the earliest start to the latest end. Pure. */
+export function foldCampRows<T extends { startTime: string; endTime?: string | null; campWeekDayId?: string | null; otherKind?: string | null }>(rows: T[]): T[] {
+  const out: T[] = [];
+  const folded = new Map<string, T>();
+  for (const r of rows) {
+    if (r.otherKind !== "CAMP" || !r.campWeekDayId) { out.push(r); continue; }
+    const cur = folded.get(r.campWeekDayId);
+    if (!cur) { folded.set(r.campWeekDayId, { ...r }); out.push(folded.get(r.campWeekDayId)!); continue; }
+    if (hm(r.startTime) < hm(cur.startTime)) cur.startTime = r.startTime;
+    if ((r.endTime ?? "") > (cur.endTime ?? "")) cur.endTime = r.endTime;
+  }
+  return out;
+}
+
 /** Consecutive dates from start to end inclusive (ISO). Pure. */
 export function datesOfWeek(startDate: string, endDate: string): string[] {
   const out: string[] = [];

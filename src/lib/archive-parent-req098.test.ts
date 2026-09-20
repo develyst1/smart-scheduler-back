@@ -3,7 +3,7 @@
 // source, no hand-written term), the archive by value (the household's live-future count ⇒ 409; the ONE unlinker
 // clears every LINE account into the audit list; the cascade marks every child `parent:<id>`; idempotent), the restore
 // (only the cascaded children, the LINE ids NOT restored), Finding B's two refusals (the admin's create, the LINE
-// register's `phone-archived` with a PLACEHOLDER reply), the ghost unresolvable, the routes through the root app. 47 = 47.
+// register's `phone-archived` with a PLACEHOLDER reply), the ghost unresolvable, the routes through the root app. 48 = 48.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0046, counted, three NULLABLE adds on `parents`
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0046_parent_archive.sql"), "utf8");
-  test("47 = 47: `0046_parent_archive` is the 47th file, idx 46, the last; 'expects 47' in the header", () => {
-    expect(files.length).toBe(47);
-    expect(journal.entries.length).toBe(47);
+  test("48 = 48: `0046_parent_archive` is the 47th file, idx 46 (TASK-418 added 0047 after it); 'expects 47' in the header", () => {
+    expect(files.length).toBe(48);
+    expect(journal.entries.length).toBe(48);
     expect(files[46]).toBe("0046_parent_archive.sql");
     expect(journal.entries[46]).toMatchObject({ idx: 46, tag: "0046_parent_archive" });
     expect(sql).toContain("`db:verify` expects 47");

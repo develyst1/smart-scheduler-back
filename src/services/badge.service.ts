@@ -3,6 +3,7 @@
 
 import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db";
+import { assertNotCampRow } from "./scheduler.service"; // TASK-418 — a derived camp hour is owned by its day
 import {
   badgeTypes,
   badgeValues,
@@ -130,11 +131,13 @@ export async function attachBookingBadges(exec: any, bookingId: string, valueIds
 
 /** Public entry: set a booking's badges in its own transaction, return the booking's badges. */
 export async function setBookingBadges(bookingId: string, valueIds: string[]) {
+  // TASK-418 — a derived camp hour takes no badges (the day object owns it)
   return await db.transaction(async (tx) => {
     const booking = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, bookingId),
     });
     if (!booking) throw notFound("ไม่พบคาบเรียน");
+    assertNotCampRow(booking); // TASK-418
     await attachBookingBadges(tx, bookingId, valueIds);
     const rows = await tx.query.bookingBadges.findMany({
       where: (bb, { eq }) => eq(bb.bookingId, bookingId),

@@ -37,11 +37,11 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0040_other_schedule.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("47 = 47 (0041 … 0046 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
-    expect(files.length).toBe(47);
+  test("48 = 48 (0041 … 0047 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
+    expect(files.length).toBe(48);
     expect(files[40]).toBe("0040_other_schedule.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(47);
+    expect(j.entries.length).toBe(48);
     expect(j.entries.slice(38, 41).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule"]);
   });
   test("five nullable column adds in order — four on `bookings`, `booking_teachers.rate_minor` LAST; all IF NOT EXISTS; no DEFAULT / NOT NULL; no enum", () => {
@@ -80,9 +80,9 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
 
 describe("🔑 the kinds + the rates map — pure, with values", () => {
   test("`OTHER_KINDS` = ECA · FREE · KOL, a code list; `isOtherKind`", () => {
-    expect([...OTHER_KINDS]).toEqual(["ECA", "FREE", "KOL"]);
+    expect([...OTHER_KINDS]).toEqual(["ECA", "FREE", "KOL", "CAMP"]); // 🔻 TASK-418: CAMP, the derived 4th kind (the human validators keep HUMAN_OTHER_KINDS)
     expect(isOtherKind("KOL")).toBe(true);
-    expect(isOtherKind("CAMP")).toBe(false);
+    expect(isOtherKind("CAMP")).toBe(true); // 🔻 TASK-418: the type ⇔ kind pin knows all four; the HUMAN validators do not (pinned there)
     expect(isOtherKind(null)).toBe(false);
   });
   test("`assertRatesOnBooking`: a rate for a teacher on the booking passes; a stray id ⇒ 400 naming it; no map ⇒ nothing", () => {

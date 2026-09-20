@@ -182,6 +182,9 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   group: groupFacts(b),
   groupId: b.groupId ?? null,
   groupName: b.group?.otherTitle ?? null,
+  // TASK-418 (REQ-095 §11) — a DERIVED camp hour: its day object and week (the FE merges contiguous cells; the swap door).
+  campWeekDayId: b.campWeekDayId ?? null,
+  campWeekId: b.campWeekDay?.campWeekId ?? null,
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),
   // TASK-371 (REQ-091 Deploy A) — the session's rental ROW: `{ code, remark, paid } | null`. It REPLACES

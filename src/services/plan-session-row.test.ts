@@ -45,7 +45,7 @@ describe("the rental row is batched, not an N+1 (TASK-190 → TASK-371)", () => 
   test("🔴 the calendar reads the rental as a RELATION — no lookup inside the loop that maps ~90 bookings", () => {
     const body = fnSrc("getCalendar");
     expect(SRC).toContain("  rental: true,\n"); // in the shared relation set (🔻 TASK-397 added `seats` + `group` after it — still the ONE set)
-    expect(SRC).toContain("  group: true,\n} as const;");
+    expect(SRC).toContain("  group: true,\n  campWeekDay: true,\n} as const;"); // 🔻 TASK-418: + the camp day
     expect(body).toContain("with: withBookingRelations,");
     const loop = body.slice(body.indexOf("for (const row of bookingRows)"), body.indexOf("\n  }\n", body.indexOf("for (const row of bookingRows)")));
     expect(loop).not.toMatch(/await|rentalsByBooking|bookingRentals/);

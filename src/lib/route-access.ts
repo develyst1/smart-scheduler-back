@@ -156,6 +156,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /camp/weeks": read(["menu:camp"]),
   "POST /camp/weeks": act(["menu:camp"], "action:camp.week-open"),
   "PATCH /camp/weeks/:id": act(["menu:camp"], "action:camp.week-open"),
+  "PATCH /camp/weeks/:id/days/:date": act(["menu:camp"], "action:camp.week-open"), // TASK-418 — the per-day swap
   "GET /camp/weeks/:id/days": read(["menu:camp"]),
   "GET /camp/packages": read(["menu:camp", "menu:people"]), // the student's Camp card reads it from the People page too
   "POST /camp/packages": act(["menu:camp"], "action:camp.sell"),

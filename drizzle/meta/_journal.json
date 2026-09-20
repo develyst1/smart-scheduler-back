@@ -330,6 +330,13 @@
       "when": 1783000000042,
       "tag": "0046_parent_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783000000043,
+      "tag": "0047_camp_week_days",
+      "breakpoints": true
     }
   ]
 }

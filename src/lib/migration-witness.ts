@@ -484,6 +484,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "table; every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0047_camp_week_days",
+    probe: { kind: "index", index: "bookings_camp_week_day_idx" },
+    why:
+      "TASK-418 (REQ-095 §11). The camp_week_days table, the week's window columns, bookings.camp_week_day_id and its " +
+      "partial index — the LAST object, on the hot table, is the witness (its CREATE INDEX takes SHARE on bookings for " +
+      "one scan; said in the header). Every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

@@ -34,8 +34,8 @@ export const api = new Hono()
   })
   // Booking dropdown source — searchable by name / nickname / parent phone.
   .get("/students", zValidator("query", v.studentsQuery), async (c) => {
-    const { q, limit, archived, birthMonthFrom, birthMonthTo, noDob } = c.req.valid("query");
-    return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, noDob })); // TASK-414: the birthday filter
+    const { q, limit, archived, birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob } = c.req.valid("query");
+    return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob })); // TASK-414/416: the birthday filter
   })
   // Staff student creation — under an existing parent or a phone (find-or-create).
   .post("/students", zValidator("json", v.createStudent), async (c) =>

@@ -437,6 +437,7 @@ const withBookingRelations = {
   // every relational reader answers `group` / `groupId` the same way.
   seats: { with: { student: true } },
   group: true,
+  campWeekDay: true,
 } as const;
 
 async function loadBookingDTO(exec: any, id: string) {
@@ -1192,7 +1193,7 @@ async function assertAdditionalTeacherFree(
   );
 }
 
-async function insertBooking(
+export async function insertBooking( // TASK-418: exported — the camp sync inserts its derived rows through the ONE inserter
   exec: any,
   studentId: string | null,
   input: any,
@@ -1442,6 +1443,7 @@ export async function createBooking(input: any) {
 export async function editOtherBooking(id: string, input: { otherKind?: string; headCount?: number; teacherRates?: Record<string, number> }) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id), with: { additionalTeachers: true } });
   if (!current) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(current); // TASK-418
   if (current.bookingType !== "OTHER" && current.bookingType !== "GROUP") throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ” หรือ “กลุ่ม”");
   if (input.otherKind !== undefined) assertKindForType(current.bookingType, input.otherKind); // TASK-397 — no ECA on a group, no DUO on an OTHER
   const extras = (current.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
@@ -1597,9 +1599,21 @@ async function groupKindOfKey(exec: any, groupKey: string): Promise<"DUO" | "GRO
  * in ONE transaction; the slot is checked per date through the index (`409 SLOT_TAKEN` naming the date, nothing
  * moved). 🚫 No notice is sent: `moveBooking` sends none today either — a family notice is a NEW message (owner words).
  */
+/**
+ * TASK-418 (REQ-095 §11) — a DERIVED camp hour is owned by its day object: every human write on the row (status, move,
+ * edit, swap, note, badges, pause/resume, rental) is refused here, at the route, with ONE sentence. The day-end's cut
+ * writes ATTENDED by direct update and is not a human write.
+ */
+export const CAMP_ROW_OWNED = () => conflict("CAMP_ROW_OWNED", "บล็อกแคมป์แก้ที่สัปดาห์แคมป์");
+/** The row is already in hand at every write site — the guard reads the fact, never the DB. */
+export function assertNotCampRow(row: { campWeekDayId?: string | null } | null | undefined): void {
+  if (row?.campWeekDayId) throw CAMP_ROW_OWNED();
+}
+
 export async function swapGroupTeacher(id: string, input: { teacherId: string; fromHereOn: boolean }) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(current); // TASK-418
   if (current.bookingType !== "GROUP" || !current.groupKey) throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");
   const groupKey = current.groupKey;
   const targets = await db.query.bookings.findMany({
@@ -3222,6 +3236,7 @@ export async function updateBookingStatus(
       with: { course: true, voucher: true },
     });
     if (!current) throw notFound("ไม่พบคาบเรียน");
+    assertNotCampRow(current); // TASK-418 — a derived camp hour: no human status change (the day-end's cut writes ATTENDED directly)
 
     let extendedId: string | null = null;
     let locked = false;
@@ -3649,6 +3664,7 @@ export async function moveBooking(
   await assertBookingCourseWritable(db, id);
   const current = await db.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(current); // TASK-418
   // SPEC-028 §5 (TASK-093) — a delivered session (attended / no-show) is immutable.
   if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
   // SPEC-042 (TASK-134): course sessions only (`courseId != null`) — voucher / single / trial may still
@@ -4040,6 +4056,7 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean 
 export async function setAttendeeNote(id: string, attendeeNote: string | null) {
   const row = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
   if (!row) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(row); // TASK-418
   await db.update(bookings).set({ attendeeNote }).where(eq(bookings.id, id));
   return loadBookingDTO(db, id);
 }
@@ -4323,6 +4340,7 @@ export async function pauseBooking(id: string) {
       with: { teacher: true },
     });
     if (!current) throw notFound("ไม่พบคาบเรียน");
+    assertNotCampRow(current); // TASK-418
     if (current.status === "PAUSED") throw conflict("ALREADY_PAUSED", "คาบนี้พักอยู่แล้ว");
     // 🚫 AC-3 — a course session is REQ-071's business and its wording does not change. Checked BEFORE the
     // status, so a course booking is refused for being a course rather than for whatever state it is in.
@@ -4373,6 +4391,7 @@ export async function resumeBooking(id: string, input: { date: string; startTime
       where: (b: any, { eq: e }: any) => e(b.id, id),
     });
     if (!current) throw notFound("ไม่พบคาบเรียน");
+    assertNotCampRow(current); // TASK-418
     if (current.status !== "PAUSED") {
       throw conflict("NOT_PAUSED", "คาบนี้ไม่ได้พักอยู่ — ไม่ต้องกดนำกลับมา");
     }

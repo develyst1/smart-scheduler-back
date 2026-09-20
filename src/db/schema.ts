@@ -492,6 +492,8 @@ export const bookings = pgTable(
     // in its predicate) — the group row is the one live booking the invariant sees.
     groupKey: uuid("group_key"),
     groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),
+    /** TASK-418 (`0047`) — a DERIVED camp hour's day object; set ⇒ owned by the day (`409 CAMP_ROW_OWNED` on human writes). */
+    campWeekDayId: uuid("camp_week_day_id").references((): AnyPgColumn => campWeekDays.id, { onDelete: "restrict" }),
     teacherRateMinor: integer("teacher_rate_minor"),
     ratePostedAt: timestamp("rate_posted_at", { withTimezone: true }),
     note: text("note"),
@@ -978,6 +980,7 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   // TASK-397 — a seat's group row, and a group row's seats (self-relation, one name for both ends).
   group: one(bookings, { fields: [bookings.groupId], references: [bookings.id], relationName: "group_seats" }),
   seats: many(bookings, { relationName: "group_seats" }),
+  campWeekDay: one(campWeekDays, { fields: [bookings.campWeekDayId], references: [campWeekDays.id] }), // TASK-418
   student: one(students, { fields: [bookings.studentId], references: [students.id] }),
   teacher: one(teachers, { fields: [bookings.teacherId], references: [teachers.id] }),
   subject: one(subjects, { fields: [bookings.subjectId], references: [subjects.id] }),
@@ -1013,6 +1016,9 @@ export const campWeeks = pgTable(
     /** INFORMATIONAL — no slot block in 3a (§8). */
     teacherIds: uuid("teacher_ids").array(),
     status: text("status").notNull().default("OPEN"),
+    /** TASK-418 (`0047`) — the week's default window; NULL = `CAMP_WINDOW_DEFAULT`. A day row copies it at open. */
+    windowStart: time("window_start"),
+    windowEnd: time("window_end"),
     openedBy: text("opened_by"),
     openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
@@ -1077,7 +1083,29 @@ export const campDaysRelations = relations(campDays, ({ one }) => ({
   package: one(campPackages, { fields: [campDays.campPackageId], references: [campPackages.id] }),
   week: one(campWeeks, { fields: [campDays.campWeekId], references: [campWeeks.id] }),
 }));
-export const campWeeksRelations = relations(campWeeks, ({ many }) => ({ days: many(campDays) }));
+export const campWeeksRelations = relations(campWeeks, ({ many }) => ({ days: many(campDays), weekDays: many(campWeekDays) }));
+
+// ───────────── TASK-418 (REQ-095 §11, SPEC-085) — the camp DAY object: who holds the block on one date, and when ─────────────
+export const campWeekDays = pgTable(
+  "camp_week_days",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campWeekId: uuid("camp_week_id").notNull().references(() => campWeeks.id, { onDelete: "restrict" }),
+    date: date("date").notNull(),
+    /** '{}' ⇒ no block that day. */
+    teacherIds: uuid("teacher_ids").array().notNull().default(sql`'{}'::uuid[]`),
+    startTime: time("start_time").notNull(),
+    endTime: time("end_time").notNull(),
+    /** Set by the per-day PATCH; a week-level change re-derives only the days where this is NULL. */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("camp_week_days_week_idx").on(t.campWeekId), uniqueIndex("camp_week_days_week_date_uq").on(t.campWeekId, t.date)],
+);
+export const campWeekDaysRelations = relations(campWeekDays, ({ one, many }) => ({
+  week: one(campWeeks, { fields: [campWeekDays.campWeekId], references: [campWeeks.id] }),
+  rows: many(bookings),
+}));
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),

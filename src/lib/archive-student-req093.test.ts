@@ -33,11 +33,11 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("47 = 47 (0040 … 0046 added since): `0039_student_archive` is the 40th file, idx 39", () => {
-    expect(files.length).toBe(47);
+  test("48 = 48 (0040 … 0047 added since): `0039_student_archive` is the 40th file, idx 39", () => {
+    expect(files.length).toBe(48);
     expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(47);
+    expect(j.entries.length).toBe(48);
     expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });
@@ -121,7 +121,7 @@ describe("🔴 the WORKING reads — hidden, each by name (the enumeration IS th
     expect(v.studentsQuery.parse({}).archived).toBe(false);
     expect(v.studentsQuery.parse({ archived: "true" }).archived).toBe(true);
     expect(v.studentsQuery.safeParse({ archived: "yes" }).success).toBe(false);
-    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, noDob }));"); // 🔻 TASK-414: + the birthday filter, the archived flag unchanged
+    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob }));"); // 🔻 TASK-414/416: + the birthday filter, the archived flag unchanged
   });
   test("2 · `getEligibleStudents` (`GET /students/eligible`): the archived id set excluded on BOTH branches, beside the suspended one", () => {
     const E = region(SCHED, "export async function getEligibleStudents(", "\n}\n");
