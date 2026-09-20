@@ -59,6 +59,9 @@ export interface ReminderSession {
    */
   studentName: string;
   parentId: string | null;
+  /** TASK-420 — a DUO row's second household; the row lands there too (once, when both kids share a parent). */
+  coParentId?: string | null;
+  coParentLineUserIds?: string[];
   parentLineUserId: string | null;
   /** 🔴 TASK-259 — all of the family's accounts. Optional so an older caller still compiles and behaves as before. */
   parentLineUserIds?: string[];
@@ -154,18 +157,21 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       g.rows.push(row);
       byTeacher.set(teacher.id, g);
     }
-    if (s.parentId) {
-      const g = byParent.get(s.parentId) ?? {
+    // TASK-420 — the row's households: the primary child's, and a DUO row's second (de-duplicated: siblings ⇒ one).
+    const households = [
+      ...(s.parentId ? [{ parentId: s.parentId, ids: s.parentLineUserIds ?? (s.parentLineUserId ? [s.parentLineUserId] : []) }] : []),
+      ...(s.coParentId && s.coParentId !== s.parentId ? [{ parentId: s.coParentId, ids: s.coParentLineUserIds ?? [] }] : []),
+    ];
+    for (const h of households) {
+      const g = byParent.get(h.parentId) ?? {
         recipientType: "parent" as const,
-        personId: s.parentId,
-        lineUserId: s.parentLineUserIds?.[0] ?? s.parentLineUserId,
-        // 🔴 TASK-259 — EVERY account the family has linked. The caller resolves them in bulk (one query for
-        // the day, not one per row); this file only carries them.
-        lineUserIds: s.parentLineUserIds ?? (s.parentLineUserId ? [s.parentLineUserId] : []),
+        personId: h.parentId,
+        lineUserId: h.ids[0] ?? null,
+        lineUserIds: h.ids,
         rows: [],
       };
       g.rows.push(row);
-      byParent.set(s.parentId, g);
+      byParent.set(h.parentId, g);
     }
   }
 

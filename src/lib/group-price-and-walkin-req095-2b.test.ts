@@ -91,7 +91,7 @@ describe("🔴 the resolver — three branches by value; FIVE callers by source,
     expect(region(SCHED, "async function captureBookingDiscount(", "\n}\n")).toContain("await resolvePriceGroup(input.subjectId, input.groupKind ?? null);");
     const C = region(SCHED, "export async function createCoursePackage(", "\n}\n");
     expect(C).toContain("const courseGroupKind = input.groupKey ? await groupKindOfKey(db, input.groupKey) : null;");
-    expect(C).toContain("const priceGroup = await resolvePriceGroup(input.subjectId, courseGroupKind);");
+    expect(C).toContain('const priceGroup = await resolvePriceGroup(input.subjectId, input.duo ? "DUO" : courseGroupKind);'); // 🔻 TASK-420: a DUO course prices from the DUO group
     // 🔴 the sweep selects the seat's group and prices by its kind — else a DUO walk-in posts `session-balance-private`
     expect(JOB).toContain("groupId: bookings.groupId,");
     expect(JOB).toContain("const priceGroup = await resolvePriceGroup(b.subjectId, b.groupId ? await groupKindOf(db, b.groupId) : null);");
@@ -182,7 +182,7 @@ describe("🔑 the group DTO carries `priceGroup` from the resolver's own mappin
     expect(loop).toContain("WOULD be created");
     expect(S).toContain('DRY RUN — nothing written.');
   });
-  test("48 = 48 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047)", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(48);
+  test("49 = 49 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048)", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(49);
   });
 });

@@ -14,9 +14,16 @@
 // without a database, the way `lastDigestRunQuery` is.
 
 import { and, asc, desc, eq, gte, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
-import { studentSearchConditions } from "./parent.service";
+import { studentSearchConditions, studentSearchConditionsOn } from "./parent.service";
+
+// TASK-420 — the course list matches on EITHER child of a DUO course: the co-student and its parent ride as aliases.
+const coStudents = alias(students, "co_students");
+const coParents = alias(parents, "co_parents");
+const courseMatch = (q?: string) =>
+  q?.trim() ? or(...studentSearchConditions(q), ...studentSearchConditionsOn(q, coStudents as any, coParents as any)) : sql`true`;
 
 /** The student-side filter. `true` when there's no term, so the same builder serves the unfiltered path. */
 export const studentMatch = (q?: string) =>
@@ -43,7 +50,9 @@ export const courseSearchQuery = (q?: string) =>
     .from(coursePackages)
     .innerJoin(students, eq(students.id, coursePackages.studentId))
     .leftJoin(parents, eq(parents.id, students.parentId))
-    .where(studentMatch(q))
+    .leftJoin(coStudents, eq(coStudents.id, coursePackages.coStudentId))
+    .leftJoin(coParents, eq(coParents.id, coStudents.parentId))
+    .where(courseMatch(q))
     .orderBy(asc(students.name), asc(coursePackages.createdAt), asc(coursePackages.id));
 
 /** Voucher ids, newest first, `id` breaking ties so paging is stable. */
@@ -72,7 +81,9 @@ export const courseCountQuery = (q?: string) =>
     .from(coursePackages)
     .innerJoin(students, eq(students.id, coursePackages.studentId))
     .leftJoin(parents, eq(parents.id, students.parentId))
-    .where(studentMatch(q));
+    .leftJoin(coStudents, eq(coStudents.id, coursePackages.coStudentId))
+    .leftJoin(coParents, eq(coParents.id, coStudents.parentId))
+    .where(courseMatch(q));
 
 export const voucherCountQuery = (f: { studentId?: string; q?: string } = {}) => {
   const conds = [studentMatch(f.q)];

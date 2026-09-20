@@ -326,6 +326,10 @@ export const coursePackages = pgTable(
     // booking type still refuses a missing student, in `validation.ts` — the column stopped enforcing it, the
     // contract did not.
     studentId: uuid("student_id").references(() => students.id, { onDelete: "restrict" }),
+    /** TASK-420 (`0048`, REQ-095 §13) — a DUO course's SECOND child; NULL = Private. `courseKind` is derived from it. */
+    coStudentId: uuid("co_student_id").references(() => students.id, { onDelete: "restrict" }),
+    /** TASK-420 (`0048`) — the DUO course's per-class coach rate (minor units) — STORED, never posted; NULL on Private. */
+    classRateMinor: integer("class_rate_minor"),
     size: smallint("size").notNull(), // 4 | 6 | 10
     // SPEC-045 / TASK-140 (REQ-054): the course's program, canonical at last. It used to be DERIVED from
     // `bookings[0].subject` — order-dependent, which is exactly why a per-session edit or a mixed create could
@@ -494,6 +498,8 @@ export const bookings = pgTable(
     groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),
     /** TASK-418 (`0047`) — a DERIVED camp hour's day object; set ⇒ owned by the day (`409 CAMP_ROW_OWNED` on human writes). */
     campWeekDayId: uuid("camp_week_day_id").references((): AnyPgColumn => campWeekDays.id, { onDelete: "restrict" }),
+    /** TASK-420 (`0048`) — a DUO course row's second child, copied from the course by the ONE inserter; NULL otherwise. */
+    coStudentId: uuid("co_student_id").references(() => students.id, { onDelete: "restrict" }),
     teacherRateMinor: integer("teacher_rate_minor"),
     ratePostedAt: timestamp("rate_posted_at", { withTimezone: true }),
     note: text("note"),
@@ -902,8 +908,8 @@ export const parentsRelations = relations(parents, ({ many }) => ({
 
 export const studentsRelations = relations(students, ({ one, many }) => ({
   parent: one(parents, { fields: [students.parentId], references: [parents.id] }),
-  bookings: many(bookings),
-  coursePackages: many(coursePackages),
+  bookings: many(bookings, { relationName: "booking_student" }), // TASK-420 — named: `coStudent` is the second one(students) on bookings
+  coursePackages: many(coursePackages, { relationName: "course_student" }),
   vouchers: many(vouchers),
 }));
 
@@ -966,7 +972,10 @@ export const coursePackagesRelations = relations(coursePackages, ({ one, many })
   student: one(students, {
     fields: [coursePackages.studentId],
     references: [students.id],
+    relationName: "course_student",
   }),
+  // TASK-420 — the DUO course's second child.
+  coStudent: one(students, { fields: [coursePackages.coStudentId], references: [students.id], relationName: "course_co_student" }),
   bookings: many(bookings),
   // TASK-140 — the course's own program, so readers stop going through `bookings[0]`.
   subject: one(subjects, { fields: [coursePackages.subjectId], references: [subjects.id] }),
@@ -981,7 +990,8 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   group: one(bookings, { fields: [bookings.groupId], references: [bookings.id], relationName: "group_seats" }),
   seats: many(bookings, { relationName: "group_seats" }),
   campWeekDay: one(campWeekDays, { fields: [bookings.campWeekDayId], references: [campWeekDays.id] }), // TASK-418
-  student: one(students, { fields: [bookings.studentId], references: [students.id] }),
+  student: one(students, { fields: [bookings.studentId], references: [students.id], relationName: "booking_student" }),
+  coStudent: one(students, { fields: [bookings.coStudentId], references: [students.id], relationName: "booking_co_student" }), // TASK-420
   teacher: one(teachers, { fields: [bookings.teacherId], references: [teachers.id] }),
   subject: one(subjects, { fields: [bookings.subjectId], references: [subjects.id] }),
   course: one(coursePackages, {

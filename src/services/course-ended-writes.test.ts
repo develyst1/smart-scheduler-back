@@ -331,7 +331,7 @@ describe("confirmCourse sends ONE message, not N (TASK-201)", () => {
   test("an unlinked parent is a SKIPPED row and a reported fact, never an error", () => {
     // The common case on `uat`: imported parents who have never linked LINE. The response says whether the
     // parent was actually reached, so "we notified them" is checkable rather than assumed.
-    expect(body).toContain("parentLineUserIds(tx");
+    expect(body).toContain("householdLineUserIds(tx"); // 🔻 TASK-420
     expect(body).toContain("parentLinked");
   });
 

@@ -41,11 +41,11 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("48 = 48 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(48);
+  test("49 = 49 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
+    expect(files.length).toBe(49);
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(48);
+    expect(j.entries.length).toBe(49);
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -134,10 +134,11 @@ describe("🔑 `type ⇔ kind` — refused both ways; the kinds", () => {
     expect(region(SCHED, "async function insertBooking(", "\n}\n")).toContain("assertKindForType(input.bookingType, input.otherKind);");
   });
   test("validation: `groupSeries` (DUO ⇒ cap 2; cap 2..12; dates 1–60 unique; extras sane); `groupTeacherSwap`; `createCoursePackage.groupKey`; `POST /bookings` cannot make a GROUP row directly", () => {
-    const base = { name: "DUO A+B", groupKind: "DUO", seatCap: 2, teacherId: T1, startTime: "10:00", dates: ["2026-10-01", "2026-10-08"] };
+    // 🔻 TASK-420: DUO is a COURSE now (`duo` on POST /courses) — a NEW series is GROUP only; `GROUP_KINDS` (readers) unchanged
+    const base = { name: "GROUP A", groupKind: "GROUP", seatCap: 6, teacherId: T1, startTime: "10:00", dates: ["2026-10-01", "2026-10-08"] };
     expect(v.groupSeries.safeParse(base).success).toBe(true);
-    expect(v.groupSeries.safeParse({ ...base, seatCap: 3 }).success).toBe(false);
-    expect(v.groupSeries.safeParse({ ...base, groupKind: "GROUP", seatCap: 6 }).success).toBe(true);
+    expect(v.groupSeries.safeParse({ ...base, groupKind: "DUO", seatCap: 2 }).success).toBe(false);
+    expect(v.groupSeries.safeParse({ ...base, seatCap: 13 }).success).toBe(false);
     expect(v.groupSeries.safeParse({ ...base, groupKind: "GROUP", seatCap: 13 }).success).toBe(false);
     expect(v.groupSeries.safeParse({ ...base, groupKind: "ECA" }).success).toBe(false);
     expect(v.groupSeries.safeParse({ ...base, dates: ["2026-10-01", "2026-10-01"] }).success).toBe(false);
@@ -169,7 +170,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(C).toContain("if (input.groupKey) await assertCourseMatchesGroup(input.groupKey, input);");
     expect(C.indexOf("assertCourseMatchesGroup(")).toBeLessThan(C.indexOf("db.transaction("));
     expect(C).toContain("const groupId = input.groupKey && !absent ? await seatOnGroup(tx, input.groupKey, s.date) : null;");
-    expect(C).toContain("          courseId: course.id,\n          groupId,");
+    expect(C).toContain("          courseId: course.id,\n          coStudentId, // TASK-420 — known here; the inserter would read it from the course otherwise\n          groupId,");
     const M = region(SCHED, "async function assertCourseMatchesGroup(", "\n}\n");
     expect(M).toContain('if (!same) throw badRequest("คอร์สต้องใช้ครู/วัน/เวลาเดียวกับกลุ่ม");');
     expect(M).toContain("g.teacherId === input.teacherId && hhmm(g.startTime) === hhmm(input.startTime) && weekdayOf(g.date) === weekdayOf(input.startDate)");
@@ -304,14 +305,14 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
       return { groupKey: "k-1", created: input.dates.length, bookingIds: input.dates.map((d: string) => `g-${d}`) };
     }) as any);
     spies.push(s);
-    const body = { name: "DUO A+B", groupKind: "DUO", seatCap: 2, teacherId: T1, startTime: "10:00", dates: ["2026-10-01", "2026-10-08"] };
+    const body = { name: "GROUP A", groupKind: "GROUP", seatCap: 6, teacherId: T1, startTime: "10:00", dates: ["2026-10-01", "2026-10-08"] }; // 🔻 TASK-420: GROUP (DUO retired for creation)
     const ok = await json("POST", "/api/bookings/group-series", body);
     expect(ok.status).toBe(201);
     expect(await ok.json()).toEqual({ groupKey: "k-1", created: 2, bookingIds: ["g-2026-10-01", "g-2026-10-08"] });
     const clash = await json("POST", "/api/bookings/group-series", { ...body, dates: ["2026-10-15"] });
     expect(clash.status).toBe(409);
     expect(await clash.json()).toEqual({ error: { code: "SLOT_TAKEN", message: "วันที่ 2026-10-15 ครูไม่ว่าง — ไม่ได้สร้างรายการใด (…)" } });
-    expect((await json("POST", "/api/bookings/group-series", { ...body, seatCap: 3 })).status).toBe(400);
+    expect((await json("POST", "/api/bookings/group-series", { ...body, groupKind: "DUO", seatCap: 2 })).status).toBe(400); // 🔻 TASK-420: a DUO series is refused
   });
   test("PATCH /bookings/:id/group-teacher ⇒ { moved, booking }; a non-group's 400 and the date-naming 409 pass through", async () => {
     process.env.SKIP_AUTH = "true";

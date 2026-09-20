@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GROUP_KINDS, HUMAN_OTHER_KINDS } from "./lib/other-kind";
+import { GROUP_KINDS, GROUP_KINDS_CREATABLE, HUMAN_OTHER_KINDS } from "./lib/other-kind";
 import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATUSES, MAX_DAILY_DAYS } from "./lib/camp";
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
@@ -313,6 +313,9 @@ export const createCoursePackage = z
     // TASK-397 (REQ-095 Stage 2a) — sell this course INTO a group: every planned session becomes a SEAT on the group
     // row of its date; the teacher / weekday / start must be the group's (the FE prefills them; a mismatch ⇒ 400).
     groupKey: ID.optional(),
+    // TASK-420 (REQ-095 §13) — DUO: ONE course for TWO kids. The second child (≠ the first — the service checks after it
+    // resolves `student`) and the per-class coach rate (minor units, STORED, never posted). Absent ⇒ Private.
+    duo: z.object({ coStudentId: ID, classRateMinor: z.number().int().min(0) }).optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -328,6 +331,7 @@ export const createCoursePackage = z
   .refine((d) => !d.sessions || d.sessions.length === d.size, {
     message: "จำนวนคาบต้องเท่ากับขนาดคอร์ส",
   })
+  .refine((d) => !(d.duo && d.groupKey), { message: "คอร์ส DUO ขายเข้ากลุ่มไม่ได้" }) // TASK-420 — duo + groupKey ⇒ 400
   // SPEC-045 / TASK-138 (REQ-054): a course is ONE program. A per-row override may repeat the course subject
   // but never introduce a second one — otherwise the course is born mixed-program (the hole TASK-134 closed
   // for edits).
@@ -464,7 +468,7 @@ export const editOtherBooking = z
 export const groupSeries = z
   .object({
     name: z.string().trim().min(1),
-    groupKind: z.enum(GROUP_KINDS),
+    groupKind: z.enum(GROUP_KINDS_CREATABLE), // TASK-420 — DUO is a course now; a new series is GROUP only
     seatCap: z.number().int().min(2).max(12),
     teacherId: ID,
     additionalTeacherIds: z.array(ID).optional(),
@@ -472,7 +476,7 @@ export const groupSeries = z
     startTime: TIME,
     dates: z.array(DATE).min(1).max(60),
   })
-  .refine((d) => d.groupKind !== "DUO" || d.seatCap === 2, { message: "DUO มี 2 ที่นั่งเสมอ", path: ["seatCap"] })
+  .refine((d) => (d.groupKind as string) !== "DUO" || d.seatCap === 2, { message: "DUO มี 2 ที่นั่งเสมอ", path: ["seatCap"] }) // TASK-420: unreachable for a new series (GROUP only); kept for the rule's shape
   .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] })
   .refine((d) => !d.additionalTeacherIds || new Set(d.additionalTeacherIds).size === d.additionalTeacherIds.length, { message: "ครูซ้ำกัน", path: ["additionalTeacherIds"] })
   .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), { message: "ครูซ้ำกับครูคนแรก", path: ["additionalTeacherIds"] });
@@ -538,6 +542,8 @@ export const moveBooking = z
     date: DATE.optional(),
     startTime: TIME.optional(),
     note: z.string().optional(),
+    /** TASK-420 — edits the DUO COURSE's per-class rate from the session (the FE's popup); a Private row ⇒ 400. */
+    classRateMinor: z.number().int().min(0).optional(),
   })
   .refine((d) => Object.values(d).some((value) => value !== undefined), {
     message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
@@ -591,6 +597,8 @@ export const setAvailability = z
 
 export const updateCourse = z.object({
   adminUnlocked: z.boolean().optional(),
+  /** TASK-420 — the DUO course's per-class coach rate (minor units). A Private course ⇒ 400 `NOT_DUO`. */
+  classRateMinor: z.number().int().min(0).optional(),
 });
 
 // Staff/admin login (B.7).

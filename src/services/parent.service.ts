@@ -162,7 +162,7 @@ export async function liveFutureSessionCount(exec: any, studentIds: string[]): P
   const [live] = await exec
     .select({ n: count() })
     .from(bookings)
-    .where(and(inArray(bookings.studentId, studentIds), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+    .where(and(or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES]))); // TASK-420 — a DUO row counts for its co-student's household too
   return Number(live?.n ?? 0);
 }
 
@@ -477,8 +477,8 @@ export function studentHistoryRefusal(h: StudentHistory) {
 
 /** Rows naming this student in the three history tables — ANY status, no filter. */
 export async function countStudentHistory(studentId: string, exec: any = db): Promise<StudentHistory> {
-  const rows = async (table: any) =>
-    Number((await exec.select({ n: count() }).from(table).where(eq(table.studentId, studentId)))[0]?.n ?? 0);
+  const rows = async (table: any) => // TASK-420 — a DUO course / row is history for its co-student too
+    Number((await exec.select({ n: count() }).from(table).where(table.coStudentId ? or(eq(table.studentId, studentId), eq(table.coStudentId, studentId)) : eq(table.studentId, studentId)))[0]?.n ?? 0);
   return { courses: await rows(coursePackages), bookings: await rows(bookings), vouchers: await rows(vouchers) };
 }
 
@@ -578,13 +578,18 @@ export async function findParentOfStudent(studentId: string, exec: any = db) {
  *  which defeats the name/nickname filters and returns the whole roster (REQ-011 bug). Name + nickname always
  *  match. Exported so the phone-clause rule is unit-testable without a DB. */
 export function studentSearchConditions(q: string) {
+  return studentSearchConditionsOn(q, students, parents);
+}
+
+/** TASK-420 — the same three conditions on an ALIASED pair (the course list matches a DUO course's co-student too). */
+export function studentSearchConditionsOn(q: string, s: typeof students, p: typeof parents) {
   const term = q.trim();
   const digits = normalizePhone(q);
   const conditions = [
-    ilike(students.name, `%${term}%`),
-    ilike(students.nickname, `%${term}%`),
+    ilike(s.name, `%${term}%`),
+    ilike(s.nickname, `%${term}%`),
   ];
-  if (digits) conditions.push(ilike(parents.phone, `%${digits}%`));
+  if (digits) conditions.push(ilike(p.phone, `%${digits}%`));
   return conditions;
 }
 

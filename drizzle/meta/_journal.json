@@ -337,6 +337,13 @@
       "when": 1783000000043,
       "tag": "0047_camp_week_days",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1783000000044,
+      "tag": "0048_duo_course",
+      "breakpoints": true
     }
   ]
 }

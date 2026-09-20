@@ -45,11 +45,12 @@ describe("🔑 ONE search rule — name · nickname · parent phone — on all t
     // …and a non-numeric term therefore produces no phone param in any of the three queries.
     for (const build of [
       () => studentSearchQuery("น้องเอ"),
-      () => courseSearchQuery("น้องเอ"),
       () => voucherSearchQuery({ q: "น้องเอ" }),
     ]) {
       expect(sqlOf(build()).params).toEqual(["%น้องเอ%", "%น้องเอ%"]);
     }
+    // 🔻 TASK-420: the course list matches EITHER child of a DUO course — the same two conditions on the co-student alias
+    expect(sqlOf(courseSearchQuery("น้องเอ")).params).toEqual(["%น้องเอ%", "%น้องเอ%", "%น้องเอ%", "%น้องเอ%"]);
   });
 });
 

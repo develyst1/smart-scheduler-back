@@ -12,7 +12,7 @@
 // the row back. 🚫 Never a second SELECT: a concurrent write between them would print a number that was true at
 // neither moment.
 import { enqueueLine } from "./line";
-import { familyLineUserIds } from "./family-link";
+import { householdLineUserIds } from "./family-link";
 
 /** Which balance was drawn down. It is also the answer to "does this booking get the message at all". */
 export type DeductionKind = "course" | "voucher";
@@ -63,6 +63,8 @@ export function remainingLabel(kind: DeductionKind, remaining: number, total: nu
 export interface DeductionInput {
   bookingId: string;
   studentId: string | null;
+  /** TASK-420 — a DUO row's second child: the deduction reaches BOTH households (de-duplicated). */
+  coStudentId?: string | null;
   kind: DeductionKind;
   /** 🔴 AFTER the write — `used` as the database now holds it. */
   used: number;
@@ -135,7 +137,7 @@ export async function notifyCourseDeduction(exec: any, input: DeductionInput): P
   if (!input.studentId) return;
   // 🔴 TASK-259 — EVERY account the family has linked, through the one accessor. This used to read
   // `parents.line_user_id` directly, so the second parent received nothing and nothing said so.
-  const accounts = await familyAccountsOfStudent(exec, input.studentId);
+  const accounts = await householdLineUserIds(exec, [input.studentId, input.coStudentId ?? null]); // TASK-420 — the ONE accessor
   /**
    * 🔴 TASK-336 — the note is read HERE, from the `bookingId` this function already takes, and **not passed in
    * by the four call sites.** ONE decision instead of four copies — the shape that has bitten us all week.
@@ -182,10 +184,4 @@ export async function notifyCourseDeduction(exec: any, input: DeductionInput): P
  * have" is asked of `familyLineUserIds`, the ONE accessor. TASK-255's read found three copies of the second
  * half, all of them reading a column that names only one device.
  */
-async function familyAccountsOfStudent(exec: any, studentId: string): Promise<string[]> {
-  const student = await exec.query.students.findFirst({
-    where: (s: any, { eq }: any) => eq(s.id, studentId),
-  });
-  if (!student?.parentId) return [];
-  return familyLineUserIds(student.parentId, exec);
-}
+// TASK-420 — `familyAccountsOfStudent` (the fourth private copy of that read) is RETIRED into `householdLineUserIds`.

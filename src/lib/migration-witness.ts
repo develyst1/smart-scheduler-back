@@ -493,6 +493,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "one scan; said in the header). Every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0048_duo_course",
+    probe: { kind: "index", index: "bookings_co_student_idx" },
+    why:
+      "TASK-420 (REQ-095 §13). course_packages.co_student_id + class_rate_minor, bookings.co_student_id and its partial " +
+      "index — the LAST object, on the hot table, is the witness (its CREATE INDEX takes SHARE on bookings for one scan; " +
+      "said in the header). Every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

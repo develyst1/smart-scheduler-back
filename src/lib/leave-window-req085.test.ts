@@ -94,7 +94,7 @@ describe("🔑 TASK-316 §4(a) — the window is UPCOMING, and the owner's sente
     expect(fn("async function leavableSessions(")).not.toContain("findTodayBookingsForParent");
     expect(CHECKIN_SVC).toContain("export async function findUpcomingBookingsForParent(lineUserId: string, fromDate: string)");
     const upcoming = CHECKIN_SVC.slice(CHECKIN_SVC.indexOf("export async function findUpcomingBookingsForParent"));
-    expect(upcoming).toContain("and(gte(b.date, fromDate), eq(b.status, \"CONFIRMED\"), inArray(b.studentId, ids))");
+    expect(upcoming).toContain("and(gte(b.date, fromDate), eq(b.status, \"CONFIRMED\"), familyRowsWhere(ids))"); // 🔻 TASK-420: primary OR co-student, the ONE predicate
     // Soonest first, so the list reads as a diary and the 12 LINE can show are the 12 that matter.
     expect(upcoming).toContain("orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],");
   });

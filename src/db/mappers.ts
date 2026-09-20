@@ -6,6 +6,7 @@ import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
 import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
+import { courseKindOf } from "../lib/duo-course";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -162,6 +163,7 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   // REQ-065 exists because `1st Trial` sitting in `subjects` leaked into the program picker and had to be
   // filtered back out. A booking with no program has none, and says so.
   student: b.student ? studentRef(b.student) : null,
+  coStudent: b.coStudent ? studentRef(b.coStudent) : null, // TASK-420 — a DUO course row's second child
   teacher: toTeacherBase(b.teacher),
   subject: b.subject ? { id: b.subject.id, name: b.subject.name } : null,
   // TASK-224 — the typed name of an อื่นๆ booking; `null` on the four lesson types.
@@ -231,9 +233,19 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
     : null,
 });
 
+/** TASK-420 / TASK-422 — the course DTO's three DUO facts: the second child, the per-class rate (stored, never posted)
+ *  and the DERIVED kind. ONE builder for every course reader that carries them (the list/view/create/PATCH DTO and the
+ *  entitlement plan) — never a second hand-built object. */
+export const duoCourseFacts = (c: any) => ({
+  coStudent: c.coStudent ? studentRef(c.coStudent) : null,
+  classRateMinor: c.classRateMinor ?? null,
+  courseKind: courseKindOf(c),
+});
+
 export const toCourseWithStudent = (c: any) => ({
   ...toCourseSummary(c),
   student: studentRef(c.student),
+  ...duoCourseFacts(c), // TASK-420
   // TASK-140: the course's OWN program (`course_packages.subject_id`) is the source of truth now. The old
   // derivation from `bookings[0].subject` stays as a fallback for rows created before 0018's back-fill ran
   // (and for callers that load bookings but not the subject relation). null when neither is loaded.

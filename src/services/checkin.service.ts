@@ -10,6 +10,7 @@ import { hhmm } from "../lib/time";
 import { updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
 import { findParentByLineUserId } from "./parent.service";
+import { duoStudentIds, familyRowsWhere } from "../lib/duo-course";
 
 const withBookingRelations = {
   student: true,
@@ -75,7 +76,7 @@ export async function checkinByToken(token: string) {
   }
 
   const result = await updateBookingStatus(row.id, "attend");
-  await awardCrmPoints(row.studentId, CRM_POINT_RULES.ON_TIME_CHECKIN);
+  for (const sid of duoStudentIds(row)) await awardCrmPoints(sid, CRM_POINT_RULES.ON_TIME_CHECKIN); // TASK-420 — both kids of a DUO row
   return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN };
 }
 
@@ -91,7 +92,7 @@ export async function checkinByToken(token: string) {
  * 🔑 TASK-316 — extracted the moment there were TWO windows over the same family. **The window is the only
  * thing that differs between the two queries below; who the family IS must not be able to differ at all.**
  */
-async function linkedStudentIds(lineUserId: string): Promise<string[]> {
+export async function linkedStudentIds(lineUserId: string): Promise<string[]> { // TASK-420: exported — the leave's child step filters on it
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return [];
   const linked = await db.query.students.findMany({
@@ -105,9 +106,9 @@ export async function findTodayBookingsForParent(lineUserId: string, date: strin
   const ids = await linkedStudentIds(lineUserId);
   if (!ids.length) return [];
   return db.query.bookings.findMany({
-    where: (b, { and, eq, inArray }) =>
-      and(eq(b.date, date), eq(b.status, "CONFIRMED"), inArray(b.studentId, ids)),
-    with: { student: true, teacher: true, subject: true },
+    where: (b, { and, eq }) =>
+      and(eq(b.date, date), eq(b.status, "CONFIRMED"), familyRowsWhere(ids)), // TASK-420 — primary OR co-student
+    with: { student: true, coStudent: true, teacher: true, subject: true },
     orderBy: (b, { asc }) => asc(b.startTime),
   });
 }
@@ -125,9 +126,9 @@ export async function findUpcomingBookingsForParent(lineUserId: string, fromDate
   const ids = await linkedStudentIds(lineUserId);
   if (!ids.length) return [];
   return db.query.bookings.findMany({
-    where: (b, { and, eq, gte, inArray }) =>
-      and(gte(b.date, fromDate), eq(b.status, "CONFIRMED"), inArray(b.studentId, ids)),
-    with: { student: true, teacher: true, subject: true },
+    where: (b, { and, eq, gte }) =>
+      and(gte(b.date, fromDate), eq(b.status, "CONFIRMED"), familyRowsWhere(ids)), // TASK-420 — primary OR co-student
+    with: { student: true, coStudent: true, teacher: true, subject: true },
     orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });
 }

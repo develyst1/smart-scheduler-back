@@ -33,11 +33,11 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("48 = 48 (0040 … 0047 added since): `0039_student_archive` is the 40th file, idx 39", () => {
-    expect(files.length).toBe(48);
+  test("49 = 49 (0040 … 0048 added since): `0039_student_archive` is the 40th file, idx 39", () => {
+    expect(files.length).toBe(49);
     expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(48);
+    expect(j.entries.length).toBe(49);
     expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });
@@ -81,7 +81,7 @@ describe("🔴 archive / unarchive — the rules by source; nothing else touched
     // 🔻 TASK-411 lifted the count and the write into `liveFutureSessionCount` / `markStudentArchived` so the parent's cascade shares them — the rule is unchanged
     const C = region(PARENT, "export async function liveFutureSessionCount(", "\n}\n");
     expect(C).toContain("const { date: today } = bangkokNow();");
-    expect(C).toContain("inArray(bookings.studentId, studentIds), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    expect(C).toContain("or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
     expect(A).toContain("const n = await liveFutureSessionCount(db, [id]);");
     expect(A).toContain('if (n > 0) throw conflict("STUDENT_HAS_LIVE_SESSIONS", `มีคาบเรียนข้างหน้า ${n} คาบ — ยกเลิก/ย้ายก่อน`);');
     expect(A).toContain("return markStudentArchived(db, id, actor);");
@@ -126,7 +126,7 @@ describe("🔴 the WORKING reads — hidden, each by name (the enumeration IS th
   test("2 · `getEligibleStudents` (`GET /students/eligible`): the archived id set excluded on BOTH branches, beside the suspended one", () => {
     const E = region(SCHED, "export async function getEligibleStudents(", "\n}\n");
     expect(E).toContain("const archived = await archivedStudentIds();");
-    expect((E.match(/!archived\.has\((c|v)\.student\.id\)/g) ?? []).length).toBe(2);
+    expect((E.match(/!archived\.has\((s|v\.student)\.id\)/g) ?? []).length).toBe(2); // 🔻 TASK-420: the course branch offers BOTH children of a DUO course (`s` = each child)
     const I = region(PARENT, "export async function archivedStudentIds(", "\n}\n");
     expect(I).toContain("where(isNotNull(students.archivedAt))");
   });

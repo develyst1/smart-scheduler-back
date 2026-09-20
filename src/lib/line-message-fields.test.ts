@@ -443,7 +443,7 @@ describe("🔴 TASK-269 §1 — the GATE and the printed figure are two differen
     // *Nothing changed ⇒ nothing to announce.* Sending "confirmed 0 sessions" would train a teacher to
     // ignore the message that matters. Both the teacher's row and the parent's copies are behind it.
     expect(CONFIRM).toContain("const notification = confirmed");
-    expect(CONFIRM).toContain("const parentLines = confirmed ? await parentLineUserIds(");
+    expect(CONFIRM).toContain("const parentLines = confirmed ? await householdLineUserIds("); // 🔻 TASK-420
     expect(CONFIRM).toContain("const parentNotification = confirmed");
   });
 

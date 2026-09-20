@@ -13,6 +13,9 @@ export interface LeaveSession {
   date: string;
   startTime: string;
   student: { name: string; nickname?: string | null };
+  /** TASK-420 — a DUO row's second child (the other family's, or a sibling). */
+  coStudentId?: string | null;
+  coStudent?: { name: string; nickname?: string | null } | null;
   teacher?: { nickname: string } | null;
   subject?: { name: string } | null;
 }
@@ -21,9 +24,17 @@ const childName = (s: LeaveSession["student"]) => s.nickname || s.name;
 
 /** The children that actually have an eligible session, in the order their first session appears (the rows
  *  arrive sorted by time), one entry per child. */
-export function childrenWithSessions(sessions: LeaveSession[]): Array<{ studentId: string; name: string }> {
+/** The children a family may pick — the primary child and, on a DUO row, the co-student (TASK-420), each once.
+ *  `own` (the family's linked child ids) keeps the OTHER family's child off this family's picker. */
+export function childrenWithSessions(sessions: LeaveSession[], own?: Set<string>): Array<{ studentId: string; name: string }> {
   const seen = new Map<string, string>();
-  for (const b of sessions) if (!seen.has(b.studentId)) seen.set(b.studentId, childName(b.student));
+  const offer = (id: string | null | undefined, s: LeaveSession["student"] | null | undefined) => {
+    if (id && s && !seen.has(id) && (!own || own.has(id))) seen.set(id, childName(s));
+  };
+  for (const b of sessions) {
+    offer(b.studentId, b.student);
+    offer(b.coStudentId, b.coStudent);
+  }
   return [...seen].map(([studentId, name]) => ({ studentId, name }));
 }
 

@@ -10,7 +10,7 @@ import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
 import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
-import { toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
+import { duoCourseFacts, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
 // 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
@@ -48,7 +48,8 @@ import {
 } from "../lib/work-days";
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
-import { familyLineUserIds } from "../lib/family-link";
+import { householdLineUserIds } from "../lib/family-link";
+import { DUO_SAME_CHILD, NOT_DUO, courseKindOf, duoStudentIds } from "../lib/duo-course";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -422,6 +423,7 @@ async function isFreelanceSetupIncomplete(exec: any, teacherId: string, type: Te
 
 const withBookingRelations = {
   student: true,
+  coStudent: true,
   teacher: true,
   subject: true,
   course: true,
@@ -650,7 +652,7 @@ async function coursesByIds(ids: string[]) {
   // fallback the mapper falls through to (a course ⇔ one subject; REQ-010).
   const rows = await db.query.coursePackages.findMany({
     where: (c, { inArray: inA }) => inA(c.id, ids),
-    with: { student: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },
+    with: { student: true, coStudent: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },
   });
   // TASK-373: the course's rental, ONE grouped read (the nested `bookings` above is `limit: 1` and could sample a
   // leave row, which carries none) — spread on as `courseRental` for the mapper to derive from.
@@ -745,17 +747,14 @@ export async function getEligibleStudents(type: string, q?: string) {
     const courses = await getCourses();
     return {
       students: courses
-        .filter(
-          (c: any) =>
-            courseEligible(c, date) &&
-            !suspended.has(c.student.id) &&
-            !archived.has(c.student.id) &&
-            matchesSearch(c.student.id, matching),
-        )
-        .map((c: any) => ({
-          id: c.student.id,
-          name: c.student.name,
-          nickname: c.student.nickname ?? null,
+        .filter((c: any) => courseEligible(c, date))
+        // TASK-420 — a DUO course offers BOTH children (each under its own name, the same course context)
+        .flatMap((c: any) => [c.student, c.coStudent].filter(Boolean).map((s: any) => ({ c, s })))
+        .filter(({ s }: any) => !suspended.has(s.id) && !archived.has(s.id) && matchesSearch(s.id, matching))
+        .map(({ c, s }: any) => ({
+          id: s.id,
+          name: s.name,
+          nickname: s.nickname ?? null,
           context: {
             courseId: c.id,
             subject: c.subject ?? null,
@@ -1200,6 +1199,9 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
   await assertTeacherBookable(exec, input.teacherId, input.date);
+  // TASK-420 — THE chokepoint for the course's second child: a course-linked row copies `co_student_id` from its course
+  // (one read, unless the caller already knows it), so every per-row reader sees both kids without the course.
+  const coStudentId: string | null = input.coStudentId ?? (input.courseId ? await courseCoStudentId(exec, input.courseId) : null);
   assertKindForType(input.bookingType, input.otherKind); // TASK-397 — `booking_type ⇔ other_kind`, both ways
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
@@ -1265,6 +1267,7 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
         // TASK-397 — a GROUP row's series key; a SEAT's group row (outside the slot index by the predicate).
         groupKey: input.groupKey ?? null,
         groupId: input.groupId ?? null,
+        coStudentId,
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1284,6 +1287,12 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
 // Voucher enforcement (B.5): the first booking sets the validity window; every
 // booking must have hours left and fall before expiry. No teacher restriction here
 // — "can't pick a teacher" is a purchase-time rule, not a per-session one.
+/** TASK-420 — the course's second child (`null` for Private / unknown). The inserter's one read. */
+async function courseCoStudentId(exec: any, courseId: string): Promise<string | null> {
+  const c = await exec.query.coursePackages.findFirst({ columns: { coStudentId: true }, where: (x: any, { eq: e }: any) => e(x.id, courseId) });
+  return c?.coStudentId ?? null;
+}
+
 async function prepareVoucherBooking(exec: any, voucherId: string, date: string, studentId: string) {
   const v = await exec.query.vouchers.findFirst({
     where: (x: any, { eq }: any) => eq(x.id, voucherId),
@@ -1950,7 +1959,9 @@ export async function createCoursePackage(input: any) {
   // A subject with no price_group is refused too — it must never fall back to a default price.
   // TASK-399 — a course sold INTO a group is priced by the group's kind (DUO ⇒ balance-duo, Group ⇒ balance-group).
   const courseGroupKind = input.groupKey ? await groupKindOfKey(db, input.groupKey) : null;
-  const priceGroup = await resolvePriceGroup(input.subjectId, courseGroupKind);
+  // TASK-420 — a DUO course is priced from the DUO price group (`course-balance-duo-{size}`); the validator already
+  // refused `duo` + `groupKey` together, so the two kinds never meet here.
+  const priceGroup = await resolvePriceGroup(input.subjectId, input.duo ? "DUO" : courseGroupKind);
   if (!priceGroup) {
     throw badRequest(
       "โปรแกรมนี้ยังไม่ได้ตั้งกลุ่มราคา — ตั้งค่าก่อนจึงจะขายคอร์สได้ (subjects.price_group)",
@@ -1979,6 +1990,13 @@ export async function createCoursePackage(input: any) {
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new course
+    // TASK-420 — the second child of a DUO course: a different child, active, and from an unsuspended household.
+    const coStudentId: string | null = input.duo?.coStudentId ?? null;
+    if (coStudentId) {
+      if (coStudentId === studentId) throw DUO_SAME_CHILD();
+      await assertStudentActive(tx, coStudentId);
+      await assertHouseholdNotSuspended(tx, coStudentId);
+    }
     // TASK-058: a suspended household may not BUY. Explicit here — the booking gate inside insertBooking would
     // reject the generated sessions anyway, but incidental enforcement stops being enforcement the moment
     // someone reorders this or adds a course type that books no sessions.
@@ -2035,6 +2053,8 @@ export async function createCoursePackage(input: any) {
       .insert(coursePackages)
       .values({
         studentId,
+        coStudentId, // TASK-420 — DUO's second child (null = Private)
+        classRateMinor: input.duo ? input.duo.classRateMinor : null, // TASK-420 — stored, never posted
         size: input.size,
         subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
         startDate: input.startDate,
@@ -2058,6 +2078,7 @@ export async function createCoursePackage(input: any) {
           startTime: s.startTime,
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
+          coStudentId, // TASK-420 — known here; the inserter would read it from the course otherwise
           groupId,
           note: input.note,
           attendeeNote: input.attendeeNote, // TASK-178: one note at creation, carried onto every session
@@ -2127,7 +2148,7 @@ export async function createCoursePackage(input: any) {
 
     const courseRow = await tx.query.coursePackages.findFirst({
       where: (c, { eq }) => eq(c.id, course.id),
-      with: { student: true },
+      with: { student: true, coStudent: true },
     });
     const created = await tx.query.bookings.findMany({
       where: (b, { eq }) => eq(b.courseId, course.id),
@@ -2232,6 +2253,7 @@ export async function getEntitlementPlan(id: string) {
 
   const course = await db.query.coursePackages.findFirst({
     where: (c, { eq }) => eq(c.id, id),
+    with: { coStudent: true }, // TASK-422 — a DUO plan page names both children
   });
   if (course) {
     const rows = await loadSessions("courseId");
@@ -2251,6 +2273,7 @@ export async function getEntitlementPlan(id: string) {
       kind: "course" as const,
       id,
       student: studentRef(student),
+      ...duoCourseFacts(course), // TASK-422 — coStudent · classRateMinor · courseKind, the SAME builder as the course DTO
       sessions: rows.map(toSessionRow), // ALL rows — the extra shows on the course view (SPEC-033 §4)
       // SPEC-033: the derived end is over COURSE_PACKAGE rows only — an extra must not move the plan's end date.
       liveEndDate: deriveLiveEndDate(rows.filter(isCoursePlanRow)), // derived, not the stored expiryDate
@@ -2728,6 +2751,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         .insert(bookings)
         .values({
           studentId: template.studentId,
+          coStudentId: template.coStudentId ?? null, // TASK-420 — the clone copies the second child from its template
           teacherId: template.teacherId,
           subjectId: template.subjectId,
           date: extDate,
@@ -2901,7 +2925,7 @@ async function sendClassCancelledToTeacher(
  */
 export async function sendClassCancelledToFamilies(
   tx: any,
-  current: { id: string; status: string; studentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
+  current: { id: string; status: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
   cancelReason: string | null,
 ): Promise<number> {
   if (current.status !== "CONFIRMED") return 0;
@@ -2909,11 +2933,13 @@ export async function sendClassCancelledToFamilies(
   const seats = current.bookingType === "GROUP"
     ? (current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) })))
     : null;
-  const studentIds = seats ? seats.map((s: any) => s.studentId).filter(Boolean) : [current.studentId];
+  // TASK-420 — a household per seat on a GROUP row; ONE household set for a Private/DUO row (both kids' families, the
+  // accounts de-duplicated by the ONE accessor — a sibling DUO reaches its family once).
+  const households: Array<Array<string | null>> = seats ? seats.map((s: any) => [s.studentId]) : [[current.studentId, current.coStudentId ?? null]];
   let n = 0;
-  for (const sid of studentIds) {
-    if (!sid) continue;
-    await enqueueParentCopies(tx, await parentLineUserIds(tx, sid), { bookingId: current.id, payload });
+  for (const ids of households) {
+    if (!ids.some(Boolean)) continue;
+    await enqueueParentCopies(tx, await householdLineUserIds(tx, ids), { bookingId: current.id, payload });
     n++;
   }
   return n;
@@ -3321,7 +3347,7 @@ export async function updateBookingStatus(
         // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
         // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
         // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
-        await enqueueParentCopies(tx, await parentLineUserIds(tx, current.studentId), {
+        await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households
           bookingId: id,
           payload: confirmPayload,
         });
@@ -3341,6 +3367,7 @@ export async function updateBookingStatus(
           await notifyCourseDeduction(tx, {
             bookingId: id,
             studentId: current.studentId,
+            coStudentId: current.coStudentId ?? null, // TASK-420
             kind: "course",
             used,
             total: current.course.size,
@@ -3357,6 +3384,7 @@ export async function updateBookingStatus(
           await notifyCourseDeduction(tx, {
             bookingId: id,
             studentId: current.studentId,
+            coStudentId: current.coStudentId ?? null, // TASK-420
             kind: "voucher",
             used,
             total: current.voucher.totalHours,
@@ -3560,6 +3588,7 @@ export async function updateBookingStatus(
             .insert(bookings)
             .values({
               studentId: current.studentId,
+              coStudentId: current.coStudentId ?? null, // TASK-420 — the clone copies the second child from its template
               teacherId: current.teacherId,
               subjectId: current.subjectId,
               date: extDate,
@@ -3580,7 +3609,7 @@ export async function updateBookingStatus(
           locked = true; // over quota — needs admin unlock
         }
       }
-      await awardCrmPoints(current.studentId, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx);
+      for (const sid of duoStudentIds(current)) await awardCrmPoints(sid, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx); // TASK-420 — both kids of a DUO row
       const student = await tx.query.students.findFirst({
         where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
       });
@@ -3656,7 +3685,7 @@ export async function bulkConfirm(ids: string[]): Promise<{ results: BulkConfirm
 
 export async function moveBooking(
   id: string,
-  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string },
+  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string; classRateMinor?: number },
 ) {
   // TASK-185 (REQ-036 Part B): moving an ended course's session relocates a forfeited slot onto a teacher's
   // calendar — it is the "revive" case wearing a different verb. Refused for course-linked bookings only; a
@@ -3682,6 +3711,8 @@ export async function moveBooking(
     patch.endTime = addHour(input.startTime); // re-derive end on a time change
   }
   if (input.note !== undefined) patch.note = input.note;
+  // TASK-420 — the per-class rate is the DUO COURSE's fact, edited from the session: written on the course, never the row.
+  if (input.classRateMinor !== undefined && !(current.courseId && current.coStudentId)) throw NOT_DUO();
 
   try {
     // 🔴 TASK-091 — the teacher write and the money move must be ONE transaction, or a failure between them
@@ -3694,7 +3725,10 @@ export async function moveBooking(
         patch.teacherId ?? current.teacherId,
         patch.date ?? current.date,
       );
-      await tx.update(bookings).set(patch).where(eq(bookings.id, id));
+      if (input.classRateMinor !== undefined) {
+        await tx.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, current.courseId!));
+      }
+      if (Object.keys(patch).length) await tx.update(bookings).set(patch).where(eq(bookings.id, id));
       // Reconcile whole-booking against the CURRENT teacher — `patch.teacherId` if it moved, else the one it
       // already had. Releases any item still holding this booking for a teacher who no longer teaches it, and
       // draws the new one. A move with no teacher change produces no adjustments, so date/time-only edits are
@@ -4021,7 +4055,7 @@ export async function resetFreelanceBudgets() {
 // party model is retired (freelance money is a local `bo.item`), so there is no external roster to
 // reconcile against. `GET /api/teachers/reconcile` was removed with it.
 
-export async function updateCourse(id: string, input: { adminUnlocked?: boolean }) {
+export async function updateCourse(id: string, input: { adminUnlocked?: boolean; classRateMinor?: number }) {
   // TASK-185 (REQ-036 Part B): `updateCourse` only sets `adminUnlocked` today — the flag that unlocks further
   // rescheduling once leave quota is spent. On an ended course that is meaningless at best and a door to the
   // plan paths at worst, so it is refused rather than narrowly allowed. If a future field here is genuinely
@@ -4033,9 +4067,16 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean 
       .set({ adminUnlocked: input.adminUnlocked })
       .where(eq(coursePackages.id, id));
   }
+  if (input.classRateMinor !== undefined) {
+    // TASK-420 — the per-class coach rate is a DUO fact; a Private course has none to edit.
+    const c = await db.query.coursePackages.findFirst({ columns: { coStudentId: true }, where: (x, { eq: e }) => e(x.id, id) });
+    if (!c) throw notFound("ไม่พบคอร์ส");
+    if (courseKindOf(c) !== "DUO") throw NOT_DUO();
+    await db.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, id));
+  }
   const row = await db.query.coursePackages.findFirst({
     where: (c, { eq }) => eq(c.id, id),
-    with: { student: true },
+    with: { student: true, coStudent: true },
   });
   if (!row) throw notFound("ไม่พบคอร์ส");
   return toCourseWithStudent(row);
@@ -4146,14 +4187,8 @@ export async function previewCourseEnd(id: string) {
  * LINE**, so an unlinked family must write a SKIPPED outbox row exactly like a teacher without a link — a
  * notification feature that throws on its common case is one nobody turns on.
  */
-async function parentLineUserIds(exec: any, studentId: string | null | undefined): Promise<string[]> {
-  if (!studentId) return [];
-  const student = await exec.query.students.findFirst({
-    where: (s: any, { eq: e }: any) => e(s.id, studentId),
-  });
-  if (!student?.parentId) return [];
-  return familyLineUserIds(student.parentId, exec);
-}
+// TASK-420 — `parentLineUserIds` (the private student → parent → accounts read) is RETIRED: every notice asks
+// `householdLineUserIds` in lib/family-link.ts, which takes BOTH kids of a DUO row and de-duplicates.
 
 /**
  * One outbox row per account — or ONE skipped row when the family has none.
@@ -4294,7 +4329,7 @@ export async function confirmCourse(id: string) {
     // when they have no LINE link, which is the common case on `uat` (imported, never linked) and must not be
     // an error: a feature that throws on its commonest input is a feature nobody enables.
     // 🔴 TASK-259 — every account the family has linked gets the course summary, not just the primary one.
-    const parentLines = confirmed ? await parentLineUserIds(tx, student?.id ?? course.studentId) : [];
+    const parentLines = confirmed ? await householdLineUserIds(tx, [student?.id ?? course.studentId, course.coStudentId]) : []; // TASK-420 — both households
     const parentNotification = confirmed
       ? await enqueueParentCopies(tx, parentLines, { payload: coursePayload })
       : null;

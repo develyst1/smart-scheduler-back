@@ -131,16 +131,18 @@ describe("🔴 outbound — a two-account family gets TWO rows, and neither is s
 describe("🔴 the three outbound senders all ask the ONE accessor", () => {
   test("the deduction message writes one row per account, and one SKIPPED row when there are none", () => {
     const f = fn(DEDUCT, "export async function notifyCourseDeduction");
-    expect(f).toContain("familyAccountsOfStudent(exec, input.studentId)");
+    expect(f).toContain("householdLineUserIds(exec, [input.studentId, input.coStudentId ?? null])"); // 🔻 TASK-420: the ONE accessor, both kids
     expect(f).toContain("for (const lineUserId of accounts)");
     expect(f).toContain("if (!accounts.length)");
-    expect(code(DEDUCT)).toContain("return familyLineUserIds(student.parentId, exec)");
+    expect(code(DEDUCT)).not.toContain("familyAccountsOfStudent"); // 🔻 TASK-420: the private copy is gone
+    expect(code(DEDUCT)).toContain('import { householdLineUserIds } from "./family-link";');
     // 🚫 The old column read is gone.
     expect(code(DEDUCT)).not.toContain("parent?.lineUserId");
   });
 
   test("both scheduler senders go through `enqueueParentCopies`", () => {
-    expect(code(SCHED)).toContain("return familyLineUserIds(student.parentId, exec)");
+    expect(code(SCHED)).not.toContain("parentLineUserIds("); // 🔻 TASK-420: the private copy is gone — every sender asks householdLineUserIds
+    expect(code(SCHED)).toContain('import { householdLineUserIds } from "../lib/family-link";');
     expect(code(SCHED).match(/enqueueParentCopies\(/g)).toHaveLength(4); // the definition + three call sites (🔻 TASK-406: the leave's family notice)
     expect(code(SCHED)).not.toContain("parent?.lineUserId ?? null");
   });

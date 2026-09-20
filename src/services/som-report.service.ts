@@ -9,6 +9,7 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { activeParentWhere } from "../lib/parent-archive";
 import { addDays } from "../lib/time";
 import { courseEligible, voucherEligible } from "../lib/eligibility";
+import { duoStudentIds } from "../lib/duo-course";
 import {
   ageBand,
   breakdown,
@@ -48,7 +49,7 @@ export async function getSomReport() {
 
   // ── 1. Existing customers ───────────────────────────────────────────────────────────────────────
   const byCourse = new Set(
-    courses.filter((c: any) => courseEligible(c, today)).map((c: any) => c.student.id as string),
+    courses.filter((c: any) => courseEligible(c, today)).flatMap((c: any) => [c.student.id as string, ...(c.coStudent ? [c.coStudent.id as string] : [])]), // TASK-420 — both children of a DUO course are active
   );
   const byVoucher = new Set(
     vouchers.filter((v: any) => voucherEligible(v, today)).map((v: any) => v.student.id as string),
@@ -69,14 +70,16 @@ export async function getSomReport() {
   // ── 2. Sport share — one unit per student, so the shares sum to 100% ────────────────────────────
   const bookingsByStudent = new Map<string, SportBooking[]>();
   for (const b of bookings) {
-    const list = bookingsByStudent.get(b.studentId) ?? [];
-    list.push({
-      subjectId: b.subjectId,
-      subjectName: (b as any).subject?.name ?? null,
-      date: b.date,
-      startTime: b.startTime,
-    });
-    bookingsByStudent.set(b.studentId, list);
+    for (const sid of duoStudentIds(b)) { // TASK-420 — a DUO row is both children's session
+      const list = bookingsByStudent.get(sid) ?? [];
+      list.push({
+        subjectId: b.subjectId,
+        subjectName: (b as any).subject?.name ?? null,
+        date: b.date,
+        startTime: b.startTime,
+      });
+      bookingsByStudent.set(sid, list);
+    }
   }
   const sportOf = new Map<string, { id: string; name: string | null } | null>(
     students.map((s) => [s.id, primarySport(bookingsByStudent.get(s.id) ?? [])]),
@@ -96,7 +99,7 @@ export async function getSomReport() {
   const registeredThisMonth = students.filter((s) => inMonth(s.createdAt, month));
   // Renewing = bought a course/voucher this month while already holding an earlier one.
   const entitlements = [
-    ...courses.map((c: any) => ({ studentId: c.student.id as string, createdAt: c.createdAt })),
+    ...courses.flatMap((c: any) => [c.student.id as string, ...(c.coStudent ? [c.coStudent.id as string] : [])].map((studentId) => ({ studentId, createdAt: c.createdAt }))), // TASK-420
     ...vouchers.map((v: any) => ({ studentId: v.student.id as string, createdAt: v.createdAt })),
   ];
   const renewing = new Set(

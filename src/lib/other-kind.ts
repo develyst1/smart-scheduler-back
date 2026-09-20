@@ -16,6 +16,9 @@ export const isOtherKind = (k: unknown): k is OtherKind => typeof k === "string"
 // OTHER ⇔ {ECA, FREE, KOL}; GROUP ⇔ {DUO, GROUP} (required); every lesson type ⇔ none. `assertKindForType` refuses
 // the cross both ways — a DUO on an OTHER row, an ECA on a GROUP row.
 export const GROUP_KINDS = ["DUO", "GROUP"] as const;
+/** TASK-420 — a NEW series may only be GROUP (3–12): DUO is a COURSE now (`duo` on `POST /courses`). Existing DUO
+ *  series stay readable/attendable under `GROUP_KINDS`; only the create's validator narrows. */
+export const GROUP_KINDS_CREATABLE = ["GROUP"] as const;
 export type GroupKind = (typeof GROUP_KINDS)[number];
 export const isGroupKind = (k: unknown): k is GroupKind => typeof k === "string" && (GROUP_KINDS as readonly string[]).includes(k);
 export function assertKindForType(bookingType: string, kind: string | null | undefined): void {

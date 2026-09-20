@@ -84,7 +84,7 @@ describe("🔴 the service — count → refuse or delete in ONE transaction; th
 
   test("the three tables are counted with NO status filter — a cancelled booking is history", () => {
     for (const t of ["coursePackages", "bookings", "vouchers"]) expect(CNT).toContain(`rows(${t})`);
-    expect(CNT).toContain("where(eq(table.studentId, studentId))");
+    expect(CNT).toContain("where(table.coStudentId ? or(eq(table.studentId, studentId), eq(table.coStudentId, studentId)) : eq(table.studentId, studentId))"); // 🔻 TASK-420: OR co_student_id where the table has it
     expect(CNT).not.toContain("status");
   });
 

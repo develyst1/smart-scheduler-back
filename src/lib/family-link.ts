@@ -37,6 +37,25 @@ export async function familyLineUserIds(parentId: string, exec: any = db): Promi
  * **same function**: `familyLineUserIds` is defined in terms of this one, so "which accounts belong to this
  * family, primary first, deduped" has exactly one implementation and cannot drift between the two callers.
  */
+/**
+ * TASK-420 — every LINE account that may act for the families of THESE children (a DUO row names two), as ONE
+ * de-duplicated list, the primary child's household first. `null` entries are skipped; a child without a parent or
+ * a link adds nothing. This retired the FOUR private "student → parent → accounts" copies (three in
+ * scheduler.service, one in course-deduction) — the notice sites ask this and nothing else.
+ */
+export async function householdLineUserIds(exec: any, studentIds: Array<string | null | undefined>): Promise<string[]> {
+  const ids = studentIds.filter((x): x is string => !!x);
+  if (!ids.length) return [];
+  const kids = await exec.query.students.findMany({
+    columns: { id: true, parentId: true },
+    where: (s: any, { inArray: inA }: any) => inA(s.id, ids),
+  });
+  const parentOf = new Map<string, string | null>((kids as Array<{ id: string; parentId: string | null }>).map((k) => [k.id, k.parentId]));
+  const parentIds = [...new Set(ids.map((id) => parentOf.get(id) ?? null).filter((p): p is string => !!p))];
+  const byParent = await familyLineUserIdsBulk(parentIds, exec);
+  return [...new Set(parentIds.flatMap((p) => byParent.get(p) ?? []))];
+}
+
 export async function familyLineUserIdsBulk(
   parentIds: string[],
   exec: any = db,

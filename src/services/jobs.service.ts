@@ -32,6 +32,7 @@ import { cutCampDays } from "./camp.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
+import { joinChildNames } from "../lib/duo-course";
 import { enqueueLine } from "../lib/line";
 import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
 import { rentalPrintLine } from "../lib/rental-row";
@@ -64,6 +65,7 @@ export async function runEndOfDayJob(date?: string) {
         // TASK-254 — who the deduction message is for. Taken from the row the job already has in hand; a second
         // read later would be a second chance to disagree with it.
         studentId: bookings.studentId,
+        coStudentId: bookings.coStudentId, // TASK-420 — the deduction reaches both households
       })
       .from(bookings)
       .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended));
@@ -89,6 +91,7 @@ export async function runEndOfDayJob(date?: string) {
           await notifyCourseDeduction(tx, {
             bookingId: b.id,
             studentId: b.studentId,
+            coStudentId: b.coStudentId ?? null, // TASK-420
             kind: "course",
             used: course.usedSessions,
             total: course.size,
@@ -107,6 +110,7 @@ export async function runEndOfDayJob(date?: string) {
           await notifyCourseDeduction(tx, {
             bookingId: b.id,
             studentId: b.studentId,
+            coStudentId: b.coStudentId ?? null, // TASK-420
             kind: "voucher",
             used: voucher.usedHours,
             total: voucher.totalHours,
@@ -372,6 +376,7 @@ export async function runDailyReminderJob(date?: string) {
     with: {
       teacher: true,
       student: true,
+      coStudent: true, // TASK-420 — a DUO row's second child (its household gets the row too)
       subject: true,
       additionalTeachers: { with: { teacher: true } },
       // SPEC-072 / TASK-256 — REQ-077 Parent 2 prints `Remaining` and `*Expiry date`. Two more relations on the
@@ -384,7 +389,7 @@ export async function runDailyReminderJob(date?: string) {
   });
 
   // Parents in one query, not one per student — a Saturday is ~60 sessions.
-  const parentIds = [...new Set(rows.map((r: any) => r.student?.parentId).filter(Boolean))] as string[];
+  const parentIds = [...new Set(rows.flatMap((r: any) => [r.student?.parentId, r.coStudent?.parentId]).filter(Boolean))] as string[]; // TASK-420 — both households
   const parents = parentIds.length
     ? await db.query.parents.findMany({ where: (p: any, { inArray: inA }: any) => inA(p.id, parentIds) })
     : [];
@@ -412,8 +417,10 @@ export async function runDailyReminderJob(date?: string) {
       // `"-"` stays as the last-resort for a lesson booking whose student row went missing — it is not, and
       // must never become, the fallback for อื่นๆ, which validation guarantees has a title when it has no
       // student. Never the words "อื่นๆ" / "Other" (REQ-078 📌).
-      studentName: r.otherTitle ?? r.student?.nickname ?? r.student?.name ?? "-",
+      studentName: r.otherTitle ?? (r.coStudent ? joinChildNames(r.student, r.coStudent) : null) ?? r.student?.nickname ?? r.student?.name ?? "-", // TASK-420 — `A & B` on a DUO row
       parentId: r.student?.parentId ?? null,
+      coParentId: r.coStudent?.parentId ?? null, // TASK-420 — the second household (the same parent ⇒ one entry, by the grouper)
+      coParentLineUserIds: r.coStudent?.parentId ? (familyAccounts.get(r.coStudent.parentId) ?? []) : [],
       parentLineUserId: r.student?.parentId
         ? (parentById.get(r.student.parentId)?.lineUserId ?? null)
         : null,

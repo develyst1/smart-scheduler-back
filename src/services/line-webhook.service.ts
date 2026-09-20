@@ -100,6 +100,7 @@ import {
   findBookingsForTeacher,
   findTodayBookingsForParent,
   findUpcomingBookingsForParent,
+  linkedStudentIds,
   getCheckinQr,
 } from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
@@ -939,10 +940,13 @@ async function doLeave(lineUserId: string, replyToken: string, date: string, lan
   let eligible = all;
   if (!eligible.length) return send(replyToken, [emptyLeaveReply(upcoming, lang)]);
   if (studentId) {
-    eligible = eligible.filter((b) => b.studentId === studentId); // authorize: still this parent's own rows
+    eligible = eligible.filter((b) => b.studentId === studentId || b.coStudentId === studentId); // authorize: still this parent's own rows (TASK-420: as primary OR co-student)
     if (!eligible.length) return send(replyToken, [emptyLeaveReply(upcoming, lang)]);
-  } else if (needsChildStep(eligible)) {
-    return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible), lang)]);
+  } else {
+    const own = new Set(await linkedStudentIds(lineUserId)); // TASK-420 — the picker offers THIS family's children only
+    if (childrenWithSessions(eligible, own).length >= 2) {
+      return send(replyToken, [childPicker(t("pick_leave_child", lang), childrenWithSessions(eligible, own), lang)]);
+    }
   }
   if (eligible.length === 1) return doLeaveBooking(lineUserId, eligible[0]!.id, replyToken, date, lang);
   return send(replyToken, [sessionPicker(t("pick_leave", lang), "leave", eligible, lang)]);
@@ -1014,7 +1018,7 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
   const kids = parent ? await listStudentsOfParent(parent.id) : [];
   if (!kids.length) return send(replyToken, [textReply(tb("course_none"), lang)]);
   const rows = await db.query.coursePackages.findMany({
-    where: (c: any, { inArray: inA }: any) => inA(c.studentId, kids.map((k: any) => k.id)),
+    where: (c: any, { inArray: inA, or: o }: any) => o(inA(c.studentId, kids.map((k: any) => k.id)), inA(c.coStudentId, kids.map((k: any) => k.id))), // TASK-420 — as primary OR co-student
     // ⚠️ A course has NO teacher column — the teacher is a fact about its sessions (TASK-140 moved the PROGRAM
     // onto the course but deliberately left the teacher on the bookings, because a course can be re-teachered).
     // So it is read from the sessions, and a course whose teacher changed shows the one actually teaching it.

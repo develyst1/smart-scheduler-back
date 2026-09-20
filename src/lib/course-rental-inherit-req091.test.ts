@@ -37,7 +37,7 @@ describe("🔑 the ONE copy — `inheritCourseRental`", () => {
 describe("🔴 BOTH make-up writers call it — and nothing else copies (source)", () => {
   const SVC = () => code(src("src/services/scheduler.service.ts"));
   const RECONCILE = () => region(SVC(), "export async function reconcileCoursePlan(", "\n}\n");
-  const SICK = () => region(SVC(), '} else if (action === "sick-leave"', "await awardCrmPoints(current.studentId, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx);");
+  const SICK = () => region(SVC(), '} else if (action === "sick-leave"', "for (const sid of duoStudentIds(current)) await awardCrmPoints(sid, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx);");
 
   test("writer 1 — the reconcile: after each appended row's insert", () => {
     const R = RECONCILE();

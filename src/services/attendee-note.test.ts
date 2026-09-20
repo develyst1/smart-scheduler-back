@@ -74,7 +74,7 @@ describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
     // `enqueueLine` writes SKIPPED for a null recipient — the common case for uat's imported parents, and it
     // must not be an error. ⚠️ TASK-259: plural now, because a family may hold several accounts; an empty list
     // is still exactly one SKIPPED row, because "we could not reach this family" is one fact.
-    expect(confirmBranch).toContain("parentLineUserIds(tx, current.studentId)");
+    expect(confirmBranch).toContain("householdLineUserIds(tx, [current.studentId, current.coStudentId])"); // 🔻 TASK-420: both households
   });
 
   test("🔑 both rows are inside the confirm branch — a cancel or a leave must not message a parent", () => {
