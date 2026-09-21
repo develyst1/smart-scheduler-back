@@ -33,11 +33,11 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("49 = 49 (0040 … 0048 added since): `0039_student_archive` is the 40th file, idx 39", () => {
-    expect(files.length).toBe(49);
+  test("50 = 50 (0040 … 0049 added since): `0039_student_archive` is the 40th file, idx 39", () => {
+    expect(files.length).toBe(50);
     expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(49);
+    expect(j.entries.length).toBe(50);
     expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });

@@ -498,6 +498,8 @@ export const bookings = pgTable(
     groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),
     /** TASK-418 (`0047`) — a DERIVED camp hour's day object; set ⇒ owned by the day (`409 CAMP_ROW_OWNED` on human writes). */
     campWeekDayId: uuid("camp_week_day_id").references((): AnyPgColumn => campWeekDays.id, { onDelete: "restrict" }),
+    /** TASK-428 (`0049`, REQ-101) — the OTHER SERIES an ECA/Free/KOL row belongs to (minted by the creator, stamped on every row); NULL otherwise. */
+    otherSeriesKey: uuid("other_series_key"),
     /** TASK-420 (`0048`) — a DUO course row's second child, copied from the course by the ONE inserter; NULL otherwise. */
     coStudentId: uuid("co_student_id").references(() => students.id, { onDelete: "restrict" }),
     teacherRateMinor: integer("teacher_rate_minor"),

@@ -502,6 +502,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "said in the header). Every object IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0049_other_series_key",
+    probe: { kind: "index", index: "bookings_other_series_idx" },
+    why:
+      "TASK-428 (REQ-101). bookings.other_series_key and its partial index — the LAST object, on the hot table, is the " +
+      "witness (its CREATE INDEX takes SHARE on bookings for one scan; said in the header). Every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

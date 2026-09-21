@@ -255,7 +255,7 @@ async function applyHoldMove(
  * `heldTarget`/`reconcileDelta` still decide **how many** hours a status holds; `planHoldMoves` decides
  * **which item** holds them. No second definition of either.
  */
-async function reconcileBookingHolds(
+export async function reconcileBookingHolds( // TASK-428: exported — the series swap reconciles per row
   tx: any,
   bookingId: string,
   currentTeacherId: string,
@@ -992,7 +992,7 @@ export async function assertHouseholdNotSuspended(exec: any, studentId: string) 
  * weekday, and (if FREELANCE) has a budget set. ONE definition — used by `insertBooking` (new bookings),
  * `moveBooking` and `applyPlanChange` (per-session edits) so a move can't skip what an insert enforces.
  */
-async function assertTeacherBookable(exec: any, teacherId: string, date: string) {
+export async function assertTeacherBookable(exec: any, teacherId: string, date: string) { // TASK-428: exported — the series doors
   const teacher = await exec.query.teachers.findFirst({
     where: (t: any, { eq }: any) => eq(t.id, teacherId),
   });
@@ -1126,7 +1126,7 @@ async function assignedTeacherIds(
   return [primaryTeacherId, ...extra.map((r: any) => r.teacherId).filter((t: string) => t !== primaryTeacherId)];
 }
 
-async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[], rates: Record<string, number> = {}) {
+export async function attachAdditionalTeachers(exec: any, bookingId: string, teacherIds: string[], rates: Record<string, number> = {}) { // TASK-428: exported — the series add-teacher
   const booking = await exec.query.bookings.findFirst({
     columns: { date: true, startTime: true },
     where: (b: any, { eq: e }: any) => e(b.id, bookingId),
@@ -1275,6 +1275,7 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
         groupKey: input.groupKey ?? null,
         groupId: input.groupId ?? null,
         coStudentId,
+        otherSeriesKey: input.otherSeriesKey ?? null, // TASK-428 — the series creator / add-dates stamp their key
         pendingSlot: opts.pendingSlot ?? false,
       })
       .returning({ id: bookings.id });
@@ -1488,15 +1489,16 @@ export async function editOtherBooking(id: string, input: { otherKind?: string; 
 export async function createOtherSeries(input: {
   title: string; otherKind: string; headCount: number; note?: string; teacherId: string; additionalTeacherIds?: string[];
   teacherRates?: Record<string, number>; startTime: string; dates: string[];
-}): Promise<{ created: number; bookingIds: string[] }> {
+}): Promise<{ seriesKey: string; created: number; bookingIds: string[] }> {
   assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
   const dates = [...input.dates].sort();
+  const seriesKey = crypto.randomUUID(); // TASK-428 — ONE key for the whole series, stamped on every row (the group_key shape)
   const bookingIds = await db.transaction(async (tx) => {
     const ids: string[] = [];
     for (const date of dates) {
       let id: string;
       try {
-        id = await insertBooking(tx, null, { ...input, bookingType: "OTHER", otherTitle: input.title, date });
+        id = await insertBooking(tx, null, { ...input, bookingType: "OTHER", otherTitle: input.title, date, otherSeriesKey: seriesKey });
         if (input.additionalTeacherIds?.length) await attachAdditionalTeachers(tx, id, input.additionalTeacherIds, input.teacherRates ?? {});
       } catch (e) {
         // The whole set is refused on the FIRST clash, naming its date — the transaction rolls back every earlier row.
@@ -1507,7 +1509,7 @@ export async function createOtherSeries(input: {
     }
     return ids;
   });
-  return { created: bookingIds.length, bookingIds };
+  return { seriesKey, created: bookingIds.length, bookingIds };
 }
 
 // ═══════════════════ TASK-397 (REQ-095 Stage 2a, SPEC-081) — the GROUP SESSION ═══════════════════
@@ -2061,7 +2063,7 @@ export async function createCoursePackage(input: any) {
       .values({
         studentId,
         coStudentId, // TASK-420 — DUO's second child (null = Private)
-        classRateMinor: input.duo ? input.duo.classRateMinor : null, // TASK-420 — stored, never posted
+        classRateMinor: input.duo?.classRateMinor ?? null, // TASK-420 — stored, never posted; TASK-434 — optional at create
         size: input.size,
         subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
         startDate: input.startDate,

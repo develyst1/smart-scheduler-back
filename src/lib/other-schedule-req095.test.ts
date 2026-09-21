@@ -37,11 +37,11 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0040_other_schedule.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("49 = 49 (0041 … 0048 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
-    expect(files.length).toBe(49);
+  test("50 = 50 (0041 … 0049 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
+    expect(files.length).toBe(50);
     expect(files[40]).toBe("0040_other_schedule.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(49);
+    expect(j.entries.length).toBe(50);
     expect(j.entries.slice(38, 41).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule"]);
   });
   test("five nullable column adds in order — four on `bookings`, `booking_teachers.rate_minor` LAST; all IF NOT EXISTS; no DEFAULT / NOT NULL; no enum", () => {
@@ -175,10 +175,10 @@ describe("🔴 the writes (source) — create carries the fields; the edit is no
     expect(S.indexOf("assertRatesOnBooking(")).toBeLessThan(S.indexOf("db.transaction("));
     expect(S).toContain("const dates = [...input.dates].sort();");
     expect((S.match(/db\.transaction\(/g) ?? []).length).toBe(1);
-    expect(S).toContain('id = await insertBooking(tx, null, { ...input, bookingType: "OTHER", otherTitle: input.title, date });');
+    expect(S).toContain('id = await insertBooking(tx, null, { ...input, bookingType: "OTHER", otherTitle: input.title, date, otherSeriesKey: seriesKey });'); // 🔻 TASK-428: the series key stamped
     expect(S).toContain("await attachAdditionalTeachers(tx, id, input.additionalTeacherIds, input.teacherRates ?? {});");
     expect(S).toContain('if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ไม่ได้สร้างรายการใด (${e.message})`);');
-    expect(S).toContain("return { created: bookingIds.length, bookingIds };");
+    expect(S).toContain("return { seriesKey, created: bookingIds.length, bookingIds };"); // 🔻 TASK-428: the key returned
     expect(S).not.toMatch(/tx\.insert\(bookings\)/); // through insertBooking ONLY — every gate reused
   });
   test("🚫 NO MONEY in any of the new code: no `recordSale` / `recordRental` / `boMovement` / `postBookingSale`; `ratePostedAt` never written anywhere in the service", () => {
@@ -237,7 +237,7 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
     expect(ROUTE_ACCESS["POST /bookings/other-series"]).toEqual({ menus: ["menu:calendar", "menu:bookings"], action: "action:calendar.other-series" });
     expect(ROUTE_ACCESS["PATCH /bookings/:id/other"]!.action).toBe("action:calendar.booking-edit");
     expect(ROUTE_ACCESS["POST /bookings"]!.action).toBe("action:calendar.book");
-    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.other-series").map(([k]) => k)).toEqual(["POST /bookings/other-series"]);
+    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.other-series").map(([k]) => k)).toEqual(["POST /bookings/other-series", "POST /other-series/:key/dates"]); // 🔻 TASK-428: add-dates is the creator's key
   });
 });
 

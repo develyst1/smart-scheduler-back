@@ -119,6 +119,14 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // Classified deliberately, not by default.
   "PATCH /bookings/:id/other": "unrelated",
   "POST /bookings/other-series": "unrelated",
+  // 🔻 TASK-428 — the OTHER SERIES doors: OTHER rows never belong to a course
+  "POST /other-series/:key/confirm-all": "unrelated",
+  "POST /other-series/:key/cancel-all": "unrelated",
+  "POST /other-series/:key/teachers": "unrelated",
+  "DELETE /other-series/:key/teachers/:teacherId": "unrelated",
+  "PATCH /other-series/:key/teacher": "unrelated",
+  "POST /other-series/:key/dates": "unrelated",
+  "PATCH /other-series/:key": "unrelated",
   // TASK-397 (REQ-095 Stage 2a) — a GROUP row never names a course (it has no student); the swap moves seats of LIVE
   // group dates only, and an ended course's rows are not live. Classified deliberately, not by default.
   "POST /bookings/group-series": "unrelated",

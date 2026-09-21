@@ -612,6 +612,20 @@ const TABLE: Record<string, Entry> = {
   ob_ch_system: { TH: "ระบบ", EN: "System" },
   ob_default: { TH: "🔔 แจ้งเตือนจากระบบตารางเรียน", EN: "🔔 Notification from the scheduler" },
   // TASK-094: a per-session teacher swap notifies BOTH teachers — the one it leaves and the one it lands on.
+  // TASK-428 (REQ-101 §4) — the OTHER SERIES notices. ADDED / REMOVED: Porter's draft, OWNER-ACCEPTED 2026-09-21 (bytes may
+  // be tweaked later). CANCELLED (TASK-430, REQ-101 §5): Porter's draft, OWNER-ACCEPTED 2026-09-21 — no placeholder; its EN
+  // labels are the owner's (`Program` / `Reason` / `Date`), so it carries its own two label keys beside the shared TH.
+  os_added_title: { TH: "📅 เพิ่มตารางสอน", EN: "📅 ADDED TO SCHEDULE" },
+  os_added_body: { TH: "คุณถูกเพิ่มเข้าตารางสอน", EN: "You have been added to a schedule" },
+  os_added_footer: { TH: "กรุณาตรวจสอบตารางของคุณ", EN: "Please check your schedule" },
+  os_removed_title: { TH: "❌ นำออกจากตารางสอน", EN: "❌ REMOVED FROM SCHEDULE" },
+  os_removed_body: { TH: "คุณถูกนำออกจากตารางสอน", EN: "You have been removed from a schedule" },
+  os_cancelled_title: { TH: "❌ ยกเลิกตารางทั้งชุด", EN: "❌ SCHEDULE CANCELLED" },
+  os_cancelled_body: { TH: "ตารางสอนถูกยกเลิกทั้งชุด", EN: "Your teaching schedule has been cancelled" },
+  os_c_item: { TH: "รายการ", EN: "Program" },
+  os_c_dates: { TH: "วันที่", EN: "Date" },
+  os_l_item: { TH: "รายการ", EN: "Item" },
+  os_l_dates: { TH: "วันที่", EN: "Dates" },
   ob_teacher_assigned_title: { TH: "👩‍🏫 คุณได้รับมอบหมายคาบสอนใหม่", EN: "👩‍🏫 A class has been assigned to you" },
   // TASK-405 (REQ-095 §10, Stage 3b close) — the camp-day reminder's labels, THE OWNER'S WORDS via @Porter (2026-09-19).
   // 🔑 `Students`, never `Kids` — the app's term (a customer may be a teen/adult). `Student`/`Date` reuse the

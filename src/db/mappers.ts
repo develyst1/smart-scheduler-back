@@ -206,6 +206,7 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   groupName: b.group?.otherTitle ?? null,
   // TASK-418 (REQ-095 §11) — a DERIVED camp hour: its day object and week (the FE merges contiguous cells; the swap door).
   campWeekDayId: b.campWeekDayId ?? null,
+  otherSeriesKey: b.otherSeriesKey ?? null, // TASK-428 — the Manage-plan link from an OTHER row
   campWeekId: b.campWeekDay?.campWeekId ?? null,
   course: b.course ? toCourseSummary(b.course) : null,
   badges: (b.badges ?? []).map(toBookingBadge),

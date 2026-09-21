@@ -76,6 +76,8 @@ export const ACTION_REGISTRY = [
   A("action:calendar.rental-sale", "ขายเช่าอุปกรณ์", "Sell a rental"),
   A("action:calendar.other-series", "สร้างตารางอื่นๆ เป็นชุด", "Create an Other schedule series"), // TASK-394 — the series; a single OTHER stays under `book`
   A("action:calendar.group-series", "สร้างกลุ่ม DUO/Group เป็นชุด", "Create a DUO/Group series"),
+  // TASK-428 (REQ-101 §4 ruling 1) — the destructive door of the Manage-plan page has its OWN key: a wrong entry wipes N rows.
+  A("action:calendar.other-cancel-all", "ยกเลิกตารางอื่นๆ ทั้งชุด", "Cancel a whole Other series"),
   A("action:calendar.teacher-leave", "แจ้งลาสอน (ครู)", "Report own teaching leave"), // TASK-406 (REQ-097) — a LINKED account's own leave; the link is the identity, the key is the door // TASK-397
   // ── bookings ──
   A("action:bookings.bulk-confirm", "ยืนยันคาบทั้งชุด", "Bulk-confirm sessions"),
@@ -110,6 +112,9 @@ export const ACTION_REGISTRY = [
   // TASK-426 (REQ-102) — SEE the freelance ceiling figures (rate · budget · remaining · reorder); nobody by default, a
   // linked account never. The two budget writes need this key TOO (`route-access.ts`).
   A("action:teachers.budget-view", "ดูงบ/เพดานค่าจ้างครู", "View teachers' freelance budget"),
+  // TASK-431 (REQ-102 §6/§7) — the §13.3 coach rate, VIEW ⇔ EDIT: without it the figure is hidden and the edit refused;
+  // independent of budget-view (57). A linked account never.
+  A("action:bookings.coach-rate", "ดูและแก้ค่าสอน", "View & edit coach rate"),
   A("action:teachers.limit-override", "ปรับเพดานชั่วโมงครู", "Override a teacher's limit"),
   A("action:teachers.work-days", "ตั้งวันทำงานครู", "Set a teacher's work days"),
   A("action:teachers.availability", "ตั้งเวลาว่างครู", "Set teacher availability"),

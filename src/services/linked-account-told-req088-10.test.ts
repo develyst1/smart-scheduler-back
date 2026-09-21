@@ -139,7 +139,7 @@ describe("✅ the cap — the PARENT's note is 2000; every other `max(500)` is u
 
   test("🚫 …and the other SIX `max(500)`s on that file are other fields, still 500", () => {
     // 8 before this task; the two parent-note caps moved; six remain, and they are not the parent's.
-    expect((VAL.match(/max\(500\)/g) ?? []).length).toBe(6);
+    expect((VAL.match(/max\(500\)/g) ?? []).length).toBe(7); // 🔻 TASK-428: + the cancel-all note
     expect((VAL.match(/max\(2000\)/g) ?? []).length).toBe(2);
     // the reason is beside the number, so the next reader does not lower it back for tidiness.
     expect(VAL).toContain("a cap the machine can exceed means the ADMIN cannot save what the SYSTEM wrote");

@@ -50,7 +50,7 @@ const dto = (): any => ({ id: T1, type: "FREELANCE" as const, ...figures, overLi
 
 describe("🔑 the key (57) — registered, labelled, granted to nobody by default; the two writes double-gated", () => {
   test("57 keys; `action:teachers.budget-view` with TH/EN labels, area teachers", () => {
-    expect(ACTION_KEYS.length).toBe(57);
+    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all
     expect(ACTION_REGISTRY.find((a) => a.key === BUDGET_VIEW_KEY)).toMatchObject({ labelTh: "ดูงบ/เพดานค่าจ้างครู", labelEn: "View teachers' freelance budget" });
     expect(BUDGET_VIEW_KEY).toBe("action:teachers.budget-view");
   });
@@ -137,7 +137,7 @@ describe("🔴 the ONE mask by VALUE — with · without · a linked account wit
       expect(region(SCHED, fn, "\n}\n")).not.toMatch(/budgetMinor|remainingMinor|hourlyRate|attachFreelanceBudgets/);
     }
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/viewerOf\(c\)/g) ?? []).length).toBe(9); // calendar · teachers · create · update · budget · topup · archive · reactivate · attention
+    expect((API.match(/viewerOf\(c\)/g) ?? []).length).toBe(12); // calendar · teachers · create · update · budget · topup · archive · reactivate · attention // 🔻 TASK-431: + the three coach-rate write checks
     expect(API).not.toMatch(/budgetMinor|remainingMinor|hourlyRate/); // no route hand-builds a figure
   });
   test("the leak by value through the ROOT app: `GET /teachers` for a linked token holding all 57 keys ⇒ nulls; an unlinked super admin ⇒ the figures; a staff without the key ⇒ nulls; `GET /calendar` the same", async () => {
@@ -194,6 +194,6 @@ describe("🔴 the attention line — the dashboard drops the number without the
     expect(M).not.toMatch(/classRateMinor|teacherRates|priceMinor|listPrice|recordSale|rate:/);
     expect(M).toContain('export const BUDGET_FIGURE_FIELDS = ["hourlyRate", "budgetMinor", "remainingMinor", "reorderMinor"] as const;');
     for (const f of ["src/db/mappers.ts", "src/lib/coach-rate.ts", "src/lib/sale-items.ts", "src/services/som-report.service.ts"]) expect(code(src(f))).not.toMatch(/maskBudget|budget-visibility/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(49);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(50);
   });
 });

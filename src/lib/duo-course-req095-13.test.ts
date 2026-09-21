@@ -1,5 +1,5 @@
 // TASK-420 (`REQ-095 §13`, SPEC-085 B) — DUO = ONE course, TWO kids: migration `0048` (two NULL columns on course_packages,
-// one on bookings, the partial index as witness; 49 = 49), the ONE chokepoint for the row's second child (`insertBooking`
+// one on bookings, the partial index as witness; 50 = 50), the ONE chokepoint for the row's second child (`insertBooking`
 // reads the course; the two clones copy their template — pinned as a CENSUS of every `insert(bookings)`), the create by
 // VALUE through a fake tx (both kids guarded, the DUO price group, ONE sale at `course-balance-duo-{size}`, the rate
 // stored), the rate edits (course PATCH + the session move; Private ⇒ 400 NOT_DUO), the FOUR private family reads retired
@@ -51,9 +51,9 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
-  test("49 = 49: `0048_duo_course` is the 49th file, idx 48, the last; 'expects 49'", () => {
-    expect(files.length).toBe(49);
-    expect(journal.entries.length).toBe(49);
+  test("50 = 50: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
+    expect(files.length).toBe(50);
+    expect(journal.entries.length).toBe(50);
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -69,7 +69,7 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
     expect(body).not.toMatch(/DEFAULT|integer NOT NULL|uuid NOT NULL|CASCADE|CREATE TYPE|UPDATE /); // nullable adds, no rewrite; `IS NOT NULL` is the index predicate
   });
   test("the witness is the LAST entry, probes the index; the SHARE lock on `bookings` is said in the header", () => {
-    const last = SCHEDULING_WITNESSES[SCHEDULING_WITNESSES.length - 1]!;
+    const last = SCHEDULING_WITNESSES.find((w) => w.tag === "0048_duo_course")!; // 🔻 TASK-428: 0049 is the last now
     expect(last).toMatchObject({ tag: "0048_duo_course", probe: { kind: "index", index: "bookings_co_student_idx" }, rerunnable: true });
     expect(sql).toContain("SHARE lock for its one scan");
     expect(sql).toContain("Not `CONCURRENTLY`");

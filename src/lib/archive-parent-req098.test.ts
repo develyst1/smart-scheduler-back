@@ -3,7 +3,7 @@
 // source, no hand-written term), the archive by value (the household's live-future count ⇒ 409; the ONE unlinker
 // clears every LINE account into the audit list; the cascade marks every child `parent:<id>`; idempotent), the restore
 // (only the cascaded children, the LINE ids NOT restored), Finding B's two refusals (the admin's create, the LINE
-// register's `phone-archived` with a PLACEHOLDER reply), the ghost unresolvable, the routes through the root app. 49 = 49.
+// register's `phone-archived` with a PLACEHOLDER reply), the ghost unresolvable, the routes through the root app. 50 = 50.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0046, counted, three NULLABLE adds on `parents`
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0046_parent_archive.sql"), "utf8");
-  test("49 = 49: `0046_parent_archive` is the 47th file, idx 46 (TASK-418 added 0047 after it); 'expects 47' in the header", () => {
-    expect(files.length).toBe(49);
-    expect(journal.entries.length).toBe(49);
+  test("50 = 50: `0046_parent_archive` is the 47th file, idx 46 (TASK-418 added 0047 after it); 'expects 47' in the header", () => {
+    expect(files.length).toBe(50);
+    expect(journal.entries.length).toBe(50);
     expect(files[46]).toBe("0046_parent_archive.sql");
     expect(journal.entries[46]).toMatchObject({ idx: 46, tag: "0046_parent_archive" });
     expect(sql).toContain("`db:verify` expects 47");
@@ -225,7 +225,7 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
 
 describe("🔑 the key (56), the access rows, the validators, the routes through the ROOT app", () => {
   test("`action:people.parent-archive` is the 56th key with both labels; two access rows on it; `?archived` on the list and the detail", () => {
-    expect(ACTION_KEYS.length).toBe(57); // 🔻 TASK-426: + teachers.budget-view
+    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view
     expect(ACTION_REGISTRY.find((a) => a.key === "action:people.parent-archive")).toMatchObject({ labelTh: "เก็บ/คืนสถานะผู้ปกครอง", labelEn: "Archive & restore a parent" });
     expect((ROUTE_ACCESS as any)["POST /parents/:id/archive"]).toMatchObject({ action: "action:people.parent-archive" });
     expect((ROUTE_ACCESS as any)["POST /parents/:id/unarchive"]).toMatchObject({ action: "action:people.parent-archive" });

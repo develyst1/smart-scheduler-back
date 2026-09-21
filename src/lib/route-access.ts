@@ -64,6 +64,17 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "PATCH /bookings/:id": act(CAL_BOOK, "action:calendar.booking-edit"),
   "PATCH /bookings/:id/other": act(CAL_BOOK, "action:calendar.booking-edit"), // TASK-394 — an edit, not a move
   "POST /bookings/other-series": act(CAL_BOOK, "action:calendar.other-series"), // TASK-394 — its own act
+  // TASK-428 (REQ-101) — the OTHER SERIES Manage-plan: reads under the calendar; the series doors ride the row keys, the
+  // destructive one its own (58); add-dates is the creator's key. None in TEACHER_ALLOWED.
+  "GET /other-series": read(["menu:calendar"]),
+  "GET /other-series/:key": read(["menu:calendar"]),
+  "POST /other-series/:key/confirm-all": act(["menu:calendar"], "action:calendar.status"),
+  "POST /other-series/:key/cancel-all": act(["menu:calendar"], "action:calendar.other-cancel-all"),
+  "POST /other-series/:key/teachers": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "DELETE /other-series/:key/teachers/:teacherId": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "PATCH /other-series/:key/teacher": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "POST /other-series/:key/dates": act(["menu:calendar"], "action:calendar.other-series"),
+  "PATCH /other-series/:key": act(["menu:calendar"], "action:calendar.booking-edit"),
   "POST /bookings/group-series": act(CAL_BOOK, "action:calendar.group-series"), // TASK-397 — its own act
   "PATCH /bookings/:id/group-teacher": act(CAL_BOOK, "action:calendar.booking-edit"), // TASK-397 — an edit
   "PATCH /bookings/:id/badges": act(CAL_BOOK, "action:calendar.badges"),

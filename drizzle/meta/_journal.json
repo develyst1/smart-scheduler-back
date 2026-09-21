@@ -344,6 +344,13 @@
       "when": 1783000000044,
       "tag": "0048_duo_course",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1783000000045,
+      "tag": "0049_other_series_key",
+      "breakpoints": true
     }
   ]
 }

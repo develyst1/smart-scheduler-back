@@ -9,6 +9,7 @@ import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
 import * as calendar from "../services/calendar.service";
 import * as attention from "../services/attention.service";
+import * as otherSeries from "../services/other-series.service";
 import * as teacherLink from "../services/teacher-link.service";
 import * as som from "../services/som-report.service";
 import * as settings from "../services/settings.service";
@@ -21,6 +22,7 @@ import { badRequest } from "../lib/http";
 import { actorOf } from "../services/user.service";
 import { assertLinked, assertOwnBooking, assertScopedStatusAction, scopeOf } from "../lib/own-scope";
 import { viewerOf } from "../lib/budget-visibility";
+import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -230,6 +232,7 @@ export const api = new Hono()
     // TASK-160: only an admin may discount, and the actor comes from the TOKEN — never from the body, or
     // "who authorised this" would be whatever the caller typed.
     assertMayDiscount(body.discount, c.get("user"));
+    assertMayEditCoachRate(body, viewerOf(c)); // TASK-431 — a DUO create carries the rate ⇒ key 59
     return c.json(await svc.createCoursePackage({ ...body, actor: actorOf(c) }), 201);
   })
   .get("/vouchers", zValidator("query", v.vouchersQuery), async (c) =>
@@ -252,6 +255,7 @@ export const api = new Hono()
     const body = c.req.valid("json");
     // TASK-162: same admin-only rule and same token-sourced actor as the at-sale discounts.
     assertMayDiscount(body.discount, c.get("user"));
+    assertMayEditCoachRate(body, viewerOf(c)); // TASK-434 — an OTHER row's `teacherRates` at create ⇒ key 59
     return c.json(await svc.createBooking({ ...body, actor: actorOf(c) }), 201);
   })
   .post("/bookings/bulk-confirm", zValidator("json", v.bulkConfirm), async (c) =>
@@ -268,22 +272,51 @@ export const api = new Hono()
       await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode),
     );
   })
-  .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) =>
-    c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json"))),
-  )
+  .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-431 — the session's rate override ⇒ key 59; a body without it passes
+    return c.json(await svc.moveBooking(c.req.param("id"), c.req.valid("json")));
+  })
   // TASK-394 (REQ-095 Stage 1) — an OTHER's kind / head count / per-teacher rates, on its OWN route: `PATCH /bookings/:id`
   // is a MOVE and tells the teacher; this tells nobody (the note's precedent). A lesson type ⇒ 400.
-  .patch("/bookings/:id/other", zValidator("json", v.editOtherBooking), async (c) =>
-    c.json(await svc.editOtherBooking(c.req.param("id"), c.req.valid("json"))),
-  )
+  .patch("/bookings/:id/other", zValidator("json", v.editOtherBooking), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59; kind / heads alone pass
+    return c.json(await svc.editOtherBooking(c.req.param("id"), c.req.valid("json")));
+  })
   // TASK-394 — the SERIES: one OTHER per date, all or nothing (the first clash ⇒ 409 naming the date, nothing created).
-  .post("/bookings/other-series", zValidator("json", v.otherSeries), async (c) =>
-    c.json(await svc.createOtherSeries(c.req.valid("json")), 201),
+  .post("/bookings/other-series", zValidator("json", v.otherSeries), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59; a series without rates passes
+    return c.json(await svc.createOtherSeries(c.req.valid("json")), 201);
+  })
+  // TASK-428 (REQ-101) — the OTHER SERIES Manage-plan, by key. The reads; then the doors, each ONE tx (the clash names the
+  // date and rolls back). Registered before any `/other-series/:key` reader could shadow the list.
+  .get("/other-series", zValidator("query", v.otherSeriesQuery), async (c) => c.json(await otherSeries.listOtherSeries(c.req.valid("query"))))
+  .get("/other-series/:key", async (c) => c.json(await otherSeries.getOtherSeries(c.req.param("key"))))
+  .post("/other-series/:key/confirm-all", async (c) => c.json(await otherSeries.confirmAllOtherSeries(c.req.param("key"))))
+  .post("/other-series/:key/cancel-all", zValidator("json", v.otherSeriesCancelAll), async (c) =>
+    c.json(await otherSeries.cancelAllOtherSeries(c.req.param("key"), c.req.valid("json"), actorOf(c))),
   )
+  .post("/other-series/:key/teachers", zValidator("json", v.otherSeriesAddTeacher), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `rateMinor` ⇒ key 59; adding without a rate passes
+    return c.json(await otherSeries.addTeacherToOtherSeries(c.req.param("key"), c.req.valid("json")), 201);
+  })
+  .delete("/other-series/:key/teachers/:teacherId", zValidator("query", v.otherSeriesFromQuery), async (c) =>
+    c.json(await otherSeries.removeTeacherFromOtherSeries(c.req.param("key"), c.req.param("teacherId"), c.req.valid("query"))),
+  )
+  .patch("/other-series/:key/teacher", zValidator("json", v.otherSeriesSwap), async (c) =>
+    c.json(await otherSeries.swapOtherSeriesTeacher(c.req.param("key"), c.req.valid("json"))),
+  )
+  .post("/other-series/:key/dates", zValidator("json", v.otherSeriesDates), async (c) =>
+    c.json(await otherSeries.addDatesToOtherSeries(c.req.param("key"), c.req.valid("json")), 201),
+  )
+  .patch("/other-series/:key", zValidator("json", v.otherSeriesPatch), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59; title / kind / heads alone pass
+    return c.json(await otherSeries.updateOtherSeries(c.req.param("key"), c.req.valid("json")));
+  })
   // TASK-397 (REQ-095 Stage 2a) — a DUO/Group SERIES: N GROUP rows under one key, all or nothing (409 naming the date).
-  .post("/bookings/group-series", zValidator("json", v.groupSeries), async (c) =>
-    c.json(await svc.createGroupSeries(c.req.valid("json")), 201),
-  )
+  .post("/bookings/group-series", zValidator("json", v.groupSeries), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59
+    return c.json(await svc.createGroupSeries(c.req.valid("json")), 201);
+  })
   // TASK-397 — swap the group's teacher (this date, or from here on); every seat moves with it in one tx. No notice.
   .patch("/bookings/:id/group-teacher", zValidator("json", v.groupTeacherSwap), async (c) =>
     c.json(await svc.swapGroupTeacher(c.req.param("id"), c.req.valid("json"))),
@@ -336,9 +369,10 @@ export const api = new Hono()
   .get("/entitlements/:id/plan", async (c) =>
     c.json(await svc.getEntitlementPlan(c.req.param("id"))),
   )
-  .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) =>
-    c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json"))),
-  )
+  .patch("/courses/:id", zValidator("json", v.updateCourse), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-431 — the course default ⇒ key 59; `adminUnlocked` alone passes
+    return c.json(await svc.updateCourse(c.req.param("id"), c.req.valid("json")));
+  })
   .get("/bookings/:id/checkin", async (c) => {
     await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user"))); // TASK-406
     return c.json(await checkin.getCheckinQr(c.req.param("id")));

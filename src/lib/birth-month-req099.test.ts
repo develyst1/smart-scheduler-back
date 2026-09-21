@@ -93,7 +93,7 @@ describe("🔴 the validator's two 400s; `birthDate` in the select and the DTO; 
     expect(S).toContain(".limit(Math.min(limit, 200));");
     expect(S).not.toMatch(/extract\(|birth_date/); // the SQL lives in the helper, not here
     expect(code(src("src/routes/api.ts"))).toContain("parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob })"); // 🔻 TASK-416
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(49); // no migration of its own (🔻 TASK-418 added 0047, TASK-420 added 0048)
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(50); // no migration of its own (🔻 TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049)
   });
   test("through the ROOT app (service spied): the range reaches the service; a lone month ⇒ 400 before the service; the contradiction ⇒ 400", async () => {
     process.env.SKIP_AUTH = "true";

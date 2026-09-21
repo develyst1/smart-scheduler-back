@@ -315,7 +315,9 @@ export const createCoursePackage = z
     groupKey: ID.optional(),
     // TASK-420 (REQ-095 §13) — DUO: ONE course for TWO kids. The second child (≠ the first — the service checks after it
     // resolves `student`) and the per-class coach rate (minor units, STORED, never posted). Absent ⇒ Private.
-    duo: z.object({ coStudentId: ID, classRateMinor: z.number().int().min(0) }).optional(),
+    // 🔻 TASK-434 (REQ-102 §8): the rate is OPTIONAL at create — a user without key 59 creates the DUO; a key-59 holder sets
+    // the default later (the course card). Present ⇒ the key (the route's check).
+    duo: z.object({ coStudentId: ID, classRateMinor: z.number().int().min(0).optional() }).optional(),
     // TASK-095 — optional per-session overrides (purchase-time planner). Absent ⇒ the uniform weekly chain.
     sessions: z
       .array(
@@ -623,6 +625,18 @@ export const updateUser = z.object({
   teacherId: ID.nullable().optional(), // TASK-406 — set, change or clear (null) the link
 });
 // TASK-406 (REQ-097 C-2) — a LINKED teacher's own leave: the date, optionally the subset (else every live session that day), the reason.
+// TASK-428 (REQ-101) — the OTHER SERIES Manage-plan bodies. `fromDate` (add / remove / swap) defaults to TODAY in the
+// service (the owner's ruling 2: past rows are history). No `startTime` on the header PATCH — a time change is N moves.
+export const otherSeriesQuery = z.object({ from: DATE, to: DATE }).refine((d) => d.from <= d.to, { message: "ช่วงวันที่กลับด้าน" });
+export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(END_REASONS), note: z.string().trim().max(500).optional() });
+export const otherSeriesAddTeacher = z.object({ teacherId: ID, rateMinor: z.number().int().min(0).optional(), fromDate: DATE.optional() });
+export const otherSeriesFromQuery = z.object({ fromDate: DATE.optional() });
+export const otherSeriesSwap = z.object({ from: ID, to: ID, fromDate: DATE.optional() }).refine((d) => d.from !== d.to, { message: "ครูคนเดิม" });
+export const otherSeriesDates = z.object({ dates: z.array(DATE).min(1).max(60) }).refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
+export const otherSeriesPatch = z
+  .object({ title: z.string().trim().min(1).optional(), otherKind: z.enum(HUMAN_OTHER_KINDS).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+
 export const teacherLeave = z.object({
   date: DATE,
   sessionIds: z.array(ID).min(1).max(50).optional(),

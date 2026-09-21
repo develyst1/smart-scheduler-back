@@ -627,6 +627,27 @@ function buildOutboxMessage(
         program: ctx.subject ?? "-",
       });
     // TASK-094: teacher reassigned on a course session — same body as a confirmation, different title per side.
+    // TASK-428 (REQ-101 §4) — the OTHER SERIES notices, ONE per teacher: ADDED / REMOVED are the owner-accepted words
+    // (Porter's TH+EN draft, by value — the owner may tweak bytes later); CANCELLED likewise since TASK-430 (REQ-101 §5 —
+    // its EN labels are the owner's `Program` / `Reason` / `Date`, so it carries its own label keys). Everything is IN THE
+    // PAYLOAD (a series notice is not a row's): the title, the hour, the dates — one line per date, `DD-MM-YYYY` (REQ-085
+    // §16d / REQ-087, the customer's).
+    case "other_teacher_added":
+    case "other_teacher_removed":
+    case "other_series_cancelled": {
+      const dates = Array.isArray(payload.dates) ? (payload.dates as string[]) : [];
+      const hour = payload.startTime ? `${payload.startTime}${payload.endTime ? `-${payload.endTime}` : ""}` : undefined;
+      const k = payload.kind === "other_teacher_added" ? "added" : payload.kind === "other_teacher_removed" ? "removed" : "cancelled";
+      return (
+        t(`os_${k}_title`, lang) + "\n" +
+        t(`os_${k}_body`, lang) + "\n" +
+        line(t(k === "cancelled" ? "os_c_item" : "os_l_item", lang), fieldValue(payload.title)) + // TASK-430: the owner's EN `Program`
+        line(t("ob_f_time", lang), hour) +
+        (k === "cancelled" ? line(t("cl_reason", lang), payload.reason ? t(`ob_reason_${payload.reason as string}`, lang) : undefined) : "") + // TASK-430: `เหตุผล` / `Reason`
+        (dates.length ? `${t(k === "cancelled" ? "os_c_dates" : "os_l_dates", lang)}:\n` + dates.map((d) => `  - ${ddmmyyyy(d)}`).join("\n") + "\n" : "") +
+        (k === "added" ? t("os_added_footer", lang) : "")
+      );
+    }
     case "teacher_assigned":
     case "teacher_unassigned": {
       // 🔴 TASK-344 — **LIVE, and neither @Sober's candidate list nor my first sweep found it.** Both kinds
