@@ -225,7 +225,7 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
 
 describe("🔑 the key (56), the access rows, the validators, the routes through the ROOT app", () => {
   test("`action:people.parent-archive` is the 56th key with both labels; two access rows on it; `?archived` on the list and the detail", () => {
-    expect(ACTION_KEYS.length).toBe(56);
+    expect(ACTION_KEYS.length).toBe(57); // 🔻 TASK-426: + teachers.budget-view
     expect(ACTION_REGISTRY.find((a) => a.key === "action:people.parent-archive")).toMatchObject({ labelTh: "เก็บ/คืนสถานะผู้ปกครอง", labelEn: "Archive & restore a parent" });
     expect((ROUTE_ACCESS as any)["POST /parents/:id/archive"]).toMatchObject({ action: "action:people.parent-archive" });
     expect((ROUTE_ACCESS as any)["POST /parents/:id/unarchive"]).toMatchObject({ action: "action:people.parent-archive" });

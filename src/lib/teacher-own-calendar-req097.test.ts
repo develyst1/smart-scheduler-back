@@ -109,7 +109,8 @@ describe("🔴 OWN SCOPE — the link is the scope (fails closed); ONE predicate
     expect(list).toContain("if (scope) conds.push(ownScopeWhere(scope));");
     expect(list).toContain("const cond = conds.length ? and(...conds) : sql`true`;"); // one `cond` ⇒ the page and the count agree
     expect(SCHED).not.toMatch(/eq\(bookings\.teacherId, (scope|me)\)/);
-    expect(API).toContain("c.json(await svc.getCalendar(c.req.valid(\"query\"), scopeOf(c.get(\"user\")))),");
+    expect(API).toContain("c.json(await svc.getCalendar(c.req.valid(\"query\"), viewerOf(c))),"); // 🔻 TASK-426: the viewer carries the scope
+    expect(SCHED).toContain("const scope = viewer ? scopeOf({ teacherId: viewer.teacherId ?? null }) : null;");
     expect(API).toContain("c.json(await svc.getBookings(c.req.valid(\"query\"), scopeOf(c.get(\"user\")))),");
     expect((API.match(/await assertOwnBooking\(c\.req\.param\("id"\), scopeOf\(c\.get\("user"\)\)\);/g) ?? []).length).toBe(3); // status · checkin · posted-sale
     expect(API).toContain("assertScopedStatusAction(c.get(\"user\"), action);");
@@ -242,7 +243,7 @@ describe("🔴 `attend` only, the leave for a LINKED account only, the users pag
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, null);");
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, id);");
     expect(S).toContain("patch.teacherId = input.teacherId;");
-    expect(ACTION_KEYS.length).toBe(56); // 🔻 TASK-411: + people.parent-archive
+    expect(ACTION_KEYS.length).toBe(57); // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-411: + people.parent-archive
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.teacher-leave")).toMatchObject({ labelTh: "แจ้งลาสอน (ครู)", labelEn: "Report own teaching leave" });
     expect(code(src("src/routes/me.ts"))).toContain("teacherId: u.teacherId }");
   });

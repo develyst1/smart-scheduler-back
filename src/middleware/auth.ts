@@ -132,7 +132,8 @@ export async function accessGuard(c: Context, next: Next) {
     throw MENU_FORBIDDEN();
   }
   if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();
-  if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();
+  const needed = access.action === undefined ? [] : Array.isArray(access.action) ? access.action : [access.action as ActionKey];
+  if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN(); // TASK-426 — EVERY listed key (a two-key act)
   // 🔴 TASK-406 (REQ-097) — a LINKED account reaches only `TEACHER_ALLOWED`, whatever its role grants: fails CLOSED.
   // After the menu/action checks so an unmapped or ungranted route keeps its own sentence; the scope sentence is for
   // a route the role would allow and the link forbids.

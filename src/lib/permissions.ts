@@ -107,6 +107,9 @@ export const ACTION_REGISTRY = [
   A("action:teachers.edit", "แก้ไขข้อมูลครู", "Edit a teacher"),
   A("action:teachers.archive", "เก็บ/คืนสถานะครู", "Archive & reactivate a teacher"),
   A("action:teachers.budget", "ตั้ง/เติมงบครู", "Set & top up a teacher's budget"),
+  // TASK-426 (REQ-102) — SEE the freelance ceiling figures (rate · budget · remaining · reorder); nobody by default, a
+  // linked account never. The two budget writes need this key TOO (`route-access.ts`).
+  A("action:teachers.budget-view", "ดูงบ/เพดานค่าจ้างครู", "View teachers' freelance budget"),
   A("action:teachers.limit-override", "ปรับเพดานชั่วโมงครู", "Override a teacher's limit"),
   A("action:teachers.work-days", "ตั้งวันทำงานครู", "Set a teacher's work days"),
   A("action:teachers.availability", "ตั้งเวลาว่างครู", "Set teacher availability"),

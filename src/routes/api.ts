@@ -20,11 +20,12 @@ import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
 import { actorOf } from "../services/user.service";
 import { assertLinked, assertOwnBooking, assertScopedStatusAction, scopeOf } from "../lib/own-scope";
+import { viewerOf } from "../lib/budget-visibility";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
   .get("/calendar", zValidator("query", v.calendarQuery), async (c) =>
-    c.json(await svc.getCalendar(c.req.valid("query"), scopeOf(c.get("user")))), // TASK-406: a linked account sees its own
+    c.json(await svc.getCalendar(c.req.valid("query"), viewerOf(c))), // TASK-406: a linked account sees its own; TASK-426: the figures masked for the viewer
   )
   // ⚠️ Literal `/students/<word>` routes go BEFORE any `/students/:id` param route (the TASK-029 lesson).
   // Who can be booked against an existing course/voucher, with the context staff pick from (REQ-022).
@@ -90,7 +91,7 @@ export const api = new Hono()
   .post("/students/:id/archive", async (c) => c.json({ student: await parent.archiveStudent(c.req.param("id"), actorOf(c)) }))
   .post("/students/:id/unarchive", async (c) => c.json({ student: await parent.unarchiveStudent(c.req.param("id")) }))
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
-  .get("/attention", async (c) => c.json(await attention.getAttention()))
+  .get("/attention", async (c) => c.json(await attention.getAttention(viewerOf(c)))) // TASK-426: the near-cap label drops its number without the key
   // REQ-020 Stage 2 (TASK-075) — teacher LINE link requests. Approval is the ONLY path that grants a link.
   .get("/teacher-link-requests", zValidator("query", v.linkRequestsQuery), async (c) =>
     c.json({ items: await teacherLink.listTeacherLinkRequests(c.req.valid("query").status) }),
@@ -158,10 +159,10 @@ export const api = new Hono()
     c.json(await svc.reportOwnLeave(assertLinked(c.get("user")), c.req.valid("json"), actorOf(c))),
   )
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
-    c.json(await svc.getTeachers({ archived: c.req.valid("query").archived })),
+    c.json(await svc.getTeachers({ archived: c.req.valid("query").archived }, viewerOf(c))), // TASK-426
   )
   .post("/teachers", zValidator("json", v.createTeacher), async (c) =>
-    c.json(await svc.createTeacher(c.req.valid("json")), 201),
+    c.json(await svc.createTeacher(c.req.valid("json"), viewerOf(c)), 201),
   )
   // ⚠️ Literal `/teachers/<word>` PATCH routes MUST be registered before the param route
   // `.patch("/teachers/:id")` below — else Hono matches them as id="availability"/"type-order"
@@ -173,13 +174,13 @@ export const api = new Hono()
     c.json(await svc.setTeacherTypeOrder(c.req.valid("json").order)),
   )
   .patch("/teachers/:id", zValidator("json", v.updateTeacher), async (c) =>
-    c.json(await svc.updateTeacher(c.req.param("id"), c.req.valid("json"))),
+    c.json(await svc.updateTeacher(c.req.param("id"), c.req.valid("json"), viewerOf(c))),
   )
   .put("/teachers/:id/budget", zValidator("json", v.setFreelanceBudget), async (c) =>
-    c.json(await svc.setFreelanceBudget(c.req.param("id"), c.req.valid("json"))),
+    c.json(await svc.setFreelanceBudget(c.req.param("id"), c.req.valid("json"), viewerOf(c))),
   )
   .post("/teachers/:id/budget/topup", zValidator("json", v.topUpBudget), async (c) =>
-    c.json(await svc.topUpFreelanceBudget(c.req.param("id"), c.req.valid("json").amountMinor)),
+    c.json(await svc.topUpFreelanceBudget(c.req.param("id"), c.req.valid("json").amountMinor, viewerOf(c))),
   )
   // Staff: get-or-create the teacher's calendar-subscription link; `?rotate=true` kills the old one (REQ-017).
   .post("/teachers/:id/calendar-link", async (c) => {
@@ -194,9 +195,9 @@ export const api = new Hono()
     const { id } = c.req.param();
     return c.json(await teacherLink.unlinkTeacherLine(id));
   })
-  .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"))))
+  .post("/teachers/:id/archive", async (c) => c.json(await svc.archiveTeacher(c.req.param("id"), viewerOf(c))))
   .post("/teachers/:id/reactivate", async (c) =>
-    c.json(await svc.reactivateTeacher(c.req.param("id"))),
+    c.json(await svc.reactivateTeacher(c.req.param("id"), viewerOf(c))),
   )
   .get("/teachers/type-order", async (c) => c.json(await svc.getTeacherTypeOrder()))
   .get("/courses", zValidator("query", v.coursesQuery), async (c) =>

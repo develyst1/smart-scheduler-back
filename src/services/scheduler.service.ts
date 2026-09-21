@@ -2,7 +2,8 @@
 // these; all domain rules (quota/extension/idempotency) live here.
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
-import { ownScopeWhere } from "../lib/own-scope";
+import { ownScopeWhere, scopeOf } from "../lib/own-scope";
+import { maskBudget, type Viewer } from "../lib/budget-visibility";
 import { db } from "../db";
 import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
@@ -341,7 +342,7 @@ async function attachFreelanceBudgets<
     overLimit?: boolean;
     setupIncomplete?: boolean;
   },
->(dtos: T[]): Promise<T[]> {
+>(dtos: T[], viewer: Viewer): Promise<T[]> { // TASK-426 — the viewer is REQUIRED: null ⇒ masked (fail closed)
   const rows = await db.query.boItem.findMany({
     where: (i, { and, eq, sql }) =>
       and(
@@ -364,6 +365,7 @@ async function attachFreelanceBudgets<
       d.overLimit = overLimit(b.remainingQty);
     }
     d.setupIncomplete = d.type === "FREELANCE" && !b && !d.archived;
+    maskBudget(viewer, d); // TASK-426 — the ONE mask, at the ONE builder: the four figures null without the key, the booleans stay
   }
   return dtos;
 }
@@ -477,7 +479,8 @@ export async function liveEndDatesForCourses(courseIds: string[], exec: any = db
 // TASK-406 (REQ-097) — `scope` = the linked teacher's id (`scopeOf(user)`), `null` for an admin: every read below is
 // byte-identical for `null`. Scoped: MY column only (an empty column for another coach would read "nothing booked" —
 // a false statement), my rows (the ONE predicate) on the grid and the tray, my camp weeks.
-export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }, scope: string | null = null) {
+export async function getCalendar(input: { date: string; view: "day" | "week"; includeCancelled?: boolean }, viewer: Viewer) {
+  const scope = viewer ? scopeOf({ teacherId: viewer.teacherId ?? null }) : null; // TASK-406 (own column) — from the same viewer as the mask (TASK-426)
   const range = input.view === "week" ? weekRange(input.date) : { start: input.date, end: input.date };
   const days = datesBetween(range.start, range.end);
 
@@ -496,7 +499,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
         typeRank(order, a.type) - typeRank(order, b.type) ||
         a.nickname.localeCompare(b.nickname, "th"),
     );
-  await attachFreelanceBudgets(teacherDtos); // SPEC-005: local budget + setupIncomplete (no ops)
+  await attachFreelanceBudgets(teacherDtos, viewer); // SPEC-005: local budget + setupIncomplete (no ops); TASK-426: masked for the viewer
   const overrides = await readLimitOverrides();
   for (const d of teacherDtos) d.limitOverride = overrides.has(d.id);
 
@@ -579,7 +582,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
   };
 }
 
-export async function getTeachers(opts: { archived?: boolean } = {}) {
+export async function getTeachers(opts: { archived?: boolean }, viewer: Viewer) {
   const [rows, order] = await Promise.all([
     db.query.teachers.findMany({
       where: (t, { eq }) => eq(t.archived, opts.archived ?? false),
@@ -587,7 +590,7 @@ export async function getTeachers(opts: { archived?: boolean } = {}) {
     }),
     readTeacherTypeOrder(),
   ]);
-  const dtos = await attachFreelanceBudgets(rows.map(toTeacherDTO)); // SPEC-005 (local)
+  const dtos = await attachFreelanceBudgets(rows.map(toTeacherDTO), viewer); // SPEC-005 (local); TASK-426: masked for the viewer
   const overrides = await readLimitOverrides();
   for (const d of dtos) d.limitOverride = overrides.has(d.id);
   return {
@@ -3842,13 +3845,13 @@ export async function setLimitOverride(id: string, override: boolean) {
 
 /** Load one teacher fully-decorated (rate/budget, setupIncomplete, override) — the DTO shape the
  *  lifecycle mutations return. */
-async function loadTeacherFull(id: string) {
+async function loadTeacherFull(id: string, viewer: Viewer) {
   const row = await db.query.teachers.findFirst({
     where: (t, { eq }) => eq(t.id, id),
     with: { teacherSubjects: { with: { subject: true } } },
   });
   if (!row) throw notFound("ไม่พบครู");
-  const [dto] = await attachFreelanceBudgets([toTeacherDTO(row)]);
+  const [dto] = await attachFreelanceBudgets([toTeacherDTO(row)], viewer);
   dto.limitOverride = await readLimitOverride(db, id);
   return dto;
 }
@@ -3861,7 +3864,7 @@ export async function createTeacher(input: {
   type: TeacherType;
   workDays?: number[];
   subjectIds?: string[];
-}) {
+}, viewer: Viewer) {
   const id = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(teachers)
@@ -3881,7 +3884,7 @@ export async function createTeacher(input: {
     }
     return row.id;
   });
-  return loadTeacherFull(id);
+  return loadTeacherFull(id, viewer);
 }
 
 /** Edit a teacher (standalone — TASK-029). Updates name/nickname/type/subjects locally; type change is
@@ -3889,6 +3892,7 @@ export async function createTeacher(input: {
 export async function updateTeacher(
   id: string,
   input: { name?: string; nickname?: string; type?: TeacherType; subjectIds?: string[] },
+  viewer: Viewer,
 ) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
@@ -3928,12 +3932,12 @@ export async function updateTeacher(
       await closeFreelanceCeiling(tx, id);
     }
   });
-  return loadTeacherFull(id);
+  return loadTeacherFull(id, viewer);
 }
 
 /** Offboard a teacher (soft — TASK-029). Rejects with 409 if they have any future live booking (must be
  *  reassigned/cleared first); else archive + deactivate locally (freelance money is a local `bo.item`). */
-export async function archiveTeacher(id: string) {
+export async function archiveTeacher(id: string, viewer: Viewer) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
 
@@ -3959,16 +3963,16 @@ export async function archiveTeacher(id: string) {
     // can't tell an archived teacher from a working one. No-op for FT/PT.
     await closeFreelanceCeiling(tx, id);
   });
-  return loadTeacherFull(id);
+  return loadTeacherFull(id, viewer);
 }
 
 /** Bring an archived teacher back (standalone — TASK-029): un-archive + reactivate locally. Money is
  *  re-set via the admin UI (until then a freelance teacher shows `setupIncomplete`). */
-export async function reactivateTeacher(id: string) {
+export async function reactivateTeacher(id: string, viewer: Viewer) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
   await db.update(teachers).set({ archived: false, active: true }).where(eq(teachers.id, id));
-  return loadTeacherFull(id);
+  return loadTeacherFull(id, viewer);
 }
 
 // ───────────────────── Local freelance budget admin (SPEC-005 / TASK-019) ─────────────────────
@@ -3979,6 +3983,7 @@ export async function reactivateTeacher(id: string) {
 export async function setFreelanceBudget(
   teacherId: string,
   input: { monthlyBudgetMinor: number; rateMinor: number; reorderMinor?: number | null },
+  viewer: Viewer,
 ) {
   const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, teacherId) });
   if (!teacher) throw notFound("ไม่พบครู");
@@ -4013,11 +4018,11 @@ export async function setFreelanceBudget(
       metadata: { kind: FREELANCE_KIND, reorderQty },
     });
   }
-  return loadTeacherFull(teacherId);
+  return loadTeacherFull(teacherId, viewer);
 }
 
 /** Top up remaining now (unlock a capped teacher / add mid-month hours). amount is baht → hours. */
-export async function topUpFreelanceBudget(teacherId: string, amountMinor: number) {
+export async function topUpFreelanceBudget(teacherId: string, amountMinor: number, viewer: Viewer) {
   const item = await findFreelanceItem(db, teacherId);
   if (!item) throw notFound("ครูยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะเติมได้");
   const hours = Math.round(amountMinor / item.unitPriceMinor);
@@ -4025,7 +4030,7 @@ export async function topUpFreelanceBudget(teacherId: string, amountMinor: numbe
     .update(boItem)
     .set({ remainingQty: sql`${boItem.remainingQty} + ${hours}` })
     .where(eq(boItem.id, item.id));
-  return loadTeacherFull(teacherId);
+  return loadTeacherFull(teacherId, viewer);
 }
 
 /** Monthly reset: every freelance ceiling's `remaining` back to its `ceiling` (the month-reset job). */

@@ -23,8 +23,8 @@ const rootApp = (await import("../index")).default as { fetch: (r: Request) => P
 
 describe("🔑 the registry — 54 keys (50 + TASK-401's four camp acts), one rule, labels beside the keys", () => {
   test("54 keys, every one `action:<area>.<verb>` with a known area, TH + EN labels, no duplicates", () => {
-    expect(ACTION_KEYS.length).toBe(56); // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
-    expect(new Set(ACTION_KEYS).size).toBe(56); // 🔻 TASK-411: + people.parent-archive
+    expect(ACTION_KEYS.length).toBe(57); // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
+    expect(new Set(ACTION_KEYS).size).toBe(57); // 🔻 TASK-411: + people.parent-archive
     for (const a of ACTION_REGISTRY) {
       const m = /^action:([a-z-]+)\.([a-z-]+)$/.exec(a.key);
       expect({ key: a.key, ok: !!m && (ACTION_AREAS as readonly string[]).includes(m[1]!) && a.area === m[1] }).toEqual({ key: a.key, ok: true });
@@ -71,13 +71,14 @@ describe("🔴 the enumeration — every mutate route carries an action, no read
   test("70 mutate routes (the floor; TASK-401 added the five camp writes), each with a known action; every GET without one", () => {
     const mutate = declared.filter((r) => !r.startsWith("GET "));
     expect(mutate.length).toBeGreaterThanOrEqual(70);
-    const missing = mutate.filter((r) => !ROUTE_ACCESS[r]?.action || !isActionKey(ROUTE_ACCESS[r]!.action!));
+    const keysOf = (a: any): string[] => (a === undefined ? [] : Array.isArray(a) ? a : [a]); // 🔻 TASK-426: a two-key act
+    const missing = mutate.filter((r) => !keysOf(ROUTE_ACCESS[r]?.action).length || !keysOf(ROUTE_ACCESS[r]?.action).every(isActionKey));
     expect(missing).toEqual([]);
     const readsWithAction = declared.filter((r) => r.startsWith("GET ") && ROUTE_ACCESS[r]?.action);
     expect(readsWithAction).toEqual([]);
   });
   test("every route key is used by ≥ 1 route; the two body-level keys are used by NONE (they are checked at the body)", () => {
-    const used = new Set(Object.values(ROUTE_ACCESS).map((a) => a.action).filter(Boolean));
+    const used = new Set(Object.values(ROUTE_ACCESS).flatMap((a) => (a.action === undefined ? [] : Array.isArray(a.action) ? a.action : [a.action]))); // 🔻 TASK-426: a two-key act
     const bodyLevel = ["action:sales.discount", "action:calendar.leave-override"];
     const unused = ACTION_KEYS.filter((k) => !used.has(k) && !bodyLevel.includes(k));
     expect(unused).toEqual([]);
@@ -254,7 +255,7 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(SVC).toContain("actions: u.isSuperAdmin ? [...ACTION_KEYS] : ACTION_KEYS.filter((a) => effective.has(a)),"); // 🔻 TASK-387: effective
     const MW = code(src("src/middleware/auth.ts"));
     const G = MW.slice(MW.indexOf("export async function accessGuard("));
-    expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (access.action && !hasAction(user, access.action)) throw ACTION_FORBIDDEN();"));
+    expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN();")); // 🔻 TASK-426: EVERY listed key
   });
   test("49 = 49 — Stage 3 added no migration (0037 … 0048 are other tasks')", () => {
     expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(49);

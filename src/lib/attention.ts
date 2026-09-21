@@ -279,7 +279,8 @@ const CHECKS = [
       );
       return {
         count: rows.length,
-        items: rows.map((f) => ({ id: f.teacherId, label: `${f.nickname} · เหลือ ${f.remainingQty} ชม.` })),
+        // TASK-426 — `figureless` is the label a viewer WITHOUT the budget-view key sees (the service swaps it in).
+        items: rows.map((f) => ({ id: f.teacherId, label: `${f.nickname} · เหลือ ${f.remainingQty} ชม.`, figureless: `${f.nickname} · ใกล้เต็มเพดาน` })),
       };
     },
   },

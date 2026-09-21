@@ -84,6 +84,6 @@ describe("🔑 the TRAY — on request only, every CANCELLED row in range, date/
     expect(CAL()).toContain(": undefined;");
   });
   test("the route passes the validated query through", () => {
-    expect(code(src("src/routes/api.ts"))).toContain('.get("/calendar", zValidator("query", v.calendarQuery), async (c) =>\n    c.json(await svc.getCalendar(c.req.valid("query"), scopeOf(c.get("user")))),'); // 🔻 TASK-406: + the scope
+    expect(code(src("src/routes/api.ts"))).toContain('.get("/calendar", zValidator("query", v.calendarQuery), async (c) =>\n    c.json(await svc.getCalendar(c.req.valid("query"), viewerOf(c))),'); // 🔻 TASK-406: + the scope; 🔻 TASK-426: the viewer (scope + the budget mask) from ONE object
   });
 });

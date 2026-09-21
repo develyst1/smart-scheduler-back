@@ -22,7 +22,8 @@
 
 import type { ActionKey, MenuKey } from "./permissions";
 
-export type RouteAccess = { readonly menus: readonly MenuKey[]; readonly action?: ActionKey };
+/** TASK-426 — `action` may be SEVERAL keys: the guard requires every one (a setter who cannot SEE the figure cannot set it). */
+export type RouteAccess = { readonly menus: readonly MenuKey[]; readonly action?: ActionKey | readonly ActionKey[] };
 
 const CAL_BOOK: MenuKey[] = ["menu:calendar", "menu:bookings"];
 const PEOPLE: MenuKey[] = ["menu:people"];
@@ -33,6 +34,7 @@ const BADGES: MenuKey[] = ["menu:badges"];
 const SETTINGS: MenuKey[] = ["menu:settings"];
 const read = (menus: readonly MenuKey[]): RouteAccess => ({ menus });
 const act = (menus: readonly MenuKey[], action: ActionKey): RouteAccess => ({ menus, action });
+const acts = (menus: readonly MenuKey[], action: readonly ActionKey[]): RouteAccess => ({ menus, action }); // TASK-426
 
 /**
  * TASK-406 (REQ-097) — the routes a LINKED (teacher) account may reach at all, whatever its role grants; the access
@@ -130,8 +132,9 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "PATCH /teachers/:id": act(TEACHERS, "action:teachers.edit"),
   "POST /teachers/:id/archive": act(TEACHERS, "action:teachers.archive"),
   "POST /teachers/:id/reactivate": act(TEACHERS, "action:teachers.archive"),
-  "PUT /teachers/:id/budget": act(TEACHERS, "action:teachers.budget"),
-  "POST /teachers/:id/budget/topup": act(TEACHERS, "action:teachers.budget"),
+  // TASK-426 — double-gated: the write key AND the view key (fail closed — a user who cannot see the number cannot set it).
+  "PUT /teachers/:id/budget": acts(TEACHERS, ["action:teachers.budget", "action:teachers.budget-view"]),
+  "POST /teachers/:id/budget/topup": acts(TEACHERS, ["action:teachers.budget", "action:teachers.budget-view"]),
   "PATCH /teachers/:id/limit-override": act(TEACHERS, "action:teachers.limit-override"),
   "PATCH /teachers/:id/work-days": act(TEACHERS, "action:teachers.work-days"),
   "GET /teachers/:id/work-days/impact": read(TEACHERS),

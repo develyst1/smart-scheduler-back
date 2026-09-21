@@ -15,6 +15,7 @@ import {
   decideDigest,
   type AttentionCtx,
 } from "../lib/attention";
+import { canSeeBudget, type Viewer } from "../lib/budget-visibility";
 import { t } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { getCourses, getVouchers, listFreelanceCeilings } from "./scheduler.service";
@@ -218,9 +219,23 @@ export async function getLastDigestRun(): Promise<{
 }
 
 /** `GET /api/attention` — live checks + when the digest last ran. */
-export async function getAttention() {
+export async function getAttention(viewer: Viewer) {
   const [{ checks }, lastRun] = await Promise.all([runAttentionChecks(), getLastDigestRun()]);
-  return { checks, lastRun };
+  return { checks: maskAttentionFigures(viewer, checks), lastRun };
+}
+
+/** TASK-426 — the dashboard's copy: an item that carries a `figureless` label shows THAT to a viewer without the
+ *  budget-view key (`<nickname> · ใกล้เต็มเพดาน` — the teacher stays listed, the number goes); the LINE digest, which
+ *  has no viewer, prints the full label as before. `figureless` never leaves the server. */
+export function maskAttentionFigures(viewer: Viewer, checks: AttentionCheckResult[]): AttentionCheckResult[] {
+  const see = canSeeBudget(viewer);
+  return checks.map((c) => ({
+    ...c,
+    items: c.items.map((it: any) => {
+      const { figureless, ...rest } = it;
+      return figureless === undefined ? it : { ...rest, label: see ? it.label : figureless };
+    }),
+  }));
 }
 
 /** Has the digest already been SENT for this business date? (The existing jobs only insert; this reads first.) */

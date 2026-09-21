@@ -241,7 +241,7 @@ describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54)
   test("keys by value", () => {
     expect(MENU_KEYS.length).toBe(13);
     expect(MENU_KEYS[MENU_KEYS.indexOf("menu:badges") + 1]).toBe("menu:camp");
-    expect(ACTION_REGISTRY.length).toBe(56); // TASK-411: + people.parent-archive // TASK-406: + calendar.teacher-leave
+    expect(ACTION_REGISTRY.length).toBe(57); // 🔻 TASK-426: + teachers.budget-view // TASK-411: + people.parent-archive // TASK-406: + calendar.teacher-leave
     const keys: string[] = ACTION_REGISTRY.map((a) => a.key);
     for (const k of ["action:camp.week-open", "action:camp.sell", "action:camp.redeem", "action:camp.day-mark"]) expect(keys).toContain(k);
     expect(ACTION_REGISTRY.find((a) => a.key === "action:camp.sell")).toMatchObject({ labelTh: "ขายแคมป์", labelEn: "Sell a camp package" });
