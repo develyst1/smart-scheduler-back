@@ -58,7 +58,7 @@ export async function findBookingsForCalendarToken(token: string) {
   const rows = await db.query.bookings.findMany({
     where: (b, { and, eq: e, gte, lte }) =>
       and(e(b.teacherId, teacher.id), gte(b.date, from), lte(b.date, to)),
-    with: { student: true, subject: true },
+    with: { student: true, coStudent: true, subject: true }, // TASK-425 — the ICS names a DUO row's pair
     orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });
   return { teacher, rows };

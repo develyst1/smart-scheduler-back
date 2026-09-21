@@ -36,7 +36,7 @@ async function loadBooking(id: string) {
 export async function getCheckinQr(bookingId: string) {
   const row = await db.query.bookings.findFirst({
     where: (b, { eq: e }) => e(b.id, bookingId),
-    with: { student: true },
+    with: { student: true, coStudent: true }, // TASK-425
   });
   if (!row) throw notFound("ไม่พบคาบเรียน");
   const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
@@ -160,7 +160,7 @@ export async function findBookingsForTeacher(lineUserId: string, from: string, t
         lte(b.date, to),
         notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),
       ),
-    with: { student: true, subject: true },
+    with: { student: true, coStudent: true, subject: true }, // TASK-425
     orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });
 }

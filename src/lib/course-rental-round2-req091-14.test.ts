@@ -64,7 +64,7 @@ describe("🔴 (1) the confirm line — both audiences, LAST, `*ถ้ามี`
     const SVC = code(src("src/services/scheduler.service.ts"));
     const P = region(SVC, "const coursePayload = {", "const notification = confirmed");
     expect(P).toContain("rental: course.rentalRemovedAt ? null : (() => { const r = courseRentalOf(rows); return r ? rentalPrintLine(r.code, r.remark) : null; })(),");
-    expect(region(SVC, "async function loadCourseForEnd(", "\n}\n")).toContain("with: { teacher: true, subject: true, student: true, rental: true }");
+    expect(region(SVC, "async function loadCourseForEnd(", "\n}\n")).toContain("with: { teacher: true, subject: true, student: true, coStudent: true, rental: true }") // 🔻 TASK-425: + the co-student for the notice's name;
     expect(code(src("src/lib/line-message.ts"))).toContain('extra(t("ob_f_rental", lang), fieldValue(payload.rental))');
   });
 });

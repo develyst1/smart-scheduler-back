@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { buildCalendar } from "../lib/ics";
 import { tokenFromIcsFilename } from "../lib/calendar-link";
 import { findBookingsForCalendarToken } from "../services/calendar.service";
+import { studentNamesOf } from "../db/mappers";
 
 /**
  * Public per-teacher calendar feed (REQ-017 / TASK-044) — no JWT; the token in the URL IS the credential,
@@ -31,7 +32,7 @@ export const publicCalendar = new Hono().get("/calendar/:file", async (c) => {
       date: b.date,
       startTime: b.startTime,
       endTime: b.endTime,
-      studentName: b.student?.name ?? null,
+      studentName: studentNamesOf(b), // TASK-425 — the ONE name rule's student part
       subjectName: b.subject?.name ?? null,
       status: b.status,
       updatedAt: b.updatedAt ?? null,

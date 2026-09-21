@@ -12,26 +12,27 @@ import { notificationOutbox } from "../db/schema";
 import { hhmm } from "../lib/time";
 import { formatOutboxMessage, type MessageContext } from "../lib/line-message";
 import { joinCoaches } from "../lib/coach-names";
+import { studentNamesOf } from "../db/mappers";
 import { LinePushError, lineConfigured, pushMessage } from "../lib/line-client";
 import { resolveBotLang } from "../lib/line-lang";
 
 const MAX_ATTEMPTS = 5;
 const BATCH = 20;
 
-async function bookingContext(bookingId: string | null): Promise<MessageContext> {
+export async function bookingContext(bookingId: string | null): Promise<MessageContext> { // TASK-425: exported — pinned by value with a DUO row
   if (!bookingId) return {};
   const b = await db.query.bookings.findFirst({
     where: (x, { eq }) => eq(x.id, bookingId),
     // 🔴 SPEC-072 / TASK-253 — `additionalTeachers` joins onto the SAME query rather than adding a second
     // round trip: this runs once per outbox row, and REQ-077's `Coach` may name several people (REQ-078).
-    with: { student: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } } },
+    with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } } },
   });
   if (!b) return {};
   return {
     // TASK-224 made both nullable for an อื่นๆ booking. `?.` already yields `undefined`, and `line()` omits a
     // field with no value — so a studentless / programless booking renders with no empty labels, and the four
     // lesson types are untouched.
-    studentName: b.student?.name,
+    studentName: studentNamesOf(b) ?? undefined, // TASK-425 — the ONE name rule's student part (a DUO row's `A & B`)
     teacherNickname: b.teacher?.nickname,
     // 🔴 TASK-253 — `Coach` is ONE field that may name several people (REQ-078), joined rather than repeated:
     // a second `Coach :` line would read as a second class. Primary first, then the additional teachers in

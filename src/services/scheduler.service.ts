@@ -10,7 +10,7 @@ import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
 import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
-import { displayNameOf, duoCourseFacts, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
+import { displayNameOf, duoCourseFacts, studentNamesOf, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { alias } from "drizzle-orm/pg-core";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
@@ -2846,11 +2846,14 @@ async function planPreviewResult(tx: any, courseId: string, applied: any) {
  */
 async function sendLeaveNotice(
   tx: any,
-  booking: { id: string; studentId: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null },
+  booking: { id: string; studentId: string | null; coStudentId?: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null },
   opts: { size: number | null; via: string },
 ) {
   const student = booking.studentId
     ? await tx.query.students.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.studentId) })
+    : null;
+  const coStudent = booking.coStudentId // TASK-425 — a DUO row's second child, for the `Student :` line
+    ? await tx.query.students.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.coStudentId) })
     : null;
   const teacher = booking.teacherId
     ? await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.teacherId) })
@@ -2858,7 +2861,7 @@ async function sendLeaveNotice(
   const payload = {
     kind: "leave_notice",
     bookingId: booking.id,
-    studentName: student?.name ?? "",
+    studentName: studentNamesOf({ student, coStudent }) ?? "", // TASK-425 — the ONE name rule's student part
     // The two facts `Program` needs: `MessageContext` carries neither, and without them a COURSE session
     // reads `1 HR` (the same reason TASK-303 put them on the confirm payload).
     bookingType: booking.bookingType ?? null,
@@ -4120,7 +4123,7 @@ async function loadCourseForEnd(exec: any, id: string) {
   if (!course) throw notFound("ไม่พบคอร์ส");
   const rows = await exec.query.bookings.findMany({
     where: (b: any, { and: a, eq: e }: any) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")),
-    with: { teacher: true, subject: true, student: true, rental: true }, // TASK-390: the rental rows, for the confirm line
+    with: { teacher: true, subject: true, student: true, coStudent: true, rental: true }, // TASK-390: the rental rows, for the confirm line; TASK-425: the co-student for the name
     orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
   });
   return { course, rows };
@@ -4261,7 +4264,7 @@ export async function confirmCourse(id: string) {
     const coursePayload = {
       kind: "course_confirmed",
       courseId: id,
-      studentName: student?.nickname ?? student?.name ?? null,
+      studentName: rows[0] ? studentNamesOf(rows[0]) : null, // TASK-425 — the ONE name rule's student part (a DUO's `A & B`)
       subject: rows[0]?.subject?.name ?? null,
       // SPEC-072 / TASK-253 (REQ-077) — the facts the CONFIRMED SCHEDULE template needs, added to the ONE
       // payload both people receive. 🚫 Not a second payload, and not a second read in the worker: they are

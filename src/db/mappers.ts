@@ -152,8 +152,15 @@ const otherFacts = (b: any): { kind: string | null; headCount: number | null; te
  * a DUO course row (TASK-420) as BOTH children `A & B`; every other row as the student's nickname, then name. Never
  * blank for a lesson row (validation guarantees an อื่นๆ row with no student carries a title).
  */
-export const displayNameOf = (b: any): string =>
-  b.otherTitle ?? (b.coStudent ? joinChildNames(b.student, b.coStudent) : null) ?? b.student?.nickname ?? b.student?.name ?? "";
+export const displayNameOf = (b: any): string => b.otherTitle ?? studentNamesOf(b) ?? "";
+
+/**
+ * TASK-425 — the STUDENT part of that rule (no title): a DUO row's `A & B`, else the nickname, then the name; `null` for
+ * a studentless row. The notice worker and the payload writers print it on the `Student :` line (an อื่นๆ row's title
+ * already rides in `program`, so it must not repeat here); every other surface prints `displayNameOf`.
+ */
+export const studentNamesOf = (b: any): string | null =>
+  (b.coStudent ? joinChildNames(b.student, b.coStudent) : null) ?? b.student?.nickname ?? b.student?.name ?? null;
 
 export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   id: b.id,

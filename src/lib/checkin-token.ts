@@ -5,6 +5,7 @@ import { db } from "../db";
 import { bookings } from "../db/schema";
 import { checkinWindowMessage, generateCheckinToken } from "./checkin";
 import { hhmm } from "./time";
+import { studentNamesOf } from "../db/mappers";
 
 function tokenExpiryIso(date: string, endTime: string): Date {
   const [h, m] = hhmm(endTime).split(":").map(Number);
@@ -38,7 +39,8 @@ export function formatCheckinPayload(row: {
   endTime: string;
   checkinToken?: string | null;
   checkinTokenExpiresAt?: Date | null;
-  student?: { name?: string };
+  student?: { name?: string; nickname?: string | null } | null;
+  coStudent?: { name?: string; nickname?: string | null } | null;
 }, token: string, expiresAt: string, earlyMinutes?: number) {
   return {
     bookingId: row.id,
@@ -48,6 +50,6 @@ export function formatCheckinPayload(row: {
     // SPEC-029: keep the displayed window in step with the resolved early-minutes setting (falls back to the coded
     // default when the caller doesn't resolve it).
     window: checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime), earlyMinutes),
-    studentName: row.student?.name ?? "",
+    studentName: studentNamesOf(row) ?? "", // TASK-425 — the ONE name rule's student part
   };
 }

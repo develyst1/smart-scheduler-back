@@ -190,8 +190,8 @@ describe("🔴 the Bookings-table surface — `coStudent` on the row, either chi
     expect(SCHED).toContain("const bookingName = displayNameOf(clash);");
     expect((SCHED.match(/with: \{ teacher: true, student: true, coStudent: true \}/g) ?? []).length).toBe(2); // both clash reads load the co-student
     const walk = (d: string): string[] => readdirSync(resolve(root, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]));
-    const chains = walk("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).filter((f) => /otherTitle \?\?[^\n]*nickname/.test(code(src(f))));
-    expect(chains).toEqual(["src/db/mappers.ts"]); // the definition, once
-    expect((code(src("src/db/mappers.ts")).match(/otherTitle \?\?[^\n]*nickname/g) ?? []).length).toBe(1);
+    const chains = walk("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).filter((f) => /otherTitle \?\?[^\n]*(nickname|studentNamesOf)/.test(code(src(f))));
+    expect(chains).toEqual(["src/db/mappers.ts"]); // the definition, once (🔻 TASK-425: composed of `studentNamesOf`)
+    expect((code(src("src/db/mappers.ts")).match(/otherTitle \?\?[^\n]*(nickname|studentNamesOf)/g) ?? []).length).toBe(1);
   });
 });

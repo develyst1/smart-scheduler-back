@@ -79,6 +79,7 @@ import {
   isReservedWord,
 } from "../lib/line-commands";
 import { claimReplyKey } from "../lib/teacher-link";
+import { studentNamesOf } from "../db/mappers";
 import { requestTeacherLink } from "./teacher-link.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { isSuspended } from "../lib/suspend";
@@ -1082,7 +1083,7 @@ async function doTeacherSchedule(
   const rows = bookings.map((b: any) => ({
     date: b.date,
     startTime: b.startTime,
-    studentName: b.student?.name ?? "",
+    studentName: studentNamesOf(b) ?? "", // TASK-425 — the ONE name rule's student part
     subjectName: b.subject?.name ?? "",
     status: b.status,
     attendeeNote: b.attendeeNote ?? null, // TASK-178 (REQ-068) — shown under the session when present
