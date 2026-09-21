@@ -32,7 +32,7 @@ import { cutCampDays } from "./camp.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
-import { joinChildNames } from "../lib/duo-course";
+import { displayNameOf } from "../db/mappers";
 import { enqueueLine } from "../lib/line";
 import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
 import { rentalPrintLine } from "../lib/rental-row";
@@ -417,7 +417,7 @@ export async function runDailyReminderJob(date?: string) {
       // `"-"` stays as the last-resort for a lesson booking whose student row went missing — it is not, and
       // must never become, the fallback for อื่นๆ, which validation guarantees has a title when it has no
       // student. Never the words "อื่นๆ" / "Other" (REQ-078 📌).
-      studentName: r.otherTitle ?? (r.coStudent ? joinChildNames(r.student, r.coStudent) : null) ?? r.student?.nickname ?? r.student?.name ?? "-", // TASK-420 — `A & B` on a DUO row
+      studentName: displayNameOf(r) || "-", // TASK-423 — the ONE name rule (an อื่นๆ title; a DUO row's `A & B`; the nickname)
       parentId: r.student?.parentId ?? null,
       coParentId: r.coStudent?.parentId ?? null, // TASK-420 — the second household (the same parent ⇒ one entry, by the grouper)
       coParentLineUserIds: r.coStudent?.parentId ? (familyAccounts.get(r.coStudent.parentId) ?? []) : [],

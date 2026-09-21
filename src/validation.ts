@@ -542,8 +542,9 @@ export const moveBooking = z
     date: DATE.optional(),
     startTime: TIME.optional(),
     note: z.string().optional(),
-    /** TASK-420 — edits the DUO COURSE's per-class rate from the session (the FE's popup); a Private row ⇒ 400. */
-    classRateMinor: z.number().int().min(0).optional(),
+    /** TASK-423 (REQ-095 §13.3) — THIS session's coach-rate override (the FE's popup); `null` = back to the course default;
+     *  a row outside a course ⇒ 400 `NOT_A_COURSE_SESSION`. */
+    classRateMinor: z.number().int().min(0).nullable().optional(),
   })
   .refine((d) => Object.values(d).some((value) => value !== undefined), {
     message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข",
@@ -597,7 +598,7 @@ export const setAvailability = z
 
 export const updateCourse = z.object({
   adminUnlocked: z.boolean().optional(),
-  /** TASK-420 — the DUO course's per-class coach rate (minor units). A Private course ⇒ 400 `NOT_DUO`. */
+  /** TASK-420 / TASK-423 — the course's DEFAULT coach rate (minor units), any course; a session may override it. */
   classRateMinor: z.number().int().min(0).optional(),
 });
 

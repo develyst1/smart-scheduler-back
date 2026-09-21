@@ -240,7 +240,7 @@ describe("the confirm path — one message per teacher, from the one id accessor
 
 describe("the reminder job feeds the same rule (source)", () => {
   test("the schedule name is `otherTitle` first — the DTO's `displayName` rule, not a second one", () => {
-    expect(JOBS).toContain('studentName: r.otherTitle ?? (r.coStudent ? joinChildNames(r.student, r.coStudent) : null) ?? r.student?.nickname ?? r.student?.name ?? "-"'); // 🔻 TASK-420: `A & B` on a DUO row, the DTO rule otherwise
+    expect(JOBS).toContain('studentName: displayNameOf(r) || "-"'); // 🔻 TASK-423: the ONE name function the DTO uses (an อื่นๆ title; a DUO row's `A & B`; the nickname)
   });
 
   test("no program becomes `null`, not the `-` placeholder", () => {

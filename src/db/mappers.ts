@@ -6,7 +6,8 @@ import { voucherRemaining } from "../lib/voucher";
 import { hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
 import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
-import { courseKindOf } from "../lib/duo-course";
+import { courseKindOf, joinChildNames } from "../lib/duo-course";
+import { rateFacts } from "../lib/coach-rate";
 
 export const toTeacherBase = (t: any) => ({
   id: t.id,
@@ -145,6 +146,15 @@ const otherFacts = (b: any): { kind: string | null; headCount: number | null; te
   return { kind: b.otherKind ?? null, headCount: b.headCount ?? null, teacherRates, ratePostedAt: b.ratePostedAt ? new Date(b.ratePostedAt).toISOString() : null };
 };
 
+/**
+ * 🔴 TASK-224 / AC-10 — the ONE field every surface renders a booking by; TASK-423 made it the ONE function (it used to be
+ * four hand-copied chains — the DTO, the reminder, the two slot-clash sentences). An อื่นๆ row reads as its typed title;
+ * a DUO course row (TASK-420) as BOTH children `A & B`; every other row as the student's nickname, then name. Never
+ * blank for a lesson row (validation guarantees an อื่นๆ row with no student carries a title).
+ */
+export const displayNameOf = (b: any): string =>
+  b.otherTitle ?? (b.coStudent ? joinChildNames(b.student, b.coStudent) : null) ?? b.student?.nickname ?? b.student?.name ?? "";
+
 export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   id: b.id,
   date: b.date,
@@ -172,7 +182,7 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   // type (a 1HR's is its student's nickname, unchanged), so "never blank, never the word อื่นๆ" is a property
   // of this function instead of a fallback re-invented at 31 FE call sites, each free to get it wrong
   // differently. Validation guarantees the inputs: an อื่นๆ booking with no student must carry a title.
-  displayName: b.otherTitle ?? b.student?.nickname ?? b.student?.name ?? "",
+  displayName: displayNameOf(b),
   // 🔴 TASK-224 / AC-18 — EVERY assigned teacher, from the ONE accessor. Present on every booking type
   // (length 1 for the four lesson types), so the FE has one shape rather than two.
   teachers: bookingTeachers(b),
@@ -180,6 +190,9 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   // teacher (the primary from `bookings`, each extra from its `booking_teachers` row) so the FE's per-teacher inputs
   // read ONE object; `ratePostedAt` is reserved and null this stage.
   other: otherFacts(b),
+  // TASK-423 (REQ-095 §13.3) — a COURSE_PACKAGE row's coach rate: the session's override, the course's default and the
+  // effective one, from the ONE rule in `lib/coach-rate.ts`; `null` on every other type.
+  rate: rateFacts(b, b.course ?? null),
   // TASK-397 (REQ-095 Stage 2a) — a GROUP row: its seats; a seat: its group. `null` / absent otherwise.
   group: groupFacts(b),
   groupId: b.groupId ?? null,

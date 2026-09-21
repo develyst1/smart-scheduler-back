@@ -59,7 +59,7 @@ describe("🔴 ONE wording — the same sentence as the primary teacher's refusa
   });
 
   test("it names THAT teacher and THAT booking, by the `displayName` rule", () => {
-    expect(GUARD).toContain("clash.otherTitle ?? clash.student?.nickname ?? clash.student?.name");
+    expect(GUARD).toContain("const bookingName = displayNameOf(clash);"); // 🔻 TASK-423: the ONE name function (was a hand-copied chain)
     expect(GUARD).toContain("clash.teacher?.nickname ?? clash.teacher?.name");
     // The sentence itself is already pinned in `slot-clash.test.ts`; this is the same composer.
     expect(slotClashMessage({ teacherName: "Bank", bookingName: "ประชุมทีม", time: "10:00-11:00" })).toContain(

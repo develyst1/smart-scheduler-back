@@ -17,7 +17,7 @@ import { toBookingDTO } from "../db/mappers";
 
 const SVC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
 const FN = (() => {
-  const at = SVC.indexOf("const rows = await db\n    .select({ b: bookings, s: students, t: teachers");
+  const at = SVC.indexOf("const rows = await db\n    .select({ b: bookings, s: students, cs: coStudents, t: teachers"); // 🔻 TASK-423: + the co-student alias
   const rest = SVC.slice(at);
   return rest.slice(0, rest.indexOf("\n  return {"));
 })();
@@ -182,7 +182,8 @@ describe("regression — the four existing types are untouched", () => {
     expect(code).toContain("leftJoin(coursePackages, eq(coursePackages.id, bookings.courseId))");
   });
 
-  test("the select list still carries the same five aliases the DTO is built from", () => {
-    expect(code).toContain("select({ b: bookings, s: students, t: teachers, sub: subjects, c: coursePackages })");
+  test("the select list still carries the same five aliases the DTO is built from (+ the co-student alias, TASK-423)", () => {
+    expect(code).toContain("select({ b: bookings, s: students, cs: coStudents, t: teachers, sub: subjects, c: coursePackages })");
+    expect(code).toContain("leftJoin(coStudents, eq(coStudents.id, bookings.coStudentId))"); // nullable ⇒ LEFT, the DEF-3 rule
   });
 });

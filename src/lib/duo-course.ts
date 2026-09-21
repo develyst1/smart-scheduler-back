@@ -24,5 +24,6 @@ export function joinChildNames(...kids: Array<{ name: string; nickname?: string 
 export const familyRowsWhere = (studentIds: string[]): SQL =>
   or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds))!;
 
-export const NOT_DUO = () => new ApiException(400, "NOT_DUO", "ไม่ใช่คอร์ส DUO");
+/** TASK-423 — a per-session coach rate needs a course to default from. */
+export const NOT_A_COURSE_SESSION = () => new ApiException(400, "NOT_A_COURSE_SESSION", "คาบนี้ไม่ได้อยู่ในคอร์ส — ตั้งค่าสอนไม่ได้");
 export const DUO_SAME_CHILD = () => new ApiException(400, "DUO_SAME_CHILD", "เด็กสองคนในคอร์ส DUO ต้องเป็นคนละคน");

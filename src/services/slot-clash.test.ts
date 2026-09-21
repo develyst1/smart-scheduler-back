@@ -82,7 +82,7 @@ describe("the lookup that feeds it", () => {
   });
 
   test("the booking name uses the `displayName` rule, not a second one", () => {
-    expect(FN).toContain("row.otherTitle ?? row.student?.nickname ?? row.student?.name");
+    expect(FN).toContain("const bookingName = displayNameOf(row);"); // 🔻 TASK-423: the ONE name function (was a hand-copied chain)
   });
 
   test("🔴 an unidentifiable clash falls back to the generic sentence — it never invents a name", () => {

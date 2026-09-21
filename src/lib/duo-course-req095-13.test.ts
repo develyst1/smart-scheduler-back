@@ -11,7 +11,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { ApiException } from "./http";
-import { courseKindOf, duoStudentIds, familyRowsWhere, joinChildNames, NOT_DUO } from "./duo-course";
+import { courseKindOf, duoStudentIds, familyRowsWhere, joinChildNames, NOT_A_COURSE_SESSION } from "./duo-course";
 import { householdLineUserIds } from "./family-link";
 import { groupReminders } from "./daily-reminder";
 import { childrenWithSessions, needsChildStep } from "./line-leave";
@@ -208,8 +208,10 @@ describe("🔴 the validators — `duo`, `duo` + `groupKey` ⇒ 400, the rate ed
   test("`updateCourse.classRateMinor` and `moveBooking.classRateMinor`: integers ≥ 0, optional", () => {
     expect(v.updateCourse.safeParse({ classRateMinor: 35000 }).success).toBe(true);
     expect(v.updateCourse.safeParse({ classRateMinor: -1 }).success).toBe(false);
+    expect(v.updateCourse.safeParse({ classRateMinor: null }).success).toBe(false); // the default is set, never cleared
     expect(v.updateCourse.safeParse({ adminUnlocked: true }).success).toBe(true);
     expect(v.moveBooking.safeParse({ classRateMinor: 35000 }).success).toBe(true);
+    expect(v.moveBooking.safeParse({ classRateMinor: null }).success).toBe(true); // 🔻 TASK-423: null clears the session's override
     expect(v.moveBooking.safeParse({ classRateMinor: -5 }).success).toBe(false);
     expect(v.moveBooking.safeParse({}).success).toBe(false);
   });
@@ -244,51 +246,23 @@ describe("🔑 the routes through the ROOT app (service spied): POST /courses { 
     expect(bad.status).toBe(400);
     expect(calls).toHaveLength(1);
   });
-  test("PATCH /courses/:id { classRateMinor } and PATCH /bookings/:id { classRateMinor } reach their services; a Private's 400 NOT_DUO passes through as the envelope", async () => {
+  test("PATCH /courses/:id { classRateMinor } and PATCH /bookings/:id { classRateMinor | null } reach their services; a non-course row's 400 NOT_A_COURSE_SESSION passes through as the envelope (🔻 TASK-423)", async () => {
     process.env.SKIP_AUTH = "true";
     const calls: any[] = [];
-    spies.push(spyOn(sched, "updateCourse").mockImplementation((async (id: string, input: any) => { calls.push(["course", id, input]); if (id === "private") throw NOT_DUO(); return { id }; }) as any));
-    spies.push(spyOn(sched, "moveBooking").mockImplementation((async (id: string, input: any) => { calls.push(["booking", id, input]); return { id }; }) as any));
+    spies.push(spyOn(sched, "updateCourse").mockImplementation((async (id: string, input: any) => { calls.push(["course", id, input]); return { id }; }) as any));
+    spies.push(spyOn(sched, "moveBooking").mockImplementation((async (id: string, input: any) => { calls.push(["booking", id, input]); if (id === "trial") throw NOT_A_COURSE_SESSION(); return { id }; }) as any));
     expect((await json("PATCH", "/courses/duo-1", { classRateMinor: 35000 })).status).toBe(200);
-    const priv = await json("PATCH", "/courses/private", { classRateMinor: 35000 });
-    expect(priv.status).toBe(400);
-    expect(await priv.json()).toEqual({ error: { code: "NOT_DUO", message: "ไม่ใช่คอร์ส DUO" } });
     expect((await json("PATCH", "/bookings/b-1", { classRateMinor: 35000 })).status).toBe(200);
-    expect(calls).toEqual([["course", "duo-1", { classRateMinor: 35000 }], ["course", "private", { classRateMinor: 35000 }], ["booking", "b-1", { classRateMinor: 35000 }]]);
+    expect((await json("PATCH", "/bookings/b-1", { classRateMinor: null })).status).toBe(200);
+    const trial = await json("PATCH", "/bookings/trial", { classRateMinor: 300 });
+    expect(trial.status).toBe(400);
+    expect(((await trial.json()) as any).error.code).toBe("NOT_A_COURSE_SESSION");
+    expect(calls).toEqual([["course", "duo-1", { classRateMinor: 35000 }], ["booking", "b-1", { classRateMinor: 35000 }], ["booking", "b-1", { classRateMinor: null }], ["booking", "trial", { classRateMinor: 300 }]]);
   });
 });
 
-describe("🔴 the rate by VALUE — `updateCourse` (Private ⇒ NOT_DUO, DUO ⇒ the ONE column) and `moveBooking` (writes the COURSE, never the row)", () => {
-  test("`updateCourse`: a Private course refuses; a DUO course writes `class_rate_minor`", async () => {
-    const sets: any[] = [];
-    spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async ({ columns }: any) => (columns ? { coStudentId: null } : null)) as any));
-    spies.push(spyOn(db, "update").mockImplementation((() => ({ set: (p: any) => { sets.push(p); return { where: async () => {} }; } })) as any));
-    await expect(sched.updateCourse("c-private", { classRateMinor: 1000 })).rejects.toMatchObject({ status: 400, code: "NOT_DUO" });
-    expect(sets).toHaveLength(0);
-    spies[0]!.mockRestore();
-    spies[0] = spyOn(db.query.coursePackages, "findFirst").mockImplementation((async ({ columns }: any) => (columns ? { coStudentId: B } : { id: "c-duo", coStudentId: B, classRateMinor: 1000, size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" } })) as any);
-    const out = await sched.updateCourse("c-duo", { classRateMinor: 1000 });
-    expect(sets).toEqual([{ classRateMinor: 1000 }]);
-    expect(out).toMatchObject({ courseKind: "DUO", classRateMinor: 1000, coStudent: { id: B } });
-  });
-  test("`moveBooking` by source: the rate refuses a non-DUO row BEFORE the tx, writes `coursePackages` inside it, and the row patch is skipped when empty", () => {
-    const M = region(SCHED, "export async function moveBooking(", "\n}\n");
-    expect(M).toContain("if (input.classRateMinor !== undefined && !(current.courseId && current.coStudentId)) throw NOT_DUO();");
-    expect(M.indexOf("throw NOT_DUO()")).toBeLessThan(M.indexOf("db.transaction("));
-    expect(M).toContain("await tx.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, current.courseId!));");
-    expect(M).toContain("if (Object.keys(patch).length) await tx.update(bookings).set(patch).where(eq(bookings.id, id));");
-    expect(M).not.toContain("patch.classRateMinor");
-  });
-  test("`moveBooking` by value: a Private row with the rate ⇒ 400 NOT_DUO and no transaction", async () => {
-    spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => ({ id: "b-1", status: "PENDING", courseId: null, coStudentId: null, teacherId: T1, date: "2026-10-05", startTime: "10:00:00", campWeekDayId: null })) as any));
-    spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async () => null) as any));
-    const tx = spyOn(db, "transaction").mockImplementation((async () => { throw new Error("must not open"); }) as any);
-    spies.push(tx);
-    await expect(sched.moveBooking("b-1", { classRateMinor: 500 })).rejects.toMatchObject({ status: 400, code: "NOT_DUO" });
-    expect(tx).not.toHaveBeenCalled();
-  });
-});
-
+// 🔻 TASK-423 — the rate's two writes moved: the session's override lives on the ROW (`teacher_rate_minor`), the course's
+// default on the course, any course. Pinned by value in `coach-rate-req095-13-3.test.ts`; TASK-420's DUO-only block retired.
 describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, primary-first, nulls skipped) and by SOURCE (no private read remains)", () => {
   const exec = (o: { student: Record<string, string | null>; parents: Record<string, { lineUserId: string | null; links: string[] }> }) => ({
     query: {
@@ -365,7 +339,7 @@ describe("🔴 the reminder — ONCE per household with `A & B`; the LIFF reads 
     const R = region(J, "export async function runDailyReminderJob(", "\n}\n");
     expect(R).toContain("      student: true,\n      coStudent: true,");
     expect(R).toContain("const parentIds = [...new Set(rows.flatMap((r: any) => [r.student?.parentId, r.coStudent?.parentId]).filter(Boolean))] as string[];");
-    expect(R).toContain('studentName: r.otherTitle ?? (r.coStudent ? joinChildNames(r.student, r.coStudent) : null) ?? r.student?.nickname ?? r.student?.name ?? "-",');
+    expect(R).toContain('studentName: displayNameOf(r) || "-",'); // 🔻 TASK-423: the ONE name function
     expect(R).toContain("coParentId: r.coStudent?.parentId ?? null,");
     expect(R).toContain("coParentLineUserIds: r.coStudent?.parentId ? (familyAccounts.get(r.coStudent.parentId) ?? []) : [],");
     expect(joinChildNames({ name: "Ploy", nickname: null }, { name: "Punnapa", nickname: "Pun" })).toBe("Ploy & Pun");

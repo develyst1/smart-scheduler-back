@@ -10,7 +10,8 @@ import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
 import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
-import { duoCourseFacts, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
+import { displayNameOf, duoCourseFacts, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
+import { alias } from "drizzle-orm/pg-core";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
 // 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
@@ -49,7 +50,7 @@ import {
 import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
 import { householdLineUserIds } from "../lib/family-link";
-import { DUO_SAME_CHILD, NOT_DUO, courseKindOf, duoStudentIds } from "../lib/duo-course";
+import { DUO_SAME_CHILD, NOT_A_COURSE_SESSION, duoStudentIds } from "../lib/duo-course";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -839,7 +840,7 @@ export async function getBookings(f: {
   if (f.to) conds.push(lte(bookings.date, f.to));
   if (f.q) {
     const ors: any[] = [];
-    if (studentIds?.length) ors.push(inArray(bookings.studentId, studentIds));
+    if (studentIds?.length) ors.push(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)); // TASK-423 — either child of a DUO row
     if (subjectIds?.length) ors.push(inArray(bookings.subjectId, subjectIds));
     // TASK-236: an อื่นๆ booking has neither a student nor a program, so without this it matches NOTHING —
     // and "searched and found nothing" is indistinguishable from "cannot be searched" to the person typing.
@@ -852,8 +853,9 @@ export async function getBookings(f: {
   }
   const cond = conds.length ? and(...conds) : sql`true`;
 
+  const coStudents = alias(students, "co_students"); // TASK-423 — a DUO row's second child on the Bookings-table surface
   const rows = await db
-    .select({ b: bookings, s: students, t: teachers, sub: subjects, c: coursePackages })
+    .select({ b: bookings, s: students, cs: coStudents, t: teachers, sub: subjects, c: coursePackages })
     .from(bookings)
     // 🔴 TASK-236 (REQ-078 DEF-3) — these two were `innerJoin` and that silently hid every อื่นๆ booking.
     //
@@ -864,6 +866,7 @@ export async function getBookings(f: {
     // anywhere a nullable column is joined; the relational reader (`withBookingRelations`) was never affected,
     // which is exactly why the feature looked correct everywhere else.
     .leftJoin(students, eq(students.id, bookings.studentId))
+    .leftJoin(coStudents, eq(coStudents.id, bookings.coStudentId)) // TASK-423 — nullable ⇒ LEFT, like `students`
     // `teachers` stays INNER on purpose: `teacher_id` is still NOT NULL, so this one is a real integrity
     // assertion — a booking with no resolvable teacher is a broken row and should not quietly render.
     .innerJoin(teachers, eq(teachers.id, bookings.teacherId))
@@ -908,6 +911,7 @@ export async function getBookings(f: {
         {
           ...r.b,
           student: r.s,
+          coStudent: r.cs, // TASK-423
           teacher: r.t,
           subject: r.sub,
           course: r.c,
@@ -1053,11 +1057,11 @@ async function describeSlotClash(teacherId: string, date: string, startTime: str
           // TASK-397: through the ONE predicate (`lib/slot-holder.ts`) — live status AND not a seat.
           slotHolderWhere(b),
         ),
-      with: { teacher: true, student: true },
+      with: { teacher: true, student: true, coStudent: true }, // TASK-423 — the clash sentence names a DUO row as `A & B`
     });
     if (!row?.teacher) return GENERIC_SLOT_TAKEN;
     // `displayName` by the same rule the DTO computes — an อื่นๆ booking names its typed title, never "อื่นๆ".
-    const bookingName = row.otherTitle ?? row.student?.nickname ?? row.student?.name ?? "";
+    const bookingName = displayNameOf(row); // TASK-423 — the ONE name rule
     if (!bookingName) return GENERIC_SLOT_TAKEN;
     return slotClashMessage({
       teacherName: row.teacher.nickname ?? row.teacher.name,
@@ -1175,11 +1179,11 @@ async function assertAdditionalTeacherFree(
         // that repeats the primary, so this is belt-and-braces on the one row we know is in flight.
         n(b.id, bookingId),
       ),
-    with: { teacher: true, student: true },
+    with: { teacher: true, student: true, coStudent: true }, // TASK-423 — the clash sentence names a DUO row as `A & B`
   });
   if (!clash) return;
   const teacherName = clash.teacher?.nickname ?? clash.teacher?.name ?? "";
-  const bookingName = clash.otherTitle ?? clash.student?.nickname ?? clash.student?.name ?? "";
+  const bookingName = displayNameOf(clash); // TASK-423 — the ONE name rule
   // Same fallback rule as `describeSlotClash`: refuse either way, but never invent a name.
   if (!teacherName || !bookingName) throw conflict("SLOT_TAKEN", GENERIC_SLOT_TAKEN);
   throw conflict(
@@ -3685,7 +3689,7 @@ export async function bulkConfirm(ids: string[]): Promise<{ results: BulkConfirm
 
 export async function moveBooking(
   id: string,
-  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string; classRateMinor?: number },
+  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string; classRateMinor?: number | null },
 ) {
   // TASK-185 (REQ-036 Part B): moving an ended course's session relocates a forfeited slot onto a teacher's
   // calendar — it is the "revive" case wearing a different verb. Refused for course-linked bookings only; a
@@ -3712,7 +3716,12 @@ export async function moveBooking(
   }
   if (input.note !== undefined) patch.note = input.note;
   // TASK-420 — the per-class rate is the DUO COURSE's fact, edited from the session: written on the course, never the row.
-  if (input.classRateMinor !== undefined && !(current.courseId && current.coStudentId)) throw NOT_DUO();
+  // TASK-423 (REQ-095 §13.3) — the coach rate for THIS session only: the row's override (`teacher_rate_minor`; null =
+  // back to the course default). A row outside a course has no default to override.
+  if (input.classRateMinor !== undefined) {
+    if (!current.courseId) throw NOT_A_COURSE_SESSION();
+    patch.teacherRateMinor = input.classRateMinor;
+  }
 
   try {
     // 🔴 TASK-091 — the teacher write and the money move must be ONE transaction, or a failure between them
@@ -3725,10 +3734,7 @@ export async function moveBooking(
         patch.teacherId ?? current.teacherId,
         patch.date ?? current.date,
       );
-      if (input.classRateMinor !== undefined) {
-        await tx.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, current.courseId!));
-      }
-      if (Object.keys(patch).length) await tx.update(bookings).set(patch).where(eq(bookings.id, id));
+      await tx.update(bookings).set(patch).where(eq(bookings.id, id));
       // Reconcile whole-booking against the CURRENT teacher — `patch.teacherId` if it moved, else the one it
       // already had. Releases any item still holding this booking for a teacher who no longer teaches it, and
       // draws the new one. A move with no teacher change produces no adjustments, so date/time-only edits are
@@ -4068,10 +4074,8 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean;
       .where(eq(coursePackages.id, id));
   }
   if (input.classRateMinor !== undefined) {
-    // TASK-420 — the per-class coach rate is a DUO fact; a Private course has none to edit.
-    const c = await db.query.coursePackages.findFirst({ columns: { coStudentId: true }, where: (x, { eq: e }) => e(x.id, id) });
-    if (!c) throw notFound("ไม่พบคอร์ส");
-    if (courseKindOf(c) !== "DUO") throw NOT_DUO();
+    // TASK-423 — the course's DEFAULT coach rate (any course; TASK-420's DUO-only refusal is gone). A session's
+    // override (`bookings.teacher_rate_minor`) is untouched — the default moves, the substituted week keeps its own.
     await db.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, id));
   }
   const row = await db.query.coursePackages.findFirst({
