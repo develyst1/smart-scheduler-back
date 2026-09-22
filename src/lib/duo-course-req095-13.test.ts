@@ -293,7 +293,8 @@ describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, pr
     expect(DED).toContain("const accounts = await householdLineUserIds(exec, [input.studentId, input.coStudentId ?? null]);");
     expect(SCHED).toContain("await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), {"); // the single confirm
     expect(SCHED).toContain("const parentLines = confirmed ? await householdLineUserIds(tx, [student?.id ?? course.studentId, course.coStudentId]) : [];"); // confirmCourse
-    expect(SCHED).toContain("await enqueueParentCopies(tx, await householdLineUserIds(tx, ids), { bookingId: current.id, payload });"); // the cancel
+    expect(SCHED).toContain("const accounts = await householdLineUserIds(tx, ids);"); // the cancel — 🔻 TASK-445: ONE set for the row (a GROUP row's seats too), the accounts returned for the counts
+    expect(SCHED).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });");
     expect((SCHED.match(/householdLineUserIds\(/g) ?? []).length).toBe(3);
     // the ONE accessor lives beside the family's other accessors, on the bulk read
     const FL = code(src("src/lib/family-link.ts"));
@@ -318,7 +319,7 @@ describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, pr
     expect(await sched.sendClassCancelledToFamilies(tx(fam), { id: "b-2", status: "CONFIRMED", studentId: "A", coStudentId: "C", bookingType: "COURSE_PACKAGE", course: { size: 4 } }, "ADMIN_ERROR")).toBe(1);
     expect(inserted.map((r) => r.recipientLineUserId)).toEqual(["U1"]); // siblings: the household once
     inserted.length = 0;
-    expect(await sched.sendClassCancelledToFamilies(tx({ ...fam, seats: [{ studentId: "A" }, { studentId: "B" }] }), { id: "g-1", status: "CONFIRMED", studentId: null, bookingType: "GROUP" }, "ADMIN_ERROR")).toBe(2);
+    expect(await sched.sendClassCancelledToFamilies(tx({ ...fam, seats: [{ studentId: "A" }, { studentId: "B" }] }), { id: "g-1", status: "CONFIRMED", studentId: null, bookingType: "GROUP" }, "ADMIN_ERROR")).toBe(1); // 🔻 TASK-445: ONE household set per row (the count = the row's families were told); the accounts still all three, each ONCE
     expect(inserted.map((r) => r.recipientLineUserId)).toEqual(["U1", "U2", "U2b"]);
   });
 });

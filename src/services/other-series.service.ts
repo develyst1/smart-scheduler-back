@@ -25,10 +25,10 @@ import {
   attachAdditionalTeachers,
   bulkConfirm,
   cancelSeatsOfGroup,
+  classCancelledFamilyAccounts,
   confirmCourse,
   insertBooking,
   reconcileBookingHolds,
-  sendClassCancelledToFamilies,
   swapGroupTeacher,
 } from "./scheduler.service";
 
@@ -160,7 +160,8 @@ export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: 
     const rows = await seriesRows(tx, key);
     if (!rows.length) throw NOT_FOUND();
     const live = rows.filter(isLive);
-    let seatsCancelled = 0, familiesTold = 0;
+    let seatsCancelled = 0, familyNotices = 0;
+    const households = new Set<string>(); // TASK-445 — distinct LINE accounts across the whole cancel-all
     for (const r of live) {
       await tx.update(bookings).set({ status: "CANCELLED", cancelReason: input.reasonCode, note: input.note?.trim() || r.note }).where(eq(bookings.id, r.id));
       await reconcileBookingHolds(tx, r.id, r.teacherId, "CANCELLED", false);
@@ -169,12 +170,14 @@ export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: 
         // course re-owed (`reconcileCoursePlan`), then each seat's household told `class_cancelled_parent` (a CONFIRMED row only —
         // the family rule). The seats send no teacher notice; the coach is told ONCE below with the group's name.
         seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null);
-        familiesTold += await sendClassCancelledToFamilies(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode);
+        const accounts = (await classCancelledFamilyAccounts(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode)) ?? []; // TASK-445: siblings once per row
+        familyNotices += accounts.length;
+        for (const a of accounts) households.add(a);
       }
     }
     const t = templateOf(rows)!;
     await notifySeriesTeachers(tx, "other_series_cancelled", t, live, { reason: input.reasonCode, actor }); // TASK-430 — EVERY live row, PENDING included (the series notices are their own family)
-    return group ? { cancelled: live.length, seatsCancelled, familiesTold } : { cancelled: live.length };
+    return group ? { cancelled: live.length, seatsCancelled, familyNotices, householdsTold: households.size } : { cancelled: live.length };
   });
 }
 

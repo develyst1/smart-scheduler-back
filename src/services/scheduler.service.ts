@@ -2948,21 +2948,32 @@ export async function sendClassCancelledToFamilies(
   current: { id: string; status: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
   cancelReason: string | null,
 ): Promise<number> {
-  if (current.status !== "CONFIRMED") return 0;
+  return (await classCancelledFamilyAccounts(tx, current, cancelReason)) === null ? 0 : 1; // 1 = the row's household was told (or the skipped row landed), as before
+}
+
+/**
+ * 🔴 TASK-445 (Tanya's `familiesTold: 6`) — the ONE family sender's core: the row's household set is ONE set — a Private/DUO
+ * row's two kids, or ALL of a GROUP row's seats — so the ONE accessor de-duplicates the accounts and **two siblings seated on
+ * the same row reach their family ONCE** (TASK-420 built a set PER SEAT, which told the same account twice). ⇒ the distinct
+ * accounts enqueued: `null` when nothing was sent (not CONFIRMED, or no student on the row), `[]` when the household has no
+ * linked account (the skipped row still lands). The cancel-all counts from this: notices = rows × distinct accounts;
+ * households = the union across the call.
+ */
+export async function classCancelledFamilyAccounts(
+  tx: any,
+  current: { id: string; status: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
+  cancelReason: string | null,
+): Promise<string[] | null> {
+  if (current.status !== "CONFIRMED") return null;
   const payload = { kind: "class_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, cancelReason };
   const seats = current.bookingType === "GROUP"
     ? (current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) })))
     : null;
-  // TASK-420 — a household per seat on a GROUP row; ONE household set for a Private/DUO row (both kids' families, the
-  // accounts de-duplicated by the ONE accessor — a sibling DUO reaches its family once).
-  const households: Array<Array<string | null>> = seats ? seats.map((s: any) => [s.studentId]) : [[current.studentId, current.coStudentId ?? null]];
-  let n = 0;
-  for (const ids of households) {
-    if (!ids.some(Boolean)) continue;
-    await enqueueParentCopies(tx, await householdLineUserIds(tx, ids), { bookingId: current.id, payload });
-    n++;
-  }
-  return n;
+  const ids: Array<string | null> = seats ? seats.map((s: any) => s.studentId ?? null) : [current.studentId ?? null, current.coStudentId ?? null];
+  if (!ids.some(Boolean)) return null;
+  const accounts = await householdLineUserIds(tx, ids);
+  await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });
+  return accounts;
 }
 
 /**

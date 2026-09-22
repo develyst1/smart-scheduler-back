@@ -154,9 +154,17 @@ async function existingCampRows(tx: any, dayId: string): Promise<Map<string, str
 export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserted: number; deleted: number }> {
   const d = await tx.query.campWeekDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId), with: { week: true } });
   if (!d) throw notFound("ไม่พบวันแคมป์");
+  // 🔴 TASK-445 (Tanya's 500) — a PAST date derives nothing and is left alone: a coach block in the past is history, not a
+  // hold, and a week created mid-week must not clash on yesterday's sessions. (Nothing inserted, nothing deleted.)
+  if (d.date < bangkokNow().date) return { inserted: 0, deleted: 0 };
   const wanted = d.week.status === "OPEN" ? wantedCampSlots(d.teacherIds ?? [], hm(d.startTime)!, hm(d.endTime)!) : new Set<string>();
   const existing = await existingCampRows(tx, dayId);
   const { insert, remove } = campSlotDiff(wanted, existing);
+  // 🔴 TASK-445 — THE 500: the clash's `23505` ABORTS the transaction; the catch below then read the coach's name ON THAT TX
+  // (`tx.query.teachers.findFirst`) ⇒ Postgres `25P02` ("current transaction is aborted"), a raw pg error, not an ApiException
+  // ⇒ 500. The names are read HERE, before any insert can fail, so the catch touches nothing but memory.
+  const teacherIds = [...new Set([...wanted].map((k) => k.split("|")[0]!))];
+  const coachName = new Map<string, string>(teacherIds.length ? (await tx.query.teachers.findMany({ where: (x: any, { inArray: inA }: any) => inA(x.id, teacherIds) })).map((t: any) => [t.id, t.nickname ?? t.name ?? t.id]) : []);
   // TASK-443 — each coach's DAY rate rides the derived rows' `teacher_rate_minor` (a camp row has ONE teacher, no extras): the
   // inserted rows carry it, and the KEPT rows are re-stamped (the diff never touches a kept row, a rate change must reach it).
   const rates = dayRatesOf({ ...d, rates: await tx.query.campWeekDayRates.findMany({ where: (r: any, { eq: e }: any) => e(r.campWeekDayId, dayId) }) });
@@ -168,8 +176,7 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
       await tx.update(bookings).set({ campWeekDayId: dayId, confirmedAt: new Date() }).where(eq(bookings.id, id));
     } catch (e: any) {
       if (e instanceof ApiException && e.code === "SLOT_TAKEN") {
-        const t = await tx.query.teachers.findFirst({ where: (x: any, { eq: e2 }: any) => e2(x.id, teacherId) });
-        throw conflict("SLOT_TAKEN", `วันที่ ${d.date} ${hour} ครู${t?.nickname ?? t?.name ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`);
+        throw conflict("SLOT_TAKEN", `วันที่ ${d.date} ${hour} ครู${coachName.get(teacherId) ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`); // TASK-445: no tx read after the abort
       }
       throw e;
     }

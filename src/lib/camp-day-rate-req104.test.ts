@@ -96,7 +96,7 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
       query: {
         campWeekDays: { findFirst: async () => ({ ...day, week }) },
         campWeekDayRates: { findMany: async () => upserted.map((u) => ({ campWeekDayId: D1, teacherId: u.teacherId, rateMinor: u.rateMinor })) },
-        teachers: { findFirst: async () => null },
+        teachers: { findFirst: async () => null, findMany: async () => [] },
         bookings: { findFirst: async () => null },
       },
       select: () => ({ from: () => ({ where: async () => [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }, { id: "old-2", teacherId: T2, startTime: "10:00:00" }] }) }),

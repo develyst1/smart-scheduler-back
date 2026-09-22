@@ -311,8 +311,8 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2);
     expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, current, enumReason ?? null);");
     const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
-    expect(FS).toContain('if (current.status !== "CONFIRMED") return 0;');
-    expect(FS).toContain("await enqueueParentCopies(tx, await householdLineUserIds(tx, ids), { bookingId: current.id, payload });"); // 🔻 TASK-420: a household set per seat / ONE for a Private+DUO row
+    expect(FS).toContain('if (current.status !== "CONFIRMED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1
+    expect(FS).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });"); // 🔻 TASK-445: ONE household set per row (all the seats), the accounts de-duplicated once
     expect(FS).toContain('current.bookingType === "GROUP"');
   });
   test("🔴 TASK-410 — the family notice by VALUE (the owner's copy): a course session on a teacher's leave, TH and EN, byte-for-byte", () => {
@@ -434,7 +434,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(inserted[0].payload.cancelReason).toBe("TEACHER_LEAVE");
     inserted.length = 0;
     const t3 = tx({ seats: [{ studentId: "s1" }, { studentId: "s2" }], parents: { p1: { lineUserId: "Up1", links: [] }, p2: { lineUserId: "Up2", links: [] } }, student: { s1: "p1", s2: "p2" } });
-    expect(await sched.sendClassCancelledToFamilies(t3, { id: B1, status: "CONFIRMED", studentId: null, bookingType: "GROUP" }, "CUSTOMER_CANCELLED")).toBe(2);
+    expect(await sched.sendClassCancelledToFamilies(t3, { id: B1, status: "CONFIRMED", studentId: null, bookingType: "GROUP" }, "CUSTOMER_CANCELLED")).toBe(1); // 🔻 TASK-445: ONE household set per row — the count says "this row's families were told"; both accounts still land below
     expect(inserted.map((r) => r.recipientLineUserId).sort()).toEqual(["Up1", "Up2"]);
     expect(inserted.every((r) => r.payload.bookingType === "GROUP")).toBe(true);
   });

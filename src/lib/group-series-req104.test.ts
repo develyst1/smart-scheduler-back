@@ -87,9 +87,9 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     expect(C).not.toContain("enqueueLine"); // a seat sends no teacher notice of its own
     const X = region(SVC, "export async function cancelAllOtherSeries(", "\n}\n");
     expect(X).toContain("seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null);");
-    expect(X).toContain('familiesTold += await sendClassCancelledToFamilies(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode);');
+    expect(X).toContain('const accounts = (await classCancelledFamilyAccounts(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode)) ?? [];'); // 🔻 TASK-445
     expect(X.indexOf("cancelSeatsOfGroup")).toBeGreaterThan(X.indexOf('status: "CANCELLED", cancelReason: input.reasonCode')); // the row first, then its seats
-    expect(X.indexOf('notifySeriesTeachers(tx, "other_series_cancelled"')).toBeGreaterThan(X.indexOf("sendClassCancelledToFamilies")); // the coach once, after the loop
+    expect(X.indexOf('notifySeriesTeachers(tx, "other_series_cancelled"')).toBeGreaterThan(X.indexOf("classCancelledFamilyAccounts")); // the coach once, after the loop
   });
 });
 
@@ -131,10 +131,10 @@ describe("🔴 the doors by VALUE through a fake tx — the CASCADE, confirm-who
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(f.tx)) as any));
     const seatCalls: any[] = [], famCalls: any[] = [], notices: any[] = [];
     spies.push(spyOn(sched, "cancelSeatsOfGroup").mockImplementation((async (_tx: any, groupId: string, note: string | null) => { seatCalls.push([groupId, note]); return groupId === r1.id ? 2 : 1; }) as any));
-    spies.push(spyOn(sched, "sendClassCancelledToFamilies").mockImplementation((async (_tx: any, current: any, reason: string) => { famCalls.push([current.id, current.bookingType, current.seats?.length, reason]); return current.status === "CONFIRMED" ? current.seats.length : 0; }) as any));
+    spies.push(spyOn(sched, "classCancelledFamilyAccounts").mockImplementation((async (_tx: any, current: any, reason: string) => { famCalls.push([current.id, current.bookingType, current.seats?.length, reason]); return current.status === "CONFIRMED" ? ["Ua", "Ub"] : null; }) as any)); // 🔻 TASK-445: the accounts, not a count
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any) => { notices.push(o); return { status: "queued" } as any; }) as any));
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR", note: "wrong entry" }, "dev");
-    expect(out).toEqual({ cancelled: 2, seatsCancelled: 3, familiesTold: 2 });
+    expect(out).toEqual({ cancelled: 2, seatsCancelled: 3, familyNotices: 2, householdsTold: 2 }); // 🔻 TASK-445: rows × distinct accounts; the union
     expect(f.writes.filter((w) => w.op === "update").map((w) => w.patch)).toEqual([{ status: "CANCELLED", cancelReason: "ADMIN_ERROR", note: "wrong entry" }, { status: "CANCELLED", cancelReason: "ADMIN_ERROR", note: "wrong entry" }]);
     expect(seatCalls).toEqual([[r1.id, "wrong entry"], [r2.id, "wrong entry"]]); // the ATTENDED row's seats never touched
     expect(famCalls).toEqual([[r1.id, "GROUP", 2, "ADMIN_ERROR"], [r2.id, "GROUP", 1, "ADMIN_ERROR"]]);
@@ -147,7 +147,7 @@ describe("🔴 the doors by VALUE through a fake tx — the CASCADE, confirm-who
     const f = fakeTx([{ ...grow({ date: "2026-10-05" }), bookingType: "OTHER", seats: undefined }]);
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(f.tx)) as any));
     const seatSpy = spyOn(sched, "cancelSeatsOfGroup").mockImplementation((async () => 9) as any); spies.push(seatSpy);
-    const famSpy = spyOn(sched, "sendClassCancelledToFamilies").mockImplementation((async () => 9) as any); spies.push(famSpy);
+    const famSpy = spyOn(sched, "classCancelledFamilyAccounts").mockImplementation((async () => ["x"]) as any); spies.push(famSpy);
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async () => ({ status: "queued" }) as any) as any));
     expect(await series.cancelAllOtherSeries(K, { reasonCode: "ADMIN_ERROR" }, "dev")).toEqual({ cancelled: 1 });
     expect(seatSpy).not.toHaveBeenCalled();
@@ -231,7 +231,7 @@ describe("🔴 the routes — the OTHER twins' keys one-for-one (confirm-all = c
     process.env.SKIP_AUTH = "true";
     const calls: any[] = [];
     const spy = (name: keyof typeof series, ret: any) => spies.push(spyOn(series, name).mockImplementation((async (...a: any[]) => { calls.push([name, ...a]); return ret; }) as any));
-    spy("listOtherSeries", []); spy("getOtherSeries", { key: K }); spy("confirmAllOtherSeries", { confirmed: 1, courses: 1 }); spy("cancelAllOtherSeries", { cancelled: 2, seatsCancelled: 3, familiesTold: 2 });
+    spy("listOtherSeries", []); spy("getOtherSeries", { key: K }); spy("confirmAllOtherSeries", { confirmed: 1, courses: 1 }); spy("cancelAllOtherSeries", { cancelled: 2, seatsCancelled: 3, familyNotices: 2, householdsTold: 1 });
     spy("addTeacherToOtherSeries", { added: 2 }); spy("removeTeacherFromOtherSeries", { removed: 1 }); spy("swapGroupSeriesTeacher", { moved: 2 }); spy("addDatesToOtherSeries", { created: 1, bookingIds: ["x"] }); spy("updateOtherSeries", { updated: 2 });
     const api = (m: string, p: string, b?: unknown) => json(m, `/api${p}`, b);
     expect((await api("GET", "/group-series?from=2026-10-01&to=2026-10-31")).status).toBe(200);

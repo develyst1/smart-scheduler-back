@@ -139,7 +139,7 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
       log,
       query: {
         campWeekDays: { findFirst: async () => ({ ...o.day, week: o.week }) },
-        teachers: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, v: string) => { probe.push(v); return null; } }); return { id: probe[0], nickname: probe[0] === T1 ? "เอก" : "บี" }; } },
+        teachers: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, v: string) => { probe.push(v); return null; } }); return { id: probe[0], nickname: probe[0] === T1 ? "เอก" : "บี" }; }, findMany: async () => [{ id: T1, nickname: "เอก" }, { id: T2, nickname: "บี" }] }, // 🔻 TASK-445: the names are read BEFORE the inserts (the catch touches no tx after a clash)
         bookings: { findFirst: async () => null },
         campWeekDayRates: { findMany: async () => [] }, // 🔻 TASK-443: the day's rates (none ⇒ 0)
       },
