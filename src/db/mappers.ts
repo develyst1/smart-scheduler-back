@@ -2,8 +2,8 @@
 // its teacher/student/subject/course already embedded so the FE never joins.
 
 import { toCourseSummary } from "../lib/leave";
-import { voucherRemaining } from "../lib/voucher";
-import { hhmm } from "../lib/time";
+import { voucherRemaining, voucherStatus } from "../lib/voucher";
+import { fmtDate, hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
 import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
 import { courseKindOf, joinChildNames } from "../lib/duo-course";
@@ -35,6 +35,7 @@ export const toTeacherDTO = (t: any) => ({
     .map((ts: any) => ({
       id: ts.subject.id,
       name: ts.subject.name,
+      kind: ts.subject.kind ?? "PRIVATE", // TASK-437 — the picker filters by TYPE (DUO ⇔ the DUO create), never by name
     })),
   lineLinked: !!t.lineUserId,
   archived: t.archived ?? false,
@@ -296,4 +297,9 @@ export const toVoucherDTO = (v: any) => ({
   remaining: voucherRemaining(v),
   expiryDate: v.expiryDate,
   student: studentRef(v.student),
+  // TASK-439 (REQ-103): the ONE derived status (ENDED > EXPIRED > EXHAUSTED > ACTIVE) + the end stamp; `remaining` stays
+  // readable on an ended voucher — the balance is frozen, not hidden ("ENDED · Nh left").
+  status: voucherStatus(v, fmtDate(new Date())),
+  endedAt: v.endedAt ?? null,
+  endReason: v.endReason ?? null,
 });

@@ -44,7 +44,7 @@ describe("🔑 key 59 — registered, labelled, granted to nobody; a body-level 
   test("59 keys; `action:bookings.coach-rate` with TH/EN labels; the two exact response keys", () => {
     expect(ACTION_KEYS.length).toBe(59);
     expect(ACTION_REGISTRY.find((a) => a.key === COACH_RATE_KEY)).toMatchObject({ labelTh: "ดูและแก้ค่าสอน", labelEn: "View & edit coach rate" });
-    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor"]);
+    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates"]); // 🔻 TASK-434: + the ECA/Group per-teacher rates
   });
   test("`canSeeCoachRate`: the key · never a linked account · null ⇒ no; independent of `canSeeBudget` both ways (by value + by source)", () => {
     expect(canSeeCoachRate(SUPER)).toBe(true);
@@ -62,7 +62,7 @@ describe("🔑 key 59 — registered, labelled, granted to nobody; a body-level 
 describe("🔴 the READ mask — `maskCoachRate` by value; the seam by source (the two producers, the middleware after the guard)", () => {
   test("nulls exactly `rate` / `classRateMinor` at any depth; `teacherRates` / `hourlyRate` / a `rate` INSIDE another key's name untouched; non-objects pass through", () => {
     const body = { items: [{ id: "b", rate: { effectiveMinor: 300, overrideMinor: 300, defaultMinor: 700 }, other: { teacherRates: { [T1]: 500 } }, teacher: { hourlyRate: 500, rateMinor: 1 } }], course: { classRateMinor: 700, coStudent: { id: B }, nested: { deep: { classRateMinor: 1, rate: 2 } } }, n: 3, s: "x", nul: null };
-    expect(maskCoachRate(body as any)).toEqual({ items: [{ id: "b", rate: null, other: { teacherRates: { [T1]: 500 } }, teacher: { hourlyRate: 500, rateMinor: 1 } }], course: { classRateMinor: null, coStudent: { id: B }, nested: { deep: { classRateMinor: null, rate: null } } }, n: 3, s: "x", nul: null });
+    expect(maskCoachRate(body as any)).toEqual({ items: [{ id: "b", rate: null, other: { teacherRates: null }, teacher: { hourlyRate: 500, rateMinor: 1 } }], course: { classRateMinor: null, coStudent: { id: B }, nested: { deep: { classRateMinor: null, rate: null } } }, n: 3, s: "x", nul: null }); // 🔻 TASK-434: `teacherRates` ⇒ null too; `hourlyRate` (57) and a `rateMinor` on a non-rate object untouched
     expect(maskCoachRate("text")).toBe("text");
     expect(maskCoachRate(null)).toBeNull();
     expect(maskCoachRate([1, { rate: 1 }] as any)).toEqual([1, { rate: null }]);
@@ -145,7 +145,10 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
     expect(() => assertMayEditCoachRate({ classRateMinor: 300 }, SUPER)).not.toThrow();
     expect(() => assertMayEditCoachRate({ classRateMinor: 300 }, STAFF_NO59)).toThrow(/ไม่มีสิทธิ์แก้ค่าสอน/);
     expect(() => assertMayEditCoachRate({ classRateMinor: null }, LINKED_ALL)).toThrow();
-    expect(() => assertMayEditCoachRate({ duo: {} }, null)).toThrow();
+    expect(() => assertMayEditCoachRate({ duo: {} }, null)).not.toThrow(); // 🔻 TASK-434: `duo` alone is not a rate edit
+    expect(() => assertMayEditCoachRate({ duo: { coStudentId: B, classRateMinor: 1 } }, null)).toThrow();
+    expect(() => assertMayEditCoachRate({ teacherRates: { [T1]: 1 } }, STAFF_NO59)).toThrow();
+    expect(() => assertMayEditCoachRate({ rateMinor: 1 }, STAFF_NO59)).toThrow();
   });
   test("by value through the ROOT app: the three writers ⇒ 403 without the key BEFORE the service; the move / the course PATCH without the field run; with the key everything runs", async () => {
     process.env.SKIP_AUTH = "true";
@@ -174,10 +177,10 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
   });
   test("by source: the three routes call `assertMayEditCoachRate(…, viewerOf(c))` before their service; no other route does; no migration", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(3);
+    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(9); // 🔻 TASK-434: the three + six rate-carrying writers
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(50);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(52);
   });
 });

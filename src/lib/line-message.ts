@@ -331,7 +331,8 @@ function buildOutboxMessage(
       // `endTime` the slot; the count is theirs too. `cause` picks the stamp — a drop and an end are the same
       // loss to a coach's week, and only the word differs.
       const dates = Array.isArray(payload.dates) ? (payload.dates as string[]) : [];
-      const title = payload.cause === "ended" ? "ob_course_ended_title" : "ob_course_dropped_title";
+      // TASK-439: a whole-voucher cancel (`voucher_ended`) is an END to the coach — the same title, the same lines, no new bytes.
+      const title = payload.cause === "ended" || payload.cause === "voucher_ended" ? "ob_course_ended_title" : "ob_course_dropped_title";
       return (
         t(title, lang) + "\n" +
         renderFieldBlock(

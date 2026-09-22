@@ -85,7 +85,7 @@ describe("toTeacherDTO — dangling teacher_subjects row (TASK-029, availability
         { subject: undefined },
       ],
     });
-    expect(dto.subjects).toEqual([{ id: "s1", name: "Balance Bike" }]);
+    expect(dto.subjects).toEqual([{ id: "s1", name: "Balance Bike", kind: "PRIVATE" }]); // 🔻 TASK-437: + the TYPE (default PRIVATE when the row has none)
   });
 });
 

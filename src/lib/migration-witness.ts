@@ -507,7 +507,26 @@ export const SCHEDULING_WITNESSES: Witness[] = [
     probe: { kind: "index", index: "bookings_other_series_idx" },
     why:
       "TASK-428 (REQ-101). bookings.other_series_key and its partial index — the LAST object, on the hot table, is the " +
-      "witness (its CREATE INDEX takes SHARE on bookings for one scan; said in the header). Every object IF NOT EXISTS.",
+      "index — the LAST object, on the hot table, is the witness (its CREATE INDEX takes SHARE on bookings for one scan; " +
+      "said in the header). Every object IF NOT EXISTS.",
+    rerunnable: true,
+  },
+  {
+    tag: "0050_subject_kind",
+    probe: { kind: "constraint-def", constraint: "subjects_kind_chk", contains: "DUO" },
+    why:
+      "TASK-437 (REQ-095 §13.4a). subjects.kind (NOT NULL DEFAULT 'PRIVATE', a small table) + the CHECK on the closed set — " +
+      "the CHECK's definition is the LAST object and the witness (NOT VALID + VALIDATE, the 0045 shape). Rerunnable: the " +
+      "column IF NOT EXISTS, the constraint dropped-if-exists first.",
+    rerunnable: true,
+  },
+  {
+    tag: "0051_voucher_end",
+    probe: { kind: "constraint-def", constraint: "vouchers_end_reason_chk", contains: "TEACHER_LEAVE" },
+    why:
+      "TASK-439 (REQ-103). vouchers.ended_at / ended_by / end_reason (three nullable columns, a small table) + the CHECK on " +
+      "END_REASONS — the CHECK's definition is the LAST object and the witness (NOT VALID + VALIDATE, the 0045 shape). " +
+      "Rerunnable: the columns IF NOT EXISTS, the constraint dropped-if-exists first.",
     rerunnable: true,
   },
 ];

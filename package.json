@@ -29,6 +29,7 @@
     "import:students": "bun run scripts/import-students.ts",
     "db:reset": "bun run scripts/db-reset.ts",
     "subjects:add": "bun run scripts/add-subject.ts",
+    "subjects:ensure": "bun run scripts/ensure-subjects.ts",
     "teacher-subjects:link-all": "bun run scripts/link-all-teacher-subjects.ts",
     "demographics:repair": "bun run scripts/repair-demographics.ts",
     "sale:reconcile-prices": "bun run scripts/reconcile-sale-prices.ts",

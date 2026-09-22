@@ -351,6 +351,20 @@
       "when": 1783000000045,
       "tag": "0049_other_series_key",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1783000000046,
+      "tag": "0050_subject_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1783000000047,
+      "tag": "0051_voucher_end",
+      "breakpoints": true
     }
   ]
 }

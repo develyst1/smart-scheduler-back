@@ -125,6 +125,14 @@ export const api = new Hono()
       await svc.endCourse(c.req.param("id"), body, actorOf(c)),
     );
   })
+  // TASK-439 (REQ-103) — cancel a WHOLE voucher on the course-end shape: the same validators, the same key, the same
+  // preview-then-confirm (the count the staff member confirms is the count the server cancels).
+  .post("/vouchers/:id/cancel/preview", zValidator("json", v.endCoursePreview), async (c) =>
+    c.json(await svc.previewVoucherEnd(c.req.param("id"))),
+  )
+  .post("/vouchers/:id/cancel", zValidator("json", v.endCourse), async (c) =>
+    c.json(await svc.endVoucher(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
   // SPEC-066 / TASK-201 (REQ-072) — confirm every PENDING session of a course in one action, with exactly ONE
   // teacher LINE. Distinct from `/bookings/bulk-confirm`, which is per-session and sends one message each.
   .post("/courses/:id/confirm", async (c) => c.json(await svc.confirmCourse(c.req.param("id"))))

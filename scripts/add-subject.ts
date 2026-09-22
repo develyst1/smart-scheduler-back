@@ -17,6 +17,7 @@
 //   bun run subjects:add --name "Bike" --group bike-skate                      # DRY RUN
 //   bun run subjects:add --name "Bike" --group bike-skate --commit             # create
 //   bun run subjects:add --name "Bike" --group bike-skate --teacher ก้อง --commit
+//   bun run subjects:add --name "Duo BMX" --group balance-duo --kind DUO --commit   # TASK-437: a DUO program (default PRIVATE)
 import { db } from "../src/db";
 import { subjects, teacherSubjects } from "../src/db/schema";
 import { formatSubjectAddPlan, planSubjectAdd } from "../src/lib/subject-add-plan";
@@ -32,6 +33,7 @@ async function main() {
   const name = arg("name");
   const group = arg("group");
   const teacherQuery = arg("teacher");
+  const kind = arg("kind"); // TASK-437 — optional, default PRIVATE
   if (!name || !group) {
     console.error('✗ subjects:add — ต้องมี --name "<ชื่อโปรแกรม>" และ --group <bike-skate|onewheel|balance-private|balance-group>');
     process.exit(1);
@@ -48,6 +50,7 @@ async function main() {
       const plan = planSubjectAdd({
         name,
         group,
+        kind,
         existingNames: existing.map((s: any) => s.name),
         teacherQuery,
         teachers,
@@ -60,7 +63,7 @@ async function main() {
       if (plan.willCreate) {
         await tx
           .insert(subjects)
-          .values({ name: plan.name, priceGroup: plan.group })
+          .values({ name: plan.name, priceGroup: plan.group, kind: plan.kind ?? "PRIVATE" })
           .onConflictDoNothing({ target: subjects.name });
       }
       if (plan.link) {

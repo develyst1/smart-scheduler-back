@@ -6,6 +6,7 @@
 // ALL it can do. It cannot rename, re-group or delete an existing row — which is what makes REQ-058's AC-5
 // (nothing existing changes, incl. the KEPT combined program) true by construction rather than by care.
 import { PRICE_GROUPS, type PriceGroup } from "./sale-items";
+import { SUBJECT_KINDS, isSubjectKind, type SubjectKind } from "./subject-kinds";
 
 export interface TeacherRef {
   id: string;
@@ -18,6 +19,8 @@ export interface SubjectAddPlan {
   problems: string[];
   name: string;
   group: PriceGroup | null;
+  /** TASK-437 — the program's TYPE (`--kind`, default PRIVATE; validated against the closed set). */
+  kind: SubjectKind | null;
   /** false ⇒ the name already exists and is left completely untouched. */
   willCreate: boolean;
   alreadyPresent: boolean;
@@ -34,6 +37,8 @@ export const isPriceGroup = (v: string): v is PriceGroup => (PRICE_GROUPS as str
 export function planSubjectAdd(input: {
   name: string;
   group: string;
+  /** TASK-437 — optional; absent ⇒ PRIVATE. */
+  kind?: string;
   existingNames: readonly string[];
   /** Only supplied when `--teacher` was passed. */
   teacherQuery?: string;
@@ -47,6 +52,9 @@ export function planSubjectAdd(input: {
   // A typo'd group would create a program with no price and no voucher rule — an unsellable row that looks fine
   // in the dropdown. Refused loudly instead.
   const group = isPriceGroup(groupRaw) ? groupRaw : null;
+  const kindRaw = (input.kind ?? "PRIVATE").trim();
+  const kind = isSubjectKind(kindRaw) ? kindRaw : null;
+  if (!kind) problems.push(`--kind ไม่ถูกต้อง: "${kindRaw}" — ต้องเป็นหนึ่งใน ${SUBJECT_KINDS.join(" | ")}`);
   if (!group) problems.push(`--group ไม่ถูกต้อง: "${groupRaw}" — ต้องเป็นหนึ่งใน ${PRICE_GROUPS.join(" | ")}`);
 
   const alreadyPresent = input.existingNames.some((n) => (n ?? "").trim() === name);
@@ -69,6 +77,7 @@ export function planSubjectAdd(input: {
     problems,
     name,
     group,
+    kind,
     willCreate: problems.length === 0 && !alreadyPresent,
     alreadyPresent,
     link,
@@ -80,6 +89,7 @@ export function formatSubjectAddPlan(plan: SubjectAddPlan): string {
   const lines = [
     `  โปรแกรม : ${plan.name || "(ไม่ระบุ)"}`,
     `  กลุ่มราคา: ${plan.group ?? "(ไม่ถูกต้อง)"}`,
+    `  ประเภท   : ${plan.kind ?? "(ไม่ถูกต้อง)"}`,
     `  การทำงาน : ${plan.alreadyPresent ? "มีอยู่แล้ว — ไม่แก้ไข" : "จะสร้างใหม่"}`,
   ];
   if (plan.link) lines.push(`  ผูกครู   : ${plan.link.nickname}`);

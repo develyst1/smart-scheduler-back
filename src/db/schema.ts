@@ -297,6 +297,8 @@ export const subjects = pgTable("subjects", {
   // ⚠️ NULL means "cannot be sold as a course/session" — the sale refuses loudly rather than falling back
   // to a default price. "1st Trial" is deliberately NULL.
   priceGroup: text("price_group"),
+  /** TASK-437 (`0050`, REQ-095 §13.4a) — the program's TYPE: PRIVATE (default) | DUO (`lib/subject-kinds.ts`; the DB CHECK is its copy). */
+  kind: text("kind").notNull().default("PRIVATE"),
 });
 
 // Which subjects a teacher can teach (M2M).
@@ -401,6 +403,10 @@ export const vouchers = pgTable("vouchers", {
   expiryDate: date("expiry_date").notNull(),
   source: text("source").notNull().default("SALE"), // SALE | IMPORT — see course_packages.source
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // TASK-439 (REQ-103): a whole-voucher cancel on the course-end shape — the reason is `END_REASONS` (the CHECK in 0051).
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  endedBy: text("ended_by"),
+  endReason: text("end_reason"),
 });
 
 // ───────────────────────────── Bookings ─────────────────────────────

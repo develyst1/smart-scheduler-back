@@ -1,5 +1,5 @@
 // TASK-428 (`REQ-101`, SPEC-088 Part A) — the OTHER SERIES Manage-plan: migration `0049` (the key column + the partial index
-// as witness; 50 = 50), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
+// as witness; 52 = 52), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
 // doors by VALUE through fake txs (confirm-all = the bulk-confirm loop; cancel-all one tx + ONE summary notice per teacher
 // and NO per-row notice; add / remove / swap from a date on through ONE `seriesRowsFrom`, the first clash rolls back, the
 // primary refused, `ALREADY_ON_ROW` both ways; add dates copies the template; the header PATCH on every live row, no
@@ -77,9 +77,9 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("50 = 50: `0049_other_series_key` is the 50th file, idx 49, the last; 'expects 50'", () => {
-    expect(files.length).toBe(50);
-    expect(journal.entries.length).toBe(50);
+  test("52 = 52: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
+    expect(files.length).toBe(52);
+    expect(journal.entries.length).toBe(52);
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");
@@ -89,7 +89,7 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
       'CREATE INDEX IF NOT EXISTS "bookings_other_series_idx" ON "bookings" ("other_series_key") WHERE "other_series_key" IS NOT NULL;',
     ]);
     expect(sql).toContain("SHARE lock for its one scan");
-    const last = SCHEDULING_WITNESSES[SCHEDULING_WITNESSES.length - 1]!;
+    const last = SCHEDULING_WITNESSES.find((w) => w.tag === "0049_other_series_key")!; // 🔻 TASK-437: 0050 is the last now
     expect(last).toMatchObject({ tag: "0049_other_series_key", probe: { kind: "index", index: "bookings_other_series_idx" }, rerunnable: true });
     expect(code(src("src/db/schema.ts"))).toContain('otherSeriesKey: uuid("other_series_key"),');
     expect((toBookingDTO({ id: "b", date: "2026-10-05", startTime: "15:00:00", endTime: "16:00:00", bookingType: "OTHER", status: "PENDING", otherTitle: "ECA", teacher: { id: T1, name: "Bank", nickname: "Bank" }, badges: [], additionalTeachers: [], otherSeriesKey: K }) as any).otherSeriesKey).toBe(K);

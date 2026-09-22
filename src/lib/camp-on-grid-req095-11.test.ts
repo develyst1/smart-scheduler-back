@@ -3,7 +3,7 @@
 // (the type ⇔ kind pin knows it; the HUMAN validators do not), the pure window rules + the wanted set + the diff + the
 // reminder fold (by value), the ONE `syncCampDayRows` by VALUE through a fake tx (insert / delete / clash rollback /
 // CONFIRMED at birth / a closed week holds nothing), the lifecycle by source (five callers, `edited_at`), the per-day
-// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 50 = 50.
+// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 52 = 52.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0047, counted, the day table + the window + the
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0047_camp_week_days.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("50 = 50: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
-    expect(files.length).toBe(50);
-    expect(journal.entries.length).toBe(50);
+  test("52 = 52: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
+    expect(files.length).toBe(52);
+    expect(journal.entries.length).toBe(52);
     expect(files[47]).toBe("0047_camp_week_days.sql");
     expect(journal.entries[47]).toMatchObject({ idx: 47, tag: "0047_camp_week_days" });
     expect(sql).toContain("`db:verify` expects 48");

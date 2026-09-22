@@ -48,10 +48,11 @@ import {
   sessionsOnRemovedDays,
   teacherWorksOnDay,
 } from "../lib/work-days";
-import { isVoucherHours, voucherExpiry, voucherUsable } from "../lib/voucher";
+import { VOUCHER_ENDED_MESSAGE, endableVoucherDraws, isVoucherEnded, isVoucherHours, voucherExpiry, voucherRemaining, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
 import { householdLineUserIds } from "../lib/family-link";
 import { DUO_SAME_CHILD, NOT_A_COURSE_SESSION, duoStudentIds } from "../lib/duo-course";
+import { assertSubjectKindForCourse } from "../lib/subject-kinds";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -1307,6 +1308,9 @@ async function prepareVoucherBooking(exec: any, voucherId: string, date: string,
   });
   if (!v) throw badRequest("ไม่พบวอยเชอร์");
   if (v.studentId !== studentId) throw badRequest("วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก");
+  // TASK-439 (REQ-103): an ENDED voucher draws nothing — refused here, BEFORE the first-booking expiry write below, with the
+  // code the FE distinguishes. `voucherUsable` refuses it too (the picker / SOM share that gate); this is the same predicate.
+  if (isVoucherEnded(v)) throw conflict("VOUCHER_ENDED", VOUCHER_ENDED_MESSAGE);
 
   const prior = await exec.query.bookings.findFirst({
     where: (b: any, { and, eq, ne }: any) =>
@@ -1779,7 +1783,7 @@ export async function getSellablePackages() {
       ...p,
       subjects: rows
         .filter((s) => s.priceGroup === p.priceGroup && s.active)
-        .map((s) => ({ id: s.id, name: s.name })),
+        .map((s) => ({ id: s.id, name: s.name, kind: s.kind ?? "PRIVATE" })), // TASK-437
     })),
     // Named so the FE can show "this program has no price group yet" instead of an empty dropdown.
     unpricedSubjects: rows
@@ -1863,6 +1867,7 @@ export async function importCoursePackage(input: any) {
   const leaveQuota = sizeDecision.leaveQuota;
 
   const remaining = remainingSessions(input.size, input.usedSessions);
+  assertSubjectKindForCourse(await db.query.subjects.findFirst({ where: (s, { eq: e }) => e(s.id, input.subjectId) }), false); // TASK-437 — an import is a Private course
   return await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     // Import does not bypass the suspend gate — a suspended household is refused loudly, as everywhere else.
@@ -1971,6 +1976,9 @@ export async function createCoursePackage(input: any) {
   // TASK-420 — a DUO course is priced from the DUO price group (`course-balance-duo-{size}`); the validator already
   // refused `duo` + `groupKey` together, so the two kinds never meet here.
   const priceGroup = await resolvePriceGroup(input.subjectId, input.duo ? "DUO" : courseGroupKind);
+  // TASK-437 (REQ-095 §13.4a) — the program's TYPE must match the course's: a DUO create prices from the DUO card without
+  // reading the subject, so this is the ONE read that says whether the subject IS a DUO program. Before the tx, no write.
+  assertSubjectKindForCourse(await db.query.subjects.findFirst({ where: (s, { eq: e }) => e(s.id, input.subjectId) }), !!input.duo);
   if (!priceGroup) {
     throw badRequest(
       "โปรแกรมนี้ยังไม่ได้ตั้งกลุ่มราคา — ตั้งค่าก่อนจึงจะขายคอร์สได้ (subjects.price_group)",
@@ -2958,6 +2966,22 @@ export async function sendClassCancelledToFamilies(
 }
 
 /**
+ * TASK-436 (REQ-097 Finding A, built) — the coach pair on a TEACHER change, ONE place for BOTH doors: the course plan edit
+ * (`applyPlanChange`, where it always lived) and the ordinary row move (`moveBooking` — the Move-session popup, which told
+ * nobody until the customer noticed). The OLD coach loses the row (`teacher_unassigned`), the NEW one gains it
+ * (`teacher_assigned`); an unlinked coach gets the SKIPPED row `enqueueLine` writes. A date/time-only move stays silent
+ * (REQ-101 §5's ruling B). In the caller's tx — the notice and the write land together or not at all.
+ */
+export async function sendTeacherReassigned(tx: any, bookingId: string, oldTeacherId: string, newTeacherId: string): Promise<void> {
+  const [oldTeacher, newTeacher] = await Promise.all([
+    tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, oldTeacherId) }),
+    tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, newTeacherId) }),
+  ]);
+  await enqueueLine({ recipientType: "teacher", recipientLineUserId: oldTeacher?.lineUserId ?? null, bookingId, payload: { kind: "teacher_unassigned", bookingId } }, tx);
+  await enqueueLine({ recipientType: "teacher", recipientLineUserId: newTeacher?.lineUserId ?? null, bookingId, payload: { kind: "teacher_assigned", bookingId } }, tx);
+}
+
+/**
  * TASK-406 (REQ-097 C-2) — the leave's COACH notice: the OTHER teachers on the row (primary + extras minus me) — a row
  * where I am an extra still has a primary coach who loses the session; when I am the only teacher, nobody (I am the
  * coach). The same `class_cancelled_teacher` payload the admin's cancel sends; the same CONFIRMED-only rule.
@@ -3024,11 +3048,13 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
   return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };
 }
 
+// TASK-439 (REQ-103): `course` is `{ id, size }` on purpose — a whole-voucher cancel passes `{ id: voucherId, size: totalHours }` and
+// `cause: "voucher_ended"`, so a coach reads the SAME message for the same loss (`<subject> <hours> HR`, no new bytes).
 async function sendCourseDroppedToTeachers(
   tx: any,
   course: { id: string; size: number },
   cancelled: Array<{ id: string; status: string; teacherId: string | null; date: string; startTime: string; endTime: string }>,
-  cause: "dropped" | "ended",
+  cause: "dropped" | "ended" | "voucher_ended",
   reason: { cancelReason: string | null; note: string | null },
 ) {
   const byTeacher = new Map<string, typeof cancelled>();
@@ -3222,30 +3248,7 @@ export async function applyPlanChange(
       await tx.update(bookings).set(patch).where(eq(bookings.id, b.id));
       await reconcileBookingHolds(tx, b.id, newTeacherId, b.status, change.override ?? false);
       // Notify BOTH sides of the swap: the old teacher (off your schedule) + the new teacher (now yours).
-      if (teacherChanged) {
-        const [oldTeacher, newTeacher] = await Promise.all([
-          tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, b.teacherId) }),
-          tx.query.teachers.findFirst({ where: (t: any, { eq }: any) => eq(t.id, newTeacherId) }),
-        ]);
-        await enqueueLine(
-          {
-            recipientType: "teacher",
-            recipientLineUserId: oldTeacher?.lineUserId ?? null,
-            bookingId: b.id,
-            payload: { kind: "teacher_unassigned", bookingId: b.id },
-          },
-          tx,
-        );
-        await enqueueLine(
-          {
-            recipientType: "teacher",
-            recipientLineUserId: newTeacher?.lineUserId ?? null,
-            bookingId: b.id,
-            payload: { kind: "teacher_assigned", bookingId: b.id },
-          },
-          tx,
-        );
-      }
+      if (teacherChanged) await sendTeacherReassigned(tx, b.id, b.teacherId, newTeacherId); // the ONE pair (TASK-436)
       return await finalize({ change: "move" as const, bookingId: b.id });
     });
   } catch (e: any) {
@@ -3748,6 +3751,9 @@ export async function moveBooking(
       // draws the new one. A move with no teacher change produces no adjustments, so date/time-only edits are
       // unchanged. `current.status` is used because a move never changes status.
       await reconcileBookingHolds(tx, id, patch.teacherId ?? current.teacherId, current.status, false);
+      // TASK-436 — a TEACHER change through this door tells both coaches (the pair the plan edit always sent); a
+      // date / time / note / rate-only move stays silent.
+      if (patch.teacherId && patch.teacherId !== current.teacherId) await sendTeacherReassigned(tx, id, current.teacherId, patch.teacherId);
     });
   } catch (e: any) {
     const code = pgErrorCode(e);
@@ -4122,6 +4128,26 @@ export async function setAttendeeNote(id: string, attendeeNote: string | null) {
 // flagged ended, and the plan owes nothing from then on. Deliberately absent, all of them decisions taken
 // elsewhere by a human: no refund, no `bo.movement`, no revenue reversal, no notification. Recording the
 // reason as an enum is what makes an `ADMIN_ERROR` sale findable when that decision is taken.
+
+/**
+ * TASK-439 — the ONE cancel branch a course end and a voucher end share: each doomed row ⇒ `CANCELLED` with the caller's fixed
+ * note (and its reason code, when the caller audits by code), then its freelance hold reconciled. 🔴 The holds line is NEW for
+ * the course end too (TASK-439, Sober's ruling): the end never reconciled the hours a CONFIRMED session held on a freelance
+ * coach's ceiling — the status cancel always did (`:3656`). Nothing else about the course end changed.
+ */
+async function cancelDoomedRows(
+  tx: any,
+  rows: Array<{ id: string; teacherId: string }>,
+  stamp: { note: string; cancelReason: string | null },
+) {
+  for (const b of rows) {
+    await tx
+      .update(bookings)
+      .set({ status: "CANCELLED", note: stamp.note, ...(stamp.cancelReason ? { cancelReason: stamp.cancelReason } : {}) })
+      .where(eq(bookings.id, b.id));
+    await reconcileBookingHolds(tx, b.id, b.teacherId, "CANCELLED", false);
+  }
+}
 
 async function loadCourseForEnd(exec: any, id: string) {
   const course = await exec.query.coursePackages.findFirst({
@@ -4844,12 +4870,7 @@ export async function endCourse(
     }
 
     const doomed = endableSessions<any>(rows);
-    for (const b of doomed) {
-      await tx
-        .update(bookings)
-        .set({ status: "CANCELLED", note: "ยกเลิกคอร์ส (จบคอร์สก่อนกำหนด)" })
-        .where(eq(bookings.id, b.id));
-    }
+    await cancelDoomedRows(tx, doomed, { note: "ยกเลิกคอร์ส (จบคอร์สก่อนกำหนด)", cancelReason: null }); // TASK-439: shared; + holds
     // TASK-370: an end is the same loss to a coach's week as a drop — same kind, `cause: "ended"`; the closed
     // end reason is the `Reason` he reads.
     await sendCourseDroppedToTeachers(tx, course, doomed, "ended", { cancelReason: input.reason, note: input.note?.trim() || null });
@@ -4871,5 +4892,77 @@ export async function endCourse(
       where: (c: any, { eq: e }: any) => e(c.id, id),
     });
     return { cancelled: true, removedSessions: doomed.length, course: toCourseSummary(updated) };
+  });
+}
+
+// ─────────── TASK-439 (REQ-103, SPEC-089 B) — cancel a WHOLE voucher, on the course-end shape ───────────
+//
+// The end freezes the FUTURE, never the past: every live draw dated today or later is soft-cancelled (`endableVoucherDraws`),
+// the voucher is stamped `endedAt/endedBy/endReason` (the course's closed `END_REASONS`), and no new draw may be made
+// (`voucherUsable` refuses it first). `usedHours` is untouched — an attended hour stays attended and its undo still returns
+// the hour (`returnsConsumedUnit`): the balance is frozen, readable, and never rewritten. No refund, no conversion, no family
+// notice (the owner's ruling); ONE `course_dropped_teacher` per coach for the CONFIRMED draws he loses, `cause: "voucher_ended"`.
+
+async function loadVoucherForEnd(exec: any, id: string) {
+  const voucher = await exec.query.vouchers.findFirst({
+    where: (v: any, { eq: e }: any) => e(v.id, id),
+    with: { student: true },
+  });
+  if (!voucher) throw notFound("ไม่พบวอยเชอร์");
+  const rows = await exec.query.bookings.findMany({
+    where: (b: any, { eq: e }: any) => e(b.voucherId, id),
+    with: { teacher: true, subject: true, student: true, coStudent: true },
+    orderBy: (b: any, { asc }: any) => [asc(b.date), asc(b.startTime)],
+  });
+  return { voucher, rows };
+}
+
+/** What ending this voucher WOULD remove — the course preview's shape + `remaining`, so the dialog is one component. */
+export async function previewVoucherEnd(id: string) {
+  const { voucher, rows } = await loadVoucherForEnd(db, id);
+  const doomed = endableVoucherDraws<any>(rows, fmtDate(new Date()));
+  const student = voucher.student ?? null;
+  return {
+    alreadyEnded: isVoucherEnded(voucher),
+    removedSessions: doomed.length,
+    sessions: doomed.map((b: any) => ({
+      date: b.date,
+      time: hhmm(b.startTime),
+      teacher: b.teacher?.nickname ?? b.teacher?.name ?? null,
+    })),
+    student: student ? { id: student.id, name: student.name, nickname: student.nickname ?? null } : null,
+    program: rows[0]?.subject?.name ?? null,
+    remaining: voucherRemaining(voucher),
+  };
+}
+
+/** End the voucher. **One transaction: any refusal changes zero rows.** The reason enum is the course's, validated here. */
+export async function endVoucher(
+  id: string,
+  input: { reason: string; note?: string | null },
+  actor?: string | null,
+) {
+  if (!input.reason) throw new ApiException(400, "REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิกวอยเชอร์");
+  if (!isEndReason(input.reason))
+    throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: END_REASONS });
+
+  return db.transaction(async (tx: any) => {
+    const { voucher, rows } = await loadVoucherForEnd(tx, id);
+    if (isVoucherEnded(voucher)) throw conflict("ALREADY_ENDED", VOUCHER_ENDED_MESSAGE);
+
+    const doomed = endableVoucherDraws<any>(rows, fmtDate(new Date()));
+    await cancelDoomedRows(tx, doomed, { note: "ยกเลิกวอยเชอร์ (ยกเลิกทั้งใบ)", cancelReason: input.reason });
+    await sendCourseDroppedToTeachers(tx, { id: voucher.id, size: voucher.totalHours }, doomed, "voucher_ended", { cancelReason: input.reason, note: input.note?.trim() || null });
+
+    await tx
+      .update(vouchers)
+      .set({ endedAt: new Date(), endReason: input.reason, endedBy: actor ?? null })
+      .where(eq(vouchers.id, id));
+
+    const updated = await tx.query.vouchers.findFirst({
+      where: (v: any, { eq: e }: any) => e(v.id, id),
+      with: { student: true },
+    });
+    return { cancelled: true, removedSessions: doomed.length, voucher: toVoucherDTO(updated) };
   });
 }

@@ -137,6 +137,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /vouchers": read(BOOKINGS),
   "POST /vouchers": act(BOOKINGS, "action:bookings.voucher-create"), // + `action:sales.discount` (service)
   "POST /vouchers/import": act(BOOKINGS, "action:bookings.voucher-import"),
+  "POST /vouchers/:id/cancel": act(BOOKINGS, "action:bookings.course-cancel"), // TASK-439 — the course-cancel key, reused (the owner's)
+  "POST /vouchers/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),
   // ── teachers (the list is read by FIVE pages) ──
   "GET /teachers": read(["menu:calendar", "menu:bookings", "menu:link-requests", "menu:reports", "menu:teachers"]),
   "POST /teachers": act(TEACHERS, "action:teachers.create"),

@@ -1,5 +1,5 @@
 // TASK-420 (`REQ-095 §13`, SPEC-085 B) — DUO = ONE course, TWO kids: migration `0048` (two NULL columns on course_packages,
-// one on bookings, the partial index as witness; 50 = 50), the ONE chokepoint for the row's second child (`insertBooking`
+// one on bookings, the partial index as witness; 52 = 52), the ONE chokepoint for the row's second child (`insertBooking`
 // reads the course; the two clones copy their template — pinned as a CENSUS of every `insert(bookings)`), the create by
 // VALUE through a fake tx (both kids guarded, the DUO price group, ONE sale at `course-balance-duo-{size}`, the rate
 // stored), the rate edits (course PATCH + the session move; Private ⇒ 400 NOT_DUO), the FOUR private family reads retired
@@ -51,9 +51,9 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
-  test("50 = 50: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(50);
-    expect(journal.entries.length).toBe(50);
+  test("52 = 52: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
+    expect(files.length).toBe(52);
+    expect(journal.entries.length).toBe(52);
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -144,6 +144,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
     spies.push(spyOn(salePost, "recordSale").mockImplementation((async (...args: any[]) => { sales.push(args); return { status: "posted" } as any; }) as any));
     spies.push(spyOn(parentSvc, "assertStudentActive").mockImplementation((async (_e: any, id: string) => { active.push(id); }) as any));
+    spies.push(spyOn(db.query.subjects, "findFirst").mockImplementation((async () => ({ id: SUBJ, priceGroup: "balance-duo", kind: "DUO" })) as any)); // 🔻 TASK-437: a DUO create needs a DUO subject
     const out = await sched.createCoursePackage({ ...body, duo: { coStudentId: B, classRateMinor: 40000 } });
     const course = inserted.find((r) => r.table === "coursePackages")!.v;
     expect(course).toMatchObject({ studentId: A, coStudentId: B, classRateMinor: 40000, size: 4, subjectId: SUBJ });
@@ -174,6 +175,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     const { tx, inserted } = fakeCreate();
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
     spies.push(spyOn(salePost, "recordSale").mockImplementation((async () => ({ status: "posted" })) as any));
+    spies.push(spyOn(db.query.subjects, "findFirst").mockImplementation((async () => ({ id: SUBJ, priceGroup: "balance-duo", kind: "DUO" })) as any)); // 🔻 TASK-437
     const guard = spyOn(parentSvc, "assertStudentActive").mockImplementation((async (_e: any, id: string) => { if (id === B) throw new ApiException(409, "STUDENT_ARCHIVED", "archived"); }) as any);
     spies.push(guard);
     await expect(sched.createCoursePackage({ ...body, duo: { coStudentId: A, classRateMinor: 0 } })).rejects.toMatchObject({ status: 400, code: "DUO_SAME_CHILD" });
@@ -185,7 +187,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     const C = region(SCHED, "export async function createCoursePackage(", "\n}\n");
     expect(C).toContain('const priceGroup = await resolvePriceGroup(input.subjectId, input.duo ? "DUO" : courseGroupKind);');
     expect(C).toContain("if (coStudentId === studentId) throw DUO_SAME_CHILD();\n      await assertStudentActive(tx, coStudentId);\n      await assertHouseholdNotSuspended(tx, coStudentId);");
-    expect(C).toContain("classRateMinor: input.duo ? input.duo.classRateMinor : null,");
+    expect(C).toContain("classRateMinor: input.duo?.classRateMinor ?? null,"); // 🔻 TASK-434: optional at create
     expect(C).toContain("with: { student: true, coStudent: true },");
     expect(C).not.toMatch(/classRateMinor[^\n]*recordSale|recordSale[^\n]*classRateMinor/); // the rate is never posted
   });
@@ -198,7 +200,7 @@ describe("🔴 the validators — `duo`, `duo` + `groupKey` ⇒ 400, the rate ed
     expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: B, classRateMinor: 0 } }).success).toBe(true);
     expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: B, classRateMinor: -1 } }).success).toBe(false);
     expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: B, classRateMinor: 1.5 } }).success).toBe(false);
-    expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: B } }).success).toBe(false);
+    expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: B } }).success).toBe(true); // 🔻 TASK-434 (REQ-102 §8): the rate is OPTIONAL at create
     expect(v.createCoursePackage.safeParse({ ...course, duo: { coStudentId: "nope", classRateMinor: 1 } }).success).toBe(false);
     const both = v.createCoursePackage.safeParse({ ...course, groupKey: GK, duo: { coStudentId: B, classRateMinor: 1 } });
     expect(both.success).toBe(false);

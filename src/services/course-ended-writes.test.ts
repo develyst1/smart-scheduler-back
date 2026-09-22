@@ -96,6 +96,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /vouchers/import": "unrelated",
   "POST /courses": "unrelated", // creates a new course
   "POST /vouchers": "unrelated",
+  "POST /vouchers/:id/cancel": "unrelated", // TASK-439: a VOUCHER end — its own ALREADY_ENDED on the voucher, no course
+  "POST /vouchers/:id/cancel/preview": "unrelated",
   "POST /badges/types": "unrelated",
   "PATCH /badges/types/:id": "unrelated",
   "POST /badges/values": "unrelated",
