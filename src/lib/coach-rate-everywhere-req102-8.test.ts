@@ -136,6 +136,6 @@ describe("🔴 the WRITE half on every rate-carrying writer — 403 with a rate 
     for (const f of ["src/lib/line-message.ts", "src/lib/daily-reminder.ts", "src/lib/line-today-schedule.ts"]) expect(code(src(f))).not.toMatch(/teacherRates|rateMinor|classRateMinor|effectiveMinor/);
     const API = code(src("src/routes/api.ts"));
     expect(API).toMatch(/\.put\("\/teachers\/:id\/budget", zValidator\("json", v\.setFreelanceBudget\), async \(c\) =>\n\s+c\.json\(await svc\.setFreelanceBudget\(/);
-    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(9);
+    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(11); // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH
   });
 });

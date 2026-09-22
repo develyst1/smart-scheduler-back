@@ -1,5 +1,5 @@
 // TASK-428 (`REQ-101`, SPEC-088 Part A) — the OTHER SERIES Manage-plan: migration `0049` (the key column + the partial index
-// as witness; 52 = 52), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
+// as witness; 53 = 53), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
 // doors by VALUE through fake txs (confirm-all = the bulk-confirm loop; cancel-all one tx + ONE summary notice per teacher
 // and NO per-row notice; add / remove / swap from a date on through ONE `seriesRowsFrom`, the first clash rolls back, the
 // primary refused, `ALREADY_ON_ROW` both ways; add dates copies the template; the header PATCH on every live row, no
@@ -77,9 +77,9 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("52 = 52: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(52);
-    expect(journal.entries.length).toBe(52);
+  test("53 = 53: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
+    expect(files.length).toBe(53);
+    expect(journal.entries.length).toBe(53);
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");
@@ -169,7 +169,7 @@ describe("🔴 the reads by VALUE — the header from the first LIVE row, every 
     expect(series.seriesRowsFrom(rows, "2026-10-12").map((r) => r.date)).toEqual(["2026-10-19", "2026-10-26"]);
     expect(series.seriesRowsFrom(rows, "2026-10-26").map((r) => r.date)).toEqual(["2026-10-26"]);
     expect(series.seriesRowsFrom(rows, "2027-01-01")).toEqual([]);
-    expect((SVC.match(/seriesRowsFrom\(rows, input\.fromDate \?\? today\(\)\)/g) ?? []).length).toBe(3); // add · remove · swap, the ONE reader
+    expect((SVC.match(/seriesRowsFrom\(rows, input\.fromDate \?\? today\(\)\)/g) ?? []).length).toBe(4); // add · remove · swap (+ 🔻 TASK-441: the GROUP swap's anchor), the ONE reader
   });
 });
 
@@ -281,9 +281,10 @@ describe("🔴 the doors by VALUE through a fake tx — one tx; the first clash 
     expect(await series.confirmAllOtherSeries(K)).toEqual({ confirmed: 1, skipped: 0, results: [{ id: "b3", outcome: "confirmed" }] });
     expect(region(SVC, "export async function confirmAllOtherSeries(", "\n}\n")).toContain('await bulkConfirm(rows.filter((r) => r.status === "PENDING").map((r) => r.id));');
   });
-  test("🚫 nothing on GROUP / CAMP: the series file never writes groupKey / groupId / campWeekDayId, never posts money", () => {
-    expect(SVC).not.toMatch(/groupKey|groupId|campWeekDayId|recordSale|recordRental|ratePostedAt/);
-    expect(SVC).toContain('a(e(b.otherSeriesKey, key), e(b.bookingType, "OTHER"))'); // the ONE read, OTHER rows only
+  test("🚫 nothing on CAMP, no money: the series file never writes campWeekDayId, never posts money (🔻 TASK-441: it now serves a GROUP series by `{ groupKey }` — the OTHER callers pass a bare string, byte-identical)", () => {
+    expect(SVC).not.toMatch(/campWeekDayId|recordSale|recordRental|ratePostedAt/);
+    expect(SVC).toContain('a(e(b[k.field], k.value), e(b.bookingType, k.type))'); // the ONE read — 🔻 TASK-441: the column + the row type from the key kind (a bare string ⇒ otherSeriesKey + OTHER, pinned by value below)
+    expect(SVC).toContain('typeof k === "string" ? { field: "otherSeriesKey", value: k, type: "OTHER" }');
   });
 });
 

@@ -1,5 +1,5 @@
 // TASK-439 (`REQ-103`, SPEC-089 B) — a WHOLE voucher cancelled on the course-end shape: migration `0051` (three nullable
-// columns + the CHECK ⇔ `END_REASONS` as witness; 52 = 52), `voucherStatus` (ENDED > EXPIRED > EXHAUSTED > ACTIVE) on the DTO,
+// columns + the CHECK ⇔ `END_REASONS` as witness; 53 = 53), `voucherStatus` (ENDED > EXPIRED > EXHAUSTED > ACTIVE) on the DTO,
 // `endableVoucherDraws` (live AND today-or-later — the past is the day-end's), `voucherUsable` refusing an ended voucher FIRST
 // (the draw / the picker / the SOM through the ONE gate; the creator's 409 before any write), `endVoucher` by value through a
 // fake tx (the doomed rows CANCELLED + note + `cancel_reason` + holds reconciled per row, `used_hours` never written, the stamp,
@@ -73,9 +73,9 @@ describe("🔴 the migration — 0051, counted, three nullable columns on a smal
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0051_voucher_end.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("52 = 52: `0051_voucher_end` is the 52nd file, idx 51, the last; 'expects 52'; the six statements", () => {
-    expect(files.length).toBe(52);
-    expect(journal.entries.length).toBe(52);
+  test("53 = 53: `0051_voucher_end` is the 52nd file, idx 51 (TASK-443 added 0052 after it); 'expects 52'; the six statements", () => {
+    expect(files.length).toBe(53);
+    expect(journal.entries.length).toBe(53);
     expect(files[51]).toBe("0051_voucher_end.sql");
     expect(journal.entries[51]).toMatchObject({ idx: 51, tag: "0051_voucher_end" });
     expect(sql).toContain("`db:verify` expects 52");
@@ -94,7 +94,7 @@ describe("🔴 the migration — 0051, counted, three nullable columns on a smal
     expect(list).toEqual([...END_REASONS]);
   });
   test("the witness is the LAST entry, a constraint-def probe on the 4th code; the schema's three columns", () => {
-    const last = SCHEDULING_WITNESSES[SCHEDULING_WITNESSES.length - 1]!;
+    const last = SCHEDULING_WITNESSES.find((w) => w.tag === "0051_voucher_end")!; // 🔻 TASK-443: 0052 is the last now
     expect(last).toMatchObject({ tag: "0051_voucher_end", probe: { kind: "constraint-def", constraint: "vouchers_end_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     const VS = region(code(src("src/db/schema.ts")), "export const vouchers = pgTable(", "\n});");
     expect(VS).toContain('endedAt: timestamp("ended_at", { withTimezone: true }),');

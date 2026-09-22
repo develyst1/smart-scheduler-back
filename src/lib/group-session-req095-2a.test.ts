@@ -41,11 +41,11 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("52 = 52 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(52);
+  test("53 = 53 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
+    expect(files.length).toBe(53);
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(52);
+    expect(j.entries.length).toBe(53);
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -337,6 +337,6 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.group-series")).toEqual({ key: "action:calendar.group-series", area: "calendar", labelTh: "สร้างกลุ่ม DUO/Group เป็นชุด", labelEn: "Create a DUO/Group series" });
     expect(ROUTE_ACCESS["POST /bookings/group-series"]).toEqual({ menus: ["menu:calendar", "menu:bookings"], action: "action:calendar.group-series" });
     expect(ROUTE_ACCESS["PATCH /bookings/:id/group-teacher"]!.action).toBe("action:calendar.booking-edit");
-    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.group-series").map(([k]) => k)).toEqual(["POST /bookings/group-series"]);
+    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.group-series").map(([k]) => k).sort()).toEqual(["POST /bookings/group-series", "POST /group-series/:key/dates"]); // 🔻 TASK-441: adding dates to a group series = the same act
   });
 });

@@ -1084,6 +1084,8 @@ export const campDays = pgTable(
     checkinToken: text("checkin_token"),
     checkinTokenExpiresAt: timestamp("checkin_token_expires_at", { withTimezone: true }),
     undoReason: text("undo_reason"),
+    /** TASK-443 (`0052`) — the day-end `camp_deduction` family notice was sent (the stamp is the idempotency). */
+    deductionNotifiedAt: timestamp("deduction_notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
@@ -1123,6 +1125,23 @@ export const campWeekDays = pgTable(
 export const campWeekDaysRelations = relations(campWeekDays, ({ one, many }) => ({
   week: one(campWeeks, { fields: [campWeekDays.campWeekId], references: [campWeeks.id] }),
   rows: many(bookings),
+  rates: many(campWeekDayRates), // TASK-443
+}));
+
+// TASK-443 (REQ-104 §2 item 4, `0052`) — the per-coach-per-day rate on a camp day (behind key 59): one row per coach per day,
+// the `booking_teachers` shape. A coach with no row reads 0; the ONE sync copies the rate onto the derived rows.
+export const campWeekDayRates = pgTable(
+  "camp_week_day_rates",
+  {
+    campWeekDayId: uuid("camp_week_day_id").notNull().references(() => campWeekDays.id, { onDelete: "cascade" }),
+    teacherId: uuid("teacher_id").notNull().references(() => teachers.id, { onDelete: "restrict" }),
+    rateMinor: integer("rate_minor").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.campWeekDayId, t.teacherId] })],
+);
+export const campWeekDayRatesRelations = relations(campWeekDayRates, ({ one }) => ({
+  day: one(campWeekDays, { fields: [campWeekDayRates.campWeekDayId], references: [campWeekDays.id] }),
+  teacher: one(teachers, { fields: [campWeekDayRates.teacherId], references: [teachers.id] }),
 }));
 
 export const usersRelations = relations(users, ({ many, one }) => ({

@@ -54,6 +54,13 @@ export const internalJobs = new Hono()
     if (err) return err;
     return c.json(await jobs.runDailyReminderJob(c.req.valid("json").date));
   })
+  // TASK-441 (REQ-104 §2): the Monday 08:15 weekly coach digest — one `weekly_schedule_teacher` per teacher with a CONFIRMED
+  // row in Mon–Sun, send-once per teacher per week, and it ALWAYS writes a job_runs row.
+  .post("/jobs/weekly-teacher-digest", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await jobs.runWeeklyTeacherDigestJob(c.req.valid("json").date));
+  })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {
     const err = internalSecretError(c);

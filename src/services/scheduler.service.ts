@@ -1666,7 +1666,7 @@ export async function swapGroupTeacher(id: string, input: { teacherId: string; f
  * the audit note, and the make-up re-owed by `reconcileCoursePlan` (SPEC-028 §11.3) — in the caller's transaction.
  * The coach is told ONCE, by the group row's own cancel (the caller); a seat sends no teacher notice of its own.
  */
-async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {
+export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) { // TASK-441: exported — the group series cancel-all cascades through it
   const seats = await tx.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES])),
   });

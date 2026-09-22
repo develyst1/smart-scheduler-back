@@ -65,7 +65,7 @@ describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is
     expect(code(src("src/services/scheduler.service.ts"))).toContain('.set({ status: "CONFIRMED", confirmedAt: new Date() })');
     expect(JOB).toContain('eq(bookings.status, "CONFIRMED")');
   });
-  test("52 = 52 — REQ-094 added no migration (0038 … 0051 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(52);
+  test("53 = 53 — REQ-094 added no migration (0038 … 0052 are other tasks')", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(53);
   });
 });

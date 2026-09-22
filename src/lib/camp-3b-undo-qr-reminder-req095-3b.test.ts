@@ -1,7 +1,7 @@
 // TASK-403 (`REQ-095` Stage 3b + `REQ-096`, SPEC-082) — the 08:15 reminder CONFIRMED-only (one constant, both
 // audiences, the seats), the UNDO of a consumed camp day (units back, floored, a reason, no money), the camp DAY's
 // check-in QR (lazy token, 23:59:59 expiry, the public scan through the SAME `markDay`, 410 / 409s), the camp-day
-// reminder's SEND PATH behind `camp_reminder_enabled` (default off) with PLACEHOLDER labels. Migration `0043` — 52 = 52.
+// reminder's SEND PATH behind `camp_reminder_enabled` (default off) with PLACEHOLDER labels. Migration `0043` — 53 = 53.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -41,9 +41,9 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
-  test("52 = 52: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(52);
-    expect(journal.entries.length).toBe(52);
+  test("53 = 53: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
+    expect(files.length).toBe(53);
+    expect(journal.entries.length).toBe(53);
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");
@@ -152,7 +152,7 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     expect(P).not.toMatch(/checkinToken|generateCheckinToken/);
     const C = region(SVC, "export async function checkinCampByToken(", "const dayDTO");
     expect(C).toContain("const outcome = campScanOutcome(d, today, new Date());");
-    expect(C).toContain('if (outcome === "already") return { already: true, day: dayDTO(d) };');
+    expect(C).toContain('if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };'); // 🔻 TASK-443: + the credit
     expect(C).toContain('await markDay(d.id, "ATTENDED", "checkin-qr");');
     expect(SVC).not.toMatch(/awardCrmPoints|CRM_POINT_RULES/);
     const RT = src("src/routes/checkin.ts");

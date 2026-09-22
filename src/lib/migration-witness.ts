@@ -529,6 +529,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "Rerunnable: the columns IF NOT EXISTS, the constraint dropped-if-exists first.",
     rerunnable: true,
   },
+  {
+    tag: "0052_camp_day_rates",
+    probe: { kind: "table", table: "camp_week_day_rates" },
+    why:
+      "TASK-443 (REQ-104 §2). camp_days.deduction_notified_at (the day-end camp_deduction stamp) + the camp_week_day_rates " +
+      "table (one row per coach per day, behind key 59) — the table is the LAST object and the witness. Rerunnable: IF NOT " +
+      "EXISTS on both.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

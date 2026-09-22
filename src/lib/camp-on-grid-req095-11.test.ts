@@ -3,7 +3,7 @@
 // (the type ⇔ kind pin knows it; the HUMAN validators do not), the pure window rules + the wanted set + the diff + the
 // reminder fold (by value), the ONE `syncCampDayRows` by VALUE through a fake tx (insert / delete / clash rollback /
 // CONFIRMED at birth / a closed week holds nothing), the lifecycle by source (five callers, `edited_at`), the per-day
-// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 52 = 52.
+// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 53 = 53.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0047, counted, the day table + the window + the
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0047_camp_week_days.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("52 = 52: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
-    expect(files.length).toBe(52);
-    expect(journal.entries.length).toBe(52);
+  test("53 = 53: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
+    expect(files.length).toBe(53);
+    expect(journal.entries.length).toBe(53);
     expect(files[47]).toBe("0047_camp_week_days.sql");
     expect(journal.entries[47]).toMatchObject({ idx: 47, tag: "0047_camp_week_days" });
     expect(sql).toContain("`db:verify` expects 48");
@@ -141,6 +141,7 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
         campWeekDays: { findFirst: async () => ({ ...o.day, week: o.week }) },
         teachers: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, v: string) => { probe.push(v); return null; } }); return { id: probe[0], nickname: probe[0] === T1 ? "เอก" : "บี" }; } },
         bookings: { findFirst: async () => null },
+        campWeekDayRates: { findMany: async () => [] }, // 🔻 TASK-443: the day's rates (none ⇒ 0)
       },
       select: () => ({ from: () => ({ where: async () => o.existing }) }),
       delete: () => ({ where: async (w: any) => { log.push(["delete", w]); }, }),
@@ -160,8 +161,9 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
       expect(r).toEqual({ inserted: 2, deleted: 1 });
       const inserts = f.log.filter((l) => l[0] === "insert");
       expect(inserts.map((l) => l[2].startTime)).toEqual(["11:00", "12:00"]);
-      for (const [, studentId, input] of inserts) { expect(studentId).toBeNull(); expect(input).toMatchObject({ teacherId: T1, subjectId: null, date: "2026-10-05", bookingType: "OTHER", otherTitle: "Camp A", otherKind: "CAMP", status: "CONFIRMED" }); expect(input.headCount).toBeUndefined(); expect(input.teacherRates).toBeUndefined(); }
-      expect(f.log.filter((l) => l[0] === "update").map((l) => l[1].campWeekDayId)).toEqual([D1, D1]);
+      for (const [, studentId, input] of inserts) { expect(studentId).toBeNull(); expect(input).toMatchObject({ teacherId: T1, subjectId: null, date: "2026-10-05", bookingType: "OTHER", otherTitle: "Camp A", otherKind: "CAMP", status: "CONFIRMED" }); expect(input.headCount).toBeUndefined(); expect(input.teacherRates).toEqual({ [T1]: 0 }); } // 🔻 TASK-443: the coach's DAY rate rides the row (0 = no rate row)
+      expect(f.log.filter((l) => l[0] === "update" && l[1].campWeekDayId).map((l) => l[1].campWeekDayId)).toEqual([D1, D1]);
+      expect(f.log.filter((l) => l[0] === "update" && "teacherRateMinor" in l[1]).map((l) => l[1])).toEqual([{ teacherRateMinor: 0 }]); // 🔻 TASK-443: the kept rows re-stamped, one update per coach on the day
       expect(f.log.filter((l) => l[0] === "delete").length).toBe(1);
     } finally { f.restore(); }
   });
@@ -207,7 +209,8 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
     expect(P).toContain("editedAt: new Date()");
     expect(P).toContain("return syncCampDayRows(tx, d.id);");
     expect((SVC.match(/syncCampDayRows\(tx, /g) ?? []).length).toBe(4); // createWeek · updateWeek ×2 (reopen, re-derive) · the per-day swap
-    expect(code(src("src/routes/camp.ts"))).toContain('.patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json"))))');
+    expect(code(src("src/routes/camp.ts"))).toContain('.patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => {'); // 🔻 TASK-443: + `assertMayEditCoachRate` before the service
+    expect(code(src("src/routes/camp.ts"))).toContain('return c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json")));');
     expect((ROUTE_ACCESS as any)["PATCH /camp/weeks/:id/days/:date"]).toEqual({ menus: ["menu:camp"], action: "action:camp.week-open" });
     expect(TEACHER_ALLOWED.has("PATCH /camp/weeks/:id/days/:date")).toBe(false);
     expect(v.updateCampWeekDay.safeParse({}).success).toBe(false);
@@ -229,7 +232,7 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
     expect(J).toContain("otherKind: r.otherKind ?? null,");
     // no price, no rate, no head count on the derived row ⇒ the day-end's OTHER post returns false (`otherPriceMinor == null && otherPriceItemId == null`)
     const S = region(SVC, "export async function syncCampDayRows(", "async function deleteCampDayRows(");
-    expect(S).not.toMatch(/otherPriceMinor|otherPriceItemId|teacherRates|headCount|recordSale|recordRevenue/);
+    expect(S).not.toMatch(/otherPriceMinor|otherPriceItemId|headCount|recordSale|recordRevenue/); // 🔻 TASK-443: `teacherRates` now rides the row (a RATE, not a PRICE — the OTHER post still answers false)
     expect(J).toContain("if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;");
     // the freelance hold: OTHER rows return early
     expect(SCHED).toContain('if (booking?.bookingType === "OTHER") return;');

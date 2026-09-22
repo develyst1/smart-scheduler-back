@@ -28,7 +28,7 @@ import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from 
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, groupKindOf, resolvePriceGroup } from "./scheduler.service";
-import { cutCampDays } from "./camp.service";
+import { cutCampDays, notifyCampDeductions } from "./camp.service";
 import { notifyCourseDeduction, remainingLabel } from "../lib/course-deduction";
 import { joinCoaches } from "../lib/coach-names";
 import { familyLineUserIdsBulk } from "../lib/family-link";
@@ -38,6 +38,7 @@ import { REMINDER_JOB, reminderRanOn } from "../lib/reminder-run";
 import { rentalPrintLine } from "../lib/rental-row";
 import { REMINDABLE, dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 import { campReminderSends } from "../lib/camp-reminder";
+import { WEEKLY_DIGEST_JOB, groupWeekRows, weekOf, weeklyDigestKey } from "../lib/weekly-digest";
 import { campReminderInputs } from "./camp.service";
 import { getSetting } from "./settings.service";
 
@@ -123,10 +124,11 @@ export async function runEndOfDayJob(date?: string) {
     // TASK-401 (REQ-095 Stage 3a) — the CAMP DAY CUT, in the SAME transaction: every PLANNED camp day whose date has
     // started (`date <= runDate`) ⇒ ATTENDED, its units consumed. A day has no start time, so "started" is the date.
     const campDaysAutoAttended = await cutCampDays(tx, runDate);
+    const campDeductionsNotified = await notifyCampDeductions(tx, runDate); // TASK-443 — after the cut, so the credit it prints is post-consumption
 
     // Named for what they now are: sessions the job marked attended because nobody marked them. A `job_runs`
     // reader must not be able to read "noShow" out of a system that can no longer produce one.
-    return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended, campDaysAutoAttended };
+    return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended, campDaysAutoAttended, campDeductionsNotified };
   });
 
   // 🔴 REQ-070 / TASK-180 — a consequence worth naming, because it is money. This select is
@@ -548,4 +550,37 @@ export async function runDailyReminderJob(date?: string) {
   });
 
   return { date: runDate, attempted: true, sent, skipped, alreadyReminded, priorRunToday, ...reach, campEnabled, campReminded, campSkipped, campAlready };
+}
+
+// ─────── TASK-441 (REQ-104 §2 item 2) — the Monday weekly coach digest ───────
+//
+// The SAME shape as the daily reminder: a Windows Task Scheduler exe (`scripts/weekly-teacher-digest.ts`) hits
+// `POST /internal/jobs/weekly-teacher-digest` on Monday 08:15 (the human registers the task — a deploy line), the job builds
+// ONE `weekly_schedule_teacher` row per teacher with ≥ 1 CONFIRMED row in Mon–Sun, send-once by `weekly-teacher:<id>:<weekStart>`,
+// and ALWAYS writes a `job_runs` row (TASK-208's lesson: a job never registered on the box must stay visible). A teacher with
+// nothing that week gets nothing. No flag: the words are the owner's (REQ-104 §3), not placeholders.
+export async function runWeeklyTeacherDigestJob(date?: string) {
+  const runDate = date ?? bangkokNow().date;
+  const { weekStart, weekEnd } = weekOf(runDate);
+  const rows = await db.query.bookings.findMany({
+    where: (b: any, { and: a, gte: g, lte: l }: any) => a(g(b.date, weekStart), l(b.date, weekEnd)),
+    with: { teacher: true, student: true, coStudent: true, subject: true, additionalTeachers: { with: { teacher: true } } },
+  });
+  const groups = groupWeekRows(rows);
+  let sent = 0, skipped = 0, duplicate = 0;
+  for (const g of groups) {
+    const result = await enqueueLine({
+      recipientType: "teacher",
+      recipientLineUserId: g.lineUserId,
+      payload: { kind: "weekly_schedule_teacher", weekStart, rows: g.rows },
+      skipReason: g.lineUserId ? undefined : "ยังไม่ผูก LINE",
+      idempotencyKey: weeklyDigestKey(g.teacherId, weekStart),
+    });
+    if (result.status === "duplicate") duplicate++;
+    else if (result.status === "skipped") skipped++;
+    else sent++;
+  }
+  const summary = { weekStart, weekEnd, teachers: groups.length, sent, skipped, duplicate };
+  await db.insert(jobRuns).values({ job: WEEKLY_DIGEST_JOB, runDate, status: "success", summary, finishedAt: new Date() });
+  return { date: runDate, ...summary };
 }

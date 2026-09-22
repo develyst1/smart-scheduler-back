@@ -75,6 +75,17 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "PATCH /other-series/:key/teacher": act(["menu:calendar"], "action:calendar.booking-edit"),
   "POST /other-series/:key/dates": act(["menu:calendar"], "action:calendar.other-series"),
   "PATCH /other-series/:key": act(["menu:calendar"], "action:calendar.booking-edit"),
+  // TASK-441 (REQ-104) — the GROUP series: the OTHER twins' keys one-for-one (cancel-all = key 58); confirm-whole-group =
+  // `bookings.course-confirm` (it confirms COURSES — the owner's ruling); add dates = the group-series act.
+  "GET /group-series": read(["menu:calendar"]),
+  "GET /group-series/:key": read(["menu:calendar"]),
+  "POST /group-series/:key/confirm-all": act(["menu:calendar"], "action:bookings.course-confirm"),
+  "POST /group-series/:key/cancel-all": act(["menu:calendar"], "action:calendar.other-cancel-all"),
+  "POST /group-series/:key/teachers": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "DELETE /group-series/:key/teachers/:teacherId": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "PATCH /group-series/:key/teacher": act(["menu:calendar"], "action:calendar.booking-edit"),
+  "POST /group-series/:key/dates": act(["menu:calendar"], "action:calendar.group-series"),
+  "PATCH /group-series/:key": act(["menu:calendar"], "action:calendar.booking-edit"),
   "POST /bookings/group-series": act(CAL_BOOK, "action:calendar.group-series"), // TASK-397 — its own act
   "PATCH /bookings/:id/group-teacher": act(CAL_BOOK, "action:calendar.booking-edit"), // TASK-397 — an edit
   "PATCH /bookings/:id/badges": act(CAL_BOOK, "action:calendar.badges"),

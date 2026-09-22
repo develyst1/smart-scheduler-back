@@ -165,7 +165,7 @@ describe("🔑 the routes — super admin only, through the ROOT app (the dev us
 describe("🔴 the source — actor = username everywhere, the env login retired, the guard, the migration", () => {
   test("🔑 zero `.sub` actors: every actor site in the router is `actorOf(c)` — 14 of them — and no route reads `c.get(\"user\")?.sub`", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(18); // 🔻 TASK-439: + `POST /vouchers/:id/cancel` // 🔻 TASK-428: + `POST /other-series/:key/cancel-all` // 🔻 TASK-411: + `POST /parents/:id/archive` // 🔻 TASK-406: + `POST /teachers/me/leave` // 🔻 TASK-390: + `DELETE /courses/:id/rental`; 🔻 TASK-392: + `POST /students/:id/archive`
+    expect((API.match(/actorOf\(c\)/g) ?? []).length).toBe(19); // 🔻 TASK-441: + `POST /group-series/:key/cancel-all` // 🔻 TASK-439: + `POST /vouchers/:id/cancel` // 🔻 TASK-428: + `POST /other-series/:key/cancel-all` // 🔻 TASK-411: + `POST /parents/:id/archive` // 🔻 TASK-406: + `POST /teachers/me/leave` // 🔻 TASK-390: + `DELETE /courses/:id/rental`; 🔻 TASK-392: + `POST /students/:id/archive`
     for (const f of ["src/routes/api.ts", "src/routes/users.ts", "src/routes/auth.ts", "src/routes/register.ts", "src/routes/checkin.ts"]) {
       expect({ f, subActor: code(src(f)).includes('c.get("user")?.sub') }).toEqual({ f, subActor: false });
     }
@@ -213,12 +213,12 @@ describe("🔴 the source — actor = username everywhere, the env login retired
     expect(SVC).toContain("if (!input.isSuperAdmin && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
     expect(SVC).toContain("if (disabled && wouldRemoveLastSuperAdmin(row, await otherEnabledSuperAdmins(id))) throw LAST_SUPER_ADMIN();");
   });
-  test("🔴 52 = 52 (0037 … 0051 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
+  test("🔴 53 = 53 (0037 … 0052 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(52);
+    expect(files.length).toBe(53);
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(52);
+    expect(j.entries.length).toBe(53);
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");

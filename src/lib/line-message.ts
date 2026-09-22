@@ -8,6 +8,8 @@ import { ddmmyyyy } from "./time";
 import { isEndReason } from "./course-plan";
 import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
+import { renderWeeklySchedule, type WeekRow } from "./weekly-digest";
+import { renderCampDeduction } from "./camp-deduction";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
   notifyTypeOf,
@@ -377,6 +379,14 @@ function buildOutboxMessage(
     }
     case "daily_reminder":
       return renderTodaySchedule((payload.rows as TodayRow[]) ?? [], lang, recipientType);
+    // TASK-441 (REQ-104 §3) — the Monday weekly coach digest: ENGLISH ONLY by the owner's ruling — no `t()`, no `lang`
+    // (pinned: no Thai code point under either `line_lang`). The rows are in the payload (`lib/weekly-digest.ts` builds them).
+    case "weekly_schedule_teacher":
+      return renderWeeklySchedule(Array.isArray(payload.rows) ? (payload.rows as WeekRow[]) : []);
+    // TASK-443 (REQ-104 §3) — the day-end camp credit notice to the family: ENGLISH ONLY by the owner's ruling — no `t()`, no
+    // `lang`. A camp day has no booking row, so the payload carries everything (`camp.service.ts` `notifyCampDeductions`).
+    case "camp_deduction":
+      return renderCampDeduction(payload as any);
     // TASK-403 / TASK-405 (REQ-095 Stage 3b) — the camp-day reminder, THE OWNER'S copy (§0 via @Porter). Everything is IN
     // THE PAYLOAD (`lib/camp-reminder.ts` builds the rows). Under the same `⏱️TODAY'S SCHEDULE:` title:
     //   teacher — per OPEN week: `Camp : <week>` · `Date : DD/MM/YYYY` · `Students : n (Full x · AM y · PM z)` · the

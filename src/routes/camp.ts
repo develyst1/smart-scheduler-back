@@ -5,6 +5,8 @@ import * as camp from "../services/camp.service";
 import { actorOf } from "../services/user.service";
 import { assertMayDiscount } from "../lib/discount-plan";
 import { campPriceList } from "../lib/sale-items";
+import { viewerOf } from "../lib/budget-visibility";
+import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
 // TASK-401 (REQ-095 Stage 3a, SPEC-082) — Balance camp. Mounted at `/api/camp` behind the guard; the access table maps
 // every read to `menu:camp` and every write to its own act. The sale's discount (early bird) is gated like every other
@@ -15,7 +17,10 @@ export const campRoutes = new Hono()
   .post("/weeks", zValidator("json", v.createCampWeek), async (c) => c.json(await camp.createWeek(c.req.valid("json"), actorOf(c)), 201))
   .patch("/weeks/:id", zValidator("json", v.updateCampWeek), async (c) => c.json(await camp.updateWeek(c.req.param("id"), c.req.valid("json"))))
   // TASK-418 (REQ-095 §11) — the per-day SWAP: the day's teachers / window; the ONE sync re-derives the grid rows.
-  .patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json"))))
+  .patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-443 — `teacherRates` ⇒ key 59; teachers / window alone pass
+    return c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json")));
+  })
   .get("/weeks/:id/days", async (c) => c.json(await camp.weekDays(c.req.param("id"))))
   .get("/packages", zValidator("query", v.campPackagesQuery), async (c) => c.json(await camp.listPackages(c.req.valid("query").studentId)))
   .post("/packages", zValidator("json", v.createCampPackage), async (c) => {

@@ -320,6 +320,31 @@ export const api = new Hono()
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59; title / kind / heads alone pass
     return c.json(await otherSeries.updateOtherSeries(c.req.param("key"), c.req.valid("json")));
   })
+  // TASK-441 (REQ-104 §2 item 3) — the GROUP series Manage-plan: the SAME service by `{ groupKey }`. Cancel-all cascades to
+  // every seat (each family told); confirm-all confirms every seated course; the primary swap delegates to `swapGroupTeacher`.
+  .get("/group-series", zValidator("query", v.otherSeriesQuery), async (c) => c.json(await otherSeries.listOtherSeries(c.req.valid("query"), "GROUP")))
+  .get("/group-series/:key", async (c) => c.json(await otherSeries.getOtherSeries({ groupKey: c.req.param("key") })))
+  .post("/group-series/:key/confirm-all", async (c) => c.json(await otherSeries.confirmAllOtherSeries({ groupKey: c.req.param("key") })))
+  .post("/group-series/:key/cancel-all", zValidator("json", v.otherSeriesCancelAll), async (c) =>
+    c.json(await otherSeries.cancelAllOtherSeries({ groupKey: c.req.param("key") }, c.req.valid("json"), actorOf(c))),
+  )
+  .post("/group-series/:key/teachers", zValidator("json", v.otherSeriesAddTeacher), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // key 59 when a rate rides
+    return c.json(await otherSeries.addTeacherToOtherSeries({ groupKey: c.req.param("key") }, c.req.valid("json")), 201);
+  })
+  .delete("/group-series/:key/teachers/:teacherId", zValidator("query", v.otherSeriesFromQuery), async (c) =>
+    c.json(await otherSeries.removeTeacherFromOtherSeries({ groupKey: c.req.param("key") }, c.req.param("teacherId"), c.req.valid("query"))),
+  )
+  .patch("/group-series/:key/teacher", zValidator("json", v.groupSeriesSwap), async (c) =>
+    c.json(await otherSeries.swapGroupSeriesTeacher({ groupKey: c.req.param("key") }, c.req.valid("json"))),
+  )
+  .post("/group-series/:key/dates", zValidator("json", v.otherSeriesDates), async (c) =>
+    c.json(await otherSeries.addDatesToOtherSeries({ groupKey: c.req.param("key") }, c.req.valid("json")), 201),
+  )
+  .patch("/group-series/:key", zValidator("json", v.groupSeriesPatch), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // key 59 when `teacherRates` rides
+    return c.json(await otherSeries.updateOtherSeries({ groupKey: c.req.param("key") }, c.req.valid("json")));
+  })
   // TASK-397 (REQ-095 Stage 2a) — a DUO/Group SERIES: N GROUP rows under one key, all or nothing (409 naming the date).
   .post("/bookings/group-series", zValidator("json", v.groupSeries), async (c) => {
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59

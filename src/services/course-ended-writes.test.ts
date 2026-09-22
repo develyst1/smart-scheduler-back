@@ -129,6 +129,15 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "PATCH /other-series/:key/teacher": "unrelated",
   "POST /other-series/:key/dates": "unrelated",
   "PATCH /other-series/:key": "unrelated",
+  // TASK-441 — the GROUP series: rows are GROUP bookings, not course sessions; confirm-all reaches the seated courses through
+  // `confirmCourse` (its own `assertCourseWritable` — an ended course is reported skipped, never revived).
+  "POST /group-series/:key/confirm-all": "unrelated",
+  "POST /group-series/:key/cancel-all": "unrelated",
+  "POST /group-series/:key/teachers": "unrelated",
+  "DELETE /group-series/:key/teachers/:teacherId": "unrelated",
+  "PATCH /group-series/:key/teacher": "unrelated",
+  "POST /group-series/:key/dates": "unrelated",
+  "PATCH /group-series/:key": "unrelated",
   // TASK-397 (REQ-095 Stage 2a) — a GROUP row never names a course (it has no student); the swap moves seats of LIVE
   // group dates only, and an ended course's rows are not live. Classified deliberately, not by default.
   "POST /bookings/group-series": "unrelated",

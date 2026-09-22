@@ -2,9 +2,12 @@
 // The rules are pure in `lib/camp.ts`; this file is the reads, the transactions and the one revenue post — the
 // VOUCHER's sale shape (validate the discount against the LINE total BEFORE any write → the rows in one tx →
 // `recordSale` after the tx on an idempotency key). 🚫 No expiry, no per-day revenue, no slot block, no LINE.
-import { and, asc, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookings, campDays, campPackages, campWeekDays, campWeeks } from "../db/schema";
+import { bookings, campDays, campPackages, campWeekDayRates, campWeekDays, campWeeks } from "../db/schema";
+import { unitsToDays } from "../lib/camp-deduction";
+import { householdLineUserIds } from "../lib/family-link";
+import { enqueueLine } from "../lib/line";
 import { ApiException, badRequest, conflict, notFound } from "../lib/http";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
@@ -105,7 +108,7 @@ export async function weekDays(id: string) {
   const rows = await db.query.campDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { package: { with: { student: true } } }, orderBy: (d, { asc: a }) => [a(d.date)] });
   const byDate = new Map<string, any[]>();
   for (const r of rows) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
-  const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id) }); // TASK-418
+  const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { rates: true } }); // TASK-418; TASK-443: + the day's rates
   const dayByDate = new Map(dayRows.map((d) => [d.date, d]));
   const days = datesOfWeek(w.startDate, w.endDate).map((date) => {
     const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
@@ -116,7 +119,24 @@ export async function weekDays(id: string) {
 }
 
 // ───────────── TASK-418 (REQ-095 §11, SPEC-085 A) — the camp BLOCK on the grid ─────────────
-const toDayDTO = (d: any) => ({ campWeekDayId: d?.id ?? null, teacherIds: d?.teacherIds ?? [], startTime: hm(d?.startTime), endTime: hm(d?.endTime), editedAt: d?.editedAt ? new Date(d.editedAt).toISOString() : null });
+const toDayDTO = (d: any) => ({ campWeekDayId: d?.id ?? null, teacherIds: d?.teacherIds ?? [], startTime: hm(d?.startTime), endTime: hm(d?.endTime), editedAt: d?.editedAt ? new Date(d.editedAt).toISOString() : null, teacherRates: dayRatesOf(d) });
+
+// ───────────── TASK-443 (REQ-104 §2 item 4) — the per-coach-per-day rate (behind key 59) ─────────────
+/** `{ teacherId: minor }` for every coach ON the day — 0 when no rate row exists (the new-day default is the absence of a row). */
+const dayRatesOf = (d: any): Record<string, number> => {
+  const out: Record<string, number> = {};
+  const set = new Map<string, number>((d?.rates ?? []).map((r: any) => [r.teacherId, r.rateMinor]));
+  for (const t of d?.teacherIds ?? []) out[t] = set.get(t) ?? 0;
+  return out;
+};
+export const RATE_TEACHER_NOT_ON_DAY = () => badRequest("ตั้งค่าเรทได้เฉพาะครูที่อยู่ในวันนี้");
+/** Upsert the day's rates (a coach not on the day ⇒ 400). The caller's tx; the sync copies them onto the rows after. */
+async function upsertDayRates(tx: any, dayId: string, coaches: string[], rates: Record<string, number>) {
+  for (const [teacherId, rateMinor] of Object.entries(rates)) {
+    if (!coaches.includes(teacherId)) throw RATE_TEACHER_NOT_ON_DAY();
+    await tx.insert(campWeekDayRates).values({ campWeekDayId: dayId, teacherId, rateMinor }).onConflictDoUpdate({ target: [campWeekDayRates.campWeekDayId, campWeekDayRates.teacherId], set: { rateMinor } });
+  }
+}
 
 /** The live derived rows of a day, keyed `teacherId|HH:MM` ⇒ id. */
 async function existingCampRows(tx: any, dayId: string): Promise<Map<string, string>> {
@@ -137,11 +157,14 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
   const wanted = d.week.status === "OPEN" ? wantedCampSlots(d.teacherIds ?? [], hm(d.startTime)!, hm(d.endTime)!) : new Set<string>();
   const existing = await existingCampRows(tx, dayId);
   const { insert, remove } = campSlotDiff(wanted, existing);
+  // TASK-443 — each coach's DAY rate rides the derived rows' `teacher_rate_minor` (a camp row has ONE teacher, no extras): the
+  // inserted rows carry it, and the KEPT rows are re-stamped (the diff never touches a kept row, a rate change must reach it).
+  const rates = dayRatesOf({ ...d, rates: await tx.query.campWeekDayRates.findMany({ where: (r: any, { eq: e }: any) => e(r.campWeekDayId, dayId) }) });
   if (remove.length) await tx.delete(bookings).where(inArray(bookings.id, remove));
   for (const key of insert) {
     const [teacherId, hour] = key.split("|") as [string, string];
     try {
-      const id = await insertBooking(tx, null, { teacherId, subjectId: null, date: d.date, startTime: hour, bookingType: "OTHER", otherTitle: d.week.name, otherKind: CAMP_KIND, status: "CONFIRMED" });
+      const id = await insertBooking(tx, null, { teacherId, subjectId: null, date: d.date, startTime: hour, bookingType: "OTHER", otherTitle: d.week.name, otherKind: CAMP_KIND, status: "CONFIRMED", teacherRates: { [teacherId]: rates[teacherId] ?? 0 } });
       await tx.update(bookings).set({ campWeekDayId: dayId, confirmedAt: new Date() }).where(eq(bookings.id, id));
     } catch (e: any) {
       if (e instanceof ApiException && e.code === "SLOT_TAKEN") {
@@ -150,6 +173,9 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
       }
       throw e;
     }
+  }
+  for (const teacherId of d.teacherIds ?? []) {
+    await tx.update(bookings).set({ teacherRateMinor: rates[teacherId] ?? 0 }).where(and(eq(bookings.campWeekDayId, dayId), eq(bookings.teacherId, teacherId))); // TASK-443 — the kept rows
   }
   return { inserted: insert.length, deleted: remove.length };
 }
@@ -164,7 +190,7 @@ async function deleteCampDayRows(tx: any, dayId: string): Promise<number> {
  * The per-day edit = the per-day SWAP (`PATCH /camp/weeks/:id/days/:date`): the day row changes, `edited_at` is
  * stamped (a week-level change will leave this day alone), and the ONE sync re-derives it. A CLOSED week ⇒ 409.
  */
-export async function updateWeekDay(weekId: string, date: string, input: { teacherIds?: string[]; startTime?: string; endTime?: string }) {
+export async function updateWeekDay(weekId: string, date: string, input: { teacherIds?: string[]; startTime?: string; endTime?: string; teacherRates?: Record<string, number> }) {
   const w = await db.query.campWeeks.findFirst({ where: (x, { eq: e }) => e(x.id, weekId) });
   if (!w) throw notFound("ไม่พบสัปดาห์แคมป์");
   if (w.status !== "OPEN") throw conflict("CAMP_WEEK_CLOSED", `สัปดาห์ ${w.name} ปิดรับแล้ว`);
@@ -174,9 +200,10 @@ export async function updateWeekDay(weekId: string, date: string, input: { teach
   assertCampWindow(start, end);
   const result = await db.transaction(async (tx) => {
     await tx.update(campWeekDays).set({ teacherIds: input.teacherIds ?? d.teacherIds, startTime: start, endTime: end, editedAt: new Date() }).where(eq(campWeekDays.id, d.id));
+    if (input.teacherRates) await upsertDayRates(tx, d.id, input.teacherIds ?? d.teacherIds, input.teacherRates); // TASK-443 — before the sync, which copies them
     return syncCampDayRows(tx, d.id);
   });
-  const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id) });
+  const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id), with: { rates: true } });
   return { day: { date, ...toDayDTO(fresh) }, ...result };
 }
 
@@ -336,10 +363,13 @@ export async function checkinCampByToken(token: string) {
   if (!d) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
   const { date: today } = bangkokNow();
   const outcome = campScanOutcome(d, today, new Date());
-  if (outcome === "already") return { already: true, day: dayDTO(d) };
+  if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };
   const { package: pkg } = await markDay(d.id, "ATTENDED", "checkin-qr");
-  return { already: false, day: pkg.days.find((x) => x.dayId === d.id) ?? dayDTO({ ...d, status: "ATTENDED" }) };
+  // TASK-443 (REQ-104 §2 item 5a) — the scan page shows what is left to consume: total − used, in DAYS (a future PLANNED day
+  // is still the family's credit). No mask: the scan is the family's own, by token.
+  return { already: false, day: pkg.days.find((x) => x.dayId === d.id) ?? dayDTO({ ...d, status: "ATTENDED" }), credit: creditDTO(pkg) };
 }
+const creditDTO = (p: { totalUnits: number; usedUnits: number }) => ({ remainingDays: unitsToDays(p.totalUnits - p.usedUnits), totalDays: unitsToDays(p.totalUnits) });
 const dayDTO = (d: any) => ({ dayId: d.id, weekId: d.campWeekId, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null });
 
 // ───────────── the reminder's inputs (TASK-403) ─────────────
@@ -376,6 +406,37 @@ export async function cutCampDays(tx: any, runDate: string): Promise<number> {
   for (const d of due) {
     await tx.update(campDays).set({ status: "ATTENDED", markedBy: "end-of-day", markedAt: new Date() }).where(eq(campDays.id, d.id));
     await tx.update(campPackages).set({ usedUnits: sql`${campPackages.usedUnits} + ${d.units}` }).where(eq(campPackages.id, d.packageId));
+  }
+  return due.length;
+}
+
+/**
+ * TASK-443 (REQ-104 §2 item 5b) — the DAY-END `camp_deduction` family notice, the second pass after the cut (INSIDE the
+ * end-of-day transaction): every CONSUMING camp day (ATTENDED | ABSENT — `consumes()`: a no-show is charged, §8) dated on or
+ * before the run date and NOT yet stamped ⇒ ONE row per family account (`householdLineUserIds`, the ONE read; no account ⇒ one
+ * skipped row, the Private deduction's shape), then `deduction_notified_at` stamped — the stamp is the idempotency (a re-run
+ * enqueues nothing; no outbox key rides a tx). The owner's ruling: at day-end, not at scan — a day scanned at 09:00 is ATTENDED
+ * long before the cut, which is why this is a pass over the stamp and not a hook on the cut's rows. The payload carries
+ * everything (a camp day has no booking row): the remaining credit read AFTER the cut consumed today's units. ⇒ the count.
+ */
+export async function notifyCampDeductions(tx: any, runDate: string): Promise<number> {
+  const due = await tx.query.campDays.findMany({
+    where: (d: any, { and: a, inArray: inA, lte: le, isNull: nul }: any) => a(inA(d.status, ["ATTENDED", "ABSENT"]), le(d.date, runDate), nul(d.deductionNotifiedAt)),
+    with: { package: { with: { student: true } } },
+  });
+  for (const d of due) {
+    const p = d.package;
+    const payload = {
+      kind: "camp_deduction",
+      studentName: p?.student?.nickname ?? p?.student?.name ?? "",
+      date: d.date,
+      remainingDays: unitsToDays((p?.totalUnits ?? 0) - (p?.usedUnits ?? 0)),
+      totalDays: unitsToDays(p?.totalUnits ?? 0),
+    };
+    const accounts = p?.studentId ? await householdLineUserIds(tx, [p.studentId]) : [];
+    if (!accounts.length) await enqueueLine({ recipientType: "parent", recipientLineUserId: null, payload }, tx);
+    for (const lineUserId of accounts) await enqueueLine({ recipientType: "parent", recipientLineUserId: lineUserId, payload }, tx);
+    await tx.update(campDays).set({ deductionNotifiedAt: new Date() }).where(eq(campDays.id, d.id));
   }
   return due.length;
 }

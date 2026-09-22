@@ -365,6 +365,13 @@
       "when": 1783000000047,
       "tag": "0051_voucher_end",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1783000000048,
+      "tag": "0052_camp_day_rates",
+      "breakpoints": true
     }
   ]
 }

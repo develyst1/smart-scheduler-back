@@ -514,7 +514,7 @@ export const updateCampWeek = z
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 // TASK-418 — the per-day swap: who holds the block that day, and when (the rules — whole hours, the bounds — are the service's).
 export const updateCampWeekDay = z
-  .object({ teacherIds: z.array(ID).optional(), startTime: HHMM.optional(), endTime: HHMM.optional() })
+  .object({ teacherIds: z.array(ID).optional(), startTime: HHMM.optional(), endTime: HHMM.optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() }) // TASK-443 — `teacherRates` ⇒ key 59 (the body check)
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 export const redeemCampDays = z
   .object({ weekId: ID, dates: z.array(DATE).min(1).max(7), half: z.enum(CAMP_HALVES) })
@@ -635,6 +635,12 @@ export const otherSeriesSwap = z.object({ from: ID, to: ID, fromDate: DATE.optio
 export const otherSeriesDates = z.object({ dates: z.array(DATE).min(1).max(60) }).refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
 export const otherSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), otherKind: z.enum(HUMAN_OTHER_KINDS).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
+
+// TASK-441 (REQ-104) — the GROUP series' own bodies: the swap has ONE primary (no `from`); the header PATCH has no kind.
+export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional() });
+export const groupSeriesPatch = z
+  .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
 export const teacherLeave = z.object({

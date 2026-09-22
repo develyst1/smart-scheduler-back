@@ -12,6 +12,20 @@ import { toBookingDTO } from "../db/mappers";
 import { findParentByLineUserId } from "./parent.service";
 import { duoStudentIds, familyRowsWhere } from "../lib/duo-course";
 
+/**
+ * TASK-443 (REQ-104 §2 item 5a) — what the family has left, on the scan page: the course's sessions (the DTO's summary) or the
+ * voucher's hours (ONE read — the scan's relations never carried the voucher); `null` on a trial / single. No mask: the scan
+ * is the family's own, by token.
+ */
+async function remainingOf(row: { voucherId?: string | null }, booking: any): Promise<{ used: number; total: number; unit: "sessions" | "hours" } | null> {
+  if (booking?.course) return { used: booking.course.usedSessions, total: booking.course.size, unit: "sessions" };
+  if (row.voucherId) {
+    const v = await db.query.vouchers.findFirst({ where: (x, { eq: e }) => e(x.id, row.voucherId!) });
+    if (v) return { used: v.usedHours, total: v.totalHours, unit: "hours" };
+  }
+  return null;
+}
+
 const withBookingRelations = {
   student: true,
   teacher: true,
@@ -59,7 +73,8 @@ export async function checkinByToken(token: string) {
   });
   if (!row) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
   if (row.status === "ATTENDED") {
-    return { already: true, booking: await loadBooking(row.id) };
+    const booking = await loadBooking(row.id);
+    return { already: true, booking, remaining: await remainingOf(row, booking) };
   }
   if (row.status !== "CONFIRMED") {
     throw badRequest("คาบนี้ยังไม่พร้อมเช็คอิน (ต้องยืนยันตารางก่อน)");
@@ -77,7 +92,7 @@ export async function checkinByToken(token: string) {
 
   const result = await updateBookingStatus(row.id, "attend");
   for (const sid of duoStudentIds(row)) await awardCrmPoints(sid, CRM_POINT_RULES.ON_TIME_CHECKIN); // TASK-420 — both kids of a DUO row
-  return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN };
+  return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };
 }
 
 /**

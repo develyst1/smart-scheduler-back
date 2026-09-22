@@ -177,10 +177,10 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
   });
   test("by source: the three routes call `assertMayEditCoachRate(…, viewerOf(c))` before their service; no other route does; no migration", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(9); // 🔻 TASK-434: the three + six rate-carrying writers
+    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(11); // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH // 🔻 TASK-434: the three + six rate-carrying writers
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(52);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(53);
   });
 });

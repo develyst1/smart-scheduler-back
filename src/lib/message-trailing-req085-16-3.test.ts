@@ -71,7 +71,7 @@ describe("🔑 TASK-325 — NO message ends in whitespace. ONE property, ONE ass
     // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
     // class is gone). The number moved because the walkers reached them — which is the point.
     // 🔻 TASK-375 — EIGHTEEN: `rental_added_teacher` (a rental added today after the reminder went).
-    expect(KINDS.length).toBe(23); // 🔻 TASK-428: +3 — `other_teacher_added` / `other_teacher_removed` / `other_series_cancelled` // TASK-403: +1 — `camp_reminder`; TASK-406: +1 — `class_cancelled_parent`
+    expect(KINDS.length).toBe(25); // 🔻 TASK-443: +1 — `camp_deduction` (the day-end camp credit notice, ENGLISH ONLY) // 🔻 TASK-441: +1 — `weekly_schedule_teacher` (the Monday coach digest, ENGLISH ONLY) // 🔻 TASK-428: +3 — `other_teacher_added` / `other_teacher_removed` / `other_series_cancelled` // TASK-403: +1 — `camp_reminder`; TASK-406: +1 — `class_cancelled_parent`
     for (const k of ["booking_confirmed", "leave_notice", "course_confirmed", "daily_digest"]) {
       expect({ k, present: KINDS.includes(k) }).toEqual({ k, present: true });
     }
@@ -118,7 +118,7 @@ describe("✅ TASK-325 §2 — ONE trim, at the builder's exit", () => {
     // `).trimEnd();`, so a file-wide negative would have failed on the fix. **My first version did.**
     const switchBody = MSG.slice(MSG.indexOf("function buildOutboxMessage("));
     expect(switchBody).not.toContain("trimEnd");
-    expect(switchBody.match(/case "/g)!.length).toBe(23); // 🔻 TASK-428: +3 (the OTHER SERIES notices) // TASK-403 +1, TASK-406 +1 (`class_cancelled_parent`) // TASK-370: +2, TASK-375: +1 — see the kind-list pin // …and it really is the whole switch
+    expect(switchBody.match(/case "/g)!.length).toBe(25); // 🔻 TASK-443: +1 (`camp_deduction`) // 🔻 TASK-441: +1 (`weekly_schedule_teacher`) // 🔻 TASK-428: +3 (the OTHER SERIES notices) // TASK-403 +1, TASK-406 +1 (`class_cancelled_parent`) // TASK-370: +2, TASK-375: +1 — see the kind-list pin // …and it really is the whole switch
 
   });
 
