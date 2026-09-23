@@ -47,7 +47,11 @@ describe("🔴 the expected menu MIRRORS the runtime's two calls — including t
     const SETTLE = region(code(src("src/services/line-register.service.ts")), "export async function settleLinkedRole(", "\n}\n");
     expect(SETTLE).toContain("await linkRoleRichMenu(lineUserId, role, seed);");
     expect(SETTLE).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed);');
-    expect(region(MENU, "export async function linkKnownRichMenu(", "\n}\n")).toContain("if (target) await linkRichMenuToUser(userId, target);");
+    // 🔻 TASK-452: both linkers now resolve through the ONE rule (`menuIdFor`) — the known link keeps its meaning and
+    // its name, it simply no longer spells the rule out for itself. The best-effort "no id ⇒ leave the chat alone" is
+    // unchanged; it lives in the one resolver now.
+    expect(region(MENU, "export async function linkKnownRichMenu(", "\n}\n")).toContain('await linkResolvedRichMenu(userId, "customer", lang);');
+    expect(region(MENU, "async function linkResolvedRichMenu(", "\n}\n")).toContain("if (target) await linkRichMenuToUser(userId, target);");
     expect(MENU).toContain("[KNOWN_RICH_MENU.name]: \"knownTH\",");
     expect(region(MENU, "export const NAME_TO_KEY", "};")).not.toContain("knownEN"); // never published, by design
   });

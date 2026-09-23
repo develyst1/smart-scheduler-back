@@ -162,11 +162,16 @@ describe("🔴 the publish path — the reason the menus never reached a phone",
     expect(code(PUB).match(/uploadRichMenuImage\(/g)).toHaveLength(6);
   });
 
-  test("🔑 it STORES `unknownTH` and `knownTH` — the ids the runtime has been reading for", () => {
+  test("🔑 it STORES `unknownTH` and `knownTH` — the ids the runtime has been reading for", async () => {
     // `linkKnownRichMenu` has read `ids.knownTH` since TASK-234 and nothing ever wrote it. That single missing
     // write is the whole of what a parent saw as "the menu never changed".
     expect(code(PUB)).toContain("const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN, unknownTH, knownTH }");
-    expect(code(SRC)).toContain("const target = lang === \"EN\" ? ids.knownEN : ids.knownTH");
+    // 🔻 TASK-452 — the key pair is still the rule for a bound customer, but it is READ in ONE place now
+    // (`expectedMenuKey`, `lib/line-relink-plan.ts`), which both live linkers and the relink sweep ask. The claim this
+    // line guards — that `knownTH` is what a bound TH customer is linked to — is unchanged; only its home is.
+    const PLAN = readSrc(await Bun.file(new URL("./line-relink-plan.ts", import.meta.url)).text());
+    expect(code(PLAN)).toContain('const knownKey = (lang === "EN" ? "knownEN" : "knownTH") as keyof MenuIds;');
+    expect(code(SRC)).toContain('const target = menuIdFor(role, lang === "EN" ? "EN" : "TH", await getMenuIds());');
   });
 
   test("🔴 the ACCOUNT DEFAULT is the unknown menu, not the old parent menu", () => {

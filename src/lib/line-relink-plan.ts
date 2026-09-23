@@ -54,13 +54,30 @@ export function expectedMenuKey(role: MenuRole, lang: MenuLang, ids: MenuIds): k
   return null;
 }
 
+/**
+ * 🔴 TASK-452 (REQ-105 §6b) — **THE answer to "which menu does this chat get", for every caller.**
+ *
+ * The rule itself is `expectedMenuKey` above and it has not changed; what changed is who asks. Until now the two
+ * LIVE paths each spelled it out for themselves: the account-link called the role linker and then the known linker
+ * (so the last write won — the orange menu), while the LANGUAGE TOGGLE called only the role linker (so it landed on
+ * the old blue family, and stayed there). Two spellings of one rule is how a chat ends up on a menu no path ever
+ * intended, and it is the `variant` drift TASK-446's sweep was built to REPAIR — repairing it was never the same as
+ * preventing it.
+ *
+ * ⇒ `linkRoleRichMenu`, `linkKnownRichMenu` and the sweep now all resolve through THIS. One rule, three callers.
+ */
+export function menuIdFor(role: MenuRole, lang: MenuLang, ids: MenuIds): string | null {
+  const key = expectedMenuKey(role, lang, ids);
+  return key ? (ids[key] ?? null) : null;
+}
+
 const labelOf = (id: string, ids: MenuIds): string | null =>
   (Object.entries(ids).find(([, v]) => v === id)?.[0] as string | undefined) ?? null;
 
 export function planRelink(users: MenuUser[], ids: MenuIds): RelinkPlan {
   const rows: RelinkRow[] = users.map((user) => {
     const key = expectedMenuKey(user.role, user.lang, ids);
-    const expectedId = key ? (ids[key] ?? null) : null;
+    const expectedId = menuIdFor(user.role, user.lang, ids); // TASK-452 — the same expression the live links use
     const linkedLabel = user.linkedMenuId ? labelOf(user.linkedMenuId, ids) : null;
     const outcome: RelinkOutcome = !expectedId
       ? "no-menu-published"

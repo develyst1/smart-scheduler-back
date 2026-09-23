@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings } from "../db/schema";
 import type { Lang } from "./line-i18n";
+import { menuIdFor } from "./line-relink-plan"; // TASK-452 — the ONE rule; `line-relink-plan` imports only a TYPE back, so there is no runtime cycle
 import { countMenuUsers } from "./line-menu-users";
 
 export interface RichMenuArea {
@@ -557,9 +558,9 @@ export async function getUserRichMenuId(userId: string): Promise<string | null> 
  * which is the correct menu for a chat we cannot yet serve.
  */
 export async function linkKnownRichMenu(userId: string, lang: Lang = "TH"): Promise<void> {
-  const ids = await getMenuIds();
-  const target = lang === "EN" ? ids.knownEN : ids.knownTH;
-  if (target) await linkRichMenuToUser(userId, target);
+  // 🔻 TASK-452 — resolves through `menuIdFor` like every other caller. For a customer that IS the known menu when
+  // one is published, so this keeps its meaning and its name; it simply no longer spells the rule out for itself.
+  await linkResolvedRichMenu(userId, "customer", lang);
 }
 
 export async function linkRoleRichMenu(
@@ -567,8 +568,17 @@ export async function linkRoleRichMenu(
   role: "customer" | "teacher",
   lang: Lang = "TH",
 ): Promise<void> {
-  const ids = await getMenuIds();
-  const key = (role === "teacher" ? "teacher" : "parent") + (lang === "EN" ? "EN" : "TH");
-  const target = ids[key as keyof MenuIds];
+  await linkResolvedRichMenu(userId, role, lang);
+}
+
+/**
+ * 🔴 TASK-452 — the ONE place a live link is decided. Both doors above and the relink sweep ask `menuIdFor`; nothing
+ * outside it reads `ids.parentTH`-shaped keys to choose a menu (pinned).
+ *
+ * Best-effort as both linkers always were: a menu that has not been published leaves the chat where it is — which,
+ * for a chat that has never been linked, is the account default, and that is the correct menu for it.
+ */
+async function linkResolvedRichMenu(userId: string, role: "customer" | "teacher", lang: Lang): Promise<void> {
+  const target = menuIdFor(role, lang === "EN" ? "EN" : "TH", await getMenuIds());
   if (target) await linkRichMenuToUser(userId, target);
 }
