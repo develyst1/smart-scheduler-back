@@ -89,6 +89,7 @@ import {
   assertCanAddStudent,
   findParentByLineUserId,
   listStudentsOfParent,
+  isPhoneShaped,
   normalizePhone,
 } from "./parent.service";
 import { hhmm, weekRange } from "../lib/time";
@@ -1238,7 +1239,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     return send(replyToken, [askRole(lang)]);
   }
 
-  const session = await getSession(lineUserId);
+  let session = await getSession(lineUserId); // TASK-447: reassigned when a phone opens the link step below
   const linked = await detectLinkedRole(lineUserId);
 
   // TASK-046: an in-progress multi-turn conversation (adding a student, OR linking) must win over
@@ -1342,7 +1343,21 @@ async function handleMessage(ev: LineWebhookEvent) {
   // 🔴 AC-16 — SILENCED FALLBACK #4, and the one §16 is actually about: an UNLINKED chat with no session used
   // to get `welcome` for any text at all. `สมัคร` (handled at the top of this function, from any state) is
   // still the way in, and the rich-menu postbacks are unaffected.
-  if (route === "silence") return;
+  if (route === "silence") {
+    // 🔴 TASK-447 (REQ-105 §7) — …and the one message that must NOT fall into it. The chat's greeting asks for a
+    // phone number, but that greeting is **the OA's own auto-reply** (our `follow` dispatch is dead by the
+    // owner's ruling), so a parent who answers it arrives here with no session and is met with silence: DEF-9's
+    // shape on a door TASK-248 did not cover. A customer typed her real number twice and the bot said nothing.
+    //
+    // 🚫 No new step and no second phone flow (TASK-248's rule): this ADOPTS the exact state the `เข้าใช้ระบบ`
+    // button sets — `AWAIT_CODE` + `pendingRole = "customer"` — and falls through to the ONE handler below, so
+    // every outcome (`found · new · archived · bound elsewhere · bad phone`) answers in its own existing words
+    // and a second failure still hands over to a person (AC-18).
+    // ⚠️ Everything else stays silent, and a MUTED chat never reaches here at all (the gate above returns).
+    if (!isPhoneShaped(text)) return;
+    await setStep(lineUserId, "AWAIT_CODE", "customer");
+    session = await getSession(lineUserId);
+  }
 
   // Linking conversation.
   if (!session) return;
@@ -1577,6 +1592,21 @@ export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
       else if (ev.type === "postback") await handlePostback(ev);
     } catch (e) {
       console.error("[line-webhook] event error:", e);
+      // 🔴 TASK-449 (REQ-105 §7) — **no event may end in silence because something threw.** Khwan typed her phone
+      // three times; each attempt reached the link code, threw `23505 parents_line_user_id_uq`, and died in this
+      // catch — the bot said nothing at all, three times, and looked broken rather than busy. The fix that turns
+      // this WHOLE CLASS of defect from silence into a sentence is one reply here, and it is unconditional.
+      //
+      // 🔑 Bilingual (`tb`) rather than the chat's language: resolving the language is a DB read, and we are
+      // already inside a failure — a second read that throws would put us back where we started.
+      // ⚠️ A failed apology is logged and swallowed: it must not mask the error that caused it.
+      if (ev.replyToken) {
+        try {
+          await replyMessage(ev.replyToken, [{ type: "text", text: tb("generic_error") }]);
+        } catch (e2) {
+          console.error("[line-webhook] apology failed:", e2);
+        }
+      }
     }
   }
 }

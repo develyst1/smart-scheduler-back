@@ -12,6 +12,7 @@ import { ApiException } from "./http";
 import * as v from "../validation";
 import * as parentSvc from "../services/parent.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -190,36 +191,36 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   afterEach(() => { process.env.SKIP_AUTH = "true"; });
   const post = (path: string) => rootApp.fetch(new Request(`http://localhost${path}`, { method: "POST" }));
-  const ROW = { id: "s-1", name: "น้องเอ", nickname: "เอ", parentId: "p-1", archivedAt: "2026-09-18T01:00:00.000Z", archivedBy: "dev" };
+  const ROW = { id: uuidFor("s-1"), name: "น้องเอ", nickname: "เอ", parentId: "p-1", archivedAt: "2026-09-18T01:00:00.000Z", archivedBy: "dev" };
 
   test("POST /students/:id/archive ⇒ { student } with the actor; the live-sessions 409 envelope by value with the count", async () => {
     process.env.SKIP_AUTH = "true";
     const calls: any[] = [];
     const s = spyOn(parentSvc, "archiveStudent").mockImplementation((async (id: string, actor: any) => {
       calls.push([id, actor]);
-      if (id === "s-live") throw new ApiException(409, "STUDENT_HAS_LIVE_SESSIONS", "มีคาบเรียนข้างหน้า 3 คาบ — ยกเลิก/ย้ายก่อน");
+      if (id === uuidFor("s-live")) throw new ApiException(409, "STUDENT_HAS_LIVE_SESSIONS", "มีคาบเรียนข้างหน้า 3 คาบ — ยกเลิก/ย้ายก่อน");
       return { ...ROW, id };
     }) as any);
     spies.push(s);
-    const ok = await post("/api/students/s-1/archive");
+    const ok = await post(`/api/students/${uuidFor("s-1")}/archive`);
     expect(ok.status).toBe(200);
-    expect(((await ok.json()) as any).student).toMatchObject({ id: "s-1", archivedAt: "2026-09-18T01:00:00.000Z", archivedBy: "dev" });
-    expect(calls.at(-1)).toEqual(["s-1", "dev"]);
-    const live = await post("/api/students/s-live/archive");
+    expect(((await ok.json()) as any).student).toMatchObject({ id: uuidFor("s-1"), archivedAt: "2026-09-18T01:00:00.000Z", archivedBy: "dev" });
+    expect(calls.at(-1)).toEqual([uuidFor("s-1"), "dev"]);
+    const live = await post(`/api/students/${uuidFor("s-live")}/archive`);
     expect(live.status).toBe(409);
     expect(await live.json()).toEqual({ error: { code: "STUDENT_HAS_LIVE_SESSIONS", message: "มีคาบเรียนข้างหน้า 3 คาบ — ยกเลิก/ย้ายก่อน" } });
   });
   test("POST /students/:id/unarchive ⇒ { student } restored; the family-cap 400 passes through", async () => {
     process.env.SKIP_AUTH = "true";
     const s = spyOn(parentSvc, "unarchiveStudent").mockImplementation((async (id: string) => {
-      if (id === "s-full") throw new ApiException(400, "VALIDATION", "เพิ่มนักเรียนได้สูงสุด 5 คนต่อเบอร์");
+      if (id === uuidFor("s-full")) throw new ApiException(400, "VALIDATION", "เพิ่มนักเรียนได้สูงสุด 5 คนต่อเบอร์");
       return { ...ROW, id, archivedAt: null, archivedBy: null };
     }) as any);
     spies.push(s);
-    const ok = await post("/api/students/s-1/unarchive");
+    const ok = await post(`/api/students/${uuidFor("s-1")}/unarchive`);
     expect(ok.status).toBe(200);
-    expect(((await ok.json()) as any).student).toMatchObject({ id: "s-1", archivedAt: null, archivedBy: null });
-    expect((await post("/api/students/s-full/unarchive")).status).toBe(400);
+    expect(((await ok.json()) as any).student).toMatchObject({ id: uuidFor("s-1"), archivedAt: null, archivedBy: null });
+    expect((await post(`/api/students/${uuidFor("s-full")}/unarchive`)).status).toBe(400);
   });
   test("GET /students?archived=true reaches `searchStudents(q, limit, true)`; the default `false`", async () => {
     process.env.SKIP_AUTH = "true";

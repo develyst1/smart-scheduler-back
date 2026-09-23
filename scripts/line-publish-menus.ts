@@ -10,6 +10,7 @@ import {
   summariseOurMenus,
   type MenuIds,
 } from "../src/lib/line-rich-menu";
+import { guardOaWriteOrExit } from "../src/lib/oa-guard";
 
 /** Fixed image-path contract with TASK-041 (Fern). Paths are relative to the repo (bun run cwd). */
 export const IMAGE_PATHS = {
@@ -78,6 +79,9 @@ async function main() {
     );
     process.exit(1);
   }
+
+  // 🔴 TASK-448 — publishing CREATES menus and moves the account default: the first call writes, so the guard runs first.
+  await guardOaWriteOrExit();
 
   const ids = await publishRichMenus(IMAGE_PATHS);
   console.log("✓ Published rich menus (ids stored in app_settings.line_rich_menu_ids):");

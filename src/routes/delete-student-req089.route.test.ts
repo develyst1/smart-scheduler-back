@@ -6,6 +6,7 @@ import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readSrc } from "../lib/read-src";
+import { uuidFor } from "../lib/test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.SKIP_AUTH = "true";
@@ -51,27 +52,27 @@ describe("🔑 the route — `DELETE /students/:id`, the app's envelope on every
   const calls: Array<[string, string | null]> = [];
   const spy = spyOn(parent, "deleteStudent").mockImplementation((async (id: string, actor: string | null) => {
     calls.push([id, actor]);
-    if (id === "gone") return { deleted: true as const };
-    if (id === "busy") throw parent.studentHistoryRefusal({ courses: 1, bookings: 2, vouchers: 0 });
+    if (id === uuidFor("gone")) return { deleted: true as const };
+    if (id === uuidFor("busy")) throw parent.studentHistoryRefusal({ courses: 1, bookings: 2, vouchers: 0 });
     throw new ApiException(404, "NOT_FOUND", "ไม่พบนักเรียน");
   }) as any);
   afterAll(() => spy.mockRestore());
 
   test("200 { deleted: true }", async () => {
-    const res = await del("gone");
+    const res = await del(uuidFor("gone"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true });
-    expect(calls.at(-1)).toEqual(["gone", "dev"]); // the actor is the TOKEN's `sub` (SKIP_AUTH's default admin); no body is read
+    expect(calls.at(-1)).toEqual([uuidFor("gone"), "dev"]); // the actor is the TOKEN's `sub` (SKIP_AUTH's default admin); no body is read
   });
 
   test("409 — the sentence the FE shows, in `{ error: { code, message } }`", async () => {
-    const res = await del("busy");
+    const res = await del(uuidFor("busy"));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: { code: "STUDENT_HAS_HISTORY", message: "มีประวัติ: คอร์ส 1 · คาบ 2 · บัตร 0 — ระงับแทน" } });
   });
 
   test("404 unknown", async () => {
-    const res = await del("nobody");
+    const res = await del(uuidFor("nobody"));
     expect(res.status).toBe(404);
     expect(((await res.json()) as any).error.code).toBe("NOT_FOUND");
   });

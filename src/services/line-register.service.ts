@@ -13,6 +13,7 @@
 // page maps them to CODES. **The server owns decisions; the surfaces own words.**
 import { eq } from "drizzle-orm";
 import { db } from "../db";
+import { ApiException } from "../lib/http";
 import { lineLinkSessions, parents, teachers } from "../db/schema";
 import { bindFamilyLine, familyOfLineUser } from "../lib/family-link";
 import { clearParentLineLink } from "./parent.service";
@@ -138,7 +139,15 @@ export async function linkFamilyByPhone(lineUserId: string, code: string): Promi
     // a parent opening the app to **another family's children** (TASK-047's failure, other route).
     const bind = await bindFamilyLine(existing.id, lineUserId);
     if (!bind.ok) return { outcome: "line-bound-to-other-family" };
-    await linkParentLine(existing.id, lineUserId);
+    // 🔻 TASK-449 — the column guard (or the index itself, on a race) refuses with the SAME meaning the bind does.
+    // Mapped to the existing outcome so the parent reads the words that already exist for it — and so a collision
+    // can never again leave this function by `throw` and end as silence.
+    try {
+      await linkParentLine(existing.id, lineUserId);
+    } catch (e) {
+      if (e instanceof ApiException && e.status === 400) return { outcome: "line-bound-to-other-family" };
+      throw e;
+    }
     await moveRosterLink(lineUserId, "customer");
     return { outcome: "linked", parent: existing, children: await listStudentsOfParent(existing.id), isNew: false };
   }

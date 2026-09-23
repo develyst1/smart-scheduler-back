@@ -22,6 +22,7 @@
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",
     "line:adopt-menus": "bun run scripts/line-adopt-menus.ts",
     "line:remove-menus": "bun run scripts/line-remove-menus.ts",
+    "line:relink-menus": "bun run scripts/line-relink-menus.ts",
     "sale:ensure-items": "bun run scripts/ensure-sale-items.ts",
     "sale:retire-placeholders": "bun run scripts/retire-placeholder-items.ts",
     "db:verify": "bun run scripts/verify-migrations.ts",

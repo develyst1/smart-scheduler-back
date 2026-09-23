@@ -44,7 +44,11 @@ describe("🔴 AC-16 — an idle chat gets NO reply", () => {
     expect(PARENT_CMD).not.toMatch(/\n  return doMenu\(replyToken, lang\);\n\}/);
     expect(PARENT_CMD).toContain("SILENCED FALLBACK #1");
     // #4 the unlinked welcome — the one §16's screenshot is actually about.
-    expect(HANDLE).toContain('if (route === "silence") return;');
+    // 🔻 TASK-447 (REQ-105 §7): still the fallback — but a PHONE typed into a silent chat now opens the link step
+    // (the OA's own greeting asked for it and nothing was listening). Everything else still returns, unanswered.
+    expect(HANDLE).toContain('if (route === "silence") {');
+    expect(HANDLE).toContain("if (!isPhoneShaped(text)) return;");
+    expect(HANDLE).toContain('await setStep(lineUserId, "AWAIT_CODE", "customer");');
     // TASK-275 (REQ-079 §18): the BODY is bilingual now (`tb`/`both`); the property this line guards is
     // unchanged, only the helper is. Labels deliberately still use `t(key, lang)` — LINE caps them at 20 chars.
     expect(HANDLE).not.toContain('return reply(replyToken, tb("welcome"))');

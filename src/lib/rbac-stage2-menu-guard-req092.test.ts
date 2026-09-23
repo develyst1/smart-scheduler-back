@@ -14,6 +14,7 @@ import { ApiException } from "./http";
 import { signToken } from "./jwt";
 import * as usersSvc from "../services/user.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -233,11 +234,11 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
       return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", menus: keys, actions: [], roleId: null, roleName: null, grants: { fromRole: [], own: keys } };
     }) as any);
     spies.push(s);
-    const put = (b: unknown) => app.fetch(new Request("http://localhost/api/users/u-1/menus", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
+    const put = (b: unknown) => app.fetch(new Request(`http://localhost/api/users/${uuidFor("u-1")}/menus`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
     const res = await put({ keys: ["menu:calendar", "menu:reports"] });
     expect(res.status).toBe(200);
     expect(((await res.json()) as any).user.menus).toEqual(["menu:calendar", "menu:reports"]);
-    expect(calls.at(-1)).toEqual(["menus", "u-1", ["menu:calendar", "menu:reports"], "dev"]);
+    expect(calls.at(-1)).toEqual(["menus", uuidFor("u-1"), ["menu:calendar", "menu:reports"], "dev"]);
     expect((await put({ keys: ["menu:nope"] })).status).toBe(400);
   });
 });

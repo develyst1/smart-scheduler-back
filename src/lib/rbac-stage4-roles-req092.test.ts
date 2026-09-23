@@ -14,6 +14,7 @@ import { signToken } from "./jwt";
 import * as usersSvc from "../services/user.service";
 import * as rolesSvc from "../services/role.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -27,8 +28,8 @@ const region = (s: string, from: string, to: string) => {
   return s.slice(a, b < 0 ? undefined : b);
 };
 const rootApp = (await import("../index")).default as { fetch: (r: Request) => Promise<Response> };
-const ROW = { id: "u-1", username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-18T00:00:00Z" };
-const ROLE = { id: "r-1", name: "Front desk", keys: ["menu:calendar", "action:calendar.book", "menu:bookings"] };
+const ROW = { id: uuidFor("u-1"), username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-18T00:00:00Z" };
+const ROLE = { id: uuidFor("r-1"), name: "Front desk", keys: ["menu:calendar", "action:calendar.book", "menu:bookings"] };
 
 describe("🔴 the migration — 0037, counted, witnessed, the `users` lock named (source)", () => {
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
@@ -86,7 +87,7 @@ describe("🔑 the rules — pure, with values", () => {
     expect(dto.menus).toEqual(["menu:calendar", "menu:bookings"]);
     expect(dto.actions).toEqual(["action:calendar.book", "action:settings.edit"]);
     expect(dto.grants).toEqual({ fromRole: ROLE.keys, own: ["action:settings.edit", "menu:calendar"] });
-    expect(dto.roleId).toBe("r-1");
+    expect(dto.roleId).toBe(uuidFor("r-1"));
     expect(dto.roleName).toBe("Front desk");
     const none = usersSvc.toUserDTO(ROW, ["menu:reports"], null);
     expect(none).toMatchObject({ menus: ["menu:reports"], actions: [], roleId: null, roleName: null, grants: { fromRole: [], own: ["menu:reports"] } });
@@ -120,7 +121,7 @@ describe("🔑 the rules — pure, with values", () => {
     expect(e.message).toBe("มีผู้ใช้ 3 คนถืออยู่ — ย้ายก่อนลบ");
   });
   test("`toAuthUser` carries `roleId` (null when the row has none); `DEV_USER` has none", () => {
-    expect(toAuthUser({ ...ROW, roleId: "r-1" }, ["menu:calendar"]).roleId).toBe("r-1");
+    expect(toAuthUser({ ...ROW, roleId: uuidFor("r-1") }, ["menu:calendar"]).roleId).toBe(uuidFor("r-1"));
     expect(toAuthUser(ROW).roleId).toBeNull();
     expect(DEV_USER.roleId).toBeNull();
   });
@@ -129,7 +130,7 @@ describe("🔑 the rules — pure, with values", () => {
 describe("🔴 the guard reads EFFECTIVE grants — a role's key lets a holder through; editing the role is seen at the next request (real middlewares, service spied)", () => {
   const ids = { holder: "22222222-2222-4222-8222-222222222222", sa: "11111111-1111-4111-8111-111111111111" };
   const rows: Record<string, any> = {
-    [ids.holder]: { id: ids.holder, username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, roleId: "r-1" },
+    [ids.holder]: { id: ids.holder, username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, roleId: uuidFor("r-1") },
     [ids.sa]: { id: ids.sa, username: "boss", displayName: "Boss", isSuperAdmin: true, disabledAt: null, roleId: null },
   };
   const roleKeys: string[] = ["menu:calendar"]; // the LIVE role — mutated between requests below
@@ -137,7 +138,7 @@ describe("🔴 the guard reads EFFECTIVE grants — a role's key lets a holder t
   const spies = [
     spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => rows[id] ?? null) as any),
     // the effective read, as the real one would answer: own rows ∪ the role's rows
-    spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async (id: string, roleId: string | null) => { reads.push([id, roleId]); return [...new Set([...(id === ids.holder ? ["action:calendar.note"] : []), ...(roleId === "r-1" ? roleKeys : [])])]; }) as any),
+    spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async (id: string, roleId: string | null) => { reads.push([id, roleId]); return [...new Set([...(id === ids.holder ? ["action:calendar.note"] : []), ...(roleId === uuidFor("r-1") ? roleKeys : [])])]; }) as any),
   ];
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   const origSkip = process.env.SKIP_AUTH;
@@ -158,8 +159,8 @@ describe("🔴 the guard reads EFFECTIVE grants — a role's key lets a holder t
   test("the guard calls the effective read with (id, roleId) from the ROW; the role's menu lets the holder in; the own action too; a key in neither ⇒ 403", async () => {
     reads.length = 0;
     expect((await hit(ids.holder, "GET", "/api/calendar")).status).toBe(200);
-    expect(reads).toEqual([[ids.holder, "r-1"]]);
-    expect((await hit(ids.holder, "PATCH", "/api/bookings/b-1/note")).status).toBe(200); // own row
+    expect(reads).toEqual([[ids.holder, uuidFor("r-1")]]);
+    expect((await hit(ids.holder, "PATCH", `/api/bookings/${uuidFor("b-1")}/note`)).status).toBe(200); // own row
     expect((await hit(ids.holder, "POST", "/api/bookings")).status).toBe(403); // in neither
   });
   test("🔴 LIVE: the role gains `action:calendar.book` ⇒ the holder's NEXT request is through; it loses it ⇒ 403 again — no propagation, no new token", async () => {
@@ -182,7 +183,7 @@ describe("🔑 the routes — `/roles` CRUD (super admin), `PUT /users/:id/role`
   afterEach(() => { process.env.SKIP_AUTH = "true"; });
   const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
     app.fetch(new Request(`http://localhost${path}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }));
-  const roleDTO = { id: "r-1", name: "Front desk", description: null, keys: ["menu:calendar"], userCount: 2, createdAt: "2026-09-18T00:00:00.000Z", updatedAt: "2026-09-18T00:00:00.000Z" };
+  const roleDTO = { id: uuidFor("r-1"), name: "Front desk", description: null, keys: ["menu:calendar"], userCount: 2, createdAt: "2026-09-18T00:00:00.000Z", updatedAt: "2026-09-18T00:00:00.000Z" };
 
   test("GET /roles ⇒ { roles }; POST ⇒ 201 { role } with the actor; PATCH ⇒ { role }; DELETE ⇒ { deleted: true } | 409 ROLE_IN_USE with the count", async () => {
     process.env.SKIP_AUTH = "true";
@@ -191,20 +192,20 @@ describe("🔑 the routes — `/roles` CRUD (super admin), `PUT /users/:id/role`
       spyOn(rolesSvc, "listRoles").mockImplementation((async () => [roleDTO]) as any),
       spyOn(rolesSvc, "createRole").mockImplementation((async (input: any, actor: any) => { calls.push(["create", input, actor]); return roleDTO; }) as any),
       spyOn(rolesSvc, "updateRole").mockImplementation((async (id: string, input: any, actor: any) => { calls.push(["update", id, input, actor]); return { ...roleDTO, ...input }; }) as any),
-      spyOn(rolesSvc, "deleteRole").mockImplementation((async (id: string) => { if (id === "r-1") throw rolesSvc.ROLE_IN_USE(2); return { deleted: true as const }; }) as any),
+      spyOn(rolesSvc, "deleteRole").mockImplementation((async (id: string) => { if (id === uuidFor("r-1")) throw rolesSvc.ROLE_IN_USE(2); return { deleted: true as const }; }) as any),
     );
     expect(await (await json("GET", "/api/roles")).json()).toEqual({ roles: [roleDTO] });
     const created = await json("POST", "/api/roles", { name: "Front desk", keys: ["menu:calendar"] });
     expect(created.status).toBe(201);
     expect(await created.json()).toEqual({ role: roleDTO });
     expect(calls.at(-1)).toEqual(["create", { name: "Front desk", keys: ["menu:calendar"] }, "dev"]);
-    const patched = await json("PATCH", "/api/roles/r-1", { keys: ["menu:calendar", "action:calendar.book"] });
+    const patched = await json("PATCH", `/api/roles/${uuidFor("r-1")}`, { keys: ["menu:calendar", "action:calendar.book"] });
     expect(((await patched.json()) as any).role.keys).toEqual(["menu:calendar", "action:calendar.book"]);
-    expect(calls.at(-1)).toEqual(["update", "r-1", { keys: ["menu:calendar", "action:calendar.book"] }, "dev"]);
-    const inUse = await json("DELETE", "/api/roles/r-1");
+    expect(calls.at(-1)).toEqual(["update", uuidFor("r-1"), { keys: ["menu:calendar", "action:calendar.book"] }, "dev"]);
+    const inUse = await json("DELETE", `/api/roles/${uuidFor("r-1")}`);
     expect(inUse.status).toBe(409);
     expect(await inUse.json()).toEqual({ error: { code: "ROLE_IN_USE", message: "มีผู้ใช้ 2 คนถืออยู่ — ย้ายก่อนลบ" } });
-    expect(await (await json("DELETE", "/api/roles/r-2")).json()).toEqual({ deleted: true });
+    expect(await (await json("DELETE", `/api/roles/${uuidFor("r-2")}`)).json()).toEqual({ deleted: true });
   });
   test("🔴 `/roles` is super admin only and JWT-gated: no token ⇒ 401; a non-super-admin ⇒ 403 (its sentence) — never the access table's", async () => {
     process.env.SKIP_AUTH = "false";
@@ -227,30 +228,30 @@ describe("🔑 the routes — `/roles` CRUD (super admin), `PUT /users/:id/role`
       return usersSvc.toUserDTO({ ...ROW, id }, ["menu:reports"], roleId ? ROLE : null);
     }) as any);
     spies.push(s);
-    const res = await json("PUT", "/api/users/u-1/role", { roleId: "r-1" });
+    const res = await json("PUT", `/api/users/${uuidFor("u-1")}/role`, { roleId: uuidFor("r-1") });
     expect(res.status).toBe(200);
     const user = ((await res.json()) as any).user;
-    expect(user).toMatchObject({ roleId: "r-1", roleName: "Front desk", menus: ["menu:calendar", "menu:bookings", "menu:reports"], grants: { fromRole: ROLE.keys, own: ["menu:reports"] } });
-    const detached = ((await (await json("PUT", "/api/users/u-1/role", { roleId: null })).json()) as any).user;
+    expect(user).toMatchObject({ roleId: uuidFor("r-1"), roleName: "Front desk", menus: ["menu:calendar", "menu:bookings", "menu:reports"], grants: { fromRole: ROLE.keys, own: ["menu:reports"] } });
+    const detached = ((await (await json("PUT", `/api/users/${uuidFor("u-1")}/role`, { roleId: null })).json()) as any).user;
     expect(detached).toMatchObject({ roleId: null, roleName: null, menus: ["menu:reports"], grants: { fromRole: [], own: ["menu:reports"] } });
-    expect(calls).toEqual([["u-1", "r-1"], ["u-1", null]]);
-    expect((await json("PUT", "/api/users/u-1/role", {})).status).toBe(400);
+    expect(calls).toEqual([[uuidFor("u-1"), uuidFor("r-1")], [uuidFor("u-1"), null]]);
+    expect((await json("PUT", `/api/users/${uuidFor("u-1")}/role`, {})).status).toBe(400);
   });
   test("GET /api/me ⇒ + `roleName` (the header's fact): the holder's role name; null for none; the dev super admin null — and NO role read when the row has no role", async () => {
     process.env.SKIP_AUTH = "true";
     const nameReads: any[] = [];
-    const sName = spyOn(rolesSvc, "roleNameOf").mockImplementation((async (roleId: any) => { nameReads.push(roleId); return roleId === "r-1" ? "Front desk" : null; }) as any);
+    const sName = spyOn(rolesSvc, "roleNameOf").mockImplementation((async (roleId: any) => { nameReads.push(roleId); return roleId === uuidFor("r-1") ? "Front desk" : null; }) as any);
     spies.push(sName);
     expect(((await (await json("GET", "/api/me")).json()) as any).user.roleName).toBeNull();
     process.env.SKIP_AUTH = "false";
     const id = "55555555-5555-4555-8555-555555555555";
-    const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, roleId: "r-1" })) as any);
+    const s1 = spyOn(usersSvc, "findUserById").mockImplementation((async () => ({ id, username: "front", displayName: "Front", isSuperAdmin: false, disabledAt: null, roleId: uuidFor("r-1") })) as any);
     const s2 = spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => ["menu:calendar"]) as any);
     try {
       const token = await signToken({ sub: id, username: "front", role: "admin", isSuperAdmin: false });
       const me = await json("GET", "/api/me", undefined, { authorization: `Bearer ${token}` });
       expect(await me.json()).toEqual({ user: { id, username: "front", displayName: "Front", isSuperAdmin: false, menus: ["menu:calendar"], actions: [], roleName: "Front desk", teacherId: null } });
-      expect(nameReads).toEqual([null, "r-1"]);
+      expect(nameReads).toEqual([null, uuidFor("r-1")]);
     } finally { s1.mockRestore(); s2.mockRestore(); }
     // the real `roleNameOf` issues no query for a null id (it would need a DB otherwise)
     sName.mockRestore(); spies.pop();

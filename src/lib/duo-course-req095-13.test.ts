@@ -26,6 +26,7 @@ import { db } from "../db";
 import { bookings, coursePackages } from "../db/schema";
 import { toBookingDTO, toCourseWithStudent } from "../db/mappers";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -252,14 +253,14 @@ describe("🔑 the routes through the ROOT app (service spied): POST /courses { 
     process.env.SKIP_AUTH = "true";
     const calls: any[] = [];
     spies.push(spyOn(sched, "updateCourse").mockImplementation((async (id: string, input: any) => { calls.push(["course", id, input]); return { id }; }) as any));
-    spies.push(spyOn(sched, "moveBooking").mockImplementation((async (id: string, input: any) => { calls.push(["booking", id, input]); if (id === "trial") throw NOT_A_COURSE_SESSION(); return { id }; }) as any));
-    expect((await json("PATCH", "/courses/duo-1", { classRateMinor: 35000 })).status).toBe(200);
-    expect((await json("PATCH", "/bookings/b-1", { classRateMinor: 35000 })).status).toBe(200);
-    expect((await json("PATCH", "/bookings/b-1", { classRateMinor: null })).status).toBe(200);
-    const trial = await json("PATCH", "/bookings/trial", { classRateMinor: 300 });
+    spies.push(spyOn(sched, "moveBooking").mockImplementation((async (id: string, input: any) => { calls.push(["booking", id, input]); if (id === uuidFor("trial")) throw NOT_A_COURSE_SESSION(); return { id }; }) as any));
+    expect((await json("PATCH", `/courses/${uuidFor("duo-1")}`, { classRateMinor: 35000 })).status).toBe(200);
+    expect((await json("PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: 35000 })).status).toBe(200);
+    expect((await json("PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: null })).status).toBe(200);
+    const trial = await json("PATCH", `/bookings/${uuidFor("trial")}`, { classRateMinor: 300 });
     expect(trial.status).toBe(400);
     expect(((await trial.json()) as any).error.code).toBe("NOT_A_COURSE_SESSION");
-    expect(calls).toEqual([["course", "duo-1", { classRateMinor: 35000 }], ["booking", "b-1", { classRateMinor: 35000 }], ["booking", "b-1", { classRateMinor: null }], ["booking", "trial", { classRateMinor: 300 }]]);
+    expect(calls).toEqual([["course", uuidFor("duo-1"), { classRateMinor: 35000 }], ["booking", uuidFor("b-1"), { classRateMinor: 35000 }], ["booking", uuidFor("b-1"), { classRateMinor: null }], ["booking", uuidFor("trial"), { classRateMinor: 300 }]]);
   });
 });
 
@@ -313,7 +314,7 @@ describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, pr
       query: { ...exec(o).query, bookings: { findMany: async () => o.seats ?? [] } },
     });
     const fam = { student: { A: "p1", B: "p2", C: "p1" }, parents: { p1: { lineUserId: "U1", links: [] }, p2: { lineUserId: "U2", links: ["U2b"] } } };
-    expect(await sched.sendClassCancelledToFamilies(tx(fam), { id: "b-1", status: "CONFIRMED", studentId: "A", coStudentId: "B", bookingType: "COURSE_PACKAGE", course: { size: 4 } }, "ADMIN_ERROR")).toBe(1);
+    expect(await sched.sendClassCancelledToFamilies(tx(fam), { id: uuidFor("b-1"), status: "CONFIRMED", studentId: "A", coStudentId: "B", bookingType: "COURSE_PACKAGE", course: { size: 4 } }, "ADMIN_ERROR")).toBe(1);
     expect(inserted.map((r) => r.recipientLineUserId)).toEqual(["U1", "U2", "U2b"]);
     inserted.length = 0;
     expect(await sched.sendClassCancelledToFamilies(tx(fam), { id: "b-2", status: "CONFIRMED", studentId: "A", coStudentId: "C", bookingType: "COURSE_PACKAGE", course: { size: 4 } }, "ADMIN_ERROR")).toBe(1);

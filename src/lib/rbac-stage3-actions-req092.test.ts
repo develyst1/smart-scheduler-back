@@ -13,6 +13,7 @@ import { ApiException } from "./http";
 import { signToken } from "./jwt";
 import * as usersSvc from "../services/user.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -144,7 +145,7 @@ describe("🔴 the guard end to end — menu first, then the action with ITS OWN
   });
   test("with `action:calendar.book` ⇒ through; a DIFFERENT act on the same menu is still refused with the action sentence", async () => {
     expect((await hit(ids.booker, "POST", "/api/bookings")).status).toBe(200);
-    const res = await hit(ids.booker, "PATCH", "/api/bookings/b-1/note");
+    const res = await hit(ids.booker, "PATCH", `/api/bookings/${uuidFor("b-1")}/note`);
     expect(res.status).toBe(403);
     expect(((await res.json()) as any).message).toBe("ไม่มีสิทธิ์ทำรายการนี้");
   });
@@ -154,7 +155,7 @@ describe("🔴 the guard end to end — menu first, then the action with ITS OWN
     expect(((await res.json()) as any).message).toBe("ไม่มีสิทธิ์เข้าถึงเมนูนี้");
   });
   test("a super admin does all", async () => {
-    for (const [m, p] of [["GET", "/api/calendar"], ["POST", "/api/bookings"], ["PATCH", "/api/bookings/b-1/note"], ["PUT", "/api/settings/x"]] as const) expect((await hit(ids.sa, m, p)).status).toBe(200);
+    for (const [m, p] of [["GET", "/api/calendar"], ["POST", "/api/bookings"], ["PATCH", `/api/bookings/${uuidFor("b-1")}/note`], ["PUT", "/api/settings/x"]] as const) expect((await hit(ids.sa, m, p)).status).toBe(200);
   });
   test("`requireAction` as a primitive", async () => {
     process.env.SKIP_AUTH = "false";
@@ -233,11 +234,11 @@ describe("🔑 the routes — `/api/permissions`, `/api/me.actions`, `PUT /users
       return { id, username: "u", displayName: "U", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-18T00:00:00.000Z", menus: [], actions: keys, roleId: null, roleName: null, grants: { fromRole: [], own: keys } };
     }) as any);
     spies.push(s);
-    const put = (b: unknown) => app.fetch(new Request("http://localhost/api/users/u-1/actions", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
+    const put = (b: unknown) => app.fetch(new Request(`http://localhost/api/users/${uuidFor("u-1")}/actions`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
     const res = await put({ keys: ["action:calendar.book", "action:sales.discount"] });
     expect(res.status).toBe(200);
     expect(((await res.json()) as any).user.actions).toEqual(["action:calendar.book", "action:sales.discount"]);
-    expect(calls.at(-1)).toEqual(["u-1", ["action:calendar.book", "action:sales.discount"], "dev"]);
+    expect(calls.at(-1)).toEqual([uuidFor("u-1"), ["action:calendar.book", "action:sales.discount"], "dev"]);
     expect((await put({ keys: ["menu:calendar"] })).status).toBe(400); // a menu key is not an action
   });
 });

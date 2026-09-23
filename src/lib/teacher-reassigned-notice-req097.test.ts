@@ -50,7 +50,7 @@ describe("🔴 suspect 1 — DELIVERY is clean: the REAL worker path renders and
   const priv = { id: "b-1", date: "2026-09-27", startTime: "11:00:00", endTime: "12:00:00", bookingType: "COURSE_PACKAGE", otherTitle: null, student: { id: "s", name: "พอ ชิตวร", nickname: null }, coStudent: null, teacher: { id: T1, nickname: "Bank" }, subject: { name: "Private SURFSKATE" }, additionalTeachers: [] };
   test("the customer's Private session — the exact bytes of the message that stopped arriving", async () => {
     const { r, pushed, updates } = await run(priv);
-    expect(r).toEqual({ sent: 1, failed: 0, retry: 0 });
+    expect(r).toEqual({ sent: 1, failed: 0, retry: 0, errors: [] }); // 🔻 TASK-450: the run now carries the DISTINCT reasons it saw (none here)
     expect(pushed).toEqual([["Uold", "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว\nนักเรียน: พอ ชิตวร\nวิชา: Private SURFSKATE\nเวลา: 27-09-2026 11:00-12:00"]]);
     expect(updates[0]).toMatchObject({ status: "SENT", attempts: 1, error: null });
   });

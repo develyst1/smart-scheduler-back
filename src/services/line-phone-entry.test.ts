@@ -39,7 +39,9 @@ describe("🔴 the phone binds the chat — and can never re-bind it to another 
     // The one guarantee that survived all three entry designs. Without it a parent opens the app to another
     // family's children — TASK-047's failure by a different route.
     expect(FAMILY).toContain('return { ok: false, reason: "bound-to-other-family" }');
-    expect(FAMILY).toContain("if (current && current !== parentId)");
+    // 🔻 TASK-449: the guard reads BOTH stores in ONE read taken before the insert — a link row for THIS parent must
+    // not hide a `parents.line_user_id` column held by another one (the blinding that produced `23505`, and silence).
+    expect(FAMILY).toContain('if (holders.all.some((id) => id !== parentId)) return { ok: false, reason: "bound-to-other-family" };');
   });
 
   test("re-binding the SAME family is a no-op, not an error", () => {

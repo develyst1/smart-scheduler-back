@@ -8,6 +8,7 @@
 //   bun run line:inspect-menus                 # stored menus + default + full channel list
 //   bun run line:inspect-menus <lineUserId>    # ...plus which menu THAT user has linked  ← test of (B)
 import {
+  getBotAccountLabel,
   getDefaultRichMenuId,
   getMenuIds,
   getRichMenu,
@@ -41,6 +42,10 @@ async function main() {
     process.exit(1);
   }
   const userId = process.argv[2]?.trim();
+
+  // TASK-448 — read-only, and still says WHICH account it is reading: the slip this guard exists for began as a
+  // report about the wrong OA, and a reader who cannot see the account cannot see that either.
+  console.log(`LINE account: ${await getBotAccountLabel()}`);
 
   console.log("── Stored menu ids (app_settings.line_rich_menu_ids) ──");
   const ids = await getMenuIds();

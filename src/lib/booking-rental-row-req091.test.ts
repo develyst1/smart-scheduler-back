@@ -12,6 +12,7 @@ import { REMARK_REQUIRED_CODES, rentalBookingLive, rentalRemarkRequired, toRenta
 import { SCHEDULING_WITNESSES } from "./migration-witness";
 import { readSrc } from "./read-src";
 import * as v from "../validation";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.SKIP_AUTH = "true";
@@ -76,18 +77,18 @@ describe("🔑 the routes — through the ROOT app, the service spied", () => {
   const spies = [
     spyOn(rental, "recordBookingRental").mockImplementation((async (id: string, input: any, actor: string | null) => {
       calls.push(["record", id, input, actor]);
-      if (id === "dead") throw new ApiException(409, "BOOKING_NOT_LIVE", "x");
-      if (id === "dup") throw new ApiException(409, "RENTAL_EXISTS", "x");
+      if (id === uuidFor("dead")) throw new ApiException(409, "BOOKING_NOT_LIVE", "x");
+      if (id === uuidFor("dup")) throw new ApiException(409, "RENTAL_EXISTS", "x");
       return { rental: { code: input.code, remark: input.remark ?? null, paid: false } };
     }) as any),
     spyOn(rental, "payBookingRental").mockImplementation((async (id: string, actor: string | null) => {
       calls.push(["paid", id, actor]);
-      if (id === "unposted") throw new ApiException(502, "RENTAL_NOT_POSTED", "x");
+      if (id === uuidFor("unposted")) throw new ApiException(502, "RENTAL_NOT_POSTED", "x");
       return { rental: { code: "rental-set", remark: "ชุด M", paid: true } };
     }) as any),
     spyOn(rental, "removeBookingRental").mockImplementation((async (id: string) => {
       calls.push(["remove", id]);
-      if (id === "paidrow") throw new ApiException(409, "RENTAL_PAID", "x");
+      if (id === uuidFor("paidrow")) throw new ApiException(409, "RENTAL_PAID", "x");
       return { removed: true as const };
     }) as any),
   ];
@@ -96,25 +97,25 @@ describe("🔑 the routes — through the ROOT app, the service spied", () => {
     app.fetch(new Request(`http://localhost/api${path}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined }));
 
   test("POST /bookings/:id/rental ⇒ 201 { rental: { …, paid: false } }; actor from the token", async () => {
-    const res = await req("/bookings/b1/rental", "POST", { code: "rental-set", remark: "ชุด M" });
+    const res = await req(`/bookings/${uuidFor("b1")}/rental`, "POST", { code: "rental-set", remark: "ชุด M" });
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ rental: { code: "rental-set", remark: "ชุด M", paid: false } });
-    expect(calls.at(-1)).toEqual(["record", "b1", { code: "rental-set", remark: "ชุด M" }, "dev"]);
+    expect(calls.at(-1)).toEqual(["record", uuidFor("b1"), { code: "rental-set", remark: "ชุด M" }, "dev"]);
   });
 
   test("an unknown code is refused at the edge (400 VALIDATION) — the service is never called", async () => {
     const before = calls.length;
-    const res = await req("/bookings/b1/rental", "POST", { code: "rental-boat" });
+    const res = await req(`/bookings/${uuidFor("b1")}/rental`, "POST", { code: "rental-boat" });
     expect(res.status).toBe(400);
     expect(calls.length).toBe(before);
   });
 
   test("the service's refusals reach the client as the app's envelope: 409 BOOKING_NOT_LIVE · 409 RENTAL_EXISTS · 409 RENTAL_PAID · 502 RENTAL_NOT_POSTED", async () => {
     for (const [path, method, body, code] of [
-      ["/bookings/dead/rental", "POST", { code: "rental-helmet" }, "BOOKING_NOT_LIVE"],
-      ["/bookings/dup/rental", "POST", { code: "rental-helmet" }, "RENTAL_EXISTS"],
-      ["/bookings/paidrow/rental", "DELETE", undefined, "RENTAL_PAID"],
-      ["/bookings/unposted/rental/paid", "POST", undefined, "RENTAL_NOT_POSTED"],
+      [`/bookings/${uuidFor("dead")}/rental`, "POST", { code: "rental-helmet" }, "BOOKING_NOT_LIVE"],
+      [`/bookings/${uuidFor("dup")}/rental`, "POST", { code: "rental-helmet" }, "RENTAL_EXISTS"],
+      [`/bookings/${uuidFor("paidrow")}/rental`, "DELETE", undefined, "RENTAL_PAID"],
+      [`/bookings/${uuidFor("unposted")}/rental/paid`, "POST", undefined, "RENTAL_NOT_POSTED"],
     ] as const) {
       const res = await req(path, method, body);
       expect({ path, status: res.status, code: ((await res.json()) as any).error.code }).toEqual({ path, status: code === "RENTAL_NOT_POSTED" ? 502 : 409, code });
@@ -122,11 +123,11 @@ describe("🔑 the routes — through the ROOT app, the service spied", () => {
   });
 
   test("POST …/rental/paid ⇒ 200 { rental: { …, paid: true } }; DELETE …/rental ⇒ 200 { removed: true }", async () => {
-    const paid = await req("/bookings/b1/rental/paid", "POST");
+    const paid = await req(`/bookings/${uuidFor("b1")}/rental/paid`, "POST");
     expect(paid.status).toBe(200);
     expect(await paid.json()).toEqual({ rental: { code: "rental-set", remark: "ชุด M", paid: true } });
-    expect(calls.at(-1)).toEqual(["paid", "b1", "dev"]);
-    const gone = await req("/bookings/b1/rental", "DELETE");
+    expect(calls.at(-1)).toEqual(["paid", uuidFor("b1"), "dev"]);
+    const gone = await req(`/bookings/${uuidFor("b1")}/rental`, "DELETE");
     expect(gone.status).toBe(200);
     expect(await gone.json()).toEqual({ removed: true });
   });

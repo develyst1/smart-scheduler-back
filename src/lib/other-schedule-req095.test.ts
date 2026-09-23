@@ -15,6 +15,7 @@ import { ApiException } from "./http";
 import * as v from "../validation";
 import * as svc from "../services/scheduler.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -220,16 +221,16 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
     const calls: any[] = [];
     const s = spyOn(svc, "editOtherBooking").mockImplementation((async (id: string, input: any) => {
       calls.push([id, input]);
-      if (id === "lesson") throw new ApiException(400, "VALIDATION", "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”");
+      if (id === uuidFor("lesson")) throw new ApiException(400, "VALIDATION", "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “อื่นๆ”");
       return { booking: { id, other: { kind: input.otherKind ?? "ECA", headCount: input.headCount ?? 12, teacherRates: input.teacherRates ?? {}, ratePostedAt: null } } };
     }) as any);
     spies.push(s);
-    const ok = await json("PATCH", "/api/bookings/b-1/other", { headCount: 15, teacherRates: { [T1]: 60000 } });
+    const ok = await json("PATCH", `/api/bookings/${uuidFor("b-1")}/other`, { headCount: 15, teacherRates: { [T1]: 60000 } });
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as any).booking.other).toMatchObject({ headCount: 15, teacherRates: { [T1]: 60000 } });
-    expect(calls.at(-1)).toEqual(["b-1", { headCount: 15, teacherRates: { [T1]: 60000 } }]);
-    expect((await json("PATCH", "/api/bookings/b-1/other", {})).status).toBe(400);
-    expect((await json("PATCH", "/api/bookings/lesson/other", { headCount: 1 })).status).toBe(400);
+    expect(calls.at(-1)).toEqual([uuidFor("b-1"), { headCount: 15, teacherRates: { [T1]: 60000 } }]);
+    expect((await json("PATCH", `/api/bookings/${uuidFor("b-1")}/other`, {})).status).toBe(400);
+    expect((await json("PATCH", `/api/bookings/${uuidFor("lesson")}/other`, { headCount: 1 })).status).toBe(400);
   });
   test("the key: `action:calendar.other-series` (49th) gates exactly the series; the edit is a `booking-edit`; the single OTHER create stays under `book`", () => {
     expect(isActionKey("action:calendar.other-series")).toBe(true);

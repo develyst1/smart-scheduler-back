@@ -49,7 +49,7 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
 }
 
 /** Process one batch of pending LINE rows. Returns a small summary for logging/tests. */
-export async function processOutboxOnce(): Promise<{ sent: number; failed: number; retry: number }> {
+export async function processOutboxOnce(): Promise<{ sent: number; failed: number; retry: number; errors: string[] }> {
   const rows = await db
     .select()
     .from(notificationOutbox)
@@ -67,6 +67,10 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
   let sent = 0,
     failed = 0,
     retry = 0;
+  // 🔴 TASK-450 (REQ-105 §7c) — the DISTINCT reasons this run saw, in the order they first appeared. The row has
+  // always stored its own `error`; what was missing is that the RUN said only "failed=12", so a quota wall and a
+  // dead token looked identical from the log — for a whole afternoon.
+  const errors: string[] = [];
 
   for (const row of rows) {
     const ctx = await bookingContext(row.bookingId);
@@ -92,11 +96,12 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
         .update(notificationOutbox)
         .set({ status: permanent ? "FAILED" : "PENDING", attempts, error: err.message })
         .where(eq(notificationOutbox.id, row.id));
+      if (!errors.includes(err.message)) errors.push(err.message);
       if (permanent) failed++;
       else retry++;
     }
   }
-  return { sent, failed, retry };
+  return { sent, failed, retry, errors };
 }
 
 let running = false;
@@ -113,7 +118,8 @@ export function startOutboxWorker(intervalMs = 15_000): () => void {
     try {
       const r = await processOutboxOnce();
       if (r.sent || r.failed || r.retry)
-        console.info(`[outbox] sent=${r.sent} failed=${r.failed} retry=${r.retry}`);
+        // TASK-450 — the first distinct reason rides the summary, so a wall is ONE line and not an afternoon.
+        console.info(`[outbox] sent=${r.sent} failed=${r.failed} retry=${r.retry}${r.errors.length ? ` — ${r.errors[0]}` : ""}${r.errors.length > 1 ? ` (+${r.errors.length - 1} other reason${r.errors.length > 2 ? "s" : ""})` : ""}`);
     } catch (e) {
       console.error("[outbox] tick error:", e);
     } finally {

@@ -15,6 +15,7 @@ import { ApiException } from "./http";
 import * as v from "../validation";
 import * as rentalSvc from "../services/rental.service";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -146,15 +147,15 @@ describe("🔴 (3) remove from the remaining sessions — the marker, future LIV
     const calls: any[] = [];
     const s = spyOn(rentalSvc, "removeCourseRental").mockImplementation((async (id: string, actor: any) => {
       calls.push([id, actor]);
-      if (id === "c-none") throw new ApiException(409, "RENTAL_NOT_ON_COURSE", "คอร์สนี้ไม่มีค่าเช่าอุปกรณ์");
+      if (id === uuidFor("c-none")) throw new ApiException(409, "RENTAL_NOT_ON_COURSE", "คอร์สนี้ไม่มีค่าเช่าอุปกรณ์");
       return { removed: 3 };
     }) as any);
     try {
-      const ok = await rootApp.fetch(new Request("http://localhost/api/courses/c-1/rental", { method: "DELETE" }));
+      const ok = await rootApp.fetch(new Request(`http://localhost/api/courses/${uuidFor("c-1")}/rental`, { method: "DELETE" }));
       expect(ok.status).toBe(200);
       expect(await ok.json()).toEqual({ removed: 3 });
-      expect(calls.at(-1)).toEqual(["c-1", "dev"]);
-      const none = await rootApp.fetch(new Request("http://localhost/api/courses/c-none/rental", { method: "DELETE" }));
+      expect(calls.at(-1)).toEqual([uuidFor("c-1"), "dev"]);
+      const none = await rootApp.fetch(new Request(`http://localhost/api/courses/${uuidFor("c-none")}/rental`, { method: "DELETE" }));
       expect(none.status).toBe(409);
       expect(await none.json()).toEqual({ error: { code: "RENTAL_NOT_ON_COURSE", message: "คอร์สนี้ไม่มีค่าเช่าอุปกรณ์" } });
     } finally { s.mockRestore(); }

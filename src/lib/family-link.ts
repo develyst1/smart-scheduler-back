@@ -112,6 +112,29 @@ export async function familyOfLineUser(lineUserId: string, exec: any = db): Prom
 }
 
 /**
+ * 🔴 TASK-449 (REQ-105 §7) — **who holds this LINE id, in BOTH stores, read once.**
+ *
+ * `familyOfLineUser` answers *"whose family is this chat?"* and stops at the FIRST store that knows — the links
+ * table, then the `parents.line_user_id` column. That precedence is right for routing and **wrong for a guard**:
+ * once a link row exists for parent B, the column still held by parent A becomes invisible, and the very next
+ * write walks into `23505 parents_line_user_id_uq`. That is the customer's silence, three times in one minute.
+ *
+ * So a guard asks THIS instead: every parent id that holds the account anywhere. One read, before any write.
+ */
+export async function holdersOfLineUser(
+  lineUserId: string,
+  exec: any = db,
+): Promise<{ linkParentId: string | null; columnParentId: string | null; all: string[] }> {
+  const [[link], parent] = await Promise.all([
+    exec.select({ parentId: familyLineLinks.parentId }).from(familyLineLinks).where(eq(familyLineLinks.lineUserId, lineUserId)).limit(1),
+    exec.query.parents.findFirst({ columns: { id: true }, where: (p: any, { eq: e }: any) => e(p.lineUserId, lineUserId) }),
+  ]);
+  const linkParentId = link?.parentId ?? null;
+  const columnParentId = parent?.id ?? null;
+  return { linkParentId, columnParentId, all: [...new Set([linkParentId, columnParentId].filter((x): x is string => !!x))] };
+}
+
+/**
  * SPEC-071 Amendment #2 / TASK-232 — bind this chat to a family. **The phone lookup is the binding event.**
  *
  * With the invite cut (REQ-079 §2), the phone is the first inbound message that identifies a family, so this
@@ -135,8 +158,11 @@ export async function bindFamilyLine(
   lineUserId: string,
   exec: any = db,
 ): Promise<FamilyBindResult> {
-  const current = await familyOfLineUser(lineUserId, exec);
-  if (current && current !== parentId) return { ok: false, reason: "bound-to-other-family" };
+  // 🔻 TASK-449 — BOTH stores, not the routing answer: a link row for this parent must not hide a COLUMN held by
+  // another one (the blinding that produced `23505` and, above it, silence). One read, taken before the insert.
+  const holders = await holdersOfLineUser(lineUserId, exec);
+  if (holders.all.some((id) => id !== parentId)) return { ok: false, reason: "bound-to-other-family" };
+  const current = holders.all.includes(parentId) ? parentId : null;
   await exec
     .insert(familyLineLinks)
     .values({ parentId, lineUserId })

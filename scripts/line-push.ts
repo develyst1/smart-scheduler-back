@@ -3,6 +3,7 @@
 // Verifies the channel access token + delivery end-to-end without the worker.
 
 import { getBotInfo, pushMessage } from "../src/lib/line-client";
+import { guardOaWriteOrExit } from "../src/lib/oa-guard";
 
 const [to, ...rest] = process.argv.slice(2);
 const text = rest.join(" ") || "ทดสอบการแจ้งเตือนจากระบบตารางเรียน ✅";
@@ -15,6 +16,9 @@ if (!to) {
   console.log("(token is valid if bot/info printed above)");
   process.exit(0);
 }
+
+// 🔴 TASK-448 — a push MESSAGES A REAL PERSON from whichever account the token holds. The guard runs before it.
+await guardOaWriteOrExit();
 
 await pushMessage(to, [{ type: "text", text }]);
 console.log(`✅ pushed to ${to}: ${text}`);

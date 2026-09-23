@@ -24,6 +24,7 @@ import {
   listRichMenus,
 } from "../src/lib/line-rich-menu";
 import { formatRemovalPlan, idsToKeep, planMenuRemoval } from "../src/lib/line-menu-removal-plan";
+import { guardOaWriteOrExit } from "../src/lib/oa-guard";
 
 /** What the operator must type at `--apply`. It names the count, so it cannot be typed without reading. */
 export const confirmationPhrase = (count: number) => `REMOVE ${count}`;
@@ -55,6 +56,9 @@ async function main() {
 
   // 🔴 The confirmation the owner's objection is really about. Non-interactive stdin returns null ⇒ refuse:
   // a review nobody read is not a review, and this must never be runnable from a script or a cron.
+  // 🔴 TASK-448 — before the FIRST write (the plan above is read-only).
+  await guardOaWriteOrExit();
+
   const expected = confirmationPhrase(plan.toDelete.length);
   const typed = prompt(`\nType "${expected}" to proceed (anything else cancels):`);
   if (typed?.trim() !== expected) {

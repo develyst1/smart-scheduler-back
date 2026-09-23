@@ -314,6 +314,12 @@ const TABLE: Record<string, Entry> = {
     TH: "เบอร์นี้เคยลงทะเบียนไว้แล้ว กรุณาติดต่อร้านเพื่อคืนสถานะ",
     EN: "This number was registered before — please contact the shop to restore it.",
   },
+  // 🔴 TASK-449 (REQ-105 §7) — the LAST line of defence: whatever throws inside a handler, the person who typed
+  // something gets a sentence instead of silence. 📖 The TH is @Sober's from the TASK (the owner's to confirm).
+  generic_error: {
+    TH: "ขออภัย ระบบมีปัญหาชั่วคราว กรุณาติดต่อแอดมิน",
+    EN: "Sorry — something went wrong on our side. Please contact an admin.",
+  },
   verify_parent_other_family: {
     TH: "บัญชี LINE นี้ผูกกับอีกครอบครัวไว้แล้วค่ะ หากไม่ถูกต้องกรุณาติดต่อแอดมิน",
     EN: "This LINE account is already linked to another family. Please contact an admin if that is wrong.",

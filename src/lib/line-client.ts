@@ -32,6 +32,28 @@ export type LineMessage = LineTextMessage | LineFlexMessage;
 
 export const lineConfigured = () => !!process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
+/**
+ * 🔴 TASK-450 (REQ-105 §7c) — **a count is not a diagnosis.** The outbox logged `sent=0 failed=N` all afternoon on
+ * `sid` and nobody could tell a monthly-quota wall from an invalid token without opening the database. LINE answers
+ * a failed push with JSON — `{ "message": "…", "details": [{ "message": "…", "property": "…" }] }` — so the reason
+ * is already in our hands at the moment of failure; it was being stored as a 300-character raw slice and summarised
+ * as a number. This turns the body into the one sentence a human needs, and falls back to the raw text (never to
+ * nothing) when the body is not the JSON we expect.
+ */
+export function describeLineError(status: number, body: string): string {
+  const raw = (body ?? "").trim();
+  let detail = "";
+  try {
+    const j = JSON.parse(raw) as { message?: string; details?: Array<{ message?: string; property?: string }> };
+    const parts = [j.message, ...(j.details ?? []).map((d) => [d.property, d.message].filter(Boolean).join(" "))].filter(Boolean) as string[];
+    detail = [...new Set(parts)].join(" — ");
+  } catch {
+    detail = "";
+  }
+  const text = detail || raw.slice(0, 300);
+  return `LINE push failed ${status}${text ? `: ${text}` : ""}`;
+}
+
 export class LinePushError extends Error {
   constructor(
     public status: number,
@@ -86,7 +108,7 @@ export async function pushMessage(to: string, messages: LineMessage[]): Promise<
   const body = await res.text().catch(() => "");
   // 429 (rate limit) and 5xx are transient; other 4xx (invalid token/userId) are permanent.
   const retryable = res.status === 429 || res.status >= 500;
-  throw new LinePushError(res.status, `LINE push failed ${res.status}: ${body.slice(0, 300)}`, retryable);
+  throw new LinePushError(res.status, describeLineError(res.status, body), retryable);
 }
 
 /** GET /profile/{userId}.language → seed the bot language on first link (best-effort; null on any failure). */

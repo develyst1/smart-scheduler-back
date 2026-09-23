@@ -25,6 +25,24 @@ export function normalizePhone(input: string): string {
   return (input ?? "").replace(/\D/g, "");
 }
 
+/**
+ * 🔴 TASK-447 (REQ-105 §7) — is this message A PHONE NUMBER, typed on its own?
+ *
+ * The silence rule (AC-16) exists so an unlinked chat does not answer chatter; this is the ONE exception the
+ * owner's report demands — the OA's own auto-greeting asks for a phone, and nothing in our code was listening.
+ * So the test must be **tight**: only separators (space · dash · dot · brackets · a leading `+`) may keep the
+ * digits company, and there must be at least nine of them — `linkFamilyByPhone`'s own floor (`phone.length < 9`
+ * ⇒ `phone-invalid`) read off the SAME `normalizePhone` above, not a second rule that can drift from it.
+ *
+ * 🚫 Deliberately NOT "does it contain 9 digits": `สวัสดีค่ะ 0924912848`, a nickname, a date or an address stays
+ * silent. A chat that types its number alone is answering a question; a chat that mentions one is talking.
+ */
+export function isPhoneShaped(input: string): boolean {
+  const t = (input ?? "").trim();
+  if (!t || !/^\+?[\d\s().-]+$/.test(t)) return false;
+  return normalizePhone(t).length >= 9;
+}
+
 export async function findParentByPhone(phone: string, exec: any = db): Promise<ParentRow | null> {
   const p = normalizePhone(phone);
   if (!p) return null;
@@ -104,14 +122,28 @@ export async function linkParentLine(
   exec: any = db,
 ): Promise<void> {
   await assertParentActive(exec, parentId); // TASK-411 — an archived parent cannot be (re-)linked; restore first
-  const owner = await findParentByLineUserId(lineUserId, exec);
+  // 🔴 TASK-449 (REQ-105 §7) — the guard reads the COLUMN this write is about, not "whose family is this chat".
+  // `findParentByLineUserId` answers the second question (links table first), so a link row written three lines
+  // earlier made it answer "you" while a DIFFERENT parent row still held the column ⇒ `23505` ⇒ the webhook
+  // swallowed it ⇒ the customer got silence. One fact, read from where the uniqueness actually lives.
+  const owner = await exec.query.parents.findFirst({
+    columns: { id: true },
+    where: (p: any, { eq: e }: any) => e(p.lineUserId, lineUserId),
+  });
   if (owner && owner.id !== parentId) {
     throw badRequest("LINE นี้ผูกกับผู้ปกครองรายอื่นแล้ว");
   }
-  await exec
-    .update(parents)
-    .set({ lineUserId })
-    .where(and(eq(parents.id, parentId), isNull(parents.lineUserId)));
+  try {
+    await exec
+      .update(parents)
+      .set({ lineUserId })
+      .where(and(eq(parents.id, parentId), isNull(parents.lineUserId)));
+  } catch (e) {
+    // Belt and braces: three taps in one minute is a race, and a race beats any pre-check. The index's own verdict
+    // becomes the SAME sentence the guard above produces — never a raw 23505 reaching a chat as silence.
+    if (pgErrorCode(e) === "23505") throw badRequest("LINE นี้ผูกกับผู้ปกครองรายอื่นแล้ว");
+    throw e;
+  }
 }
 
 /**

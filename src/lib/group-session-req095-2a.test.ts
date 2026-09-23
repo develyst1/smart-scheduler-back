@@ -20,6 +20,7 @@ import * as svc from "../services/scheduler.service";
 import { readSrc } from "./read-src";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { bookings } from "../db/schema";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -94,7 +95,7 @@ describe("🔴 ONE definition of 'holds the slot' — `lib/slot-holder.ts` acros
   test("`holdsSlot` by value: a live row holds; a CANCELLED / PENDING_RESCHEDULE / SICK_LEAVE / PAUSED row does not; a SEAT never does whatever its status", () => {
     for (const status of ["PENDING", "CONFIRMED", "EXTENDED", "ATTENDED"]) expect({ status, holds: holdsSlot({ status }) }).toEqual({ status, holds: true });
     for (const status of SLOT_INACTIVE_STATUSES) expect({ status, holds: holdsSlot({ status }) }).toEqual({ status, holds: false });
-    expect(holdsSlot({ status: "CONFIRMED", groupId: "g-1" })).toBe(false);
+    expect(holdsSlot({ status: "CONFIRMED", groupId: uuidFor("g-1") })).toBe(false);
     expect(holdsSlot({ status: "PAUSED", groupId: null })).toBe(false); // 🔴 the drift: the picker's old list had no PAUSED
   });
   test("`slotHolderWhere` renders `status not in (…the four…) and group_id is null`", () => {
@@ -319,18 +320,18 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
     const calls: any[] = [];
     const s = spyOn(svc, "swapGroupTeacher").mockImplementation((async (id: string, input: any) => {
       calls.push([id, input]);
-      if (id === "lesson") throw new ApiException(400, "VALIDATION", "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");
-      if (id === "taken") throw new ApiException(409, "SLOT_TAKEN", "วันที่ 2026-10-08 ครูไม่ว่าง — ไม่ได้ย้ายรายการใด");
+      if (id === uuidFor("lesson")) throw new ApiException(400, "VALIDATION", "ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");
+      if (id === uuidFor("taken")) throw new ApiException(409, "SLOT_TAKEN", "วันที่ 2026-10-08 ครูไม่ว่าง — ไม่ได้ย้ายรายการใด");
       return { moved: 3, booking: { id } };
     }) as any);
     spies.push(s);
-    const ok = await json("PATCH", "/api/bookings/g-1/group-teacher", { teacherId: T2, fromHereOn: true });
+    const ok = await json("PATCH", `/api/bookings/${uuidFor("g-1")}/group-teacher`, { teacherId: T2, fromHereOn: true });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ moved: 3, booking: { id: "g-1" } });
-    expect(calls.at(-1)).toEqual(["g-1", { teacherId: T2, fromHereOn: true }]);
-    expect((await json("PATCH", "/api/bookings/lesson/group-teacher", { teacherId: T2, fromHereOn: false })).status).toBe(400);
-    expect((await json("PATCH", "/api/bookings/taken/group-teacher", { teacherId: T2, fromHereOn: true })).status).toBe(409);
-    expect((await json("PATCH", "/api/bookings/g-1/group-teacher", { teacherId: T2 })).status).toBe(400);
+    expect(await ok.json()).toEqual({ moved: 3, booking: { id: uuidFor("g-1") } });
+    expect(calls.at(-1)).toEqual([uuidFor("g-1"), { teacherId: T2, fromHereOn: true }]);
+    expect((await json("PATCH", `/api/bookings/${uuidFor("lesson")}/group-teacher`, { teacherId: T2, fromHereOn: false })).status).toBe(400);
+    expect((await json("PATCH", `/api/bookings/${uuidFor("taken")}/group-teacher`, { teacherId: T2, fromHereOn: true })).status).toBe(409);
+    expect((await json("PATCH", `/api/bookings/${uuidFor("g-1")}/group-teacher`, { teacherId: T2 })).status).toBe(400);
   });
   test("the key: `action:calendar.group-series` (50th) gates exactly the series; the swap is a `booking-edit`", () => {
     expect(isActionKey("action:calendar.group-series")).toBe(true);

@@ -16,6 +16,7 @@ import { toBookingDTO } from "../db/mappers";
 import { DEV_USER } from "../middleware/auth";
 import { db } from "../db";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -90,21 +91,21 @@ describe("🔴 the READ mask — `maskCoachRate` by value; the seam by source (t
   });
   test("by value through the ROOT app: `GET /bookings`, `GET /calendar`, `GET /courses`, `GET /entitlements/:id/plan` — super admin ⇒ figures; staff without 59 ⇒ nulls, all else byte-identical; linked-with-all ⇒ nulls; 59-not-57 ⇒ the rate and no budget; `/api/me` untouched", async () => {
     process.env.SKIP_AUTH = "true";
-    const bookingRow = { id: "b-1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", status: "CONFIRMED", teacherId: T1, teacherRateMinor: 300, course: { id: "c-1", size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", classRateMinor: 700, coStudentId: B }, student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" }, teacher: { id: T1, name: "Bank", nickname: "Bank" }, subject: { id: SUBJ, name: "Balance" }, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null };
+    const bookingRow = { id: uuidFor("b-1"), date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", status: "CONFIRMED", teacherId: T1, teacherRateMinor: 300, course: { id: uuidFor("c-1"), size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", classRateMinor: 700, coStudentId: B }, student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" }, teacher: { id: T1, name: "Bank", nickname: "Bank" }, subject: { id: SUBJ, name: "Balance" }, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null };
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => [bookingRow]) as any));
     spies.push(spyOn(db.query.teachers, "findMany").mockImplementation((async () => [{ id: T1, name: "Bank", nickname: "Bank", type: "FREELANCE", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], teacherSubjects: [] }]) as any));
     spies.push(spyOn(db.query.boItem, "findMany").mockImplementation((async () => [{ ownerRef: T1, ceilingQty: 80, remainingQty: 30, unitPriceMinor: 50000, metadata: {} }]) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => null) as any));
     spies.push(spyOn(db.query.appSettings, "findMany").mockImplementation((async () => []) as any));
     spies.push(spyOn(db.query.campWeeks, "findMany").mockImplementation((async () => []) as any));
-    spies.push(spyOn(db.query.coursePackages, "findMany").mockImplementation((async () => [{ id: "c-1", size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, createdAt: new Date(), classRateMinor: 700, coStudentId: B, student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" }, subject: { id: SUBJ, name: "Balance" }, bookings: [] }]) as any));
-    spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async () => ({ id: "c-1", size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, studentId: A, classRateMinor: 700, coStudentId: B, coStudent: { id: B, name: "Pun" } })) as any));
+    spies.push(spyOn(db.query.coursePackages, "findMany").mockImplementation((async () => [{ id: uuidFor("c-1"), size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, createdAt: new Date(), classRateMinor: 700, coStudentId: B, student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" }, subject: { id: SUBJ, name: "Balance" }, bookings: [] }]) as any));
+    spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async () => ({ id: uuidFor("c-1"), size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, studentId: A, classRateMinor: 700, coStudentId: B, coStudent: { id: B, name: "Pun" } })) as any));
     spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async () => ({ id: A, name: "Ploy", nickname: "Ploy" })) as any));
     spies.push(spyOn(sched, "getBookings").mockImplementation((async () => ({ items: [toBookingDTO(bookingRow)], page: 1, limit: 50, total: 1 })) as any)); // the table surface: the DTO flows through the mask
     const read = async () => ({
       bookings: ((await (await json("GET", "/bookings")).json()) as any).items?.[0],
       calendar: ((await (await json("GET", "/calendar?date=2026-10-05&view=day")).json()) as any).days?.[0]?.columns?.[0]?.slots?.find((s: any) => s.booking)?.booking,
-      plan: (await (await json("GET", "/entitlements/c-1/plan")).json()) as any,
+      plan: (await (await json("GET", `/entitlements/${uuidFor("c-1")}/plan`)).json()) as any,
       me: (await (await json("GET", "/me")).json()) as any,
     });
     setUser(SUPER);
@@ -158,20 +159,20 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
     spies.push(spyOn(sched, "createCoursePackage").mockImplementation((async () => { calls.push("create"); return { course: { id: "c" }, bookings: [] }; }) as any));
     const course = { student: { id: A }, teacherId: T1, subjectId: SUBJ, size: 4, startDate: "2026-10-05", startTime: "10:00" };
     setUser(STAFF_NO59);
-    const r1 = await json("PATCH", "/bookings/b-1", { classRateMinor: 300 });
+    const r1 = await json("PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: 300 });
     expect(r1.status).toBe(403);
     expect(await r1.json()).toEqual({ error: { code: "FORBIDDEN", message: "ไม่มีสิทธิ์แก้ค่าสอน" } });
-    expect((await json("PATCH", "/bookings/b-1", { classRateMinor: null })).status).toBe(403);
-    expect((await json("PATCH", "/courses/c-1", { classRateMinor: 700 })).status).toBe(403);
+    expect((await json("PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: null })).status).toBe(403);
+    expect((await json("PATCH", `/courses/${uuidFor("c-1")}`, { classRateMinor: 700 })).status).toBe(403);
     expect((await json("POST", "/courses", { ...course, duo: { coStudentId: B, classRateMinor: 40000 } })).status).toBe(403);
     expect(calls).toEqual([]);
-    expect((await json("PATCH", "/bookings/b-1", { date: "2026-10-12" })).status).toBe(200); // the move without the field
-    expect((await json("PATCH", "/courses/c-1", { adminUnlocked: true })).status).toBe(200);
+    expect((await json("PATCH", `/bookings/${uuidFor("b-1")}`, { date: "2026-10-12" })).status).toBe(200); // the move without the field
+    expect((await json("PATCH", `/courses/${uuidFor("c-1")}`, { adminUnlocked: true })).status).toBe(200);
     expect((await json("POST", "/courses", course)).status).toBe(201); // a Private create
     expect(calls).toEqual(["move", "course", "create"]);
     setUser(STAFF_59_NOT_57);
-    expect((await json("PATCH", "/bookings/b-1", { classRateMinor: 300 })).status).toBe(200);
-    expect((await json("PATCH", "/courses/c-1", { classRateMinor: 700 })).status).toBe(200);
+    expect((await json("PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: 300 })).status).toBe(200);
+    expect((await json("PATCH", `/courses/${uuidFor("c-1")}`, { classRateMinor: 700 })).status).toBe(200);
     expect((await json("POST", "/courses", { ...course, duo: { coStudentId: B, classRateMinor: 40000 } })).status).toBe(201);
     expect(calls).toEqual(["move", "course", "create", "move", "course", "create"]);
   });

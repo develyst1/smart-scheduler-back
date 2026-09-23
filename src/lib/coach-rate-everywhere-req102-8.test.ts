@@ -16,6 +16,7 @@ import { toBookingDTO } from "../db/mappers";
 import { DEV_USER } from "../middleware/auth";
 import { db } from "../db";
 import { readSrc } from "./read-src";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -97,13 +98,13 @@ describe("🔴 the WRITE half on every rate-carrying writer — 403 with a rate 
     const course = { student: { id: A }, teacherId: T1, subjectId: SUBJ, size: 4, startDate: "2026-10-05", startTime: "10:00" };
     const cases: Array<[string, string, any, any]> = [
       ["POST", "/bookings", { ...other, teacherRates: { [T1]: 50000 } }, other],
-      ["PATCH", "/bookings/b-1/other", { teacherRates: { [T1]: 50000 } }, { headCount: 10 }],
+      ["PATCH", `/bookings/${uuidFor("b-1")}/other`, { teacherRates: { [T1]: 50000 } }, { headCount: 10 }],
       ["POST", "/bookings/other-series", { ...seriesBody, teacherRates: { [T1]: 50000 } }, seriesBody],
       ["POST", "/bookings/group-series", { ...group, teacherRates: { [T1]: 50000 } }, group],
       ["POST", `/other-series/${K}/teachers`, { teacherId: T2, rateMinor: 40000 }, { teacherId: T2 }],
       ["PATCH", `/other-series/${K}`, { teacherRates: { [T1]: 1 } }, { title: "Chess" }],
-      ["PATCH", "/bookings/b-1", { classRateMinor: 300 }, { date: "2026-10-12" }],
-      ["PATCH", "/courses/c-1", { classRateMinor: 700 }, { adminUnlocked: true }],
+      ["PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: 300 }, { date: "2026-10-12" }],
+      ["PATCH", `/courses/${uuidFor("c-1")}`, { classRateMinor: 700 }, { adminUnlocked: true }],
       ["POST", "/courses", { ...course, duo: { coStudentId: B, classRateMinor: 40000 } }, { ...course, duo: { coStudentId: B } }],
     ];
     setUser(STAFF_NO59);

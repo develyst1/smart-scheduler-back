@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings } from "../db/schema";
 import type { Lang } from "./line-i18n";
+import { countMenuUsers } from "./line-menu-users";
 
 export interface RichMenuArea {
   bounds: { x: number; y: number; width: number; height: number };
@@ -482,7 +483,28 @@ export async function publishRichMenus(opts: {
   // 🔴 The default is the UNKNOWN menu — the state a chat lands in with no code running. The known menu is the
   // per-user link (`linkKnownRichMenu`), and there is deliberately no unlink: removing the link falls back here.
   await setDefaultRichMenu(unknownTH);
+  // 🔴 TASK-446 (REQ-105 §6) — a publish mints NEW ids, and LINE serves the channel default ONLY to a follower with no
+  // per-user link. Every already-linked follower therefore keeps the menu of the PREVIOUS publish — which is how a customer
+  // ended up looking at an old English menu months later. Nothing here can fix that (re-linking N followers is a sweep with a
+  // plan the human reads, not a side effect of publishing), so the one thing this must not do is finish SILENTLY.
+  for (const line of await publishRelinkWarning()) console.warn(line);
   return ids;
+}
+
+/** The lines `publishRichMenus` prints after storing the ids. Never throws — a failed count must not fail a publish. */
+export async function publishRelinkWarning(): Promise<string[]> {
+  let n: number | null = null;
+  try {
+    n = await countMenuUsers();
+  } catch {
+    n = null;
+  }
+  return [
+    n === null
+      ? "⚠️  Followers still hold the menu ids of the PREVIOUS publish — run `bun run line:relink-menus --dry-run`."
+      : `⚠️  ${n} follower(s) still hold the menu ids of the PREVIOUS publish — run \`bun run line:relink-menus --dry-run\`.`,
+    "   The channel default only serves followers with NO per-user link; the sweep re-links the rest after you read its plan.",
+  ];
 }
 
 // ── Read-only inspection (TASK-045 diagnostics — these NEVER create/link/delete anything) ──────────────

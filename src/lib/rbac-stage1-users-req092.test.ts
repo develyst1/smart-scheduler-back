@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { SCHEDULING_WITNESSES } from "./migration-witness";
 import { readSrc } from "./read-src";
 import * as v from "../validation";
+import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.SKIP_AUTH = "true";
@@ -123,11 +124,11 @@ describe("🔑 the routes — super admin only, through the ROOT app (the dev us
     spyOn(usersSvc, "createUser").mockImplementation((async (input: any, actor: any) => {
       calls.push(["create", input, actor]);
       if (input.username === "taken") throw new ApiException(409, "USERNAME_TAKEN", "x");
-      return { id: "u-2", username: input.username, displayName: input.displayName, isSuperAdmin: !!input.isSuperAdmin, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z" };
+      return { id: uuidFor("u-2"), username: input.username, displayName: input.displayName, isSuperAdmin: !!input.isSuperAdmin, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z" };
     }) as any),
-    spyOn(usersSvc, "updateUser").mockImplementation((async (id: string, input: any) => { calls.push(["update", id, input]); if (id === "last") throw new ApiException(409, "LAST_SUPER_ADMIN", "x"); return { id, username: "x", displayName: input.displayName ?? "x", isSuperAdmin: !!input.isSuperAdmin, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z" }; }) as any),
+    spyOn(usersSvc, "updateUser").mockImplementation((async (id: string, input: any) => { calls.push(["update", id, input]); if (id === uuidFor("last")) throw new ApiException(409, "LAST_SUPER_ADMIN", "x"); return { id, username: "x", displayName: input.displayName ?? "x", isSuperAdmin: !!input.isSuperAdmin, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z" }; }) as any),
     spyOn(usersSvc, "resetPassword").mockImplementation((async (id: string, pw: string) => { calls.push(["reset", id, pw]); if (pw.length < 8) throw new ApiException(400, "PASSWORD_TOO_SHORT", "x"); return { ok: true as const }; }) as any),
-    spyOn(usersSvc, "setUserDisabled").mockImplementation((async (id: string, d: boolean) => { calls.push(["disabled", id, d]); if (id === "last" && d) throw new ApiException(409, "LAST_SUPER_ADMIN", "x"); return { id, username: "x", displayName: "x", isSuperAdmin: false, disabledAt: d ? "2026-09-17T00:00:00.000Z" : null, createdAt: "2026-09-17T00:00:00.000Z" }; }) as any),
+    spyOn(usersSvc, "setUserDisabled").mockImplementation((async (id: string, d: boolean) => { calls.push(["disabled", id, d]); if (id === uuidFor("last") && d) throw new ApiException(409, "LAST_SUPER_ADMIN", "x"); return { id, username: "x", displayName: "x", isSuperAdmin: false, disabledAt: d ? "2026-09-17T00:00:00.000Z" : null, createdAt: "2026-09-17T00:00:00.000Z" }; }) as any),
   ]; });
   afterAll(() => spies.forEach((s) => s.mockRestore()));
   const req = (path: string, method = "GET", body?: unknown) =>
@@ -149,16 +150,16 @@ describe("🔑 the routes — super admin only, through the ROOT app (the dev us
     expect([dup.status, ((await dup.json()) as any).error.code]).toEqual([409, "USERNAME_TAKEN"]);
   });
   test("PATCH / password / disable / enable — and LAST_SUPER_ADMIN, PASSWORD_TOO_SHORT reach the client as 409 / 400", async () => {
-    expect((await req("/u-2", "PATCH", { displayName: "Renamed" })).status).toBe(200);
-    expect(((await (await req("/last", "PATCH", { isSuperAdmin: false })).json()) as any).error.code).toBe("LAST_SUPER_ADMIN");
-    expect(await (await req("/u-2/password", "POST", { password: "longenough" })).json()).toEqual({ ok: true });
-    expect((await req("/u-2/password", "POST", { password: "short" })).status).toBe(400);
-    expect(((await (await req("/u-2/disable", "POST")).json()) as any).user.disabledAt).not.toBeNull();
-    expect((await req("/last/disable", "POST")).status).toBe(409);
-    expect(((await (await req("/u-2/enable", "POST")).json()) as any).user.disabledAt).toBeNull();
+    expect((await req(`/${uuidFor("u-2")}`, "PATCH", { displayName: "Renamed" })).status).toBe(200);
+    expect(((await (await req(`/${uuidFor("last")}`, "PATCH", { isSuperAdmin: false })).json()) as any).error.code).toBe("LAST_SUPER_ADMIN");
+    expect(await (await req(`/${uuidFor("u-2")}/password`, "POST", { password: "longenough" })).json()).toEqual({ ok: true });
+    expect((await req(`/${uuidFor("u-2")}/password`, "POST", { password: "short" })).status).toBe(400);
+    expect(((await (await req(`/${uuidFor("u-2")}/disable`, "POST")).json()) as any).user.disabledAt).not.toBeNull();
+    expect((await req(`/${uuidFor("last")}/disable`, "POST")).status).toBe(409);
+    expect(((await (await req(`/${uuidFor("u-2")}/enable`, "POST")).json()) as any).user.disabledAt).toBeNull();
   });
   test("🚫 no DELETE /users/:id — disable is the off switch", async () => {
-    expect((await req("/u-2", "DELETE")).status).toBe(404);
+    expect((await req(`/${uuidFor("u-2")}`, "DELETE")).status).toBe(404);
   });
 });
 

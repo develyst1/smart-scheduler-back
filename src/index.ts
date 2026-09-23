@@ -7,6 +7,7 @@ import { ApiException, pgErrorCode } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
 import { authMiddleware, accessGuard } from "./middleware/auth";
 import { coachRateMask } from "./middleware/coach-rate-mask";
+import { uuidParamGuard } from "./middleware/uuid-params";
 import { authRoutes } from "./routes/auth";
 import { userRoutes } from "./routes/users";
 import { meRoutes } from "./routes/me";
@@ -57,6 +58,7 @@ app.route("/internal", internalJobs);
 // Everything else under /api requires a valid JWT (bypassed when SKIP_AUTH=true).
 app.use("/api/*", authMiddleware);
 app.use("/api/*", accessGuard);
+app.use("/api/*", uuidParamGuard); // TASK-450 — a malformed `:id` is a 400 at the boundary, never a `22P02` from the DB
 app.use("/api/*", coachRateMask); // TASK-431 — the ONE read seam for the §13.3 coach rate (key 59): nulls `rate` / `classRateMinor` for a viewer without it // TASK-381/385 — ONE guard (menu, then action), driven by `lib/route-access.ts`; fails closed on an unmapped route
 app.route("/api/users", userRoutes); // TASK-377 — super admin only (its own middleware), behind the guard
 app.route("/api/me", meRoutes); // TASK-383 — the signed-in user's own routes, behind the JWT guard, not menu-gated
