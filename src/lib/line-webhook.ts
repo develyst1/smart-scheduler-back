@@ -18,6 +18,15 @@ export interface LineWebhookEvent {
   source?: { type?: string; userId?: string };
   message?: LineTextMessage;
   postback?: LinePostback;
+  /**
+   * 🔴 TASK-460 — LINE's OWN id for this event. It has been in every webhook body we have ever received and this
+   * type threw it away, so: nothing could be made idempotent (a re-delivered "type your phone" would link twice),
+   * and no log line we have ever written could tell a RE-delivery from a first delivery. Both of those were
+   * invisible for the same reason — the field was never parsed.
+   */
+  webhookEventId?: string;
+  /** TASK-460 — LINE says whether it is re-sending this event. Logged, and the reason a duplicate is expected. */
+  deliveryContext?: { isRedelivery?: boolean };
 }
 
 export interface LineWebhookBody {

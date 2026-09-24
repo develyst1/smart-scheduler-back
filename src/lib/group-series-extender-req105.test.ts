@@ -180,6 +180,6 @@ describe("🔑 §3 the route, the exe, the script — the TASK-441 shape", () =>
   });
 
   test("🚫 no migration: the extender is behaviour over the rows TASK-453 already gave it", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(55);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(56);
   });
 });

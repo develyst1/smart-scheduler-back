@@ -41,9 +41,9 @@ describe("🔴 the migration — 0053, counted; the merge, the backfill and BOTH
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0053_camp_day_teachers.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("55 = 55: `0053_camp_day_teachers` is the 54th file, idx 53, the last; 'expects 54'; the four statements in THIS order", () => {
-    expect(files.length).toBe(55);
-    expect(journal.entries.length).toBe(55);
+  test("56 = 56: `0053_camp_day_teachers` is the 54th file, idx 53, the last; 'expects 54'; the four statements in THIS order", () => {
+    expect(files.length).toBe(56);
+    expect(journal.entries.length).toBe(56);
     expect(files[53]).toBe("0053_camp_day_teachers.sql");
     expect(journal.entries[53]).toMatchObject({ idx: 53, tag: "0053_camp_day_teachers" });
     expect(sql).toContain("`db:verify` expects 54");

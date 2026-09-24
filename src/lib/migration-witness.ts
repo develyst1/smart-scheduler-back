@@ -531,13 +531,20 @@ export const SCHEDULING_WITNESSES: Witness[] = [
   },
   {
     tag: "0052_camp_day_rates",
-    probe: { kind: "table", table: "camp_week_day_rates" },
+    // 🔴 TASK-459 — NOT a table probe any more. 0052 created `camp_week_day_rates`, and TASK-454's `0053` MERGED it
+    // into `camp_week_day_teachers` and DROPPED it. So on a correctly migrated box the probe reads `found=false`
+    // and the ledger seeder calls a migration that DID run "not applied" — which is what happened on `sid` on
+    // 2026-09-24 (Porter stopped it at the dry run). The 0002 → 0007 shape is the answer: inherit the verdict.
+    probe: { kind: "superseded-by", tag: "0053_camp_day_teachers" },
     why:
-      "TASK-443 (REQ-104 §2). camp_days.deduction_notified_at (the day-end camp_deduction stamp) + the camp_week_day_rates " +
-      "table (one row per coach per day, behind key 59) — the table is the LAST object and the witness. Rerunnable: IF NOT " +
-      "EXISTS on both. 🔻 TASK-454: camp_week_day_rates was MERGED into camp_week_day_teachers by 0053 and dropped there; " +
-      "this entry still witnesses 0052 on a box that has not run 0053 yet, which is exactly what a witness is for.",
-    rerunnable: true,
+      "TASK-443 (REQ-104 §2) created camp_days.deduction_notified_at + the camp_week_day_rates table. 🔻 TASK-454's 0053 " +
+      "merged that table into camp_week_day_teachers and dropped it, so 0052's own effect can no longer be observed " +
+      "independently and the verdict is inherited from 0053 (the 0002 → 0007 shape). ⚠️ Re-running 0052 would REGRESS " +
+      "0053: it would re-create the retired rates table, putting the day's coach rates back into a SECOND store — the " +
+      "exact two-truths split the merge removed. It must never be attempted. 📌 The stamp column survives 0053 and is " +
+      "still covered, because 0053's own witness cannot be satisfied unless 0052 ran (the backfill reads the rates table).",
+    // 🚫 false, and that is the point: the seeder must never offer to re-run this.
+    rerunnable: false,
   },
   {
     tag: "0053_camp_day_teachers",
@@ -558,6 +565,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "existence probe would be satisfied by 0041's version — the 0022 blindness, third time. 🚫 NOT the column " +
       "either: both columns are added BEFORE the rebuild, so a column probe passes on a file that stopped half way. " +
       "The predicate is the LAST statement and the only witness of the whole file.",
+    rerunnable: true,
+  },
+  {
+    tag: "0055_line_webhook_events",
+    probe: { kind: "table", table: "line_webhook_events" },
+    why:
+      "TASK-460 (REQ-105 §7). The webhook's idempotency store — the table is this file's ONLY object, so its " +
+      "existence is the whole proof. (The index rides the same file and cannot exist without it.) Rerunnable: " +
+      "IF NOT EXISTS on both.",
     rerunnable: true,
   },
 ];

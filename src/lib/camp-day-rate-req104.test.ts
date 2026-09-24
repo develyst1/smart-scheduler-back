@@ -1,5 +1,5 @@
 // TASK-443 (`REQ-104 §2` items 4–5, SPEC-090 §2–§3) — CAMP per-coach-per-day rate (migration `0052`: the rates table as
-// witness + `camp_days.deduction_notified_at`; 55 = 55), the day DTO's `teacherRates` (0 by absence; masked without key 59), the
+// witness + `camp_days.deduction_notified_at`; 56 = 56), the day DTO's `teacherRates` (0 by absence; masked without key 59), the
 // PATCH's upsert (a coach not on the day ⇒ 400; the field ⇒ 403 without 59) and the ONE sync copying the day rate onto the
 // derived rows (inserted with it, KEPT rows re-stamped), the two scan payloads (camp `credit` in DAYS, half-day `3.5`; Private
 // `remaining` course / voucher / null), and the DAY-END `camp_deduction` pass by value (CONSUMING days not yet stamped ⇒ one row
@@ -51,9 +51,9 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("55 = 55: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(55);
-    expect(journal.entries.length).toBe(55);
+  test("56 = 56: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
+    expect(files.length).toBe(56);
+    expect(journal.entries.length).toBe(56);
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");
@@ -63,11 +63,15 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
       `CREATE TABLE IF NOT EXISTS "camp_week_day_rates" ( "camp_week_day_id" uuid NOT NULL REFERENCES "camp_week_days"("id") ON DELETE CASCADE, "teacher_id" uuid NOT NULL REFERENCES "teachers"("id") ON DELETE RESTRICT, "rate_minor" integer NOT NULL DEFAULT 0, PRIMARY KEY ("camp_week_day_id", "teacher_id") );`,
     ]);
   });
-  test("the witness entry stands (a box that has not run 0053 still needs it); the rate column now lives on the MERGED table", () => {
-    // 🔻 TASK-454 — `camp_week_day_rates` was merged into `camp_week_day_teachers` by `0053` and dropped there, so
-    // `0052` is no longer the last witness and its TABLE is no longer in the schema. Both facts are asserted, because
-    // a witness for a migration a box may not have run yet is exactly what the witness list is for.
-    expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0052_camp_day_rates")).toMatchObject({ probe: { kind: "table", table: "camp_week_day_rates" }, rerunnable: true });
+  test("🔴 the witness is INHERITED from 0053 (TASK-459): its own table is gone, so it can no longer be observed", () => {
+    // 🔻 TASK-454 merged `camp_week_day_rates` into `camp_week_day_teachers` and `0053` dropped it.
+    // 🔴 TASK-459 — **this very line used to assert the defect.** It said the table probe "stands (a box that has not
+    // run 0053 still needs it)", which sounds right and is not: on a box that HAS run 0053 — every correctly
+    // migrated box — the probe reads `found=false`, so `db:seed-ledger` calls 0052 not-applied and offers to apply
+    // it, which would re-create the retired table and undo the merge. That is what halted `sid` on 2026-09-24.
+    // 📌 The reassuring half of my own sentence was the part that was wrong; a witness cannot serve a box that has
+    // not run 0053 if it lies to every box that has. The 0002 → 0007 shape is the answer: inherit the verdict.
+    expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0052_camp_day_rates")).toMatchObject({ probe: { kind: "superseded-by", tag: "0053_camp_day_teachers" }, rerunnable: false });
     const S = code(src("src/db/schema.ts"));
     expect(S).not.toContain("export const campWeekDayRates = pgTable(");
     expect(S).toContain("export const campWeekDayTeachers = pgTable(");

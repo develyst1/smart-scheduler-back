@@ -1200,3 +1200,21 @@ export const bookingBadgesRelations = relations(bookingBadges, ({ one }) => ({
   }),
   type: one(badgeTypes, { fields: [bookingBadges.badgeTypeId], references: [badgeTypes.id] }),
 }));
+
+/**
+ * 🔴 TASK-460 (`0055`, REQ-105 §7) — every webhook event LINE has delivered, by LINE's own id.
+ *
+ * 🔑 The PRIMARY KEY is the mechanism, not a nicety: the webhook INSERTs before any side effect and drops the event
+ * when the insert returns nothing. Two concurrent deliveries of one event therefore cannot both proceed — which is
+ * what makes processing AFTER the 200 safe, and what makes turning LINE's REDELIVERY setting on safe later.
+ *
+ * ⏳ Swept by the day-end job (> 7 days). It is a log of ids, not a history: nothing reads a row's age but the sweep.
+ */
+export const lineWebhookEvents = pgTable(
+  "line_webhook_events",
+  {
+    webhookEventId: text("webhook_event_id").primaryKey(),
+    seenAt: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("line_webhook_events_seen_at_idx").on(t.seenAt)],
+);

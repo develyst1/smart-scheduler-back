@@ -5,7 +5,7 @@
 
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db";
-import { coursePackages, lineLinkSessions, parents, teachers } from "../db/schema";
+import { coursePackages, lineLinkSessions, lineWebhookEvents, parents, teachers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { replyMessage, type LineMessage } from "../lib/line-client";
 import {
@@ -24,6 +24,7 @@ import { hasEnoughLeaveNotice, leaveCutoffKey, leaveNoticeMessage } from "../lib
 import { getSetting } from "./settings.service";
 import {
   formatDroppedPostback,
+  formatEventFinish,
   formatInboundEvent,
   formatUnknownAction,
 } from "../lib/line-log";
@@ -1580,17 +1581,76 @@ async function handleFollow(ev: LineWebhookEvent) {
 }
 
 /** Process one webhook POST body (already signature-verified). */
+/**
+ * 🔴 TASK-460 — ONE chat at a time. Keyed on the LINE user id: the next event for that chat waits for the previous
+ * one's tail; other chats are untouched.
+ *
+ * ## Why, and what it is not
+ * ACK-first does not CREATE this concurrency — two rapid messages already arrive as two separate HTTP requests and
+ * nothing serialised them before. What it changes is that our work now outlives the response, so the interleaving
+ * that used to need a slow request (i.e. the 14 timeouts) is the ordinary case. The link flow is a state machine
+ * (`line_link_sessions.step`), and two events interleaving in it lose a step quietly.
+ *
+ * ⚠️ **Stated, not implied: this serialises within ONE process.** With several API processes it degrades to exactly
+ * today's behaviour — never worse, but it is not a distributed lock, and nothing here should be read as one. The
+ * DB-level alternative (`pg_advisory_xact_lock`) was rejected deliberately: the handler makes two outbound HTTPS
+ * calls to LINE, and holding a transaction across those is a worse trade than the window it would close.
+ */
+const chatQueues = new Map<string, Promise<void>>();
+function onChatQueue(key: string, work: () => Promise<void>): Promise<void> {
+  const prev = chatQueues.get(key) ?? Promise.resolve();
+  // `.catch` so one event's failure cannot poison the chain for every later event in that chat.
+  const next = prev.then(work, work);
+  chatQueues.set(key, next);
+  // Only clear when this IS the tail — otherwise a fast event would drop a slower one's chain.
+  void next.finally(() => {
+    if (chatQueues.get(key) === next) chatQueues.delete(key);
+  });
+  return next;
+}
+
+/**
+ * 🔴 TASK-460 — has LINE already delivered this event? The INSERT is the answer, not a read: the PRIMARY KEY makes
+ * two concurrent deliveries of one id impossible to both pass, which a read-then-check could never promise.
+ *
+ * An event with NO id (older payloads, and our own tests) is processed — refusing to act because a field is absent
+ * is how a webhook goes silent, and silence is the defect this whole task exists to remove.
+ */
+async function firstDelivery(ev: LineWebhookEvent): Promise<boolean> {
+  const id = ev.webhookEventId;
+  if (!id) return true;
+  const rows = await db.insert(lineWebhookEvents).values({ webhookEventId: id }).onConflictDoNothing().returning({ id: lineWebhookEvents.webhookEventId });
+  return rows.length > 0;
+}
+
 export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
   for (const ev of events) {
+    // 🔴 TASK-460 — one chat's events are handled in order, and we WAIT for that queue, so a batch of events for one
+    // chat still finishes in order before this function resolves.
+    await onChatQueue(eventUserId(ev) ?? "anon", () => handleOneEvent(ev));
+  }
+}
+
+async function handleOneEvent(ev: LineWebhookEvent) {
+  {
     // One line per inbound event BEFORE dispatch (TASK-045) — so a rich-menu tap that reaches us is visible
     // even when it succeeds. Never logs the full userId or any token (see lib/line-log.ts).
     console.info(formatInboundEvent(ev));
+    const started = Date.now();
+    let outcome = "ok";
+    // 🔴 TASK-460 — the duplicate is dropped BEFORE any side effect, and it says so: a re-delivered "type your
+    // phone" must not link the family a second time or message them twice.
+    if (!(await firstDelivery(ev))) {
+      console.info(formatEventFinish(ev, "duplicate", Date.now() - started));
+      return;
+    }
     try {
       // 🚫 `follow` is NOT dispatched — `REQ-079 §17g`, the OWNER's own edit (`baa6015`), kept by TASK-346.
       // `handleFollow` above is deliberately dead; see its note.
       if (ev.type === "message") await handleMessage(ev);
       else if (ev.type === "postback") await handlePostback(ev);
     } catch (e) {
+      outcome = "error";
       console.error("[line-webhook] event error:", e);
       // 🔴 TASK-449 (REQ-105 §7) — **no event may end in silence because something threw.** Khwan typed her phone
       // three times; each attempt reached the link code, threw `23505 parents_line_user_id_uq`, and died in this
@@ -1604,9 +1664,14 @@ export async function handleLineWebhookEvents(events: LineWebhookEvent[]) {
         try {
           await replyMessage(ev.replyToken, [{ type: "text", text: tb("generic_error") }]);
         } catch (e2) {
+          outcome = "error+apology-failed"; // ⚠️ an expired reply token lands here, and is logged twice, never silent
           console.error("[line-webhook] apology failed:", e2);
         }
       }
+    } finally {
+      // 🔑 ALWAYS, including after a throw: we have removed LINE's console as our evidence (every delivery is a 200
+      // now), so this line is the evidence. A lost step must read as a `[line-in]` with no FINISH — not as nothing.
+      console.info(formatEventFinish(ev, outcome, Date.now() - started));
     }
   }
 }

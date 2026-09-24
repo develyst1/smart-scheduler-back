@@ -1,5 +1,5 @@
 // TASK-437 (`REQ-095 §13.4a`, SPEC-089 A) — a subject has a TYPE: migration `0050` (`subjects.kind` NOT NULL DEFAULT 'PRIVATE' +
-// the CHECK as witness; 55 = 55; the CHECK ⇔ `SUBJECT_KINDS` by value), the two readers carry `kind` (`teacher.subjects[]`,
+// the CHECK as witness; 56 = 56; the CHECK ⇔ `SUBJECT_KINDS` by value), the two readers carry `kind` (`teacher.subjects[]`,
 // `GET /sellable-packages`), the ONE rule at both course creates BEFORE the tx (a DUO course needs a DUO subject; a Private
 // course refuses a DUO one — no write on refusal), `add-subject --kind` (validated, default PRIVATE), and `ensure-subjects`'
 // pure planner (missing ⇒ create; PRIVATE ⇒ update in place; correct ⇒ unchanged; a foreign name untouched). Walk-in
@@ -37,9 +37,9 @@ describe("🔴 the migration — 0050, counted, the column with its default on a
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0050_subject_kind.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("55 = 55: `0050_subject_kind` is the 51st file, idx 50 (TASK-439 added 0051 after it); 'expects 51'; the four statements", () => {
-    expect(files.length).toBe(55);
-    expect(journal.entries.length).toBe(55);
+  test("56 = 56: `0050_subject_kind` is the 51st file, idx 50 (TASK-439 added 0051 after it); 'expects 51'; the four statements", () => {
+    expect(files.length).toBe(56);
+    expect(journal.entries.length).toBe(56);
     expect(files[50]).toBe("0050_subject_kind.sql");
     expect(journal.entries[50]).toMatchObject({ idx: 50, tag: "0050_subject_kind" });
     expect(sql).toContain("`db:verify` expects 51");

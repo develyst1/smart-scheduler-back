@@ -100,10 +100,10 @@ describe("🔴 §1 the mirror, by value — and what it is NOT", () => {
 // ═══════════════════ §2 the migration ═══════════════════
 
 describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PREDICATE is the witness", () => {
-  test("55 = 55: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
+  test("56 = 56: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
-    expect(journal.entries.length).toBe(55);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56);
+    expect(journal.entries.length).toBe(56);
     expect(journal.entries[54]).toMatchObject({ idx: 54, tag: "0054_group_slot_yield" });
     expect(MIG).toContain("db:verify` expects 55");
     const stmts = MIG.split("--> statement-breakpoint").map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);
@@ -123,7 +123,10 @@ describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PRED
     expect(w).toMatchObject({ probe: { kind: "index-predicate", index: "bookings_teacher_slot_uq", contains: "slot_yielded_at" }, rerunnable: true });
     expect(w.why).toContain("NOT the index's existence");
     expect(w.why).toContain("NOT the column");
-    expect(SCHEDULING_WITNESSES[SCHEDULING_WITNESSES.length - 1]!.tag).toBe("0054_group_slot_yield");
+    // 🔻 TASK-460 added `0055` after this one, so "the last entry" is no longer the property — "registered, in the
+    // journal's own order" is, and that is what this asserts.
+    const i = SCHEDULING_WITNESSES.findIndex((x) => x.tag === "0054_group_slot_yield");
+    expect(SCHEDULING_WITNESSES[i + 1]?.tag).toBe("0055_line_webhook_events");
   });
 
   test("⚠️ the HOT-table lock is named in the header, with the honest reason CONCURRENTLY is not used", () => {

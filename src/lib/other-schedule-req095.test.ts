@@ -38,11 +38,11 @@ describe("🔴 the migration — 0040, counted, witnessed, the HOT `bookings` lo
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0040_other_schedule.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("55 = 55 (0041 … 0054 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
-    expect(files.length).toBe(55);
+  test("56 = 56 (0041 … 0055 added since): `0040_other_schedule` is the 41st file, idx 40; the order 0038 → 0039 → 0040", () => {
+    expect(files.length).toBe(56);
     expect(files[40]).toBe("0040_other_schedule.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(55);
+    expect(j.entries.length).toBe(56);
     expect(j.entries.slice(38, 41).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule"]);
   });
   test("five nullable column adds in order — four on `bookings`, `booking_teachers.rate_minor` LAST; all IF NOT EXISTS; no DEFAULT / NOT NULL; no enum", () => {

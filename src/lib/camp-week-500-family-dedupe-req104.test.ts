@@ -3,7 +3,7 @@
 // insert now; the catch touches no tx ⇒ `409 SLOT_TAKEN` naming date · hour · coach, the whole create rolled back. A PAST date
 // derives nothing and is left alone. (2) the group cancel-all's family notices: ONE household set per row (all the seats — two
 // siblings reach their family ONCE), the accounts returned for honest counts: `familyNotices` = rows × distinct accounts,
-// `householdsTold` = the union across the call. The Private/DUO path byte-identical. No migration (55 = 55).
+// `householdsTold` = the union across the call. The Private/DUO path byte-identical. No migration (56 = 56).
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -156,6 +156,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56);
   });
 });

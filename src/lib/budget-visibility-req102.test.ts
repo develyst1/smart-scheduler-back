@@ -194,6 +194,6 @@ describe("🔴 the attention line — the dashboard drops the number without the
     expect(M).not.toMatch(/classRateMinor|teacherRates|priceMinor|listPrice|recordSale|rate:/);
     expect(M).toContain('export const BUDGET_FIGURE_FIELDS = ["hourlyRate", "budgetMinor", "remainingMinor", "reorderMinor"] as const;');
     for (const f of ["src/db/mappers.ts", "src/lib/coach-rate.ts", "src/lib/sale-items.ts", "src/services/som-report.service.ts"]) expect(code(src(f))).not.toMatch(/maskBudget|budget-visibility/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56);
   });
 });

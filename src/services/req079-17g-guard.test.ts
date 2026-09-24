@@ -21,7 +21,9 @@ const fn = (decl: string) => {
   return rest.slice(0, rest.indexOf("\n}\n") + 2);
 };
 const POSTBACK = fn("async function handlePostback");
-const DISPATCH = fn("export async function handleLineWebhookEvents");
+// 🔻 TASK-460 — the per-event body moved into `handleOneEvent` (the outer function is now the per-chat queue).
+// The §17g claim is unchanged; only the region that holds it moved.
+const DISPATCH = fn("async function handleOneEvent");
 const GUARD = 'if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);';
 
 describe("🔴 TASK-346 — JOB ONE: the guard GATES. An unlinked tap never reaches the customer switch.", () => {

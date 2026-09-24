@@ -386,6 +386,13 @@
       "when": 1783000000050,
       "tag": "0054_group_slot_yield",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1783000000051,
+      "tag": "0055_line_webhook_events",
+      "breakpoints": true
     }
   ]
 }

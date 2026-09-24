@@ -37,3 +37,26 @@ that were committed and applied it would try to re-create existing objects → b
 
 Rebuilding the real 0004–0012 snapshot chain so `db:generate` works again is a separate, careful task (it must
 not fabricate unverifiable meta snapshots) — out of scope for a feature change.
+
+## 🔑 A migration that drops an object must re-point any witness that probes it — IN THE SAME TASK
+
+`src/lib/migration-witness.ts` gives every migration a **witness**: one database object whose presence proves that
+migration ran. `bun run db:seed-ledger` trusts those witnesses to decide what to write into the ledger that
+`db:migrate` then reads.
+
+⇒ If your migration **drops or supersedes** an object that an EARLIER migration uses as its witness, that earlier
+witness starts reading `found=false` on a **correctly migrated** box. The seeder then reports that migration as
+*not applied* and proposes applying it — and applying it would **undo your migration**. It is not a misleading
+message; it is a tool proposing a regression.
+
+**What to do, in the same task, never "later":**
+
+1. Re-point the earlier witness to `{ kind: "superseded-by", tag: "<your migration>" }` (see `0002` → `0007`, and
+   `0052` → `0053`).
+2. Set its `rerunnable: false` and say in its `why` that **re-running it would REGRESS** your migration, and what
+   it would break.
+3. `src/lib/witness-observability-req105.test.ts` walks every witness and fails if one probes an object no longer
+   declared by the schema and not dropped-then-kept by the SQL. It will catch you — but it catches you **after**
+   you have already thought about it, which is the wrong order.
+
+📌 2026-09-24: this cost a halted deploy on `sid` (`0052`'s table, dropped on purpose by `0053`).

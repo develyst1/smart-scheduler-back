@@ -20,9 +20,9 @@
 // had not turned up because nobody pressed a button. On `uat` it did that to 15 real children in one weekend.
 // Good customers are separated by **CRM points at check-in**, and this path awards none — that absence is the
 // signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookings, coursePackages, jobRuns, notificationOutbox, vouchers } from "../db/schema";
+import { bookings, coursePackages, jobRuns, lineWebhookEvents, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
@@ -46,6 +46,9 @@ import { ApiException } from "../lib/http";
 import { addDays, hhmm } from "../lib/time";
 import { campReminderInputs } from "./camp.service";
 import { getSetting } from "./settings.service";
+
+/** TASK-460 — how long a delivered event id is remembered. A week covers every re-delivery window LINE uses. */
+export const WEBHOOK_EVENT_TTL_DAYS = 7;
 
 export async function runEndOfDayJob(date?: string) {
   const now = bangkokNow();
@@ -230,9 +233,17 @@ export async function runEndOfDayJob(date?: string) {
     if (res.ok) revenuePosted++;
   }
 
+  // 🔴 TASK-460 — sweep the webhook idempotency store (> WEBHOOK_EVENT_TTL_DAYS). It rides THIS job on purpose:
+  // a job of its own would be an exe plus a Task Scheduler registration only the human can perform, for a table of
+  // one-line rows (TASK-456's shape). The count is in the summary, so a sweep that silently stops is visible.
+  const swept = await db
+    .delete(lineWebhookEvents)
+    .where(lt(lineWebhookEvents.seenAt, new Date(Date.now() - WEBHOOK_EVENT_TTL_DAYS * 86_400_000)))
+    .returning({ id: lineWebhookEvents.webhookEventId });
+
   // Report is read after the auto-mark so its counts reflect the newly-ATTENDED rows.
   const report = await getDailyReport(runDate);
-  const summary = { ...marked, revenuePosted, report };
+  const summary = { ...marked, revenuePosted, webhookEventsSwept: swept.length, report };
 
   await db.insert(jobRuns).values({
     job: "end-of-day",

@@ -155,10 +155,10 @@ describe("🔴 the reconcile — a later make-up inherits the COURSE's rental th
 });
 
 describe("🔴 no column, no migration; the list's grouped read; the resume path does not inherit (source)", () => {
-  test("55 = 55 (0036 … 0054 added since — none a rental CODE column) — no `rental_code` on course_packages", () => {
+  test("56 = 56 (0036 … 0055 added since — none a rental CODE column) — no `rental_code` on course_packages", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql"));
-    expect(files.length).toBe(55);
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(55);
+    expect(files.length).toBe(56);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(56);
     expect(src("src/db/schema.ts")).not.toMatch(/rental_code|rentalCode|rental_remark/);
   });
 

@@ -4,7 +4,7 @@
 // `parentEN`, because `knownEN` is deliberately never published; the five outcomes; the de-dupe), the user census by source and
 // by value (teachers first; the three unswept tables named), the plan's printed shape, the script's flow by source (dry-run
 // writes nothing · the confirmation phrase carries the count · only `expectedId` is ever written · a per-user failure continues),
-// and the publish-time warning. No migration (55 = 55).
+// and the publish-time warning. No migration (56 = 56).
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -170,6 +170,6 @@ describe("🔴 the script and the publish warning — the plan is the deliverabl
     out = await publishRelinkWarning();
     expect(out[0]).toContain("Followers still hold the menu ids of the PREVIOUS publish");
     expect(out[0]).not.toContain("null");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55); // no migration
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56); // no migration
   });
 });
