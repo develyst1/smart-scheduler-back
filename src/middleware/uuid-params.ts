@@ -4,18 +4,32 @@
 //
 // 🔑 ONE place, not sixty-five: `accessGuard` already proves that a middleware can see the route PATTERN it matched
 // (`c.req.matchedRoutes`), so the pattern plus the actual path is all a guard needs — every `:id` (and every
-// `:somethingId`) in this API is a uuid, while `:key` (a settings key) and `:date` deliberately are not.
+// `:somethingId`) in this API is a uuid, while — 🔻 TASK-463 — the free-form ones are declared PER ROUTE in `FREE_FORM_PARAMS` below.
 import type { Context, Next } from "hono";
 import { badRequest } from "../lib/http";
 
-/** Params whose VALUE must be a uuid: `:id` and `:teacherId`-shaped names. `:key` and `:date` are excluded by name. */
-export const UUID_PARAM_NAME = /^(id|[A-Za-z]+Id)$/;
+/**
+ * 🔴 TASK-463 (DEF-2) — this guard used to decide by param NAME: `:id` / `:somethingId` checked, `:key` and `:date`
+ * skipped, because `:key` was a settings key. The series routes then named a UUID `:key`, the guard skipped exactly
+ * the params that were uuids, and `/other-series/undefined` reached Postgres as `22P02` ⇒ 500. An exclusion by name
+ * is a bet that no future route uses that name differently — lost inside two weeks. ⇒ **Every param is a uuid unless
+ * ITS ROUTE says otherwise.** A new route with a non-uuid param fails closed (400) until declared — the safe direction.
+ *
+ * The ONLY params that are not uuids — by full route pattern (as `matchedRoutes` reports it), each with its reason.
+ * 🔑 Declared per ROUTE, so `/settings/:key` can be free-form while `/other-series/:key` is a uuid.
+ */
+export const FREE_FORM_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  "/api/settings/:key": ["key"], // a settings key, e.g. `checkin_early_minutes` — the registry validates it
+  "/api/camp/weeks/:id/days/:date": ["date"], // a YYYY-MM-DD business date — the camp service validates it
+  "/api/calendar/:file": ["file"], // `<token>.ics` — mounted before this guard, declared so this map is the COMPLETE list
+};
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const isUuid = (v: string): boolean => UUID.test(v);
 
 /** Pure: the param NAMES this request fills with something that is not a uuid. `[]` = nothing to refuse. */
 export function badUuidParams(pattern: string, path: string): string[] {
+  const free = FREE_FORM_PARAMS[pattern] ?? [];
   const p = pattern.split("/");
   const actual = path.split("/");
   const bad: string[] = [];
@@ -23,7 +37,7 @@ export function badUuidParams(pattern: string, path: string): string[] {
     const seg = p[i];
     if (!seg?.startsWith(":")) continue;
     const name = seg.slice(1).replace(/[?{].*$/, "");
-    if (!UUID_PARAM_NAME.test(name)) continue;
+    if (free.includes(name)) continue;
     const value = decodeURIComponent(actual[i] ?? "");
     if (!isUuid(value)) bad.push(name);
   }

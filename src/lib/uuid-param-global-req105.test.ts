@@ -7,7 +7,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ROUTE_ACCESS } from "./route-access";
-import { UUID_PARAM_NAME, badUuidParams, isUuid } from "../middleware/uuid-params";
+import { FREE_FORM_PARAMS, badUuidParams, isUuid } from "../middleware/uuid-params";
 import { uuidFor } from "./test-uuid";
 import { DEV_USER } from "../middleware/auth";
 import * as sched from "../services/scheduler.service";
@@ -87,13 +87,17 @@ describe("🔴 the GLOBAL mount — every route, not just camp", () => {
 });
 
 describe("🔴 the census — the API has FOUR param names, and a fifth must not slip in quietly", () => {
-  test("`date · id · key · teacherId`, and every one of them is either guarded or excluded BY NAME", () => {
+  test("`date · id · key · teacherId` — and the free-form ones are declared per ROUTE, not excluded by NAME", () => {
     const names = [...new Set(Object.keys(ROUTE_ACCESS).flatMap((k) => k.split("/").filter((s) => s.startsWith(":")).map((s) => s.slice(1))))].sort();
     expect(names).toEqual(["date", "id", "key", "teacherId"]);
-    // the guarded ones
-    expect(names.filter((n) => UUID_PARAM_NAME.test(n))).toEqual(["id", "teacherId"]);
-    // …and the two that are deliberately NOT uuids — named here so a reader sees the whole rule in one place
-    expect(names.filter((n) => !UUID_PARAM_NAME.test(n))).toEqual(["date", "key"]);
+    // 🔴 TASK-463 (DEF-2) — this test used to pin the exclusion BY NAME (`date`, `key` never checked). That rule is
+    // exactly what let `/other-series/undefined` reach Postgres: the series routes named a UUID `:key`. So the claim
+    // moves: every route with a free-form param is LISTED, and every other param in the table is a uuid.
+    const freeRoutes = Object.keys(ROUTE_ACCESS).filter((k) => /:(key|date)\b/.test(k)).map((k) => `/api${k.slice(k.indexOf(" ") + 1)}`);
+    const declared = freeRoutes.filter((p) => FREE_FORM_PARAMS[p]);
+    expect(declared.sort()).toEqual(["/api/camp/weeks/:id/days/:date", "/api/settings/:key", "/api/settings/:key"].sort());
+    // …and the SERIES `:key` routes are NOT declared — so the guard checks them (that is DEF-2, fixed)
+    expect(freeRoutes.filter((p) => /series\/:key/.test(p) && FREE_FORM_PARAMS[p])).toEqual([]);
     // a fifth shape (`:code`, `:slug`, `:token`…) is neither guarded nor listed ⇒ this assertion fails the suite,
     // which is the point: the next route cannot add one without a decision.
     for (const invented of ["code", "slug", "token", "phone"]) expect(names).not.toContain(invented);

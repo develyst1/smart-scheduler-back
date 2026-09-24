@@ -94,7 +94,9 @@ const runWith = async (rows: any[], opts: { failOn?: string } = {}) => {
     inserted.push(input);
     return uuidFor(`new-${input.date}`);
   }) as any));
-  const out = await jobs.runGroupSeriesExtenderJob("2026-10-06");
+  // 🔻 TASK-462 — `apply` is explicit now (the default is a DRY RUN). The `job_runs` row is written by the RUN
+  // STARTER, which opens it as `running` before the work — so this direct call records nothing, and `runs` is [].
+  const out: any = await jobs.runGroupSeriesExtenderJob("2026-10-06", { apply: true });
   return { out, inserted, runs };
 };
 
@@ -108,7 +110,7 @@ describe("🔴 §2 the extender, by value", () => {
     expect(inserted[0]).toEqual({ teacherId: T1, subjectId: null, date: "2026-10-13", startTime: "15:00", bookingType: "GROUP", otherTitle: "Skate Kids", otherKind: "GROUP", headCount: null, groupKey: K1, teacherRates: { [T1]: 60000 } });
     expect(inserted.map((i) => i.otherTitle)).toEqual(["Skate Kids", "Skate Kids"]); // 🚫 never "(old)"
     expect(out).toMatchObject({ date: "2026-10-06", horizon: "2026-10-20", weeks: 2, series: 1, extended: 1, created: 2, closedSkipped: 0, clashes: [] });
-    expect(runs).toEqual([{ table: "jobRuns", val: expect.objectContaining({ job: GROUP_EXTENDER_JOB, runDate: "2026-10-06", status: "success" }) }]);
+    expect(runs).toEqual([]); // 🔻 TASK-462 — the `job_runs` lifecycle belongs to `startGroupSeriesExtenderRun` (pinned in its own suite)
   });
 
   test("🔑 a SECOND run over the rows the first one created makes nothing — idempotent by state, no stamp anywhere", async () => {
@@ -134,17 +136,17 @@ describe("🔴 §2 the extender, by value", () => {
     expect(inserted.map((i) => `${i.groupKey === K1 ? "K1" : "K2"} ${i.date}`)).toEqual(["K1 2026-10-20", "K2 2026-10-14"]);
     expect(out.clashes).toEqual([{ groupKey: K1, date: "2026-10-13", message: "ครูไม่ว่าง" }]);
     expect(out).toMatchObject({ created: 2, extended: 2 });
-    // it reaches a human twice: the run's summary AND a warn line
-    expect((runs[0]!.val.summary as any).clashes).toHaveLength(1);
+    // it reaches a human twice: the run's returned summary (which the run starter writes to `job_runs`) AND a warn line
+    expect(runs).toEqual([]);
     expect(code(src("src/services/jobs.service.ts"))).toContain("console.warn(");
   });
 
   test("📌 ONE DATE PER TRANSACTION, by source — that is what makes 'the run continues' true", () => {
     const J = code(src("src/services/jobs.service.ts"));
     const F = J.slice(J.indexOf("export async function runGroupSeriesExtenderJob("));
-    expect(F.indexOf("for (const d of dates) {")).toBeLessThan(F.indexOf("await db.transaction("));
+    expect(F.indexOf("for (const d of item.dates) {")).toBeLessThan(F.indexOf("await db.transaction("));
     expect(F).toContain("} catch (e) {");
-    expect(F).toContain("clashes.push({ groupKey, date: d, message:");
+    expect(F).toContain("clashes.push({ groupKey: item.groupKey, date: d, message:");
   });
 
   test("🚫 the job sends nothing, enrols nobody and posts no money", () => {
@@ -162,11 +164,12 @@ describe("🔑 §3 the route, the exe, the script — the TASK-441 shape", () =>
   test("`POST /internal/jobs/group-series-extender`: the secret gate, then the job (spied)", async () => {
     process.env.INTERNAL_JOB_SECRET = "s4";
     const calls: string[] = [];
-    spies.push(spyOn(jobs, "runGroupSeriesExtenderJob").mockImplementation((async (d?: string) => { calls.push(d!); return { date: d ?? "today", created: 0 }; }) as any));
+    spies.push(spyOn(jobs, "runGroupSeriesExtenderJob").mockImplementation((async (d?: string) => { calls.push(d!); return { dryRun: true, date: d ?? "today", wouldCreate: 0 }; }) as any));
     expect((await json("POST", "/internal/jobs/group-series-extender", {})).status).toBe(401);
+    // 🔻 TASK-462 — no `apply` ⇒ a DRY RUN, answered in the response
     const ok = await json("POST", "/internal/jobs/group-series-extender", { date: "2026-10-06" }, { "x-internal-secret": "s4" });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ date: "2026-10-06", created: 0 });
+    expect(await ok.json()).toEqual({ dryRun: true, date: "2026-10-06", wouldCreate: 0 });
     expect(calls).toEqual(["2026-10-06"]);
   });
 
@@ -174,6 +177,7 @@ describe("🔑 §3 the route, the exe, the script — the TASK-441 shape", () =>
     const exe = readFileSync(resolve(root, "scripts/group-series-extender.ts"), "utf8");
     expect(exe).toContain("/internal/jobs/group-series-extender");
     expect(exe).toContain('"x-internal-secret": secret');
+    expect(exe).toContain("body: JSON.stringify({ apply: true }),"); // 🔻 TASK-462 — or it dry-runs every night
     expect(exe).not.toContain("drizzle"); // no DB connection in the exe — it cannot drift from the API's rules
     expect(JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts["job:group-series-extender"]).toBe("bun run scripts/group-series-extender.ts");
     expect(GROUP_EXTENDER_JOB).toBe("group-series-extender");

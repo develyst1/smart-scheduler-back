@@ -616,51 +616,136 @@ export async function runWeeklyTeacherDigestJob(date?: string) {
 // 🔑 Idempotent BY STATE (`weeklyDatesToCreate` reads the rows that exist), never by a stamp.
 // 🔑 ONE DATE PER TRANSACTION, deliberately: a coach-hour that is taken on one Tuesday must not stop every OTHER
 // series from being extended. The clash is reported in the run's summary and the log line, and the run continues.
-export async function runGroupSeriesExtenderJob(date?: string) {
-  const runDate = date ?? bangkokNow().date;
+/**
+ * 🔴 TASK-462 — the bounds. A FIRST run on an old box is the biggest run this job will ever do (every live series nobody
+ * closed, up to N weeks each), and `sid` was exactly that box. So a run can be taken in BITES: when it reaches a bound it
+ * stops, says so, and the next run continues — for free, because the job is idempotent by state.
+ * 📌 Only series WITH work count against `maxSeries`: counting the complete ones would let the first fifty finished
+ * series eat the budget on every run, and the fifty-first would never be reached.
+ */
+export const EXTENDER_DEFAULT_MAX_SERIES = 25;
+export const EXTENDER_DEFAULT_MAX_DATES = 100;
+export interface ExtenderOpts { apply?: boolean; maxSeries?: number; maxDates?: number }
+export interface ExtenderPlanItem { groupKey: string; title: string | null; teacherId: string; coach: string | null; dates: string[] }
+
+/**
+ * What the extender WOULD do — the whole decision, and nothing else. Reads only. 🚫 The rules are unchanged from
+ * TASK-456: `weeklyDatesToCreate` from the series' own rows, the LAST row as the template, a CLOSED series skipped.
+ */
+export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOpts = {}) {
+  const maxSeries = opts.maxSeries ?? EXTENDER_DEFAULT_MAX_SERIES;
+  const maxDates = opts.maxDates ?? EXTENDER_DEFAULT_MAX_DATES;
   const weeks = Number(await getSetting("group_series_weeks_ahead"));
   const horizon = addDays(runDate, weeks * 7);
   const rows = await db.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
-    with: { additionalTeachers: true },
+    with: { additionalTeachers: true, teacher: true },
     orderBy: (b: any, { asc }: any) => [asc(b.date)],
   });
   const series = new Map<string, any[]>();
   for (const r of rows) if (r.groupKey) series.set(r.groupKey, [...(series.get(r.groupKey) ?? []), r]);
 
-  let created = 0, extended = 0, closed = 0;
-  const clashes: Array<{ groupKey: string; date: string; message: string }> = [];
+  const plan: Array<ExtenderPlanItem & { template: any }> = [];
+  let closed = 0, planned = 0, pending = 0;
+  let truncated: null | { bound: "maxSeries" | "maxDates"; limit: number; seriesNotReached: number } = null;
   for (const [groupKey, group] of series) {
     // 🚫 A CLOSED series gains nothing — that is what closing is FOR, and it is the only off switch. ⚠️ Said plainly:
     // a series somebody ABANDONED without closing WILL keep being extended. That is the design, not an oversight.
     if (group.some((r: any) => r.groupClosedAt)) { closed++; continue; }
     const dates = weeklyDatesToCreate({ existing: group.map((r: any) => r.date), from: runDate, horizon });
     if (!dates.length) continue;
+    // 🔴 TASK-462 — the bound is checked BEFORE the series is taken, and a series is never split across runs: half a
+    // series extended is a series whose later weeks look missing to a human reading the calendar.
+    if (!truncated && plan.length >= maxSeries) truncated = { bound: "maxSeries", limit: maxSeries, seriesNotReached: 0 };
+    if (!truncated && planned + dates.length > maxDates && plan.length > 0) truncated = { bound: "maxDates", limit: maxDates, seriesNotReached: 0 };
+    if (truncated) { truncated.seriesNotReached++; pending += dates.length; continue; }
     const t = group[group.length - 1]!; // the LAST row is the template: the series as it stands today, not as it began
+    const title = displayNameOf(t) || null; // TASK-423's ONE name rule — a GROUP row's name is its title
+    plan.push({ groupKey, title, teacherId: t.teacherId, coach: t.teacher?.nickname ?? t.teacher?.name ?? null, dates, template: t });
+    planned += dates.length;
+  }
+  return { runDate, horizon, weeks, series: series.size, closedSkipped: closed, plan, planned, truncated, datesNotReached: pending, maxSeries, maxDates };
+}
+
+/**
+ * The extender. 🔴 TASK-462 — **`apply` defaults to FALSE.** A human poking the endpoint by hand gets the plan and
+ * nothing is written (the repo's own convention for anything that writes — `ensure-subjects`, `backfill-other-series`,
+ * `line-relink-menus`); the nightly trigger sends `{"apply":true}` explicitly. 📌 A dry run writes NOTHING, not even
+ * a `job_runs` row: "writes nothing" is the promise, and a human's look is not the scheduled run.
+ */
+export async function runGroupSeriesExtenderJob(date?: string, opts: ExtenderOpts = {}) {
+  const runDate = date ?? bangkokNow().date;
+  const p = await planGroupSeriesExtension(runDate, opts);
+  const report = {
+    date: runDate, horizon: p.horizon, weeks: p.weeks, series: p.series, closedSkipped: p.closedSkipped,
+    wouldCreate: p.planned, truncated: p.truncated, datesNotReached: p.datesNotReached,
+    plan: p.plan.map(({ template: _t, ...item }) => item),
+  };
+  if (!opts.apply) return { dryRun: true as const, ...report };
+
+  let created = 0, extended = 0;
+  const clashes: Array<{ groupKey: string; date: string; message: string }> = [];
+  for (const item of p.plan) {
+    const t = item.template;
     const extras = (t.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
     const rates: Record<string, number> = {};
     if (t.teacherRateMinor != null) rates[t.teacherId] = t.teacherRateMinor;
     for (const a of t.additionalTeachers ?? []) if (a.rateMinor != null) rates[a.teacherId] = a.rateMinor;
     let any = false;
-    for (const d of dates) {
+    for (const d of item.dates) {
       try {
         await db.transaction(async (tx) => {
           const id = await insertBooking(tx, null, {
             teacherId: t.teacherId, subjectId: null, date: d, startTime: hhmm(t.startTime), bookingType: "GROUP",
-            otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates,
+            otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey: item.groupKey, teacherRates: rates,
           });
           if (extras.length) await attachAdditionalTeachers(tx, id, extras, rates);
         });
         created++; any = true;
       } catch (e) {
         // One date, one transaction: this date is not created, every other one still is.
-        clashes.push({ groupKey, date: d, message: e instanceof ApiException ? e.message : String(e) });
+        clashes.push({ groupKey: item.groupKey, date: d, message: e instanceof ApiException ? e.message : String(e) });
       }
     }
     if (any) extended++;
   }
-  const summary = { horizon, weeks, series: series.size, extended, created, closedSkipped: closed, clashes };
   if (clashes.length) console.warn(`[${GROUP_EXTENDER_JOB}] ${runDate} ${clashes.length} date(s) could not be created:`, clashes);
-  await db.insert(jobRuns).values({ job: GROUP_EXTENDER_JOB, runDate, status: "success", summary, finishedAt: new Date() });
-  return { date: runDate, ...summary };
+  if (p.truncated) console.warn(`[${GROUP_EXTENDER_JOB}] ${runDate} stopped at ${p.truncated.bound}=${p.truncated.limit} — ${p.truncated.seriesNotReached} series / ${p.datesNotReached} date(s) left for the next run`);
+  const { plan: _plan, ...rest } = report;
+  return { dryRun: false as const, ...rest, extended, created, clashes };
+}
+
+/** One apply at a time in this process — a second trigger while one runs answers 409 rather than doubling the writes. */
+let extenderRunning: string | null = null;
+
+/**
+ * 🔴 TASK-462 — the APPLY path as the route runs it: a `job_runs` row is written FIRST (`status: "running"`, no
+ * `finished_at`), the caller gets its id at once, and the work continues detached, finishing that same row as
+ * `success` or `failed`.
+ *
+ * 🔑 That row is what makes "it ran long" and "the process died" DIFFERENT things to a human: a long run is a
+ * `running` row that later finishes; a dead process is a `running` row that NEVER does. Before this, both were the
+ * same "the underlying connection was closed" in PowerShell — which is how `sid`'s incident became unreadable.
+ * (TASK-460's `[line-in]`-without-`FINISH`, one layer up.)
+ */
+export async function startGroupSeriesExtenderRun(date: string | undefined, opts: ExtenderOpts): Promise<{ runId: string; status: "running" } | { alreadyRunning: string }> {
+  if (extenderRunning) return { alreadyRunning: extenderRunning };
+  const runDate = date ?? bangkokNow().date;
+  const [row] = await db.insert(jobRuns).values({ job: GROUP_EXTENDER_JOB, runDate, status: "running", summary: { apply: true, maxSeries: opts.maxSeries ?? EXTENDER_DEFAULT_MAX_SERIES, maxDates: opts.maxDates ?? EXTENDER_DEFAULT_MAX_DATES } }).returning({ id: jobRuns.id });
+  const runId = row!.id;
+  extenderRunning = runId;
+  void (async () => {
+    try {
+      const out = await runGroupSeriesExtenderJob(runDate, { ...opts, apply: true });
+      await db.update(jobRuns).set({ status: "success", summary: out as any, finishedAt: new Date() }).where(eq(jobRuns.id, runId));
+    } catch (e) {
+      console.error(`[${GROUP_EXTENDER_JOB}] run ${runId} FAILED:`, e);
+      // best effort: if the database is the thing that failed, this write fails too — and the row stays `running`
+      // with no `finished_at`, which is itself the honest record of "the run did not finish".
+      await db.update(jobRuns).set({ status: "failed", summary: { error: String(e) }, finishedAt: new Date() }).where(eq(jobRuns.id, runId)).catch((e2) => console.error(`[${GROUP_EXTENDER_JOB}] could not record the failure of run ${runId}:`, e2));
+    } finally {
+      extenderRunning = null;
+    }
+  })();
+  return { runId, status: "running" };
 }

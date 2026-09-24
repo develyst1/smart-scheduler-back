@@ -40,7 +40,9 @@ const otherRow = { id: "o1", date: "2026-10-05", startTime: "15:00:00", endTime:
 
 describe("🔴 the CENSUS — every producer of a per-teacher rate is a key the mask names; nothing else in src produces one", () => {
   test("the producers: `other.teacherRates` (otherFacts), `group.teacherRates` (groupFacts), the series DTOs' `teacherRates`; NO DTO carries `rateMinor` (the extras' rate is folded into `teacherRates`)", () => {
-    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates"]);
+    // 🔻 TASK-463 — the ONE declared set: `rateMinor` (the camp day's `teachers[]`, the leak) and `teacherRateMinor`
+    // (the bookings column, masked by name before any raw-row reader exists) joined the three.
+    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates", "rateMinor", "teacherRateMinor"]);
     const producers = walk("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.includes("coach-rate-visibility")).filter((f) => {
       const c = code(src(f));
       return /^\s*rate:\s/m.test(c) || /^\s*classRateMinor:\s(?!z\.|input|integer\()/m.test(c) || /^\s*teacherRates:\s(?!z\.|Record|input|rates,)/m.test(c) || /(^|[{,]\s*)teacherRates: (ratesOf|o\.teacherRates)/m.test(c);
@@ -49,6 +51,11 @@ describe("🔴 the CENSUS — every producer of a per-teacher rate is a key the 
     // `/api/*` mask nulls without key 59, which is why adding a producer is safe — and why this census must see it.
     expect(producers).toEqual(["src/db/mappers.ts", "src/services/camp.service.ts", "src/services/other-series.service.ts"]);
     // no response key `rateMinor` anywhere (the booking DTO's `teachers[]` is `toTeacherBase` — id · name · nickname · type)
+    // 🔴 TASK-463 — THIS PIN MISSED DEF-3, and why is the lesson: it required `rateMinor:` at the START of a line, and
+    // TASK-454's camp producer put it in the MIDDLE of a one-line object literal. It checked the code's LAYOUT, not the
+    // API's output. It is kept (it still says something true about the multi-line producers), but it is no longer the
+    // guard: `coach-rate-walk-req105.test.ts` walks every rate-shaped key anywhere on a line, and `rateMinor` is now
+    // MASKED rather than merely hoped-absent — so the day a DTO emits it, it is already covered.
     const rateMinorProducers = walk("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).filter((f) => /^\s*rateMinor:\s(?!z\.|integer\(|number|input\.|rates\[|r\.rateMinor|it\.)/m.test(code(src(f))));
     expect(rateMinorProducers).toEqual([]);
     expect(code(src("src/db/mappers.ts"))).toContain("export const toTeacherBase = (t: any) => ({");

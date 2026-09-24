@@ -52,7 +52,10 @@ describe("🔑 TASK-461 — every internal job has a trigger, and every trigger 
     // ⚠️ the URL PATH is the assertion; the rest is compared to a SIBLING rather than to a literal typed here, so
     // the day the owner changes the port or the header in all of them, this test follows him instead of fighting him.
     expect(mine.posted).toBe("group-series-extender");
-    expect(mine.body.replace("group-series-extender", "weekly-teacher-digest")).toBe(sibling.body);
+    // 🔻 TASK-462 — ONE deliberate difference: this trigger says `{"apply":true}`, because the extender's route
+    // defaults to a DRY RUN. Everything else is still the sibling, byte for byte.
+    expect(mine.body.replace("group-series-extender", "weekly-teacher-digest").replace(`-Body '{"apply":true}'`, `-Body "{}"`)).toBe(sibling.body);
+    expect(mine.body).toContain(`-Body '{"apply":true}'`);
   });
 
   test("🚫 the guard on the guard: a fabricated dangling trigger and a fabricated orphan job are both caught", () => {

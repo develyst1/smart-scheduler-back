@@ -35,6 +35,28 @@ app.use(
 // Start the LINE outbox delivery worker (idle if LINE isn't configured).
 startOutboxWorker();
 
+// 🔴 TASK-462 — the process must SURVIVE a database blip. On 2026-09-24 the shared Postgres cluster on `sid` went into
+// recovery (`57P03`) and every in-flight query rejected at once. A rejection nobody awaited used to TERMINATE the
+// process (Bun follows Node), so a hiccup on a box hosting ~30 apps could take this API down for reasons that have
+// nothing to do with us — and it would happen again next week.
+//
+// ⚖️ The two events are deliberately NOT treated alike:
+//  · `unhandledRejection` — async work that failed; its stack unwound normally and nothing is half-written in memory.
+//    Log it WITH the reason and keep serving. A DB blip is exactly this, many times over.
+//  · `uncaughtException` — a SYNCHRONOUS throw that escaped to the top: state is genuinely unknown (Node's own guidance
+//    is never to resume). Log it, then exit(1) so a supervisor restarts us clean — 📌 on `som-back` that supervisor is
+//    PM2 (fork mode, ONE process — Porter, TASK-463), so exit(1) there means "restarted", not "down". Never worse than before:
+//    without a handler the process already died here — this adds the line saying why.
+// 🚫 Neither handler may swallow silently, neither may exit(0) (a supervisor would read a crash as a clean stop), and
+// neither answers a request — they are last-resort logs, not error handling.
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandledRejection — logged, still serving:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[process] uncaughtException — state unknown, exiting(1) for a clean restart:", err);
+  process.exit(1);
+});
+
 app.get("/health", async (c) => {
   const r = await db.execute(sql`select 1 as ok`);
   return c.json({ ok: true, db: r[0]?.ok === 1 });

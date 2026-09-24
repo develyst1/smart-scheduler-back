@@ -25,7 +25,9 @@ try {
   const res = await fetch(`${base}/internal/jobs/group-series-extender`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-internal-secret": secret },
-    body: JSON.stringify({}),
+    // 🔴 TASK-462 — `apply` must be said out loud: the route's default is a DRY RUN. This exe sent `{}`, so after
+    // TASK-462 it would have reported a plan every night and created nothing, with a green exit code.
+    body: JSON.stringify({ apply: true }),
   });
   const text = await res.text();
   const stamp = new Date().toISOString();

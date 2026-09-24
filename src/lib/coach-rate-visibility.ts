@@ -18,14 +18,30 @@ import type { Viewer } from "./budget-visibility";
 
 export const COACH_RATE_KEY = "action:bookings.coach-rate" as const;
 
-/** The exact response keys the mask nulls — the two mappers' names, nothing else (pinned by a src scan). */
-export const COACH_RATE_KEYS = ["rate", "classRateMinor", "teacherRates"] as const;
+/**
+ * 🔴 TASK-463 (DEF-3) — THE ONE declared set of coach-rate field names. Read and write both derive from it.
+ *
+ * It used to be TWO hand-kept arrays — the read mask named three, the write check named four — and TASK-454's camp
+ * `teachers[].rateMinor` joined neither, so a `menu:camp` user without key 59 read every coach's pay on a camp day.
+ * The WRITE was guarded the whole time; the READ leaked. Two lists that must agree will not.
+ *
+ * - `rateMinor` — a coach's rate on a camp day (`teachers[]`) and on a series extra; the leak.
+ * - `teacherRateMinor` — the `bookings` column for the PRIMARY coach's rate. No DTO emits it today (they fold it into
+ *   `rate` / `teacherRates`), but a raw row returned by some future reader would — so it is masked by NAME, before
+ *   anyone writes that reader.
+ * 🔑 `coach-rate-walk-req105.test.ts` walks every rate-shaped key in `src` and fails on any name that is neither
+ * here nor declared not-a-coach-rate — so the NEXT rate field fails the suite the day it is written.
+ */
+export const COACH_RATE_FIELDS = ["rate", "classRateMinor", "teacherRates", "rateMinor", "teacherRateMinor"] as const;
+
+/** The READ side: every name in the set, at any depth. */
+export const COACH_RATE_KEYS = COACH_RATE_FIELDS;
 
 /** May this viewer see (⇔ edit) the coach rate? The key, and never a linked account. Pure. */
 export const canSeeCoachRate = (viewer: Viewer): boolean =>
   !!viewer && !isScoped({ teacherId: viewer.teacherId ?? null }) && hasAction(viewer, COACH_RATE_KEY);
 
-/** The read mask — a NEW value with every `rate` / `classRateMinor` key set to null, at any depth; non-objects pass through. */
+/** The read mask — a NEW value with every coach-rate key (`COACH_RATE_FIELDS`) set to null, at any depth; non-objects pass through. */
 export function maskCoachRate<T>(body: T): T {
   if (Array.isArray(body)) return body.map(maskCoachRate) as T;
   if (body && typeof body === "object") {
@@ -38,8 +54,14 @@ export function maskCoachRate<T>(body: T): T {
   return body;
 }
 
-/** The body fields that ARE a rate edit — present (any value, null included: clearing IS an edit) ⇒ the key is needed. */
-export const COACH_RATE_BODY_FIELDS = ["classRateMinor", "teacherRates", "rateMinor"] as const;
+/**
+ * The WRITE side: the same set minus the names that are READ-ONLY by construction — stated HERE, once, rather than by
+ * keeping a second list: `rate` is a computed `{ effective, override, default }` object nobody sends, and
+ * `teacherRateMinor` is a raw column no request body accepts. Present in a body (any value, null included: clearing IS
+ * an edit) ⇒ the key is needed.
+ */
+const READ_ONLY_RATE_NAMES: readonly string[] = ["rate", "teacherRateMinor"];
+export const COACH_RATE_BODY_FIELDS = COACH_RATE_FIELDS.filter((f) => !READ_ONLY_RATE_NAMES.includes(f));
 
 /** Does this body edit a coach rate? Any rate field at the top level, or `duo.classRateMinor` (TASK-434: `duo` alone is not an edit). */
 export const bodyEditsCoachRate = (body: unknown): boolean => {

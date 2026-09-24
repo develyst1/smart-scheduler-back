@@ -8,7 +8,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describeLineError } from "./line-client";
-import { UUID_PARAM_NAME, badUuidParams, isUuid } from "../middleware/uuid-params";
+import { FREE_FORM_PARAMS, badUuidParams, isUuid } from "../middleware/uuid-params";
 import { ROUTE_ACCESS } from "./route-access";
 import * as camp from "../services/camp.service";
 import { db } from "../db";
@@ -66,10 +66,10 @@ describe("🔴 (d) a malformed `:id` is a 400 at the boundary — zero queries, 
     expect(badUuidParams("/api/other-series/:key/teachers/:teacherId", `/api/other-series/${W}/teachers/nope`)).toEqual(["teacherId"]);
     expect(badUuidParams("/api/settings/:key", "/api/settings/camp_reminder_enabled")).toEqual([]);
     expect(badUuidParams("/api/camp/weeks/:id/days/:date", `/api/camp/weeks/${W}/days/2026-10-05`)).toEqual([]);
-    expect(UUID_PARAM_NAME.test("id")).toBe(true);
-    expect(UUID_PARAM_NAME.test("teacherId")).toBe(true);
-    expect(UUID_PARAM_NAME.test("key")).toBe(false);
-    expect(UUID_PARAM_NAME.test("date")).toBe(false);
+    // 🔻 TASK-463 — no longer by NAME: a series `:key` IS a uuid (DEF-2), only the settings route's `:key` is not
+    expect(badUuidParams("/api/other-series/:key", "/api/other-series/undefined")).toEqual(["key"]);
+    expect(FREE_FORM_PARAMS["/api/settings/:key"]).toEqual(["key"]);
+    expect(FREE_FORM_PARAMS["/api/camp/weeks/:id/days/:date"]).toEqual(["date"]);
     expect(isUuid(W)).toBe(true);
     expect(isUuid(W.toUpperCase())).toBe(true);
     expect(isUuid("undefined")).toBe(false);

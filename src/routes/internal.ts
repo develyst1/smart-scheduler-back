@@ -15,6 +15,14 @@ const endOfDayBody = z.object({
     .optional(),
 });
 
+// 🔴 TASK-462 — the extender's body. `apply` defaults to FALSE: a human with the secret and a curl gets the PLAN and
+// nothing is written; only a caller that says `apply: true` (the nightly trigger, explicitly) writes rows.
+const extenderBody = endOfDayBody.extend({
+  apply: z.boolean().default(false),
+  maxSeries: z.number().int().min(1).max(500).optional(),
+  maxDates: z.number().int().min(1).max(5000).optional(),
+});
+
 /** Shared `INTERNAL_JOB_SECRET` gate (x-internal-secret header). Returns an error Response to send,
  *  or null to proceed. Disabled (503) when the secret is unset → never an open endpoint. */
 function internalSecretError(c: Context): Response | null {
@@ -63,10 +71,21 @@ export const internalJobs = new Hono()
   })
   // TASK-456 (REQ-105 §3): the daily rolling extender — every NON-CLOSED group series keeps N weeks of rows ahead.
   // Idempotent by state (a second run the same day creates nothing), and it ALWAYS writes a job_runs row.
-  .post("/jobs/group-series-extender", zValidator("json", endOfDayBody), async (c) => {
+  .post("/jobs/group-series-extender", zValidator("json", extenderBody), async (c) => {
     const err = internalSecretError(c);
     if (err) return err;
-    return c.json(await jobs.runGroupSeriesExtenderJob(c.req.valid("json").date));
+    const { date, apply, maxSeries, maxDates } = c.req.valid("json");
+    // 🔴 TASK-462 — two shapes, argued in the TASK:
+    //  · DRY RUN (the default): synchronous, because it only READS and the human wants the answer in the response.
+    //    It is bounded by the same caps as an apply, so it cannot hold the connection for long either.
+    //  · APPLY: ACK with a run id and a `job_runs` row that says `running`; the work continues after the 200 and
+    //    finishes that row. This route used to AWAIT the whole job — the shape TASK-460 removed from the webhook —
+    //    so on `sid` "it ran long" and "the process died" were the same PowerShell error. Now they are a row that
+    //    finishes and a row that never does.
+    if (!apply) return c.json(await jobs.runGroupSeriesExtenderJob(date, { apply: false, maxSeries, maxDates }));
+    const r = await jobs.startGroupSeriesExtenderRun(date, { maxSeries, maxDates });
+    if ("alreadyRunning" in r) return c.json({ error: { code: "ALREADY_RUNNING", message: `run ${r.alreadyRunning} is still in progress` } }, 409);
+    return c.json(r, 202);
   })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {

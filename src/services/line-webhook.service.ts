@@ -1591,6 +1591,9 @@ async function handleFollow(ev: LineWebhookEvent) {
  * that used to need a slow request (i.e. the 14 timeouts) is the ordinary case. The link flow is a state machine
  * (`line_link_sessions.step`), and two events interleaving in it lose a step quietly.
  *
+ * 📌 TASK-463 — ANSWERED (Porter, 2026-09-24): `som-back` runs as **ONE process under PM2 fork mode**, and PM2 restarts
+ * it on exit. So on that box this queue IS the whole story — do not re-open the question unless the deploy changes.
+ *
  * ⚠️ **Stated, not implied: this serialises within ONE process.** With several API processes it degrades to exactly
  * today's behaviour — never worse, but it is not a distributed lock, and nothing here should be read as one. The
  * DB-level alternative (`pg_advisory_xact_lock`) was rejected deliberately: the handler makes two outbound HTTPS
@@ -1603,9 +1606,13 @@ function onChatQueue(key: string, work: () => Promise<void>): Promise<void> {
   const next = prev.then(work, work);
   chatQueues.set(key, next);
   // Only clear when this IS the tail — otherwise a fast event would drop a slower one's chain.
-  void next.finally(() => {
+  // 🔴 TASK-462 — this was `void next.finally(...)`, and `.finally` returns a promise that REJECTS when `next` does:
+  // a rejected event created a second, unhandled rejection that nobody could catch — the exact kind that ends the
+  // process. Mine, from TASK-460. `then(clear, clear)` settles either way and never rejects.
+  const clear = () => {
     if (chatQueues.get(key) === next) chatQueues.delete(key);
-  });
+  };
+  void next.then(clear, clear);
   return next;
 }
 
@@ -1638,13 +1645,15 @@ async function handleOneEvent(ev: LineWebhookEvent) {
     console.info(formatInboundEvent(ev));
     const started = Date.now();
     let outcome = "ok";
-    // 🔴 TASK-460 — the duplicate is dropped BEFORE any side effect, and it says so: a re-delivered "type your
-    // phone" must not link the family a second time or message them twice.
-    if (!(await firstDelivery(ev))) {
-      console.info(formatEventFinish(ev, "duplicate", Date.now() - started));
-      return;
-    }
     try {
+      // 🔴 TASK-460 — the duplicate is dropped BEFORE any side effect, and it says so: a re-delivered "type your
+      // phone" must not link the family a second time or message them twice.
+      // 🔴 TASK-462 — and it is INSIDE the try now. It is a DB write, so during a cluster restart it is the first thing
+      // that fails; outside the try, that failure skipped the FINISH line and rejected the whole event.
+      if (!(await firstDelivery(ev))) {
+        outcome = "duplicate";
+        return;
+      }
       // 🚫 `follow` is NOT dispatched — `REQ-079 §17g`, the OWNER's own edit (`baa6015`), kept by TASK-346.
       // `handleFollow` above is deliberately dead; see its note.
       if (ev.type === "message") await handleMessage(ev);

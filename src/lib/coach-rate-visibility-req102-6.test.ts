@@ -45,7 +45,7 @@ describe("🔑 key 59 — registered, labelled, granted to nobody; a body-level 
   test("59 keys; `action:bookings.coach-rate` with TH/EN labels; the two exact response keys", () => {
     expect(ACTION_KEYS.length).toBe(59);
     expect(ACTION_REGISTRY.find((a) => a.key === COACH_RATE_KEY)).toMatchObject({ labelTh: "ดูและแก้ค่าสอน", labelEn: "View & edit coach rate" });
-    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates"]); // 🔻 TASK-434: + the ECA/Group per-teacher rates
+    expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates", "rateMinor", "teacherRateMinor"]); // 🔻 TASK-434: + the ECA/Group per-teacher rates · 🔻 TASK-463: + `rateMinor` (DEF-3) and `teacherRateMinor`
   });
   test("`canSeeCoachRate`: the key · never a linked account · null ⇒ no; independent of `canSeeBudget` both ways (by value + by source)", () => {
     expect(canSeeCoachRate(SUPER)).toBe(true);
@@ -63,7 +63,7 @@ describe("🔑 key 59 — registered, labelled, granted to nobody; a body-level 
 describe("🔴 the READ mask — `maskCoachRate` by value; the seam by source (the two producers, the middleware after the guard)", () => {
   test("nulls exactly `rate` / `classRateMinor` at any depth; `teacherRates` / `hourlyRate` / a `rate` INSIDE another key's name untouched; non-objects pass through", () => {
     const body = { items: [{ id: "b", rate: { effectiveMinor: 300, overrideMinor: 300, defaultMinor: 700 }, other: { teacherRates: { [T1]: 500 } }, teacher: { hourlyRate: 500, rateMinor: 1 } }], course: { classRateMinor: 700, coStudent: { id: B }, nested: { deep: { classRateMinor: 1, rate: 2 } } }, n: 3, s: "x", nul: null };
-    expect(maskCoachRate(body as any)).toEqual({ items: [{ id: "b", rate: null, other: { teacherRates: null }, teacher: { hourlyRate: 500, rateMinor: 1 } }], course: { classRateMinor: null, coStudent: { id: B }, nested: { deep: { classRateMinor: null, rate: null } } }, n: 3, s: "x", nul: null }); // 🔻 TASK-434: `teacherRates` ⇒ null too; `hourlyRate` (57) and a `rateMinor` on a non-rate object untouched
+    expect(maskCoachRate(body as any)).toEqual({ items: [{ id: "b", rate: null, other: { teacherRates: null }, teacher: { hourlyRate: 500, rateMinor: null } }], course: { classRateMinor: null, coStudent: { id: B }, nested: { deep: { classRateMinor: null, rate: null } } }, n: 3, s: "x", nul: null }); // 🔻 TASK-434: `teacherRates` ⇒ null too; `hourlyRate` (57) untouched. 🔴 TASK-463: this line used to assert that "a `rateMinor` on a non-rate object" stays — the premise of DEF-3. There is no non-coach `rateMinor` in any response (the only other one is the DORMANT `freelance_budgets` column no route reads), so every `rateMinor` is masked
     expect(maskCoachRate("text")).toBe("text");
     expect(maskCoachRate(null)).toBeNull();
     expect(maskCoachRate([1, { rate: 1 }] as any)).toEqual([1, { rate: null }]);
