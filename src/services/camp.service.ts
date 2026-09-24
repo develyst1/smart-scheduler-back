@@ -2,9 +2,9 @@
 // The rules are pure in `lib/camp.ts`; this file is the reads, the transactions and the one revenue post — the
 // VOUCHER's sale shape (validate the discount against the LINE total BEFORE any write → the rows in one tx →
 // `recordSale` after the tx on an idempotency key). 🚫 No expiry, no per-day revenue, no slot block, no LINE.
-import { and, asc, count, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookings, campDays, campPackages, campWeekDayRates, campWeekDays, campWeeks } from "../db/schema";
+import { bookings, campDays, campPackages, campWeekDayTeachers, campWeekDays, campWeeks } from "../db/schema";
 import { unitsToDays } from "../lib/camp-deduction";
 import { householdLineUserIds } from "../lib/family-link";
 import { enqueueLine } from "../lib/line";
@@ -59,7 +59,9 @@ export async function createWeek(input: { name: string; startDate: string; endDa
   const w = await db.transaction(async (tx) => {
     const [row] = await tx.insert(campWeeks).values({ name: input.name, startDate: input.startDate, endDate: input.endDate, capacity: input.capacity ?? null, teacherIds: input.teacherIds ?? null, windowStart: input.windowStart ?? null, windowEnd: input.windowEnd ?? null, openedBy: actor }).returning();
     for (const date of dates) {
-      const [d] = await tx.insert(campWeekDays).values({ campWeekId: row!.id, date, teacherIds: input.teacherIds ?? [], startTime: ws, endTime: we }).returning();
+      const [d] = await tx.insert(campWeekDays).values({ campWeekId: row!.id, date, startTime: ws, endTime: we }).returning();
+      // TASK-454 — the WEEK's roster seeds each day's coaches, every one on the day's own window (NULL = that default).
+      await setDayTeachers(tx, d!.id, (input.teacherIds ?? []).map((teacherId) => ({ teacherId })));
       await syncCampDayRows(tx, d!.id);
     }
     return row!;
@@ -91,7 +93,10 @@ export async function updateWeek(id: string, input: { name?: string; capacity?: 
     } else if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {
       const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e, isNull: nul, and: a }: any) => a(e(d.campWeekId, id), nul(d.editedAt)) });
       for (const d of days) {
-        await tx.update(campWeekDays).set({ ...(input.teacherIds !== undefined ? { teacherIds: input.teacherIds } : {}), startTime: ws, endTime: we }).where(eq(campWeekDays.id, d.id));
+        await tx.update(campWeekDays).set({ startTime: ws, endTime: we }).where(eq(campWeekDays.id, d.id));
+        // TASK-454 — a week-level roster change replaces the day's coach set; a window change alone touches nobody's
+        // own hours, because a coach on the default is stored as NULL and resolves to the new window by itself.
+        if (input.teacherIds !== undefined) await setDayTeachers(tx, d.id, input.teacherIds.map((teacherId) => ({ teacherId })));
         await syncCampDayRows(tx, d.id);
       }
     }
@@ -108,7 +113,7 @@ export async function weekDays(id: string) {
   const rows = await db.query.campDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { package: { with: { student: true } } }, orderBy: (d, { asc: a }) => [a(d.date)] });
   const byDate = new Map<string, any[]>();
   for (const r of rows) byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]);
-  const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { rates: true } }); // TASK-418; TASK-443: + the day's rates
+  const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { teachers: true } }); // TASK-418; TASK-454: + the day's coaches (hours + rate)
   const dayByDate = new Map(dayRows.map((d) => [d.date, d]));
   const days = datesOfWeek(w.startDate, w.endDate).map((date) => {
     const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
@@ -119,23 +124,80 @@ export async function weekDays(id: string) {
 }
 
 // ───────────── TASK-418 (REQ-095 §11, SPEC-085 A) — the camp BLOCK on the grid ─────────────
-const toDayDTO = (d: any) => ({ campWeekDayId: d?.id ?? null, teacherIds: d?.teacherIds ?? [], startTime: hm(d?.startTime), endTime: hm(d?.endTime), editedAt: d?.editedAt ? new Date(d.editedAt).toISOString() : null, teacherRates: dayRatesOf(d) });
+const toDayDTO = (d: any) => {
+  const teachers = campDayTeachers(d);
+  return {
+    campWeekDayId: d?.id ?? null,
+    startTime: hm(d?.startTime),
+    endTime: hm(d?.endTime),
+    editedAt: d?.editedAt ? new Date(d.editedAt).toISOString() : null,
+    // TASK-454 — each coach's OWN window (resolved: a NULL is the day's), with the rate that used to live in its own table.
+    teachers,
+    // 🔻 TASK-454, ONE deploy only: the two old shapes, DERIVED from `teachers` so nothing can disagree with it. They
+    // retire in the BE task that follows @Fern's per-coach camp UI (the FE half of REQ-105 §1) — named in the report.
+    teacherIds: teachers.map((t) => t.teacherId),
+    teacherRates: Object.fromEntries(teachers.map((t) => [t.teacherId, t.rateMinor])),
+  };
+};
 
-// ───────────── TASK-443 (REQ-104 §2 item 4) — the per-coach-per-day rate (behind key 59) ─────────────
-/** `{ teacherId: minor }` for every coach ON the day — 0 when no rate row exists (the new-day default is the absence of a row). */
-const dayRatesOf = (d: any): Record<string, number> => {
-  const out: Record<string, number> = {};
-  const set = new Map<string, number>((d?.rates ?? []).map((r: any) => [r.teacherId, r.rateMinor]));
-  for (const t of d?.teacherIds ?? []) out[t] = set.get(t) ?? 0;
-  return out;
+// ───────────── TASK-454 (REQ-105 §1) — who is on the day, with their own hours (TASK-443's rate rides along) ─────────────
+/**
+ * The day's coaches with their windows RESOLVED: a NULL start/end means the day's own window, so a day-level change
+ * reaches every coach who never asked for their own hours. Sorted by start then id, so every reader sees one order.
+ */
+export const campDayTeachers = (d: any): Array<{ teacherId: string; startTime: string; endTime: string; rateMinor: number }> => {
+  const ds = hm(d?.startTime) ?? CAMP_WINDOW_DEFAULT.start, de = hm(d?.endTime) ?? CAMP_WINDOW_DEFAULT.end;
+  return [...(d?.teachers ?? [])]
+    .map((t: any) => ({ teacherId: t.teacherId as string, startTime: hm(t.startTime) ?? ds, endTime: hm(t.endTime) ?? de, rateMinor: t.rateMinor ?? 0 }))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.teacherId.localeCompare(b.teacherId));
 };
 export const RATE_TEACHER_NOT_ON_DAY = () => badRequest("ตั้งค่าเรทได้เฉพาะครูที่อยู่ในวันนี้");
-/** Upsert the day's rates (a coach not on the day ⇒ 400). The caller's tx; the sync copies them onto the rows after. */
-async function upsertDayRates(tx: any, dayId: string, coaches: string[], rates: Record<string, number>) {
-  for (const [teacherId, rateMinor] of Object.entries(rates)) {
-    if (!coaches.includes(teacherId)) throw RATE_TEACHER_NOT_ON_DAY();
-    await tx.insert(campWeekDayRates).values({ campWeekDayId: dayId, teacherId, rateMinor }).onConflictDoUpdate({ target: [campWeekDayRates.campWeekDayId, campWeekDayRates.teacherId], set: { rateMinor } });
+
+/** One coach's row on a day, as the PATCH accepts it. Hours omitted ⇒ NULL ⇒ the day's window. */
+export type CampDayTeacherInput = { teacherId: string; startTime?: string | null; endTime?: string | null; rateMinor?: number };
+
+/**
+ * Replace the day's coach set in ONE tx: upsert what was asked for, delete whoever is no longer on the day. Each
+ * coach's window is validated the same way the day's is (`assertCampWindow`) — a coach may sit OUTSIDE the day's
+ * default, deliberately: the default is a default, not a clamp.
+ */
+async function setDayTeachers(tx: any, dayId: string, teachers: CampDayTeacherInput[]) {
+  for (const t of teachers) {
+    if (t.startTime || t.endTime) {
+      if (!t.startTime || !t.endTime) throw badRequest("ครูที่ตั้งเวลาเองต้องระบุทั้งเวลาเริ่มและเวลาจบ");
+      assertCampWindow(t.startTime, t.endTime);
+    }
+    await tx
+      .insert(campWeekDayTeachers)
+      .values({ campWeekDayId: dayId, teacherId: t.teacherId, startTime: t.startTime ?? null, endTime: t.endTime ?? null, rateMinor: t.rateMinor ?? 0 })
+      .onConflictDoUpdate({
+        target: [campWeekDayTeachers.campWeekDayId, campWeekDayTeachers.teacherId],
+        set: { startTime: t.startTime ?? null, endTime: t.endTime ?? null, ...(t.rateMinor === undefined ? {} : { rateMinor: t.rateMinor }) },
+      });
   }
+  const keep = teachers.map((t) => t.teacherId);
+  await tx.delete(campWeekDayTeachers).where(keep.length ? and(eq(campWeekDayTeachers.campWeekDayId, dayId), notInArray(campWeekDayTeachers.teacherId, keep)) : eq(campWeekDayTeachers.campWeekDayId, dayId));
+}
+
+/** The PATCH's two accepted shapes as ONE list: `teachers` wins; the old `teacherIds`+`teacherRates` still parse. */
+export function dayTeacherInputs(
+  input: { teachers?: CampDayTeacherInput[]; teacherIds?: string[]; teacherRates?: Record<string, number> },
+  current: Array<{ teacherId: string; startTime: string; endTime: string; rateMinor: number }>,
+  dayWindow: { start: string; end: string },
+): CampDayTeacherInput[] | null {
+  if (input.teachers) return input.teachers;
+  if (input.teacherIds === undefined && input.teacherRates === undefined) return null;
+  const byId = new Map(current.map((t) => [t.teacherId, t]));
+  const ids = input.teacherIds ?? current.map((t) => t.teacherId);
+  // TASK-443's rule, kept: a rate may only be set for a coach who IS on the day (after this body's own `teacherIds`).
+  for (const teacherId of Object.keys(input.teacherRates ?? {})) if (!ids.includes(teacherId)) throw RATE_TEACHER_NOT_ON_DAY();
+  return ids.map((teacherId) => {
+    const was = byId.get(teacherId);
+    // A coach who had their OWN hours keeps them; one sitting on the day default stays NULL, so a later day-level
+    // change still reaches them.
+    const kept = was && (was.startTime !== dayWindow.start || was.endTime !== dayWindow.end) ? { startTime: was.startTime, endTime: was.endTime } : {};
+    return { teacherId, ...kept, rateMinor: input.teacherRates?.[teacherId] ?? was?.rateMinor ?? 0 };
+  });
 }
 
 /** The live derived rows of a day, keyed `teacherId|HH:MM` ⇒ id. */
@@ -157,7 +219,8 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
   // 🔴 TASK-445 (Tanya's 500) — a PAST date derives nothing and is left alone: a coach block in the past is history, not a
   // hold, and a week created mid-week must not clash on yesterday's sessions. (Nothing inserted, nothing deleted.)
   if (d.date < bangkokNow().date) return { inserted: 0, deleted: 0 };
-  const wanted = d.week.status === "OPEN" ? wantedCampSlots(d.teacherIds ?? [], hm(d.startTime)!, hm(d.endTime)!) : new Set<string>();
+  const coaches = campDayTeachers({ ...d, teachers: await tx.query.campWeekDayTeachers.findMany({ where: (t: any, { eq: e }: any) => e(t.campWeekDayId, dayId) }) });
+  const wanted = d.week.status === "OPEN" ? wantedCampSlots(coaches.map((c) => ({ teacherId: c.teacherId, start: c.startTime, end: c.endTime }))) : new Set<string>();
   const existing = await existingCampRows(tx, dayId);
   const { insert, remove } = campSlotDiff(wanted, existing);
   // 🔴 TASK-445 — THE 500: the clash's `23505` ABORTS the transaction; the catch below then read the coach's name ON THAT TX
@@ -167,7 +230,7 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
   const coachName = new Map<string, string>(teacherIds.length ? (await tx.query.teachers.findMany({ where: (x: any, { inArray: inA }: any) => inA(x.id, teacherIds) })).map((t: any) => [t.id, t.nickname ?? t.name ?? t.id]) : []);
   // TASK-443 — each coach's DAY rate rides the derived rows' `teacher_rate_minor` (a camp row has ONE teacher, no extras): the
   // inserted rows carry it, and the KEPT rows are re-stamped (the diff never touches a kept row, a rate change must reach it).
-  const rates = dayRatesOf({ ...d, rates: await tx.query.campWeekDayRates.findMany({ where: (r: any, { eq: e }: any) => e(r.campWeekDayId, dayId) }) });
+  const rates = Object.fromEntries(coaches.map((c) => [c.teacherId, c.rateMinor]));
   if (remove.length) await tx.delete(bookings).where(inArray(bookings.id, remove));
   for (const key of insert) {
     const [teacherId, hour] = key.split("|") as [string, string];
@@ -181,7 +244,7 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
       throw e;
     }
   }
-  for (const teacherId of d.teacherIds ?? []) {
+  for (const { teacherId } of coaches) {
     await tx.update(bookings).set({ teacherRateMinor: rates[teacherId] ?? 0 }).where(and(eq(bookings.campWeekDayId, dayId), eq(bookings.teacherId, teacherId))); // TASK-443 — the kept rows
   }
   return { inserted: insert.length, deleted: remove.length };
@@ -197,20 +260,23 @@ async function deleteCampDayRows(tx: any, dayId: string): Promise<number> {
  * The per-day edit = the per-day SWAP (`PATCH /camp/weeks/:id/days/:date`): the day row changes, `edited_at` is
  * stamped (a week-level change will leave this day alone), and the ONE sync re-derives it. A CLOSED week ⇒ 409.
  */
-export async function updateWeekDay(weekId: string, date: string, input: { teacherIds?: string[]; startTime?: string; endTime?: string; teacherRates?: Record<string, number> }) {
+export async function updateWeekDay(weekId: string, date: string, input: { teachers?: CampDayTeacherInput[]; teacherIds?: string[]; startTime?: string; endTime?: string; teacherRates?: Record<string, number> }) {
   const w = await db.query.campWeeks.findFirst({ where: (x, { eq: e }) => e(x.id, weekId) });
   if (!w) throw notFound("ไม่พบสัปดาห์แคมป์");
   if (w.status !== "OPEN") throw conflict("CAMP_WEEK_CLOSED", `สัปดาห์ ${w.name} ปิดรับแล้ว`);
-  const d = await db.query.campWeekDays.findFirst({ where: (x, { and: a, eq: e }) => a(e(x.campWeekId, weekId), e(x.date, date)) });
+  const d = await db.query.campWeekDays.findFirst({ where: (x, { and: a, eq: e }) => a(e(x.campWeekId, weekId), e(x.date, date)), with: { teachers: true } });
   if (!d) throw notFound("ไม่พบวันแคมป์");
   const start = input.startTime ?? hm(d.startTime)!, end = input.endTime ?? hm(d.endTime)!;
   assertCampWindow(start, end);
   const result = await db.transaction(async (tx) => {
-    await tx.update(campWeekDays).set({ teacherIds: input.teacherIds ?? d.teacherIds, startTime: start, endTime: end, editedAt: new Date() }).where(eq(campWeekDays.id, d.id));
-    if (input.teacherRates) await upsertDayRates(tx, d.id, input.teacherIds ?? d.teacherIds, input.teacherRates); // TASK-443 — before the sync, which copies them
+    await tx.update(campWeekDays).set({ startTime: start, endTime: end, editedAt: new Date() }).where(eq(campWeekDays.id, d.id));
+    // TASK-454 — ONE body for who-is-on-the-day, their hours and their rate; the old `teacherIds`+`teacherRates` pair
+    // still parses into the same list (one deploy). Before the sync, which copies the rates onto the derived rows.
+    const teachers = dayTeacherInputs(input, campDayTeachers(d), { start, end });
+    if (teachers) await setDayTeachers(tx, d.id, teachers);
     return syncCampDayRows(tx, d.id);
   });
-  const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id), with: { rates: true } });
+  const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id), with: { teachers: true } });
   return { day: { date, ...toDayDTO(fresh) }, ...result };
 }
 

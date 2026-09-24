@@ -104,7 +104,9 @@ describe("AC-25 — no clash, no message", () => {
     // The declaration + one call per write that can hit the index. ⚠️ TASK-260 added the second call site:
     // `resumeBooking` puts a paused booking back on a date that may have been taken meanwhile (AC-14), and it
     // reuses THIS describer rather than writing a second clash message — the property asserted below.
-    expect(calls).toBe(3);
+    // 🔻 TASK-453 — three more, all inside a `23505` branch: the clash resolutions (the Private's move, the group's
+    // un-yield re-check, the coach swap) each REUSE this describer instead of writing a fourth clash sentence.
+    expect(calls).toBe(6);
     const insert = SVC.slice(SVC.indexOf("async function insertBooking"), SVC.indexOf("export async function createBooking"));
     expect(insert).toContain('if (code === "23505") {');
     expect(insert.indexOf('code === "23505"')).toBeLessThan(insert.indexOf("describeSlotClash("));

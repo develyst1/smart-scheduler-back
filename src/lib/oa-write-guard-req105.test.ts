@@ -136,6 +136,6 @@ describe("🔴 THE SCAN — every OA-writing script is guarded, and the guard ru
     expect(G).toContain("✓ writing to ${decision.account} (named with --account, on the allow-list)");
     expect(G).toContain('const decision = decideOaWrite(await getBotIdentity(), accountArg(argv), oaWriteAllowList());');
     expect(G).toContain('if (!res.ok) return null;'); // an unreadable identity is a null, which the decision refuses
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(53); // no migration
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55); // no migration
   });
 });

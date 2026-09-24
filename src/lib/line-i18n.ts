@@ -92,6 +92,11 @@ const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
     TH: "ส่วนลดที่ไม่ได้ถูกใช้ (ขายเต็มราคา)",
     EN: "Discounts not applied (charged full price)",
   },
+  // TASK-453 — the group date a Private took whose kids are still coming; cleared only by an admin's resolution.
+  group_slot_clashes: {
+    TH: "กลุ่มที่ชนกับคาบส่วนตัว (รอแอดมินแก้)",
+    EN: "Group sessions clashing with a private class (awaiting admin)",
+  },
   orphaned_sessions: {
     TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
     EN: "Future sessions with an unavailable teacher (archived / off that weekday)",

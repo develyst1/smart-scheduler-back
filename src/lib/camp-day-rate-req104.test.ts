@@ -1,5 +1,5 @@
 // TASK-443 (`REQ-104 §2` items 4–5, SPEC-090 §2–§3) — CAMP per-coach-per-day rate (migration `0052`: the rates table as
-// witness + `camp_days.deduction_notified_at`; 53 = 53), the day DTO's `teacherRates` (0 by absence; masked without key 59), the
+// witness + `camp_days.deduction_notified_at`; 55 = 55), the day DTO's `teacherRates` (0 by absence; masked without key 59), the
 // PATCH's upsert (a coach not on the day ⇒ 400; the field ⇒ 403 without 59) and the ONE sync copying the day rate onto the
 // derived rows (inserted with it, KEPT rows re-stamped), the two scan payloads (camp `credit` in DAYS, half-day `3.5`; Private
 // `remaining` course / voucher / null), and the DAY-END `camp_deduction` pass by value (CONSUMING days not yet stamped ⇒ one row
@@ -18,7 +18,7 @@ import * as sched from "../services/scheduler.service";
 import * as familyLink from "./family-link";
 import * as lineLib from "./line";
 import { db } from "../db";
-import { bookings, campDays, campWeekDayRates, campWeekDays } from "../db/schema";
+import { bookings, campDays, campWeekDayTeachers, campWeekDays } from "../db/schema";
 import { DEV_USER } from "../middleware/auth";
 import { readSrc } from "./read-src";
 
@@ -51,9 +51,9 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("53 = 53: `0052_camp_day_rates` is the 53rd file, idx 52, the last; 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");
@@ -63,56 +63,67 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
       `CREATE TABLE IF NOT EXISTS "camp_week_day_rates" ( "camp_week_day_id" uuid NOT NULL REFERENCES "camp_week_days"("id") ON DELETE CASCADE, "teacher_id" uuid NOT NULL REFERENCES "teachers"("id") ON DELETE RESTRICT, "rate_minor" integer NOT NULL DEFAULT 0, PRIMARY KEY ("camp_week_day_id", "teacher_id") );`,
     ]);
   });
-  test("the witness is the LAST entry, a table probe; the schema's table + relation + the stamp column", () => {
-    const last = SCHEDULING_WITNESSES[SCHEDULING_WITNESSES.length - 1]!;
-    expect(last).toMatchObject({ tag: "0052_camp_day_rates", probe: { kind: "table", table: "camp_week_day_rates" }, rerunnable: true });
+  test("the witness entry stands (a box that has not run 0053 still needs it); the rate column now lives on the MERGED table", () => {
+    // 🔻 TASK-454 — `camp_week_day_rates` was merged into `camp_week_day_teachers` by `0053` and dropped there, so
+    // `0052` is no longer the last witness and its TABLE is no longer in the schema. Both facts are asserted, because
+    // a witness for a migration a box may not have run yet is exactly what the witness list is for.
+    expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0052_camp_day_rates")).toMatchObject({ probe: { kind: "table", table: "camp_week_day_rates" }, rerunnable: true });
     const S = code(src("src/db/schema.ts"));
-    expect(S).toContain('export const campWeekDayRates = pgTable(');
+    expect(S).not.toContain("export const campWeekDayRates = pgTable(");
+    expect(S).toContain("export const campWeekDayTeachers = pgTable(");
     expect(S).toContain('rateMinor: integer("rate_minor").notNull().default(0),');
     expect(S).toContain("(t) => [primaryKey({ columns: [t.campWeekDayId, t.teacherId] })],");
-    expect(S).toContain("rates: many(campWeekDayRates),");
+    expect(S).toContain("teachers: many(campWeekDayTeachers),");
     expect(S).toContain('deductionNotifiedAt: timestamp("deduction_notified_at", { withTimezone: true }),');
   });
 });
 
 describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-day ⇒ 400), the ONE sync copies it; key 59 on the write and the read", () => {
-  test("`weekDays` by value: `teacherRates` for every coach ON the day, 0 without a row; a rate row for a coach no longer on the day is not shown", async () => {
+  test("`weekDays` by value: `teacherRates` for every coach ON the day, 0 when none was set (🔻 TASK-454: the ROW is the membership, so a rate for a coach not on the day can no longer exist at all)", async () => {
     spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => week) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
-    spies.push(spyOn(db.query.campWeekDays, "findMany").mockImplementation((async () => [{ id: D1, campWeekId: W1, date: "2026-10-05", teacherIds: [T1, T2], startTime: "10:00:00", endTime: "15:00:00", editedAt: null, rates: [{ campWeekDayId: D1, teacherId: T1, rateMinor: 50000 }, { campWeekDayId: D1, teacherId: T3, rateMinor: 99 }] }]) as any));
+    spies.push(spyOn(db.query.campWeekDays, "findMany").mockImplementation((async () => [{ id: D1, campWeekId: W1, date: "2026-10-05", startTime: "10:00:00", endTime: "15:00:00", editedAt: null, teachers: [{ campWeekDayId: D1, teacherId: T1, startTime: null, endTime: null, rateMinor: 50000 }, { campWeekDayId: D1, teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] }]) as any));
     const out = await camp.weekDays(W1);
     expect(out.days[0]).toMatchObject({ date: "2026-10-05", campWeekDayId: D1, teacherIds: [T1, T2], teacherRates: { [T1]: 50000, [T2]: 0 } });
     expect(out.days[0]!.teacherRates).not.toHaveProperty(T3);
+    // …and the new shape the old two are derived FROM: each coach's resolved window + rate
+    expect(out.days[0]!.teachers).toEqual([
+      { teacherId: T1, startTime: "10:00", endTime: "15:00", rateMinor: 50000 },
+      { teacherId: T2, startTime: "10:00", endTime: "15:00", rateMinor: 0 },
+    ]);
     expect(v.updateCampWeekDay.safeParse({ teacherRates: { [T1]: 50000 } }).success).toBe(true);
     expect(v.updateCampWeekDay.safeParse({ teacherRates: { [T1]: -1 } }).success).toBe(false);
   });
   test("`updateWeekDay` by value through a fake tx: the upsert per coach (ON CONFLICT ⇒ update), then the sync inserts WITH the rate and re-stamps the KEPT rows; a coach off the day ⇒ 400 before any write", async () => {
-    const day = { id: D1, campWeekId: W1, date: "2026-10-05", teacherIds: [T1, T2], startTime: "10:00:00", endTime: "12:00:00", editedAt: null };
+    const day = { id: D1, campWeekId: W1, date: "2026-10-05", startTime: "10:00:00", endTime: "12:00:00", editedAt: null, teachers: [{ teacherId: T1, startTime: null, endTime: null, rateMinor: 0 }, { teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] };
     spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => week) as any));
-    spies.push(spyOn(db.query.campWeekDays, "findFirst").mockImplementation((async () => ({ ...day, rates: [{ teacherId: T1, rateMinor: 50000 }] })) as any));
+    // 🔻 TASK-454 — the re-read after the tx sees the coach ROWS as they were just upserted (the DTO is built from them)
+    spies.push(spyOn(db.query.campWeekDays, "findFirst").mockImplementation((async () => ({ ...day, teachers: upserted.length ? upserted : day.teachers })) as any));
     const writes: any[] = [];
     const upserted: any[] = [];
     const tx: any = {
       query: {
         campWeekDays: { findFirst: async () => ({ ...day, week }) },
-        campWeekDayRates: { findMany: async () => upserted.map((u) => ({ campWeekDayId: D1, teacherId: u.teacherId, rateMinor: u.rateMinor })) },
+        campWeekDayTeachers: { findMany: async () => upserted.map((u) => ({ campWeekDayId: D1, teacherId: u.teacherId, startTime: u.startTime ?? null, endTime: u.endTime ?? null, rateMinor: u.rateMinor })) },
         teachers: { findFirst: async () => null, findMany: async () => [] },
         bookings: { findFirst: async () => null },
       },
       select: () => ({ from: () => ({ where: async () => [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }, { id: "old-2", teacherId: T2, startTime: "10:00:00" }] }) }),
-      insert: (table: any) => ({ values: (val: any) => ({ onConflictDoUpdate: async (o: any) => { if (table !== campWeekDayRates) throw new Error("wrong table"); upserted.push(val); writes.push(["upsert", val, Object.keys(o.set)]); } }) }),
+      insert: (table: any) => ({ values: (val: any) => ({ onConflictDoUpdate: async (o: any) => { if (table !== campWeekDayTeachers) throw new Error("wrong table"); upserted.push(val); writes.push(["upsert", val, Object.keys(o.set)]); } }) }),
       update: (table: any) => ({ set: (patch: any) => ({ where: async () => { writes.push(["update", table === bookings ? "bookings" : table === campWeekDays ? "day" : "other", patch]); } }) }),
-      delete: () => ({ where: async () => { writes.push(["delete"]); } }),
+      delete: (table: any) => ({ where: async () => { writes.push(["delete", table === campWeekDayTeachers ? "teachers" : "other"]); } }),
     };
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
     const inserts: any[] = [];
     spies.push(spyOn(sched, "insertBooking").mockImplementation((async (_tx: any, _s: any, input: any) => { inserts.push(input); return `new-${inserts.length}`; }) as any));
     const out = await camp.updateWeekDay(W1, "2026-10-05", { teacherRates: { [T1]: 50000, [T2]: 30000 } });
-    expect(writes.filter((w) => w[0] === "upsert")).toEqual([["upsert", { campWeekDayId: D1, teacherId: T1, rateMinor: 50000 }, ["rateMinor"]], ["upsert", { campWeekDayId: D1, teacherId: T2, rateMinor: 30000 }, ["rateMinor"]]]);
+    expect(writes.filter((w) => w[0] === "upsert")).toEqual([["upsert", { campWeekDayId: D1, teacherId: T1, startTime: null, endTime: null, rateMinor: 50000 }, ["startTime", "endTime", "rateMinor"]], ["upsert", { campWeekDayId: D1, teacherId: T2, startTime: null, endTime: null, rateMinor: 30000 }, ["startTime", "endTime", "rateMinor"]]]);
     expect(inserts.map((i) => [i.teacherId, i.startTime, i.teacherRates])).toEqual([[T1, "11:00", { [T1]: 50000 }], [T2, "11:00", { [T2]: 30000 }]]);
     expect(writes.filter((w) => w[0] === "update" && w[1] === "bookings" && "teacherRateMinor" in w[2]).map((w) => w[2])).toEqual([{ teacherRateMinor: 50000 }, { teacherRateMinor: 30000 }]); // the KEPT 10:00 rows
     expect(writes.findIndex((w) => w[0] === "upsert")).toBeLessThan(inserts.length ? writes.findIndex((w) => w[0] === "update" && w[1] === "bookings") : Infinity); // the upsert BEFORE the sync
-    expect(out).toMatchObject({ day: { date: "2026-10-05", teacherRates: { [T1]: 50000, [T2]: 0 } }, inserted: 2, deleted: 0 });
+    // 🔻 TASK-454 — the DTO is re-read from the coach ROWS, so it now shows what was just written for BOTH coaches
+    // (before the merge the fixture could only answer with the one rate it was seeded with).
+    expect(out).toMatchObject({ day: { date: "2026-10-05", teacherRates: { [T1]: 50000, [T2]: 30000 } }, inserted: 2, deleted: 0 });
     // a coach not on the day ⇒ 400, and the sync never ran
     writes.length = 0; inserts.length = 0;
     await expect(camp.updateWeekDay(W1, "2026-10-05", { teacherRates: { [T3]: 1000 } })).rejects.toMatchObject({ status: 400, message: "ตั้งค่าเรทได้เฉพาะครูที่อยู่ในวันนี้" });

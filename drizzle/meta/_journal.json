@@ -372,6 +372,20 @@
       "when": 1783000000048,
       "tag": "0052_camp_day_rates",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1783000000049,
+      "tag": "0053_camp_day_teachers",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1783000000050,
+      "tag": "0054_group_slot_yield",
+      "breakpoints": true
     }
   ]
 }

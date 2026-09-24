@@ -88,6 +88,12 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "PATCH /group-series/:key": act(["menu:calendar"], "action:calendar.booking-edit"),
   "POST /bookings/group-series": act(CAL_BOOK, "action:calendar.group-series"), // TASK-397 — its own act
   "PATCH /bookings/:id/group-teacher": act(CAL_BOOK, "action:calendar.booking-edit"), // TASK-397 — an edit
+  // TASK-453 — both resolutions are an EDIT of the calendar's bookings (the act the admin is performing), and the
+  // close is the group-series act. 🚫 No new action key: a new key would have to be granted to every role that can
+  // already do the same thing by hand, which is how a permission table stops matching the product.
+  "POST /bookings/:id/resolve-clash/move": act(CAL_BOOK, "action:calendar.booking-edit"),
+  "POST /bookings/:id/resolve-clash/swap-coach": act(CAL_BOOK, "action:calendar.booking-edit"),
+  "POST /group-series/:key/close": act(["menu:calendar"], "action:calendar.group-series"),
   "PATCH /bookings/:id/badges": act(CAL_BOOK, "action:calendar.badges"),
   "GET /bookings/:id/checkin": read(CAL_BOOK),
   "PATCH /bookings/:id/note": act(CAL_BOOK, "action:calendar.note"),

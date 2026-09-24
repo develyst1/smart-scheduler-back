@@ -11,7 +11,9 @@ export interface SettingSpec {
    *  segmented control instead of a number input, so staff never see a `0|1` standing in for a decision. */
   type: "number" | "enum";
   default: number | string;
-  unit: "days" | "minutes" | "hours" | "option";
+  // TASK-456 — `weeks` joins the units because the rolling extender's horizon is genuinely weekly (a group slot
+  // repeats every 7 days); expressing it as 56 days would make the Settings row read as a number nobody chose.
+  unit: "days" | "minutes" | "hours" | "weeks" | "option";
   options?: readonly string[];
   label: string; // staff-facing (TH) — the Settings screen row
   /** Validate + coerce + bounds-check a raw value (from DB or an API body). `null` = malformed → caller falls back. */
@@ -47,6 +49,17 @@ export const SETTINGS = {
     unit: "days",
     label: "แจ้งเปลี่ยนครูล่วงหน้า (วัน)",
     parse: intInRange(0, 30),
+  },
+  // 🔴 TASK-456 (REQ-105 §3) — how far ahead the rolling extender keeps a NON-CLOSED group series stocked with rows.
+  // 📌 A setting rather than a constant because it is the one number an admin can feel: too small and the calendar
+  // ends in a fortnight, too large and a series nobody closed fills the grid for a year. Default 8 weeks.
+  group_series_weeks_ahead: {
+    key: "group_series_weeks_ahead",
+    type: "number",
+    default: 8,
+    unit: "weeks",
+    label: "สร้างคาบกลุ่มล่วงหน้า (สัปดาห์)",
+    parse: intInRange(1, 52),
   },
   checkin_early_minutes: {
     key: "checkin_early_minutes",

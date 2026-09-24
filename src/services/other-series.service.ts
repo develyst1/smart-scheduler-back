@@ -30,6 +30,7 @@ import {
   insertBooking,
   reconcileBookingHolds,
   swapGroupTeacher,
+  GROUP_SERIES_CLOSED,
 } from "./scheduler.service";
 
 /** TASK-441 — which column names the series and which row type it holds. A bare string = the OTHER series (TASK-428's shape). */
@@ -182,11 +183,15 @@ export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: 
 }
 
 /** Add a teacher (an EXTRA) to every live row from `fromDate` (default today) — one tx; the first clash rolls back. */
-export async function addTeacherToOtherSeries(key: SeriesKey, input: { teacherId: string; rateMinor?: number; fromDate?: string }) {
+export async function addTeacherToOtherSeries(key: SeriesKey, input: { teacherId: string; rateMinor?: number; fromDate?: string; onDate?: string }) {
   return db.transaction(async (tx) => {
     const rows = await seriesRows(tx, key);
     if (!rows.length) throw NOT_FOUND();
-    const targets = seriesRowsFrom(rows, input.fromDate ?? today());
+    // 🔴 TASK-453 (REQ-105 §8.1 gaps) — `onDate` = ONE session, not "from here on". A cover coach for a single week
+    // was N calls plus a removal from the following date; it is now one call. 📌 The SAME live filter either way —
+    // `seriesRowsFrom` restated as "this date only", never a second idea of which rows may be touched.
+    const targets = input.onDate ? rows.filter((r) => isLive(r) && r.date === input.onDate) : seriesRowsFrom(rows, input.fromDate ?? today());
+    if (input.onDate && !targets.length) throw NOT_FOUND();
     for (const r of targets) {
       if (r.teacherId === input.teacherId || extrasOf(r).includes(input.teacherId)) throw ALREADY_ON_ROW(r.date);
       try {
@@ -198,6 +203,24 @@ export async function addTeacherToOtherSeries(key: SeriesKey, input: { teacherId
     }
     if (targets.length) await notifySeriesTeachers(tx, "other_teacher_added", templateOf(rows)!, targets, {}, [input.teacherId]);
     return { added: targets.length };
+  });
+}
+
+/**
+ * 🔴 TASK-453 (REQ-105 §8.1 gaps) — CLOSE the series: the intake ends, the class does not. Every row of the key is
+ * stamped (so any row answers "is it closed?" — no template read to go stale), and from that moment `seatOnGroup`
+ * refuses a new child and `addDatesToOtherSeries` refuses a new date. 🚫 Existing rows are UNTOUCHED — not
+ * cancelled, not hidden: the kids already enrolled keep every date that was already there. Idempotent: closing a
+ * closed series re-stamps nothing and reports `0`.
+ */
+export async function closeGroupSeries(key: { groupKey: string }) {
+  return db.transaction(async (tx) => {
+    const rows = await seriesRows(tx, key);
+    if (!rows.length) throw NOT_FOUND();
+    if (rows.some((r: any) => r.groupClosedAt)) return { closed: 0, alreadyClosed: true };
+    const now = new Date();
+    await tx.update(bookings).set({ groupClosedAt: now }).where(eq(bookings.groupKey, key.groupKey));
+    return { closed: rows.length, alreadyClosed: false };
   });
 }
 
@@ -275,6 +298,7 @@ export async function addDatesToOtherSeries(key: SeriesKey, input: { dates: stri
     const ids: string[] = [];
     for (const date of [...input.dates].sort()) {
       if (have.has(date)) throw conflict("DATE_EXISTS", `วันที่ ${date} มีในตารางชุดนี้แล้ว`);
+      if ((t as any).groupClosedAt) throw GROUP_SERIES_CLOSED(); // TASK-453 — a closed series gains no date
       try {
         const id = await insertBooking(tx, null, {
           teacherId: t.teacherId, subjectId: null, date, startTime: hhmm(t.startTime), bookingType: k.type, otherTitle: t.otherTitle,
@@ -292,7 +316,7 @@ export async function addDatesToOtherSeries(key: SeriesKey, input: { dates: stri
 }
 
 /** The header edit — title / kind / heads / rates on every LIVE row (no `startTime`: a time change is N moves). */
-export async function updateOtherSeries(key: SeriesKey, input: { title?: string; otherKind?: string; headCount?: number; teacherRates?: Record<string, number> }) {
+export async function updateOtherSeries(key: SeriesKey, input: { title?: string; otherKind?: string; headCount?: number | null; teacherRates?: Record<string, number> }) {
   if (isGroupKey(key) && input.otherKind !== undefined) throw badRequest("ประเภทของกลุ่มเปลี่ยนไม่ได้"); // TASK-441 — a group's kind is fixed (DUO | GROUP ⇔ its courses)
   return db.transaction(async (tx) => {
     const rows = await seriesRows(tx, key);

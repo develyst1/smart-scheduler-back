@@ -471,7 +471,8 @@ export const groupSeries = z
   .object({
     name: z.string().trim().min(1),
     groupKind: z.enum(GROUP_KINDS_CREATABLE), // TASK-420 — DUO is a course now; a new series is GROUP only
-    seatCap: z.number().int().min(2).max(12),
+    // TASK-453 — `null` = UNCAPPED (a permanent slot that takes whoever turns up); a number still means the cap it always did.
+    seatCap: z.number().int().min(2).max(12).nullable(),
     teacherId: ID,
     additionalTeacherIds: z.array(ID).optional(),
     teacherRates: z.record(ID, z.number().int().min(0)).optional(),
@@ -485,6 +486,13 @@ export const groupSeries = z
 
 // TASK-397 — swap the group's teacher from this date on (or this date only); every seat moves with it.
 export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean() });
+
+// 🔴 TASK-453 (REQ-105 §8.1) — the two resolutions of a clash. ① moves the PRIVATE (at least one of the three
+// fields, the move's own shape); ② swaps the GROUP's coach for that session. Never forced, never automatic.
+export const resolveClashMove = z
+  .object({ teacherId: ID.optional(), date: DATE.optional(), startTime: TIME.optional() })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุครู/วันที่/เวลาใหม่อย่างน้อย 1 อย่าง" });
+export const resolveClashSwapCoach = z.object({ teacherId: ID });
 
 // TASK-394 — the SERIES: one OTHER row per date, all or nothing. `endTime` is derived (+1h) as for every booking.
 export const otherSeries = z
@@ -514,7 +522,14 @@ export const updateCampWeek = z
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 // TASK-418 — the per-day swap: who holds the block that day, and when (the rules — whole hours, the bounds — are the service's).
 export const updateCampWeekDay = z
-  .object({ teacherIds: z.array(ID).optional(), startTime: HHMM.optional(), endTime: HHMM.optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() }) // TASK-443 — `teacherRates` ⇒ key 59 (the body check)
+  .object({
+    // TASK-454 — ONE body for who is on the day, each coach's OWN hours and their rate; hours omitted ⇒ the day default.
+    teachers: z.array(z.object({ teacherId: ID, startTime: HHMM.nullish(), endTime: HHMM.nullish(), rateMinor: z.number().int().min(0).optional() })).optional(),
+    teacherIds: z.array(ID).optional(), // 🔻 the old pair, accepted for ONE deploy (see the day DTO)
+    startTime: HHMM.optional(),
+    endTime: HHMM.optional(),
+    teacherRates: z.record(ID, z.number().int().min(0)).optional(), // TASK-443 — ⇒ key 59 (the body check)
+  })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 export const redeemCampDays = z
   .object({ weekId: ID, dates: z.array(DATE).min(1).max(7), half: z.enum(CAMP_HALVES) })
@@ -629,7 +644,10 @@ export const updateUser = z.object({
 // service (the owner's ruling 2: past rows are history). No `startTime` on the header PATCH — a time change is N moves.
 export const otherSeriesQuery = z.object({ from: DATE, to: DATE }).refine((d) => d.from <= d.to, { message: "ช่วงวันที่กลับด้าน" });
 export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(END_REASONS), note: z.string().trim().max(500).optional() });
-export const otherSeriesAddTeacher = z.object({ teacherId: ID, rateMinor: z.number().int().min(0).optional(), fromDate: DATE.optional() });
+// TASK-453 — `onDate` = ONE session (a cover coach for one week); mutually exclusive with `fromDate`, refused rather than ranked.
+export const otherSeriesAddTeacher = z
+  .object({ teacherId: ID, rateMinor: z.number().int().min(0).optional(), fromDate: DATE.optional(), onDate: DATE.optional() })
+  .refine((d) => !(d.fromDate && d.onDate), { message: "ระบุ fromDate หรือ onDate อย่างใดอย่างหนึ่ง", path: ["onDate"] });
 export const otherSeriesFromQuery = z.object({ fromDate: DATE.optional() });
 export const otherSeriesSwap = z.object({ from: ID, to: ID, fromDate: DATE.optional() }).refine((d) => d.from !== d.to, { message: "ครูคนเดิม" });
 export const otherSeriesDates = z.object({ dates: z.array(DATE).min(1).max(60) }).refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
@@ -640,7 +658,7 @@ export const otherSeriesPatch = z
 // TASK-441 (REQ-104) — the GROUP series' own bodies: the swap has ONE primary (no `from`); the header PATCH has no kind.
 export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional() });
 export const groupSeriesPatch = z
-  .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
+  .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).nullable().optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
 export const teacherLeave = z.object({

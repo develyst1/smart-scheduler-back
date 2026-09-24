@@ -39,6 +39,11 @@ import { rentalPrintLine } from "../lib/rental-row";
 import { REMINDABLE, dueSends, groupReminders, reminderReach, reminderSends } from "../lib/daily-reminder";
 import { campReminderSends } from "../lib/camp-reminder";
 import { WEEKLY_DIGEST_JOB, groupWeekRows, weekOf, weeklyDigestKey } from "../lib/weekly-digest";
+import { GROUP_EXTENDER_JOB, weeklyDatesToCreate } from "../lib/group-extend";
+import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
+import { attachAdditionalTeachers, insertBooking } from "./scheduler.service";
+import { ApiException } from "../lib/http";
+import { addDays, hhmm } from "../lib/time";
 import { campReminderInputs } from "./camp.service";
 import { getSetting } from "./settings.service";
 
@@ -458,6 +463,7 @@ export async function runDailyReminderJob(date?: string) {
       groupId: r.groupId ?? null,
       campWeekDayId: r.campWeekDayId ?? null, // TASK-418 — the fold key
       otherKind: r.otherKind ?? null,
+      slotYieldedAt: r.slotYieldedAt ?? null, // TASK-453b — the clash half the row itself carries
       seats: r.bookingType === "GROUP" ? (r.seats ?? []).filter((x: any) => REMINDABLE.has(x.status)).map((x: any) => ({ studentName: x.student?.nickname ?? x.student?.name ?? "", remaining: x.course ? remainingLabel("course", x.course.size - x.course.usedSessions, x.course.size) : null })) : null,
     })),
   );
@@ -564,7 +570,8 @@ export async function runWeeklyTeacherDigestJob(date?: string) {
   const { weekStart, weekEnd } = weekOf(runDate);
   const rows = await db.query.bookings.findMany({
     where: (b: any, { and: a, gte: g, lte: l }: any) => a(g(b.date, weekStart), l(b.date, weekEnd)),
-    with: { teacher: true, student: true, coStudent: true, subject: true, additionalTeachers: { with: { teacher: true } } },
+    // TASK-453b — `seats` rides along: the weekly digest's clash note needs the live-seat half of the derivation.
+    with: { teacher: true, student: true, coStudent: true, subject: true, seats: true, additionalTeachers: { with: { teacher: true } } },
   });
   const groups = groupWeekRows(rows);
   let sent = 0, skipped = 0, duplicate = 0;
@@ -582,5 +589,67 @@ export async function runWeeklyTeacherDigestJob(date?: string) {
   }
   const summary = { weekStart, weekEnd, teachers: groups.length, sent, skipped, duplicate };
   await db.insert(jobRuns).values({ job: WEEKLY_DIGEST_JOB, runDate, status: "success", summary, finishedAt: new Date() });
+  return { date: runDate, ...summary };
+}
+
+// ─────── TASK-456 (REQ-105 §3) — the ROLLING EXTENDER for group series ───────
+//
+// A group slot has no end date: it runs every week until an admin CLOSES it (TASK-453's `group_closed_at`). Its rows
+// are real bookings, so something has to create them — and "something" being a human who remembers is how a class
+// quietly stops existing three weeks out.
+//
+// The SAME shape as the weekly digest: a Windows Task Scheduler exe (`scripts/group-series-extender.ts`) hits
+// `POST /internal/jobs/group-series-extender` daily, and a `job_runs` row is ALWAYS written (TASK-208's lesson — a job
+// never registered on the box must stay visible instead of failing silently for weeks).
+//
+// 🔑 Idempotent BY STATE (`weeklyDatesToCreate` reads the rows that exist), never by a stamp.
+// 🔑 ONE DATE PER TRANSACTION, deliberately: a coach-hour that is taken on one Tuesday must not stop every OTHER
+// series from being extended. The clash is reported in the run's summary and the log line, and the run continues.
+export async function runGroupSeriesExtenderJob(date?: string) {
+  const runDate = date ?? bangkokNow().date;
+  const weeks = Number(await getSetting("group_series_weeks_ahead"));
+  const horizon = addDays(runDate, weeks * 7);
+  const rows = await db.query.bookings.findMany({
+    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
+    with: { additionalTeachers: true },
+    orderBy: (b: any, { asc }: any) => [asc(b.date)],
+  });
+  const series = new Map<string, any[]>();
+  for (const r of rows) if (r.groupKey) series.set(r.groupKey, [...(series.get(r.groupKey) ?? []), r]);
+
+  let created = 0, extended = 0, closed = 0;
+  const clashes: Array<{ groupKey: string; date: string; message: string }> = [];
+  for (const [groupKey, group] of series) {
+    // 🚫 A CLOSED series gains nothing — that is what closing is FOR, and it is the only off switch. ⚠️ Said plainly:
+    // a series somebody ABANDONED without closing WILL keep being extended. That is the design, not an oversight.
+    if (group.some((r: any) => r.groupClosedAt)) { closed++; continue; }
+    const dates = weeklyDatesToCreate({ existing: group.map((r: any) => r.date), from: runDate, horizon });
+    if (!dates.length) continue;
+    const t = group[group.length - 1]!; // the LAST row is the template: the series as it stands today, not as it began
+    const extras = (t.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
+    const rates: Record<string, number> = {};
+    if (t.teacherRateMinor != null) rates[t.teacherId] = t.teacherRateMinor;
+    for (const a of t.additionalTeachers ?? []) if (a.rateMinor != null) rates[a.teacherId] = a.rateMinor;
+    let any = false;
+    for (const d of dates) {
+      try {
+        await db.transaction(async (tx) => {
+          const id = await insertBooking(tx, null, {
+            teacherId: t.teacherId, subjectId: null, date: d, startTime: hhmm(t.startTime), bookingType: "GROUP",
+            otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates,
+          });
+          if (extras.length) await attachAdditionalTeachers(tx, id, extras, rates);
+        });
+        created++; any = true;
+      } catch (e) {
+        // One date, one transaction: this date is not created, every other one still is.
+        clashes.push({ groupKey, date: d, message: e instanceof ApiException ? e.message : String(e) });
+      }
+    }
+    if (any) extended++;
+  }
+  const summary = { horizon, weeks, series: series.size, extended, created, closedSkipped: closed, clashes };
+  if (clashes.length) console.warn(`[${GROUP_EXTENDER_JOB}] ${runDate} ${clashes.length} date(s) could not be created:`, clashes);
+  await db.insert(jobRuns).values({ job: GROUP_EXTENDER_JOB, runDate, status: "success", summary, finishedAt: new Date() });
   return { date: runDate, ...summary };
 }

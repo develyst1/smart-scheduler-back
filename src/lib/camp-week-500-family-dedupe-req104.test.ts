@@ -3,7 +3,7 @@
 // insert now; the catch touches no tx ⇒ `409 SLOT_TAKEN` naming date · hour · coach, the whole create rolled back. A PAST date
 // derives nothing and is left alone. (2) the group cancel-all's family notices: ONE household set per row (all the seats — two
 // siblings reach their family ONCE), the accounts returned for honest counts: `familyNotices` = rows × distinct accounts,
-// `householdsTold` = the union across the call. The Private/DUO path byte-identical. No migration (53 = 53).
+// `householdsTold` = the union across the call. The Private/DUO path byte-identical. No migration (55 = 55).
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -48,12 +48,12 @@ const campTx = (o: { week: any; day: any; existing?: any[]; clashAt?: string }) 
     log,
     query: {
       campWeekDays: { findFirst: async () => guard(() => ({ ...o.day, week: o.week })) },
-      campWeekDayRates: { findMany: async () => guard(() => []) },
+      campWeekDayTeachers: { findMany: async () => guard(() => (o.day.teacherIds ?? []).map((teacherId: string) => ({ campWeekDayId: o.day.id, teacherId, startTime: null, endTime: null, rateMinor: 0 }))) }, // 🔻 TASK-454
       teachers: { findFirst: async () => guard(() => ({ id: T1, nickname: "เอก" })), findMany: async () => guard(() => [{ id: T1, nickname: "เอก" }, { id: T2, nickname: "บี" }]) },
       bookings: { findFirst: async () => guard(() => null) },
     },
     select: () => ({ from: () => ({ where: async () => guard(() => o.existing ?? []) }) }),
-    insert: (table: any) => ({ values: (val: any) => { const ret = { returning: async () => guard(() => { log.push(["insert", table === campWeeks ? "week" : table === campWeekDays ? "day" : "other", val]); return [{ id: table === campWeeks ? W1 : D1, ...val }]; }) }; return Object.assign(Promise.resolve(), ret); } }),
+    insert: (table: any) => ({ values: (val: any) => { const ret = { returning: async () => guard(() => { log.push(["insert", table === campWeeks ? "week" : table === campWeekDays ? "day" : "other", val]); return [{ id: table === campWeeks ? W1 : D1, ...val }]; }), onConflictDoUpdate: async () => guard(() => { log.push(["upsert", val]); }) }; return Object.assign(Promise.resolve(), ret); } }),
     delete: () => ({ where: async () => guard(() => { log.push(["delete"]); }) }),
     update: () => ({ set: (patch: any) => ({ where: async () => guard(() => { log.push(["update", patch]); }) }) }),
   };
@@ -156,6 +156,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(53);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
   });
 });

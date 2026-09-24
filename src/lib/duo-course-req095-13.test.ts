@@ -1,5 +1,5 @@
 // TASK-420 (`REQ-095 §13`, SPEC-085 B) — DUO = ONE course, TWO kids: migration `0048` (two NULL columns on course_packages,
-// one on bookings, the partial index as witness; 53 = 53), the ONE chokepoint for the row's second child (`insertBooking`
+// one on bookings, the partial index as witness; 55 = 55), the ONE chokepoint for the row's second child (`insertBooking`
 // reads the course; the two clones copy their template — pinned as a CENSUS of every `insert(bookings)`), the create by
 // VALUE through a fake tx (both kids guarded, the DUO price group, ONE sale at `course-balance-duo-{size}`, the rate
 // stored), the rate edits (course PATCH + the session move; Private ⇒ 400 NOT_DUO), the FOUR private family reads retired
@@ -52,9 +52,9 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
-  test("53 = 53: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -131,7 +131,9 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
       query: {
         students: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, x: string) => { probe.push(x); return null; } }); const id = probe[0]!; return { id, parentId: null, archivedAt: opts.archived?.has(id) ? new Date() : null, name: id === A ? "Ploy" : "Pun", nickname: id === A ? "Ploy" : "Pun" }; } },
         teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) },
-        bookings: { findMany: async () => inserted.filter((r) => r.table === "bookings").map((r, i) => ({ id: `b-${i + 1}`, ...r.v, status: r.v.status ?? "PENDING", student: { id: A, name: "Ploy" }, coStudent: r.v.coStudentId ? { id: B, name: "Pun" } : null, teacher: { id: T1, nickname: "Bank", name: "Bank" }, subject: { id: SUBJ, name: "Balance" }, course: null, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null })) },
+        // 🔻 TASK-453 — the Private's insert now asks "is an EMPTY group row holding this hour?" before it writes.
+        // `null` = no group row on that hour, which is this course's case (and every Private's, ordinarily).
+        bookings: { findFirst: async () => null, findMany: async () => inserted.filter((r) => r.table === "bookings").map((r, i) => ({ id: `b-${i + 1}`, ...r.v, status: r.v.status ?? "PENDING", student: { id: A, name: "Ploy" }, coStudent: r.v.coStudentId ? { id: B, name: "Pun" } : null, teacher: { id: T1, nickname: "Bank", name: "Bank" }, subject: { id: SUBJ, name: "Balance" }, course: null, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null })) },
         coursePackages: { findFirst: async () => { const c = inserted.find((r) => r.table === "coursePackages")!.v; return { id: "course-1", ...c, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, priorSessions: 0, leaveQuota: null, createdAt: new Date(), student: { id: A, name: "Ploy", nickname: "Ploy" }, coStudent: c.coStudentId ? { id: B, name: "Pun", nickname: "Pun" } : null, subject: { id: SUBJ, name: "Balance" } }; } },
       },
     };
@@ -446,7 +448,7 @@ describe("🔴 the READERS by source — the 16-site table; the DTOs; the pool u
     expect(SCHED).not.toMatch(/classRateMinor[^\n]*(recordSale|recordRental|enqueueLine)/);
     expect(code(src("src/lib/sale-items.ts"))).not.toContain("class_rate");
     expect(code(src("src/services/settings.service.ts"))).not.toMatch(/duo|class_rate/i);
-    expect(code(src("src/validation.ts"))).toContain("seatCap: z.number().int().min(2).max(12),");
+    expect(code(src("src/validation.ts"))).toContain("seatCap: z.number().int().min(2).max(12).nullable(),"); // 🔻 TASK-453 — `null` = uncapped; the 2..12 rule for a NUMBER is untouched
     expect(code(src("src/db/schema.ts"))).not.toMatch(/hours_per_child|coHours/);
   });
 });

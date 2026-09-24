@@ -45,7 +45,9 @@ describe("🔴 the CENSUS — every producer of a per-teacher rate is a key the 
       const c = code(src(f));
       return /^\s*rate:\s/m.test(c) || /^\s*classRateMinor:\s(?!z\.|input|integer\()/m.test(c) || /^\s*teacherRates:\s(?!z\.|Record|input|rates,)/m.test(c) || /(^|[{,]\s*)teacherRates: (ratesOf|o\.teacherRates)/m.test(c);
     }).sort();
-    expect(producers).toEqual(["src/db/mappers.ts", "src/services/other-series.service.ts"]);
+    // 🔻 TASK-454 — the camp day DTO produces `teacherRates` too (each coach's rate on the day). It is the SAME key the
+    // `/api/*` mask nulls without key 59, which is why adding a producer is safe — and why this census must see it.
+    expect(producers).toEqual(["src/db/mappers.ts", "src/services/camp.service.ts", "src/services/other-series.service.ts"]);
     // no response key `rateMinor` anywhere (the booking DTO's `teachers[]` is `toTeacherBase` — id · name · nickname · type)
     const rateMinorProducers = walk("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).filter((f) => /^\s*rateMinor:\s(?!z\.|integer\(|number|input\.|rates\[|r\.rateMinor|it\.)/m.test(code(src(f))));
     expect(rateMinorProducers).toEqual([]);

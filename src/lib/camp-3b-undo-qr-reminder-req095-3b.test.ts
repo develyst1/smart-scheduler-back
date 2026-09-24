@@ -1,7 +1,7 @@
 // TASK-403 (`REQ-095` Stage 3b + `REQ-096`, SPEC-082) — the 08:15 reminder CONFIRMED-only (one constant, both
 // audiences, the seats), the UNDO of a consumed camp day (units back, floored, a reason, no money), the camp DAY's
 // check-in QR (lazy token, 23:59:59 expiry, the public scan through the SAME `markDay`, 410 / 409s), the camp-day
-// reminder's SEND PATH behind `camp_reminder_enabled` (default off) with PLACEHOLDER labels. Migration `0043` — 53 = 53.
+// reminder's SEND PATH behind `camp_reminder_enabled` (default off) with PLACEHOLDER labels. Migration `0043` — 55 = 55.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -41,9 +41,9 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
-  test("53 = 53: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");

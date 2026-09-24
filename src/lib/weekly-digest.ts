@@ -5,6 +5,7 @@
 // suite pins that the output carries no Thai code point under either `line_lang`. There is no per-kind language override
 // in `line-i18n.ts` (every key falls back TH → EN), so a constant renderer is the honest shape, not a special case.
 import { displayNameOf } from "../db/mappers";
+import { CLASH_NOTE_WEEKLY, clashingSlotKeys, liveSeatsOfRow, slotKeyOf } from "./group-clash";
 import { REMINDABLE } from "./daily-reminder";
 import { addDays, ddmmyyyy, fmtDate, hhmm } from "./time";
 
@@ -21,7 +22,7 @@ export function weekOf(date: string): { weekStart: string; weekEnd: string } {
 /** Send-once per teacher per week — a second Monday run enqueues nothing twice. */
 export const weeklyDigestKey = (teacherId: string, weekStart: string) => `weekly-teacher:${teacherId}:${weekStart}`;
 
-export interface WeekRow { date: string; startTime: string; endTime: string | null; program: string | null; studentName: string | null }
+export interface WeekRow { date: string; startTime: string; endTime: string | null; program: string | null; studentName: string | null; clash?: boolean }
 export interface WeekGroup { teacherId: string; lineUserId: string | null; rows: WeekRow[] }
 
 /**
@@ -32,6 +33,9 @@ export interface WeekGroup { teacherId: string; lineUserId: string | null; rows:
 export function groupWeekRows(rows: Array<any>): WeekGroup[] {
   const byTeacher = new Map<string, WeekGroup>();
   const sorted = rows.filter((r) => REMINDABLE.has(r.status)).sort((a, b) => a.date.localeCompare(b.date) || String(a.startTime).localeCompare(String(b.startTime)));
+  // 🔴 TASK-453b — computed from the WEEK's own rows, by the ONE derivation, keyed on the coach-hour so BOTH the
+  // group and the Private that took it carry the note. 🚫 Not a second idea of what a clash is.
+  const clashes = clashingSlotKeys(rows, liveSeatsOfRow); // raw `bookings` rows — the live-status set
   for (const r of sorted) {
     const line: WeekRow = {
       date: r.date,
@@ -39,6 +43,7 @@ export function groupWeekRows(rows: Array<any>): WeekGroup[] {
       endTime: r.endTime ? hhmm(r.endTime) : null,
       program: r.otherTitle ?? r.subject?.name ?? null,
       studentName: r.otherTitle ? null : displayNameOf(r) || null,
+      clash: clashes.has(slotKeyOf(r)),
     };
     const people: Array<{ id: string; lineUserId: string | null }> = [];
     if (r.teacherId) people.push({ id: r.teacherId, lineUserId: r.teacher?.lineUserId ?? null });
@@ -60,7 +65,9 @@ export function renderWeeklySchedule(rows: WeekRow[]): string {
   const lines = rows.map((r) => {
     const time = `${r.startTime}${r.endTime ? `-${r.endTime}` : ""}`;
     const who = [r.program, r.studentName].filter((x) => x && String(x).trim()).join(" / ");
-    return `${ddmmyyyy(r.date)} · ${time}${who ? ` · ${who}` : ""}`;
+    // 🔴 TASK-453b — the owner's approved suffix. English like the rest of this message (REQ-104 §3), under BOTH
+    // `line_lang` values, because the digest has no language of its own.
+    return `${ddmmyyyy(r.date)} · ${time}${who ? ` · ${who}` : ""}${r.clash ? ` ${CLASH_NOTE_WEEKLY}` : ""}`;
   });
   return [WEEKLY_TITLE, WEEKLY_GREETING, "", ...lines, "", WEEKLY_FOOTER].join("\n");
 }

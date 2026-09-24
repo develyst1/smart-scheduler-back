@@ -105,10 +105,16 @@ export function windowHours(start: string, end: string): string[] {
   for (let h = Number(hm(start).slice(0, 2)); h < Number(hm(end).slice(0, 2)); h++) out.push(`${String(h).padStart(2, "0")}:00`);
   return out;
 }
-/** The wanted set of a day: every (teacher, hour) — no teacher ⇒ none. Keys `teacherId|HH:MM`. */
-export function wantedCampSlots(teacherIds: readonly string[], start: string, end: string): Set<string> {
+/**
+ * The wanted set of a day: every (teacher, hour) — no teacher ⇒ none. Keys `teacherId|HH:MM`.
+ *
+ * 🔻 TASK-454 (REQ-105 §1) — each coach brings their OWN window now (A 10–12 while B works 13–15), so the set is built
+ * per coach instead of "every teacher × one window". Overlap is ALLOWED and needs no special case: two coaches on the
+ * same hour are two different keys, and a CAMP row is per coach.
+ */
+export function wantedCampSlots(coaches: ReadonlyArray<{ teacherId: string; start: string; end: string }>): Set<string> {
   const out = new Set<string>();
-  for (const t of teacherIds) for (const h of windowHours(start, end)) out.add(`${t}|${h}`);
+  for (const c of coaches) for (const h of windowHours(c.start, c.end)) out.add(`${c.teacherId}|${h}`);
   return out;
 }
 /** The diff the sync applies: what to insert (wanted − existing) and what to delete (existing − wanted). Pure. */

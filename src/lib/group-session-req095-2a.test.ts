@@ -42,11 +42,11 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const JOURNAL = readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8");
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
-  test("53 = 53 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(53);
+  test("55 = 55 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
+    expect(files.length).toBe(55);
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(53);
+    expect(j.entries.length).toBe(55);
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -84,7 +84,9 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
     expect(S).toMatch(/"OTHER",\s*"GROUP",\s*\]\);/);
     expect(S).toContain('groupKey: uuid("group_key"),');
     expect(S).toContain('groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),');
-    expect(S).toContain(".where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null`),");
+    // 🔻 TASK-453 — the predicate gained its THIRD term (`slot_yielded_at is null`, `0054`). 0041's own claim is
+    // unchanged: `group_id` is still in the index's WHERE, and the schema is still where it is written.
+    expect(S).toContain(".where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null`),");
     expect(S).toContain('index("bookings_group_id_idx").on(t.groupId),');
     expect(S).toContain('group: one(bookings, { fields: [bookings.groupId], references: [bookings.id], relationName: "group_seats" }),');
     expect(S).toContain('seats: many(bookings, { relationName: "group_seats" }),');
@@ -112,7 +114,7 @@ describe("🔴 ONE definition of 'holds the slot' — `lib/slot-holder.ts` acros
     }
     expect(SCHED).not.toContain("SLOT_NON_BLOCKING");
     expect(existsSync(resolve(root, "src/lib/booking-slot.ts"))).toBe(false);
-    expect(code(src("src/lib/slot-holder.ts"))).toContain("and(notInArray(b.status, [...SLOT_INACTIVE_STATUSES]), isNull(b.groupId))");
+    expect(code(src("src/lib/slot-holder.ts"))).toContain("and(notInArray(b.status, [...SLOT_INACTIVE_STATUSES]), isNull(b.groupId), isNull(b.slotYieldedAt))"); // 🔻 TASK-453 — the third case
   });
 });
 
@@ -189,7 +191,11 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     // 🔻 TASK-399: the CAP half lives in `assertSeatFree` (shared with the walk-in seat); `seatOnGroup` calls it before returning the row
     expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  return row.id;");
     const F = region(SCHED, "async function assertSeatFree(", "\n}\n");
-    expect(F).toContain("inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    // 🔻 TASK-453 — the count moved into `liveSeatCount` (shared with the yield, which needs the SAME set), and a
+    // NULL `head_count` now means UNCAPPED. The claim is unchanged: the cap counts LIVE seats, by that one set.
+    expect(F).toContain("const live = await liveSeatCount(tx, groupRowId);");
+    expect(F).toContain("if (row?.headCount == null) return;");
+    expect(region(SCHED, "export async function liveSeatCount(", "\n}\n")).toContain("inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
     expect(F).toContain('if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);');
   });
   test("`swapGroupTeacher`: a GROUP row only · the targets by key (from here on | this date) · ONE tx · teacher-bookable per date · the group row moves (23505 ⇒ 409 naming the date, nothing moved) · its holds reconciled · EVERY live seat follows · NO notice", () => {
@@ -224,7 +230,12 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   test("🚫 NO MONEY on a GROUP row: the day-end revenue sweep's type list has no GROUP (by construction); none of the new functions post; `ratePostedAt` never written", () => {
     const JOB = code(src("src/services/jobs.service.ts"));
     expect(JOB).toContain('inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"]),');
-    expect((JOB.match(/"GROUP"/g) ?? []).length).toBe(1); // the ONE mention is the reminder's seats mapper — never the sweep
+    // 🔻 TASK-456 — two more mentions, both in the ROLLING EXTENDER and neither in the sweep: the read that finds
+    // group rows, and the type it inserts. The claim below is the one that matters and it is unchanged: the sweep's
+    // own list has no GROUP, and nothing new posts money.
+    expect((JOB.match(/"GROUP"/g) ?? []).length).toBe(3);
+    const SWEEP = JOB.slice(JOB.indexOf('inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"]),'));
+    expect(SWEEP.slice(0, 400)).not.toContain('"GROUP"');
     expect(JOB).toContain('seats: r.bookingType === "GROUP" ?');
     for (const fn of ["export async function createGroupSeries(", "async function seatOnGroup(", "export async function swapGroupTeacher(", "async function cancelSeatsOfGroup("]) {
       expect({ fn, money: /recordSale|recordRental|boMovement|postBookingSale/.test(region(SCHED, fn, "\n}\n")) }).toEqual({ fn, money: false });
@@ -244,7 +255,8 @@ describe("🔴 the DTO — a GROUP row's `group {…}` with its seats; a seat's 
     seats: [{ id: "s1", studentId: "st1", status: "CONFIRMED", courseId: "c1", student: { id: "st1", name: "เด็กชายเอ", nickname: "น้องเอ" } }, { id: "s2", studentId: "st2", status: "SICK_LEAVE", courseId: "c2", student: { id: "st2", name: "เด็กหญิงบี", nickname: null } }] };
   test("by value", () => {
     const dto: any = toBookingDTO(groupRow);
-    expect(dto.group).toEqual({ key: "k-1", kind: "DUO", priceGroup: "balance-duo", name: "DUO A+B", seatCap: 2, seats: [{ bookingId: "s1", studentId: "st1", studentName: "น้องเอ", status: "CONFIRMED", courseId: "c1" }, { bookingId: "s2", studentId: "st2", studentName: "เด็กหญิงบี", status: "SICK_LEAVE", courseId: "c2" }], teacherRates: { [T1]: 60000 }, ratePostedAt: null });
+    // 🔻 TASK-453 — three fields added: the yield, the close, and the CLASH derived from the first plus the seats.
+    expect(dto.group).toEqual({ key: "k-1", kind: "DUO", priceGroup: "balance-duo", name: "DUO A+B", seatCap: 2, yieldedAt: null, closedAt: null, clash: false, seats: [{ bookingId: "s1", studentId: "st1", studentName: "น้องเอ", status: "CONFIRMED", courseId: "c1" }, { bookingId: "s2", studentId: "st2", studentName: "เด็กหญิงบี", status: "SICK_LEAVE", courseId: "c2" }], teacherRates: { [T1]: 60000 }, ratePostedAt: null });
     expect(dto.other).toBeNull(); // `other` is the OTHER row's fact; a GROUP row answers through `group`
     expect(dto.groupId).toBeNull();
     expect(dto.displayName).toBe("DUO A+B");
@@ -338,6 +350,6 @@ describe("🔑 the routes through the ROOT app (service spied) + the key", () =>
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.group-series")).toEqual({ key: "action:calendar.group-series", area: "calendar", labelTh: "สร้างกลุ่ม DUO/Group เป็นชุด", labelEn: "Create a DUO/Group series" });
     expect(ROUTE_ACCESS["POST /bookings/group-series"]).toEqual({ menus: ["menu:calendar", "menu:bookings"], action: "action:calendar.group-series" });
     expect(ROUTE_ACCESS["PATCH /bookings/:id/group-teacher"]!.action).toBe("action:calendar.booking-edit");
-    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.group-series").map(([k]) => k).sort()).toEqual(["POST /bookings/group-series", "POST /group-series/:key/dates"]); // 🔻 TASK-441: adding dates to a group series = the same act
+    expect(Object.entries(ROUTE_ACCESS).filter(([, a]) => a.action === "action:calendar.group-series").map(([k]) => k).sort()).toEqual(["POST /bookings/group-series", "POST /group-series/:key/close", "POST /group-series/:key/dates"]); // 🔻 TASK-441: adding dates = the same act · TASK-453: so is closing the intake
   });
 });

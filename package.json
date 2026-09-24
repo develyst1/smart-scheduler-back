@@ -17,6 +17,7 @@
     "job:daily-digest": "bun run scripts/daily-digest.ts",
     "job:daily-reminder": "bun run scripts/daily-reminder.ts",
     "job:weekly-teacher-digest": "bun run scripts/weekly-teacher-digest.ts",
+    "job:group-series-extender": "bun run scripts/group-series-extender.ts",
     "line:webhook-test": "bun run scripts/line-webhook-test.ts",
     "line:publish-menus": "bun run scripts/line-publish-menus.ts",
     "line:inspect-menus": "bun run scripts/line-inspect-menus.ts",

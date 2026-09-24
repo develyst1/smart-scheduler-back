@@ -1,5 +1,5 @@
 // TASK-428 (`REQ-101`, SPEC-088 Part A) — the OTHER SERIES Manage-plan: migration `0049` (the key column + the partial index
-// as witness; 53 = 53), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
+// as witness; 55 = 55), the creator mints ONE key and stamps every row (`201 { seriesKey, … }`), the reads by key, the
 // doors by VALUE through fake txs (confirm-all = the bulk-confirm loop; cancel-all one tx + ONE summary notice per teacher
 // and NO per-row notice; add / remove / swap from a date on through ONE `seriesRowsFrom`, the first clash rolls back, the
 // primary refused, `ALREADY_ON_ROW` both ways; add dates copies the template; the header PATCH on every live row, no
@@ -77,9 +77,9 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("53 = 53: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");

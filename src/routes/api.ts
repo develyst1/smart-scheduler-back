@@ -350,6 +350,17 @@ export const api = new Hono()
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-434 — `teacherRates` ⇒ key 59
     return c.json(await svc.createGroupSeries(c.req.valid("json")), 201);
   })
+  // 🔴 TASK-453 (REQ-105 §8.1) — RESOLVING a clash, two ways, one route each. Neither is automatic and neither is
+  // the "right" one: ① moves the PRIVATE and gives the hour back to the group (the default the admin reaches for);
+  // ② leaves the Private where it is and puts a DIFFERENT coach on the group session.
+  .post("/bookings/:id/resolve-clash/move", zValidator("json", v.resolveClashMove), async (c) =>
+    c.json(await svc.resolveClashByMovingPrivate(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/bookings/:id/resolve-clash/swap-coach", zValidator("json", v.resolveClashSwapCoach), async (c) =>
+    c.json(await svc.resolveClashBySwappingCoach(c.req.param("id"), c.req.valid("json"))),
+  )
+  // TASK-453 — CLOSE a group series: no new dates, no new enrolment; every existing row keeps running.
+  .post("/group-series/:key/close", async (c) => c.json(await otherSeries.closeGroupSeries({ groupKey: c.req.param("key") })))
   // TASK-397 — swap the group's teacher (this date, or from here on); every seat moves with it in one tx. No notice.
   .patch("/bookings/:id/group-teacher", zValidator("json", v.groupTeacherSwap), async (c) =>
     c.json(await svc.swapGroupTeacher(c.req.param("id"), c.req.valid("json"))),

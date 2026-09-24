@@ -19,6 +19,7 @@
 // is preserved rather than traded away.
 //
 // Pure — no DB, no clock.
+import { CLASH_NOTE_DAILY } from "./group-clash";
 import { t, type Lang } from "./line-i18n";
 import { ddmmyyyy } from "./time";
 import { TEMPLATE_LANG } from "./line-message-fields";
@@ -59,6 +60,9 @@ export interface TodayRow {
   headCount?: number | null;
   /** TASK-397 — a GROUP entry's seats (the children), folded under it on the COACH's schedule; absent elsewhere. */
   seats?: Array<{ studentName: string; remaining?: string | null }> | null;
+  /** 🔴 TASK-453b — this entry's coach-hour is in CLASH (the group yielded it to a Private and a kid enrolled anyway).
+   *  Set on the COACH's copy of BOTH rows; a parent never sees it — it is an admin's problem, not the family's. */
+  clash?: boolean;
 }
 
 /** Fields that MAY move to the header. `date` is constant by construction; `coach` only when the data agrees. */
@@ -80,6 +84,11 @@ const dash = (v: string | null | undefined) => (v && String(v).trim() ? String(v
  * would be visibly wrong.
  */
 const remarkLine = (r?: TodayRow): string[] => [
+  // 🔴 TASK-453b (REQ-105 §8) — the owner's approved line, FIRST among the appended lines: right under `Coach`,
+  // where a coach reading the block sees it before the roll. ⚠️ ENGLISH, like every sibling here: these lines print
+  // with `TEMPLATE_LANG` because they are the customer's own printed template (that is the existing rule, not a
+  // choice made for this line — @Sober, TASK-453 §5 Correction 2).
+  ...(r?.clash ? [CLASH_NOTE_DAILY] : []),
   // TASK-394 — `Heads : 12` for an ECA/Free/KOL entry, before `Remark`; absent when there is no count (a lesson never has one).
   // TASK-397 — a GROUP entry: `Seats : n/cap` + one line per child (name, their balance) BEFORE `Heads`/`Remark`.
   ...(r?.seats ? [`${t("ob_f_seats", TEMPLATE_LANG)} : ${r.seats.length}/${r.headCount ?? r.seats.length}`, ...r.seats.map((s) => `  - ${s.studentName}${s.remaining ? ` (${s.remaining})` : ""}`)] : []),

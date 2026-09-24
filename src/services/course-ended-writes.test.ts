@@ -149,6 +149,13 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /parents/:id/archive": "unrelated",
   "POST /parents/:id/unarchive": "unrelated",
   "PATCH /bookings/:id/group-teacher": "unrelated",
+  // 🔴 TASK-453 — the clash resolutions. ① MOVES a booking, so it is the `PATCH /bookings/:id` case exactly: an
+  // ended course's session must not be relocated through a new door (it would be "revive" wearing a third verb), so
+  // it calls `assertBookingCourseWritable` like the move it is. ② touches only the GROUP row — never a course
+  // session — and the close touches no booking's schedule at all.
+  "POST /bookings/:id/resolve-clash/move": "guarded",
+  "POST /bookings/:id/resolve-clash/swap-coach": "unrelated",
+  "POST /group-series/:key/close": "unrelated",
   // SPEC-076 / TASK-298 (REQ-085 §11.3) — what an expiry WOULD cost, asked before it is chosen. 🔑 A POST
   // because it carries a body, and it lands in this list for that reason alone: it **writes nothing at all**,
   // which `expiry-preview.test.ts` asserts as an absence across both the route and the shared computation it

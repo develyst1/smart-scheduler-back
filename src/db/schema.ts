@@ -502,6 +502,17 @@ export const bookings = pgTable(
     // in its predicate) — the group row is the one live booking the invariant sees.
     groupKey: uuid("group_key"),
     groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),
+    /**
+     * 🔴 TASK-453 (`0054`, REQ-105 §3) — the GROUP row has YIELDED its coach-hour to a Private booked into an EMPTY
+     * date. Set ⇒ this row no longer holds its slot (the index's third term, `lib/slot-holder.ts`'s third case), so
+     * the Private can be stored at all. It is NOT a status: the class still exists, still shows on both coaches'
+     * schedules, and a kid may still enrol on that date — which is exactly when it becomes a CLASH an admin resolves
+     * (`lib/group-clash.ts`). Written ONLY by the Private's own insert, in that insert's transaction; cleared only by
+     * the two resolutions. 🚫 Never a job, never the day-end.
+     */
+    slotYieldedAt: timestamp("slot_yielded_at", { withTimezone: true }),
+    /** TASK-453 (`0054`) — the GROUP SERIES is CLOSED (stamped on every row of the key): no new dates, no enrolment. Existing rows are untouched — a closed series still runs out its dates. */
+    groupClosedAt: timestamp("group_closed_at", { withTimezone: true }),
     /** TASK-418 (`0047`) — a DERIVED camp hour's day object; set ⇒ owned by the day (`409 CAMP_ROW_OWNED` on human writes). */
     campWeekDayId: uuid("camp_week_day_id").references((): AnyPgColumn => campWeekDays.id, { onDelete: "restrict" }),
     /** TASK-428 (`0049`, REQ-101) — the OTHER SERIES an ECA/Free/KOL row belongs to (minted by the creator, stamped on every row); NULL otherwise. */
@@ -534,7 +545,10 @@ export const bookings = pgTable(
       // migration is implied — only the source of the list moved.
       // 🔴 TASK-397 — `AND group_id IS NULL`: a SEAT holds no slot; its GROUP row does. `lib/slot-holder.ts` builds the
       // same predicate for every availability read — one definition, five mirrors.
-      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null`),
+      // 🔴 TASK-453 — `AND slot_yielded_at IS NULL`: a GROUP row that has yielded its hour to a Private holds nothing.
+      // The SAME three terms are `lib/slot-holder.ts`'s, and `0054`'s WHERE is asserted EQUAL to both after
+      // normalisation (`group-slot-yield-req105.test.ts`) — a partial index and its mirror are one fact in two places.
+      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null`),
     index("bookings_group_id_idx").on(t.groupId),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
@@ -1112,8 +1126,6 @@ export const campWeekDays = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     campWeekId: uuid("camp_week_id").notNull().references(() => campWeeks.id, { onDelete: "restrict" }),
     date: date("date").notNull(),
-    /** '{}' ⇒ no block that day. */
-    teacherIds: uuid("teacher_ids").array().notNull().default(sql`'{}'::uuid[]`),
     startTime: time("start_time").notNull(),
     endTime: time("end_time").notNull(),
     /** Set by the per-day PATCH; a week-level change re-derives only the days where this is NULL. */
@@ -1125,23 +1137,31 @@ export const campWeekDays = pgTable(
 export const campWeekDaysRelations = relations(campWeekDays, ({ one, many }) => ({
   week: one(campWeeks, { fields: [campWeekDays.campWeekId], references: [campWeeks.id] }),
   rows: many(bookings),
-  rates: many(campWeekDayRates), // TASK-443
+  teachers: many(campWeekDayTeachers), // TASK-454 — who is on the day, with their OWN hours and their rate
 }));
 
-// TASK-443 (REQ-104 §2 item 4, `0052`) — the per-coach-per-day rate on a camp day (behind key 59): one row per coach per day,
-// the `booking_teachers` shape. A coach with no row reads 0; the ONE sync copies the rate onto the derived rows.
-export const campWeekDayRates = pgTable(
-  "camp_week_day_rates",
+/**
+ * TASK-454 (REQ-105 §1, `0053`) — **who is on this camp day, when, and for how much.** ONE row per (day, coach): it
+ * replaces the day's `teacher_ids[]` array AND TASK-443's `camp_week_day_rates`, which shared this primary key and was
+ * read for the same rows every time.
+ *
+ * ⚠️ `startTime`/`endTime` NULL mean **the day's window**, resolved at read (`campDayTeachers`) and never copied down:
+ * a day-level change must reach every coach who never asked for their own hours.
+ */
+export const campWeekDayTeachers = pgTable(
+  "camp_week_day_teachers",
   {
     campWeekDayId: uuid("camp_week_day_id").notNull().references(() => campWeekDays.id, { onDelete: "cascade" }),
     teacherId: uuid("teacher_id").notNull().references(() => teachers.id, { onDelete: "restrict" }),
+    startTime: time("start_time"),
+    endTime: time("end_time"),
     rateMinor: integer("rate_minor").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.campWeekDayId, t.teacherId] })],
 );
-export const campWeekDayRatesRelations = relations(campWeekDayRates, ({ one }) => ({
-  day: one(campWeekDays, { fields: [campWeekDayRates.campWeekDayId], references: [campWeekDays.id] }),
-  teacher: one(teachers, { fields: [campWeekDayRates.teacherId], references: [teachers.id] }),
+export const campWeekDayTeachersRelations = relations(campWeekDayTeachers, ({ one }) => ({
+  day: one(campWeekDays, { fields: [campWeekDayTeachers.campWeekDayId], references: [campWeekDays.id] }),
+  teacher: one(teachers, { fields: [campWeekDayTeachers.teacherId], references: [teachers.id] }),
 }));
 
 export const usersRelations = relations(users, ({ many, one }) => ({

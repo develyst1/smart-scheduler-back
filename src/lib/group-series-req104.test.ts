@@ -6,7 +6,7 @@
 // swap DELEGATED to `swapGroupTeacher`, the header PATCH without a kind, the nine routes under the OTHER twins' keys; and the
 // Monday weekly coach digest (`weekly_schedule_teacher`, the 24th kind): the Mon–Sun window, per-teacher grouping (primary +
 // additional, CONFIRMED only, a GROUP row one line), the owner's ENGLISH-ONLY bytes under BOTH langs, send-once, `job_runs`,
-// the internal route + exe. No migration (53 = 53).
+// the internal route + exe. No migration (55 = 55).
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -69,16 +69,18 @@ const fakeTx = (rows: any[]) => {
   return { tx, writes, probes };
 };
 
-describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-identical; the seat path exported; 53 = 53", () => {
+describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-identical; the seat path exported; 55 = 55", () => {
   test("`SeriesKey` names the column + the row type; a bare string = OTHER; ONE `seriesRows`, ONE cancel loop, ONE `notifySeriesTeachers`", () => {
     expect(SVC).toContain('export type SeriesKey = string | { otherSeriesKey: string } | { groupKey: string };');
     expect((SVC.match(/async function seriesRows\(/g) ?? []).length).toBe(1);
     expect((SVC.match(/async function notifySeriesTeachers\(/g) ?? []).length).toBe(1);
-    expect((SVC.match(/export async function \w*Group\w*\(/g) ?? []).length).toBe(1); // only the delegating swap is group-shaped
+    // 🔻 TASK-453 — a SECOND group-shaped export: `closeGroupSeries` (the intake ends, the class does not). Both are
+    // named, so a THIRD one still has to come through this line.
+    expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
     expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(53);
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(53);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(55);
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
@@ -279,11 +281,13 @@ describe("🔴 the Monday weekly coach digest — the window, the grouping, the 
     const ek = g.find((x) => x.teacherId === T1)!;
     expect(ek.lineUserId).toBe("U1");
     expect(ek.rows).toEqual([
-      { date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null },
-      { date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Balance Bike", studentName: "Bam & Cat" },
-      { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa" },
+      { date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false },
+      // 🔻 TASK-453b — every row now carries `clash`; `false` here, and the owner's suffix is pinned by value in
+      // `group-slot-yield-req105.test.ts` §6.
+      { date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Balance Bike", studentName: "Bam & Cat", clash: false },
+      { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa", clash: false },
     ]);
-    expect(g.find((x) => x.teacherId === T2)!.rows).toEqual([{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null }]);
+    expect(g.find((x) => x.teacherId === T2)!.rows).toEqual([{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false }]);
   });
   test("🔴 the bytes — REQ-104 §3, ENGLISH ONLY: identical under TH and EN, no Thai code point, no `t()`/`lang` in the branch, no ISO date, no trailing whitespace; an empty payload renders", () => {
     const rows = [{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null }, { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa" }];
@@ -315,7 +319,7 @@ describe("🔴 the Monday weekly coach digest — the window, the grouping, the 
     const out = await jobs.runWeeklyTeacherDigestJob("2026-10-07");
     expect(probes[0]).toEqual([["gte", "2026-10-05"], ["lte", "2026-10-11"]]);
     expect(sends).toHaveLength(1); // T3 (PENDING only) gets nothing
-    expect(sends[0]).toEqual({ recipientType: "teacher", recipientLineUserId: "U1", payload: { kind: "weekly_schedule_teacher", weekStart: "2026-10-05", rows: [{ date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Freeskate", studentName: "Aiwa" }] }, skipReason: undefined, idempotencyKey: `weekly-teacher:${T1}:2026-10-05` });
+    expect(sends[0]).toEqual({ recipientType: "teacher", recipientLineUserId: "U1", payload: { kind: "weekly_schedule_teacher", weekStart: "2026-10-05", rows: [{ date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Freeskate", studentName: "Aiwa", clash: false }] }, skipReason: undefined, idempotencyKey: `weekly-teacher:${T1}:2026-10-05` });
     expect(out).toEqual({ date: "2026-10-07", weekStart: "2026-10-05", weekEnd: "2026-10-11", teachers: 1, sent: 1, skipped: 0, duplicate: 0 });
     expect(runs).toEqual([{ table: "jobRuns", val: expect.objectContaining({ job: WEEKLY_DIGEST_JOB, runDate: "2026-10-07", status: "success", summary: { weekStart: "2026-10-05", weekEnd: "2026-10-11", teachers: 1, sent: 1, skipped: 0, duplicate: 0 } }) }]);
     dup = true;

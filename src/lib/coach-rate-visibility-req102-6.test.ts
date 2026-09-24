@@ -182,6 +182,6 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(53);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(55);
   });
 });

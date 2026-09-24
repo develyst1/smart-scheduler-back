@@ -535,7 +535,29 @@ export const SCHEDULING_WITNESSES: Witness[] = [
     why:
       "TASK-443 (REQ-104 §2). camp_days.deduction_notified_at (the day-end camp_deduction stamp) + the camp_week_day_rates " +
       "table (one row per coach per day, behind key 59) — the table is the LAST object and the witness. Rerunnable: IF NOT " +
-      "EXISTS on both.",
+      "EXISTS on both. 🔻 TASK-454: camp_week_day_rates was MERGED into camp_week_day_teachers by 0053 and dropped there; " +
+      "this entry still witnesses 0052 on a box that has not run 0053 yet, which is exactly what a witness is for.",
+    rerunnable: true,
+  },
+  {
+    tag: "0053_camp_day_teachers",
+    probe: { kind: "table", table: "camp_week_day_teachers" },
+    why:
+      "TASK-454 (REQ-105 §1). ONE row per (camp day, coach) carrying that coach's OWN window (NULL = the day's default, " +
+      "resolved at read) and the rate 0052 kept in its own table — merged here because the two share a primary key and are " +
+      "always read together. The backfill and both DROPs (the rates table, the day's teacher_ids array) are inside the file; " +
+      "the witness is the table it CREATES, because the last statement is a DROP and a DROP proves nothing on a re-run.",
+    rerunnable: true,
+  },
+  {
+    tag: "0054_group_slot_yield",
+    probe: { kind: "index-predicate", index: "bookings_teacher_slot_uq", contains: "slot_yielded_at" },
+    why:
+      "TASK-453 (REQ-105 §3). 🔴 NOT the index's existence — `bookings_teacher_slot_uq` exists before AND after; only " +
+      "its predicate gains `AND slot_yielded_at IS NULL` (a yielded GROUP row stops holding its coach-hour). An " +
+      "existence probe would be satisfied by 0041's version — the 0022 blindness, third time. 🚫 NOT the column " +
+      "either: both columns are added BEFORE the rebuild, so a column probe passes on a file that stopped half way. " +
+      "The predicate is the LAST statement and the only witness of the whole file.",
     rerunnable: true,
   },
 ];

@@ -9,6 +9,8 @@
 // to prevent.
 
 import { courseEligible, courseRemainingSessions, voucherEligible } from "./eligibility";
+import { displayNameOf } from "../db/mappers";
+import { isGroupSlotClash } from "./group-clash";
 import { overLimit } from "./freelance-budget";
 import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
@@ -172,6 +174,11 @@ export interface AttentionCtx {
     pendingTeacherLinks: () => Promise<number>;
     /** Future bookings (date >= today) with their teacher joined — for the orphaned-session check (TASK-096). */
     orphanedCandidates: () => Promise<Array<{ booking: any; teacher: any }>>;
+    /**
+     * TASK-453 — YIELDED group rows from today on, each with its live-seat count and its teacher. The check itself
+     * decides which of them are a CLASH, through `isGroupSlotClash` — the loader never judges.
+     */
+    yieldedGroupDates: () => Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
     /**
      * TASK-163 — the two extra facts the dropped-discount check needs, from the same load: the in-window
@@ -347,6 +354,34 @@ const CHECKS = [
         items: rows.map(({ booking, teacher }) => ({
           id: booking.id,
           label: `${booking.date} ${hhmm(booking.startTime)} · ${booking.student?.nickname ?? booking.student?.name ?? "-"} · ${teacher?.nickname ?? "-"}`,
+        })),
+      };
+    },
+  },
+  {
+    /**
+     * 🔴 TASK-453 (REQ-105 §8) — a group date whose hour a Private took, which a kid has since enrolled on. It is
+     * ALLOWED and it is NEVER auto-resolved (§8.1) — so it sits here, every day, until an admin moves the Private or
+     * swaps the group's coach. A card that nobody can clear by waiting is the point: the kids turn up regardless.
+     * 📌 It names a CLASS and a COACH, never a child — `namesPeopleInDigest` stays off (the REQ-020 privacy rule).
+     */
+    key: "group_slot_clashes",
+    titleKey: "att_group_slot_clashes",
+    run: async (ctx) => {
+      const rows = (await ctx.load.yieldedGroupDates()).filter(({ booking, liveSeats }) =>
+        isGroupSlotClash({ slotYieldedAt: booking.slotYieldedAt, liveSeats }),
+      );
+      // 🔴 TASK-453 §4 → @Sober's ruling (c): when the PRIVATE that took the hour is gone (cancelled, or moved
+      // away), the clash is one click from over — and the card SAYS so, rather than a cancel quietly writing an
+      // un-yield on a path that today writes only a status and could half-fail against the index.
+      const mark = (privateLive: boolean) => (privateLive ? "" : " · PRIVATE CANCELLED");
+      return {
+        count: rows.length,
+        items: rows.map(({ booking, teacher, liveSeats, privateLive }) => ({
+          id: booking.id,
+          // TASK-423's ONE name rule, not a hand-copied `otherTitle ?? …` chain (the sweep in
+          // `coach-rate-req095-13-3` is what says so, and it was right).
+          label: `${booking.date} ${hhmm(booking.startTime)} · ${displayNameOf(booking) || "-"} · ${teacher?.nickname ?? teacher?.name ?? "-"} · ${liveSeats}${mark(privateLive)}`,
         })),
       };
     },

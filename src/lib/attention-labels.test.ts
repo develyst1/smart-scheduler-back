@@ -23,7 +23,7 @@ const code = (p: string) => readSrc(readFileSync(resolve(root, p), "utf8")).repl
 describe("TASK-273 — every card has a heading, and the compiler is what says so", () => {
   test("🔑 every key in ATTENTION_CHECKS renders a real heading, both languages", () => {
     // Enumerated from the array itself — a list typed here would be the same defect one level up.
-    expect(ATTENTION_CHECKS.length).toBe(10);
+    expect(ATTENTION_CHECKS.length).toBe(11); // 🔻 TASK-453 — `group_slot_clashes`
     for (const c of ATTENTION_CHECKS) {
       for (const lang of ["TH", "EN"] as const) {
         const label = t(`att_${c.key}`, lang);
@@ -79,6 +79,12 @@ describe("TASK-273 — the ten headings are BYTE-IDENTICAL to before", () => {
     orphaned_sessions: {
       TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
       EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
+    },
+    // 🔻 TASK-453 — the eleventh heading. The ten above are still byte-identical; this one is APPENDED, so the
+    // order test below keeps its meaning (a card that moved would still fail it).
+    group_slot_clashes: {
+      TH: "กลุ่มที่ชนกับคาบส่วนตัว (รอแอดมินแก้)",
+      EN: "Group sessions clashing with a private class (awaiting admin)",
     },
   };
 

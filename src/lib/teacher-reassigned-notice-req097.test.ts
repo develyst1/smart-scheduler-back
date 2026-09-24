@@ -118,7 +118,9 @@ describe("🔴 suspect 3 — the DOOR: `moveBooking` on a teacher change now sen
     const H = region(SCHED, "export async function sendTeacherReassigned(", "\n}\n");
     expect(H).toContain('payload: { kind: "teacher_unassigned", bookingId }');
     expect(H).toContain('payload: { kind: "teacher_assigned", bookingId }');
-    expect((SCHED.match(/sendTeacherReassigned\(/g) ?? []).length).toBe(3); // the definition + the two doors
+    // 🔻 TASK-453 — a THIRD door: resolving a clash by moving the Private to another coach is a teacher change, and
+    // it tells the same pair through the same helper rather than writing a third notice.
+    expect((SCHED.match(/sendTeacherReassigned\(/g) ?? []).length).toBe(4);
     expect((SCHED.match(/kind: "teacher_unassigned"/g) ?? []).length).toBe(1); // only inside the helper
     const M = region(SCHED, "export async function moveBooking(", "\n}\n");
     expect(M).toContain("if (patch.teacherId && patch.teacherId !== current.teacherId) await sendTeacherReassigned(tx, id, current.teacherId, patch.teacherId);");

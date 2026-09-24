@@ -1,7 +1,7 @@
 // TASK-406 (`REQ-097`, SPEC-083 C-1 + C-2) — the user ↔ teacher LINK (`0044`), OWN SCOPE (one predicate on every
 // calendar/bookings read, 404 outside by id), the fail-closed `TEACHER_ALLOWED` route set for a linked account,
 // `attend`-only status, the users page's link (409 TEACHER_LINKED), `/me.teacherId`, the OWN LEAVE (`TEACHER_LEAVE`,
-// the 4th reason; the FAMILY's NEW notice as a placeholder kind; the other teachers' coach notice). 53 = 53.
+// the 4th reason; the FAMILY's NEW notice as a placeholder kind; the other teachers' coach notice). 55 = 55.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -47,9 +47,9 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
-  test("53 = 53: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -104,7 +104,10 @@ describe("🔴 OWN SCOPE — the link is the scope (fails closed); ONE predicate
     const cal = region(SCHED, "export async function getCalendar(", "export async function getBookings(");
     expect((cal.match(/ownScopeWhere\(scope\)/g) ?? []).length).toBe(2); // the grid + the tray
     expect(cal).toContain(".filter((t) => !scope || t.id === scope)"); // MY column
-    expect(cal).toContain('(await weeksForCalendar(range)).filter((w: any) => !scope || (w.teacherIds ?? []).includes(scope))'); // my camp weeks
+    // 🔻 TASK-454 — the camp weeks are read ONCE (the hour cells take their kid count from the same numbers); the
+    // scope filter is unchanged, it just filters the read instead of re-reading.
+    expect(cal).toContain("const campWeeks = await weeksForCalendar(range);");
+    expect(cal).toContain("campWeeks.filter((w: any) => !scope || (w.teacherIds ?? []).includes(scope))"); // my camp weeks
     const list = region(SCHED, "export async function getBookings(", "export async function getDailyReport(");
     expect(list).toContain("if (scope) conds.push(ownScopeWhere(scope));");
     expect(list).toContain("const cond = conds.length ? and(...conds) : sql`true`;"); // one `cond` ⇒ the page and the count agree
@@ -375,7 +378,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(stmts[2]).toBe('ALTER TABLE "bookings" VALIDATE CONSTRAINT "bookings_cancel_reason_chk"');
     expect(last).toContain("SHARE UPDATE EXCLUSIVE");
     expect(last).toContain("`db:verify` expects 46");
-    expect(files.length).toBe(53);
+    expect(files.length).toBe(55);
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");

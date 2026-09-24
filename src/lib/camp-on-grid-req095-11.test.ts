@@ -3,7 +3,7 @@
 // (the type ⇔ kind pin knows it; the HUMAN validators do not), the pure window rules + the wanted set + the diff + the
 // reminder fold (by value), the ONE `syncCampDayRows` by VALUE through a fake tx (insert / delete / clash rollback /
 // CONFIRMED at birth / a closed week holds nothing), the lifecycle by source (five callers, `edited_at`), the per-day
-// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 53 = 53.
+// swap route, `CAMP_ROW_OWNED` at every human row write (a table), the reminder fold, no money by absence. 55 = 55.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,9 +40,9 @@ describe("🔴 the migration — 0047, counted, the day table + the window + the
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0047_camp_week_days.sql"), "utf8").replace(/\r\n/g, "\n");
-  test("53 = 53: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
-    expect(files.length).toBe(53);
-    expect(journal.entries.length).toBe(53);
+  test("55 = 55: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
+    expect(files.length).toBe(55);
+    expect(journal.entries.length).toBe(55);
     expect(files[47]).toBe("0047_camp_week_days.sql");
     expect(journal.entries[47]).toMatchObject({ idx: 47, tag: "0047_camp_week_days" });
     expect(sql).toContain("`db:verify` expects 48");
@@ -102,13 +102,15 @@ describe("🔴 the pure rules — the window, the wanted set, the diff, the remi
     expect(windowHours("10:00", "10:00")).toEqual([]);
   });
   test("the wanted set = teachers × hours; no teacher ⇒ none; the diff inserts the missing and removes the surplus", () => {
-    expect([...wantedCampSlots([T1, T2], "10:00", "12:00")].sort()).toEqual([`${T1}|10:00`, `${T1}|11:00`, `${T2}|10:00`, `${T2}|11:00`]);
-    expect(wantedCampSlots([], "10:00", "15:00").size).toBe(0);
+    // 🔻 TASK-454 — each coach brings their OWN window now; same-window coaches are the case this test always had.
+    const win = (ids: string[], start: string, end: string) => wantedCampSlots(ids.map((teacherId) => ({ teacherId, start, end })));
+    expect([...win([T1, T2], "10:00", "12:00")].sort()).toEqual([`${T1}|10:00`, `${T1}|11:00`, `${T2}|10:00`, `${T2}|11:00`]);
+    expect(win([], "10:00", "15:00").size).toBe(0);
     const existing = new Map([[`${T1}|10:00`, "r1"], [`${T1}|11:00`, "r2"], [`${T2}|10:00`, "r3"]]);
-    const d = campSlotDiff(wantedCampSlots([T1], "10:00", "13:00"), existing);
+    const d = campSlotDiff(win([T1], "10:00", "13:00"), existing);
     expect(d.insert).toEqual([`${T1}|12:00`]);
     expect(d.remove).toEqual(["r3"]); // T2 dropped
-    expect(campSlotDiff(wantedCampSlots([T1], "10:00", "12:00"), existing)).toEqual({ insert: [], remove: ["r3"] });
+    expect(campSlotDiff(win([T1], "10:00", "12:00"), existing)).toEqual({ insert: [], remove: ["r3"] });
     expect(campSlotDiff(new Set(), existing).remove.sort()).toEqual(["r1", "r2", "r3"]);
   });
   test("the fold: a coach's camp hours of one day become ONE row spanning the window; other rows untouched; two days stay two", () => {
@@ -141,7 +143,8 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
         campWeekDays: { findFirst: async () => ({ ...o.day, week: o.week }) },
         teachers: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, v: string) => { probe.push(v); return null; } }); return { id: probe[0], nickname: probe[0] === T1 ? "เอก" : "บี" }; }, findMany: async () => [{ id: T1, nickname: "เอก" }, { id: T2, nickname: "บี" }] }, // 🔻 TASK-445: the names are read BEFORE the inserts (the catch touches no tx after a clash)
         bookings: { findFirst: async () => null },
-        campWeekDayRates: { findMany: async () => [] }, // 🔻 TASK-443: the day's rates (none ⇒ 0)
+        // 🔻 TASK-454: the day's COACHES are rows now (hours + rate); NULL hours resolve to the day's window.
+        campWeekDayTeachers: { findMany: async () => (o.day.teacherIds ?? []).map((teacherId: string) => ({ campWeekDayId: o.day.id, teacherId, startTime: null, endTime: null, rateMinor: 0 })) },
       },
       select: () => ({ from: () => ({ where: async () => o.existing }) }),
       delete: () => ({ where: async (w: any) => { log.push(["delete", w]); }, }),
@@ -186,7 +189,9 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
   test("createWeek: one tx — the week, a day row per date (the week's teachers + window), the sync per day; the window validated first", () => {
     const C = region(SVC, "export async function createWeek(", "export async function updateWeek(");
     expect(C).toContain("assertCampWindow(ws, we);");
-    expect(C).toContain("await tx.insert(campWeekDays).values({ campWeekId: row!.id, date, teacherIds: input.teacherIds ?? [], startTime: ws, endTime: we }).returning();");
+    expect(C).toContain("await tx.insert(campWeekDays).values({ campWeekId: row!.id, date, startTime: ws, endTime: we }).returning();");
+    // 🔻 TASK-454 — the week's roster seeds the day's coach ROWS (each on the day's window, stored NULL)
+    expect(C).toContain("await setDayTeachers(tx, d!.id, (input.teacherIds ?? []).map((teacherId) => ({ teacherId })));");
     expect(C).toContain("await syncCampDayRows(tx, d!.id);");
     expect((C.match(/db\.transaction\(/g) ?? []).length).toBe(1);
   });
@@ -218,7 +223,9 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
   });
   test("the DTOs: the week's effective window; each day's teachers/window/editedAt on the roster; the booking DTO's `campWeekDayId` + `campWeekId`; the shared relation set carries the day", () => {
     expect(SVC).toContain("windowStart: hm(w.windowStart) ?? CAMP_WINDOW_DEFAULT.start, windowEnd: hm(w.windowEnd) ?? CAMP_WINDOW_DEFAULT.end,");
-    expect(SVC).toContain("const toDayDTO = (d: any) => ({ campWeekDayId: d?.id ?? null, teacherIds: d?.teacherIds ?? [], startTime: hm(d?.startTime), endTime: hm(d?.endTime), editedAt:");
+    // 🔻 TASK-454 — the DTO carries each coach's own window; `teacherIds` survives ONE deploy as a DERIVED view of it
+    expect(SVC).toContain("const teachers = campDayTeachers(d);");
+    expect(SVC).toContain("teacherIds: teachers.map((t) => t.teacherId),");
     expect(region(SVC, "export async function weekDays(", "const toDayDTO")).toContain("...toDayDTO(d) };");
     const M = code(src("src/db/mappers.ts"));
     expect(M).toContain("campWeekDayId: b.campWeekDayId ?? null,");

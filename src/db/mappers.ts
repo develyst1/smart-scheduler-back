@@ -5,6 +5,8 @@ import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining, voucherStatus } from "../lib/voucher";
 import { fmtDate, hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
+import { COURSE_LIVE } from "../lib/course-plan";
+import { isGroupSlotClash } from "../lib/group-clash";
 import { GROUP_KIND_PRICE_GROUP } from "../lib/sale-items";
 import { courseKindOf, joinChildNames } from "../lib/duo-course";
 import { rateFacts } from "../lib/coach-rate";
@@ -122,7 +124,7 @@ export const bookingTeachers = (b: any) => [
     .map((a: any) => toTeacherBase(a.teacher)),
 ];
 
-const groupFacts = (b: any): { key: string | null; kind: string | null; priceGroup: string | null; name: string | null; seatCap: number | null; seats: Array<{ bookingId: string; studentId: string | null; studentName: string | null; status: string; courseId: string | null }>; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
+const groupFacts = (b: any): { key: string | null; kind: string | null; priceGroup: string | null; name: string | null; seatCap: number | null; yieldedAt: string | null; closedAt: string | null; clash: boolean; seats: Array<{ bookingId: string; studentId: string | null; studentName: string | null; status: string; courseId: string | null }>; teacherRates: Record<string, number>; ratePostedAt: string | null } | null => {
   if (b.bookingType !== "GROUP") return null;
   const o = otherFacts({ ...b, bookingType: "OTHER" })!;
   return {
@@ -131,7 +133,13 @@ const groupFacts = (b: any): { key: string | null; kind: string | null; priceGro
     // TASK-399 — the resolver's own mapping, so the FE never maps kind → price group itself.
     priceGroup: o.kind === "DUO" || o.kind === "GROUP" ? GROUP_KIND_PRICE_GROUP[o.kind] : null,
     name: b.otherTitle ?? null,
+    // TASK-453 — `null` cap = UNCAPPED (the service skips the check); the FE prints the seats with no denominator.
     seatCap: b.headCount ?? null,
+    // 🔴 TASK-453 (REQ-105 §3/§8) — the yield, the close, and the CLASH — the last DERIVED by the ONE function
+    // (`lib/group-clash.ts`), never a stored flag and never a second spelling of the rule.
+    yieldedAt: b.slotYieldedAt ? new Date(b.slotYieldedAt).toISOString() : null,
+    closedAt: b.groupClosedAt ? new Date(b.groupClosedAt).toISOString() : null,
+    clash: isGroupSlotClash({ slotYieldedAt: b.slotYieldedAt ?? null, liveSeats: (b.seats ?? []).filter((x: any) => COURSE_LIVE.has(x.status)).length }),
     seats: (b.seats ?? []).map((s: any) => ({ bookingId: s.id, studentId: s.studentId ?? null, studentName: s.student?.nickname ?? s.student?.name ?? null, status: s.status, courseId: s.courseId ?? null })),
     teacherRates: o.teacherRates,
     ratePostedAt: o.ratePostedAt,
@@ -163,7 +171,7 @@ export const displayNameOf = (b: any): string => b.otherTitle ?? studentNamesOf(
 export const studentNamesOf = (b: any): string | null =>
   (b.coStudent ? joinChildNames(b.student, b.coStudent) : null) ?? b.student?.nickname ?? b.student?.name ?? null;
 
-export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
+export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null } = {}) => ({
   id: b.id,
   date: b.date,
   startTime: hhmm(b.startTime),
@@ -207,6 +215,10 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean } = {}) => ({
   groupName: b.group?.otherTitle ?? null,
   // TASK-418 (REQ-095 §11) — a DERIVED camp hour: its day object and week (the FE merges contiguous cells; the swap door).
   campWeekDayId: b.campWeekDayId ?? null,
+  // TASK-454 (REQ-105 §5) — the kid count for THAT CAMP DATE, passed in by the calendar (the same number the day
+  // banner shows). ⚠️ It is a DAY fact, so every camp block of that date prints the SAME number — the count is of
+  // children enrolled on the day, not of children with this coach (kids are not tied to coaches).
+  campKidCount: opts.campKidCount ?? null,
   otherSeriesKey: b.otherSeriesKey ?? null, // TASK-428 — the Manage-plan link from an OTHER row
   campWeekId: b.campWeekDay?.campWeekId ?? null,
   course: b.course ? toCourseSummary(b.course) : null,

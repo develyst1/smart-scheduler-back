@@ -14,6 +14,7 @@
 import type { TodayRow } from "./line-today-schedule";
 import { hhmm } from "./time";
 import { foldCampRows } from "./camp";
+import { clashingSlotKeys, slotKeyOf } from "./group-clash";
 
 export interface ReminderSession {
   id: string;
@@ -41,6 +42,8 @@ export interface ReminderSession {
   seats?: Array<{ studentName: string; remaining?: string | null }> | null;
   headCount?: number | null;
   groupId?: string | null;
+  /** TASK-453b — a GROUP row that gave its coach-hour to a Private; with a live seat on it, that hour is in CLASH. */
+  slotYieldedAt?: Date | string | null;
   /** TASK-418 — a DERIVED camp hour: its day object and kind; the builder folds one day's hours into one row. */
   campWeekDayId?: string | null;
   otherKind?: string | null;
@@ -100,6 +103,12 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
   // TASK-418 (SPEC-085 §3.4) — the camp FOLD: a coach's camp hours of one day become ONE OTHER row spanning the window,
   // so the existing block prints `Camp A` / `10:00-15:00` — no new copy, no renderer change.
   const live = foldCampRows(sessions.filter((s) => REMINDABLE.has(s.status)));
+  // 🔴 TASK-453b — which coach-hours are in clash, from the DAY's own rows, once. Keyed on the hour, so the group
+  // that yielded AND the Private that took it both get the note (the kids turn up for both).
+  // 📌 `seats.length`, not a status filter: the job has ALREADY narrowed a group row's seats to `REMINDABLE`
+  // before this file sees them (they carry a name and a balance, no status). Re-filtering here would silently
+  // count zero — which is exactly what it did on the first run of the by-value test.
+  const clashes = clashingSlotKeys(live, (r: any) => (r.seats ?? []).length);
   const byTeacher = new Map<string, ReminderGroup>();
   const byParent = new Map<string, ReminderGroup>();
 
@@ -135,6 +144,9 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
       seats: s.seats ?? null,
       headCount: s.headCount ?? null,
     };
+    // 🔴 TASK-453b — the coach's copy carries the note; the PARENT's does not. A family cannot resolve a clash and
+    // should not be told their child's class is disputed — it is an admin's problem, and the card is where it lives.
+    const teacherRow: TodayRow = clashes.has(slotKeyOf(s)) ? { ...row, clash: true } : row;
     // TASK-228 (AC-16): EVERY assigned teacher, not just the first. Built as one list so the grouping below
     // is a single loop — a second `if` block for the extras is how one of the two ends up missing a rule the
     // other got (the day the note, or the sort, or the dedupe changes).
@@ -154,7 +166,7 @@ export function groupReminders(sessions: ReminderSession[]): ReminderGroup[] {
         lineUserIds: teacher.lineUserId ? [teacher.lineUserId] : [],
         rows: [],
       };
-      g.rows.push(row);
+      g.rows.push(teacherRow);
       byTeacher.set(teacher.id, g);
     }
     // TASK-420 — the row's households: the primary child's, and a DUO row's second (de-duplicated: siblings ⇒ one).

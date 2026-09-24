@@ -61,6 +61,13 @@ export const internalJobs = new Hono()
     if (err) return err;
     return c.json(await jobs.runWeeklyTeacherDigestJob(c.req.valid("json").date));
   })
+  // TASK-456 (REQ-105 §3): the daily rolling extender — every NON-CLOSED group series keeps N weeks of rows ahead.
+  // Idempotent by state (a second run the same day creates nothing), and it ALWAYS writes a job_runs row.
+  .post("/jobs/group-series-extender", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await jobs.runGroupSeriesExtenderJob(c.req.valid("json").date));
+  })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {
     const err = internalSecretError(c);

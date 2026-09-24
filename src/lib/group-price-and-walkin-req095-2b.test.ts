@@ -137,7 +137,9 @@ describe("🔴 the walk-in seat — validation, the service (404 / 400 / the SAM
     expect(region(SCHED, "async function seatOnGroup(", "\n}\n")).toContain("await assertSeatFree(tx, row.id, date);");
     expect((SCHED.match(/await assertSeatFree\(tx, /g) ?? []).length).toBe(2);
     const F = region(SCHED, "async function assertSeatFree(", "\n}\n");
-    expect(F).toContain("inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    // 🔻 TASK-453 — the count is `liveSeatCount` now (the yield needs the same set, so there is one of it); the cap
+    // is skipped entirely when `head_count` is NULL (uncapped). Both doors still reach it through `assertSeatFree`.
+    expect(F).toContain("const live = await liveSeatCount(tx, groupRowId);");
     expect(F).toContain('if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);');
   });
   test("the route through the ROOT app: a walk-in ⇒ 201 { booking }; the 404 / 400 / 409 envelopes pass through by value", async () => {
@@ -182,7 +184,7 @@ describe("🔑 the group DTO carries `priceGroup` from the resolver's own mappin
     expect(loop).toContain("WOULD be created");
     expect(S).toContain('DRY RUN — nothing written.');
   });
-  test("53 = 53 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052)", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(53);
+  test("55 = 55 — 2b added no migration (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054)", () => {
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(55);
   });
 });

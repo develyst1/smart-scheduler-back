@@ -43,6 +43,10 @@ describe("registry shape (TASK-101)", () => {
       // until the owner approves the copy. A SETTING so that turning it on is a decision, never a deploy.
       "camp_reminder_enabled",
       "checkin_early_minutes",
+      // 🔻 TASK-456 (REQ-105 §3) — how far ahead the rolling extender keeps a non-closed group series stocked.
+      // The one number an admin can feel: too small and the calendar ends in a fortnight, too large and a series
+      // nobody closed fills the grid for a year.
+      "group_series_weeks_ahead",
       "leave_cutoff_hours_freelance", // TASK-146 (REQ-047) — the leave cut-off stopped being a constant
       "leave_cutoff_hours_fulltime",
       // TASK-232 (REQ-079 §2) — the LINE parent 2FA step, shipped `off` by the owner's recorded choice. It is
@@ -55,7 +59,7 @@ describe("registry shape (TASK-101)", () => {
       "teacher_change_notice_days",
     ]);
     for (const spec of Object.values(SETTINGS)) {
-      expect(["days", "minutes", "hours", "option"]).toContain(spec.unit);
+      expect(["days", "minutes", "hours", "weeks", "option"]).toContain(spec.unit); // 🔻 TASK-456 — `weeks`: the extender's horizon is genuinely weekly (56 days would read as a number nobody chose)
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.parse).toBeFunction();
       if (spec.type === "number") {

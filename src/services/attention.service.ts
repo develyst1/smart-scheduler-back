@@ -15,6 +15,7 @@ import {
   decideDigest,
   type AttentionCtx,
 } from "../lib/attention";
+import { COURSE_LIVE, COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { canSeeBudget, type Viewer } from "../lib/budget-visibility";
 import { t } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
@@ -51,6 +52,7 @@ function buildCtx(today: string): AttentionCtx {
   }> | null = null;
   let pendingLinks: Promise<number> | null = null;
   let orphaned: Promise<Array<{ booking: any; teacher: any }>> | null = null;
+  let yielded: Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>> | null = null;
   const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
@@ -94,6 +96,33 @@ function buildCtx(today: string): AttentionCtx {
             orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
           });
           return rows.map((b) => ({ booking: b, teacher: b.teacher }));
+        })()),
+      // TASK-453 — YIELDED group rows from today on + each one's live-seat count, in ONE pass. The COUNT is the
+      // half the registry cannot see from the row itself, and it is the `COURSE_LIVE_STATUSES` set every other
+      // reader of "a kid is on it" uses — counted from the seats relation, not a second query per row.
+      yieldedGroupDates: () =>
+        (yielded ??= (async () => {
+          const rows = await db.query.bookings.findMany({
+            where: (b, { and: a, eq: e, gte: g, isNotNull: nn }) => a(e(b.bookingType, "GROUP"), g(b.date, today), nn(b.slotYieldedAt)),
+            with: { teacher: true, seats: true },
+            orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+          });
+          // TASK-453 §4 (ruling (c)) — is the PRIVATE that took the hour still there? One extra read for the whole
+          // set, keyed on the coach-hour the group yielded; `false` ⇒ the card says the clash is one click from over.
+          const holders = rows.length
+            ? await db.query.bookings.findMany({
+                where: (b, { and: a, inArray: inA, isNull: n, ne }) =>
+                  a(inA(b.date, rows.map((r: any) => r.date)), inA(b.status, [...COURSE_LIVE_STATUSES]), n(b.groupId), ne(b.bookingType, "GROUP")),
+                columns: { teacherId: true, date: true, startTime: true },
+              })
+            : [];
+          const held = new Set(holders.map((h: any) => `${h.teacherId}|${h.date}|${h.startTime}`));
+          return rows.map((b: any) => ({
+            booking: b,
+            teacher: b.teacher,
+            liveSeats: (b.seats ?? []).filter((s: any) => COURSE_LIVE.has(s.status)).length,
+            privateLive: held.has(`${b.teacherId}|${b.date}|${b.startTime}`),
+          }));
         })()),
       // TASK-067. The three things `recordSale` is called for — a course sale, a voucher sale, and an
       // ATTENDED trial/single (revenue recognised at day-end) — against the refIds that actually reached

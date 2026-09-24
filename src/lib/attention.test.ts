@@ -126,8 +126,10 @@ describe("registry — extensibility is one array entry", () => {
     // TASK-180, because the state it detected can no longer be created. The count moving by exactly one per
     // task, with nothing else in this block changing, is the running evidence for SPEC-018's extensibility
     // claim — and a check leaving is as legitimate a move as one arriving.
-    expect(ATTENTION_CHECKS).toHaveLength(10);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(10);
+    // 🔻 TASK-453 — the ELEVENTH: `group_slot_clashes` (REQ-105 §8) — a group date whose hour a Private took and
+    // whose kids are still coming. It can only leave by an admin resolving it, which is why it earns a card.
+    expect(ATTENTION_CHECKS).toHaveLength(11);
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(11);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {

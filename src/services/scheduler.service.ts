@@ -20,6 +20,7 @@ import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 // about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
 import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
 import { holdsSlot, slotHolderWhere } from "../lib/slot-holder";
+import { isGroupSlotClash, takesYieldedSlot } from "../lib/group-clash";
 import { firstFreeWeeklySlot, searchExhausted, weeksBetween } from "../lib/extension-slot";
 import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
 import {
@@ -531,10 +532,15 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
   // TASK-366: one grouped read of the range's courses, resolved before the loop (TASK-190's shape; the rental
   // marker that used to be read here the same way is a RELATION since TASK-371 and rides in `withBookingRelations`).
   const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
+  // TASK-454 (REQ-105 §5) — the camp weeks are read ONCE, here: the banner below shows them, and every camp hour cell
+  // carries its DATE's kid count from the same numbers (a day fact — the same number on every block of that date).
+  const campWeeks = await weeksForCalendar(range);
+  const kidsByDate = new Map<string, number>();
+  for (const w of campWeeks) for (const [date, n] of Object.entries(w.dayCounts ?? {})) kidsByDate.set(date, (kidsByDate.get(date) ?? 0) + Number(n));
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse) });
+    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null });
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
@@ -560,7 +566,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
     : undefined;
 
   // TASK-401 — the camp DAY BANNER: weeks overlapping the range, per-date counts; no hour cells, no slot block (§8).
-  const campWeeksInRange = (await weeksForCalendar(range)).filter((w: any) => !scope || (w.teacherIds ?? []).includes(scope)); // TASK-406: my weeks
+  const campWeeksInRange = campWeeks.filter((w: any) => !scope || (w.teacherIds ?? []).includes(scope)); // TASK-406: my weeks (TASK-454: the ONE read above)
   return {
     view: input.view,
     range: { from: range.start, to: range.end },
@@ -1200,6 +1206,35 @@ async function assertAdditionalTeacherFree(
   );
 }
 
+/** TASK-453 — the live seats ON a group row: the SAME set `assertSeatFree` and `cancelSeatsOfGroup` mean by "a kid is on it". */
+export async function liveSeatCount(exec: any, groupRowId: string): Promise<number> {
+  const [c] = await exec.select({ n: count() }).from(bookings).where(and(eq(bookings.groupId, groupRowId), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  return Number(c?.n ?? 0);
+}
+
+/**
+ * 🔴 TASK-453 (REQ-105 §3) — a PRIVATE booked into an EMPTY group date: the group row steps aside and says so.
+ *
+ * "Empty" is BY VALUE: **no live seat** (`COURSE_LIVE_STATUSES` — a CANCELLED seat does not count, an ATTENDED one
+ * does). A group date with a kid on it keeps its coach, and the Private is refused the way it always was: this
+ * function simply does not yield, the insert meets `bookings_teacher_slot_uq`, and `describeSlotClash` names the
+ * class already there. 🚫 No new refusal, no second wording.
+ *
+ * 🚫 Nothing else ever sets `slot_yielded_at` — not a job, not the day-end, not a status change. The two resolutions
+ * are its only clearers.
+ */
+async function yieldEmptyGroupSlot(exec: any, input: any): Promise<void> {
+  if (!takesYieldedSlot(input.bookingType)) return; // a GROUP row, an OTHER, a CAMP hour: unchanged
+  if (input.groupId) return; // a SEAT holds no hour of its own — it has nothing to displace
+  const g = await exec.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, inArray: inA, isNull: n }: any) =>
+      a(e(b.teacherId, input.teacherId), e(b.date, input.date), e(b.startTime, input.startTime), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES]), n(b.slotYieldedAt)),
+  });
+  if (!g) return;
+  if ((await liveSeatCount(exec, g.id)) >= 1) return; // NOT empty ⇒ the index refuses the Private, with today's words
+  await exec.update(bookings).set({ slotYieldedAt: new Date() }).where(eq(bookings.id, g.id));
+}
+
 export async function insertBooking( // TASK-418: exported — the camp sync inserts its derived rows through the ONE inserter
   exec: any,
   studentId: string | null,
@@ -1240,6 +1275,12 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
         "(This program has no single-hour price — use 1st Trial for a first session, or sell a course/voucher.)",
     );
   }
+
+  // 🔴 TASK-453 (REQ-105 §3) — the GROUP row yields its coach-hour HERE, BEFORE the insert, in the caller's OWN
+  // transaction. Order is the correctness: the index can never see two holders of one (teacher, date, hour), so the
+  // yield must be committed-in-tx before the row that needs it is stored. Every `insertBooking` call site passes a
+  // `tx` (pinned by source) — there is no path where the two lands are separate.
+  await yieldEmptyGroupSlot(exec, input);
 
   try {
     const [row] = await exec
@@ -1543,7 +1584,7 @@ async function groupTemplate(exec: any, groupKey: string) {
  * `other_kind` = DUO | GROUP (the type ⇔ kind pin), rates on the Stage 1 columns. 🚫 No money anywhere here.
  */
 export async function createGroupSeries(input: {
-  name: string; groupKind: string; seatCap: number; teacherId: string; additionalTeacherIds?: string[];
+  name: string; groupKind: string; seatCap: number | null; teacherId: string; additionalTeacherIds?: string[];
   teacherRates?: Record<string, number>; startTime: string; dates: string[];
 }): Promise<{ groupKey: string; created: number; bookingIds: string[] }> {
   assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);
@@ -1580,6 +1621,7 @@ async function assertCourseMatchesGroup(groupKey: string, input: { teacherId: st
  * slot check applies, `409 SLOT_TAKEN` naming the date). ⇒ the group row's id.
  */
 async function seatOnGroup(tx: any, groupKey: string, date: string): Promise<string> {
+  await assertGroupSeriesOpen(tx, groupKey); // TASK-453 — a CLOSED series takes no new child, on any date
   let row = await groupRowOn(tx, groupKey, date);
   if (!row) {
     const t = await groupTemplate(tx, groupKey);
@@ -1601,12 +1643,29 @@ async function seatOnGroup(tx: any, groupKey: string, date: string): Promise<str
   return row.id;
 }
 
+/**
+ * TASK-453 (REQ-105 §8.1 gaps) — the series is CLOSED: no new dates, no new enrolment. Existing rows are untouched
+ * and keep running — closing ends the intake, not the class. The stamp is on every row of the key, so ANY row
+ * answers the question (no template read, nothing to be stale).
+ */
+export const GROUP_SERIES_CLOSED = () => conflict("GROUP_SERIES_CLOSED", "กลุ่มนี้ปิดรับแล้ว");
+export async function assertGroupSeriesOpen(exec: any, groupKey: string): Promise<void> {
+  const r = await exec.query.bookings.findFirst({
+    columns: { groupClosedAt: true },
+    where: (b: any, { and: a, eq: e, isNotNull: nn }: any) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP"), nn(b.groupClosedAt)),
+  });
+  if (r) throw GROUP_SERIES_CLOSED();
+}
+
 /** TASK-399 — the CAP half of `seatOnGroup`, shared with the walk-in seat: live seats on the group row < `head_count`. */
 async function assertSeatFree(tx: any, groupRowId: string, date: string): Promise<void> {
   const row = await tx.query.bookings.findFirst({ columns: { headCount: true }, where: (b: any, { eq: e }: any) => e(b.id, groupRowId) });
-  const [c] = await tx.select({ n: count() }).from(bookings).where(and(eq(bookings.groupId, groupRowId), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
-  const live = Number(c?.n ?? 0);
-  const cap = row?.headCount ?? 0;
+  // 🔴 TASK-453 (REQ-105 §8.1 gaps) — `head_count` NULL means UNCAPPED: a permanent group slot that takes whoever
+  // turns up. 📌 The skip is here and nowhere else — every other reader of the number (the DTO's `seatCap`, the
+  // coach's `Seats : n/cap` line) already handles null on its own terms and is deliberately unchanged.
+  if (row?.headCount == null) return;
+  const live = await liveSeatCount(tx, groupRowId);
+  const cap = row.headCount;
   if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);
 }
 
@@ -1659,6 +1718,95 @@ export async function swapGroupTeacher(id: string, input: { teacherId: string; f
     }
   });
   return { moved, booking: await loadBookingDTO(db, id) };
+}
+
+// ═══════════ TASK-453 (REQ-105 §8/§8.1) — RESOLVING a clash: two ways, never forced, never automatic ═══════════
+
+/** The GROUP row whose hour this Private is standing in — the yielded row on the same (teacher, date, start). */
+async function yieldedGroupBehind(exec: any, row: { teacherId: string; date: string; startTime: string }) {
+  return (await exec.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, inArray: inA, isNotNull: nn }: any) =>
+      a(e(b.teacherId, row.teacherId), e(b.date, row.date), e(b.startTime, row.startTime), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES]), nn(b.slotYieldedAt)),
+  })) ?? null;
+}
+
+const NOT_IN_CLASH = () => conflict("NOT_IN_CLASH", "คาบนี้ไม่ได้ทับกับกลุ่มที่รอแก้");
+
+/**
+ * ① **Move the Private** — the default resolution. The Private goes elsewhere and the group row takes its hour back,
+ * in ONE transaction.
+ *
+ * 🔑 **The re-check at the moment of un-yielding is the UNIQUE INDEX itself**, not a hand-written read. Clearing
+ * `slot_yielded_at` puts the group row back INTO `bookings_teacher_slot_uq`; if anything else has taken that
+ * coach-hour since the yield, the UPDATE raises `23505` and the whole transaction rolls back — the Private has not
+ * moved, the yield is still there, and **the clash stands**. A second predicate written here could disagree with the
+ * index; the index cannot disagree with itself. (This is the case the re-check exists for.)
+ */
+export async function resolveClashByMovingPrivate(id: string, input: { teacherId?: string; date?: string; startTime?: string }) {
+  // 🔴 TASK-185's rule, through a NEW door: this moves a booking, so an ENDED course's session is refused here for
+  // the same reason `moveBooking` refuses it — relocating a forfeited slot is "revive" with another verb.
+  await assertBookingCourseWritable(db, id);
+  const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
+  if (!current) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(current); // TASK-418
+  if (isDelivered(current.status)) throw conflict("SESSION_DELIVERED", "คาบที่เรียนไปแล้ว แก้ไขไม่ได้");
+  const group = await yieldedGroupBehind(db, { teacherId: current.teacherId, date: current.date, startTime: current.startTime });
+  if (!group) throw NOT_IN_CLASH();
+
+  const patch: any = {};
+  if (input.teacherId) patch.teacherId = input.teacherId;
+  if (input.date) patch.date = input.date;
+  if (input.startTime) { patch.startTime = input.startTime; patch.endTime = addHour(input.startTime); }
+  if (!Object.keys(patch).length) throw badRequest("ต้องระบุครู/วันที่/เวลาใหม่อย่างน้อย 1 อย่าง");
+
+  await db.transaction(async (tx) => {
+    await assertTeacherBookable(tx, patch.teacherId ?? current.teacherId, patch.date ?? current.date);
+    try {
+      await tx.update(bookings).set(patch).where(eq(bookings.id, id));
+    } catch (e: any) {
+      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", await describeSlotClash(patch.teacherId ?? current.teacherId, patch.date ?? current.date, patch.startTime ?? current.startTime));
+      throw e;
+    }
+    await reconcileBookingHolds(tx, id, patch.teacherId ?? current.teacherId, current.status, false);
+    if (patch.teacherId && patch.teacherId !== current.teacherId) await sendTeacherReassigned(tx, id, current.teacherId, patch.teacherId);
+    try {
+      await tx.update(bookings).set({ slotYieldedAt: null }).where(eq(bookings.id, group.id));
+    } catch (e: any) {
+      // 🔴 The whole transaction rolls back: the Private stays where it was and the clash is still on the list.
+      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `${await describeSlotClash(group.teacherId, group.date, group.startTime)} — ชั่วโมงนี้ถูกจองไปแล้ว กลุ่มจึงยังทับอยู่`);
+      throw e;
+    }
+  });
+  return { booking: await loadBookingDTO(db, id), groupId: group.id, resolved: "MOVED_PRIVATE" as const };
+}
+
+/**
+ * ② **Swap the group's coach for this session.** The GROUP row takes its hour on the NEW coach and un-yields there;
+ * every live seat follows it (`swapGroupTeacher`'s rule — a seat is outside the index, so it can never clash); the
+ * PRIVATE keeps the old coach and is not touched at all. ONE transaction; refused with the same words when the new
+ * coach is not free that hour.
+ */
+export async function resolveClashBySwappingCoach(id: string, input: { teacherId: string }) {
+  const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
+  if (!current) throw notFound("ไม่พบคาบเรียน");
+  assertNotCampRow(current); // TASK-418
+  const group = current.bookingType === "GROUP" && current.slotYieldedAt ? current : await yieldedGroupBehind(db, { teacherId: current.teacherId, date: current.date, startTime: current.startTime });
+  if (!group) throw NOT_IN_CLASH();
+  if (group.teacherId === input.teacherId) throw badRequest("ครูคนเดิม");
+
+  await db.transaction(async (tx) => {
+    await assertTeacherBookable(tx, input.teacherId, group.date);
+    try {
+      // ONE update: the new coach AND the un-yield together, so the index judges the pair it will actually hold.
+      await tx.update(bookings).set({ teacherId: input.teacherId, slotYieldedAt: null }).where(eq(bookings.id, group.id));
+    } catch (e: any) {
+      if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", await describeSlotClash(input.teacherId, group.date, group.startTime));
+      throw e;
+    }
+    await reconcileBookingHolds(tx, group.id, input.teacherId, group.status, false);
+    await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, group.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+  });
+  return { booking: await loadBookingDTO(db, group.id), resolved: "SWAPPED_COACH" as const };
 }
 
 /**
