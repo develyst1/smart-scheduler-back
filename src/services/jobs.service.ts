@@ -45,7 +45,7 @@ import { attachAdditionalTeachers, insertBooking } from "./scheduler.service";
 import { ApiException } from "../lib/http";
 import { addDays, hhmm } from "../lib/time";
 import { campReminderInputs } from "./camp.service";
-import { getSetting } from "./settings.service";
+import { getNumberSetting, getSetting } from "./settings.service";
 
 /** TASK-460 — how long a delivered event id is remembered. A week covers every re-delivery window LINE uses. */
 export const WEBHOOK_EVENT_TTL_DAYS = 7;
@@ -623,6 +623,7 @@ export async function runWeeklyTeacherDigestJob(date?: string) {
  * 📌 Only series WITH work count against `maxSeries`: counting the complete ones would let the first fifty finished
  * series eat the budget on every run, and the fifty-first would never be reached.
  */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const EXTENDER_DEFAULT_MAX_SERIES = 25;
 export const EXTENDER_DEFAULT_MAX_DATES = 100;
 export interface ExtenderOpts { apply?: boolean; maxSeries?: number; maxDates?: number }
@@ -635,8 +636,12 @@ export interface ExtenderPlanItem { groupKey: string; title: string | null; teac
 export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOpts = {}) {
   const maxSeries = opts.maxSeries ?? EXTENDER_DEFAULT_MAX_SERIES;
   const maxDates = opts.maxDates ?? EXTENDER_DEFAULT_MAX_DATES;
-  const weeks = Number(await getSetting("group_series_weeks_ahead"));
+  // 🔴 TASK-465 — this was `Number(await getSetting(…))`: the whole resolved OBJECT fed to `Number()` ⇒ `NaN`. Mine
+  // (TASK-456), and my tests spied the setting to a bare `2`, so they could never see it.
+  const weeks = await getNumberSetting("group_series_weeks_ahead");
   const horizon = addDays(runDate, weeks * 7);
+  // A job that cannot compute its horizon has BROKEN — it must fail loudly, never report a green zero with `weeks: null`.
+  if (!ISO_DATE.test(horizon)) throw new Error(`[${GROUP_EXTENDER_JOB}] horizon is not a date ("${horizon}") — runDate=${runDate} weeks=${weeks}`);
   const rows = await db.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
     with: { additionalTeachers: true, teacher: true },

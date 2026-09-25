@@ -16,6 +16,18 @@ export async function getSetting<K extends SettingKey>(key: K, exec: any = db) {
   return resolveSetting(key, row?.value);
 }
 
+/**
+ * 🔴 TASK-465 — a NUMERIC setting, as a number. The one way callers that do arithmetic should read a setting: it reads
+ * `.value` (so nobody has to remember to), and it REFUSES a non-finite result loudly, naming the setting — a job that
+ * cannot compute its number has broken, it has not "found nothing to do".
+ */
+export async function getNumberSetting(key: SettingKey, exec: any = db): Promise<number> {
+  const { value } = await getSetting(key, exec);
+  const n = typeof value === "number" ? value : Number.NaN;
+  if (!Number.isFinite(n)) throw new Error(`setting "${key}" did not resolve to a finite number (got ${String(value)})`);
+  return n;
+}
+
 /** Validate via the registry's `parse`, then upsert the override jsonb. Malformed → 400 with the reason (never
  *  writes junk — the DB must never hold a value the resolver would have to reject on the way back out). */
 export async function setSetting(key: SettingKey, value: unknown, exec: any = db) {

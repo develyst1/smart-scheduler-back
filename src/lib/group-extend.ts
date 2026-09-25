@@ -19,6 +19,13 @@ export const GROUP_EXTENDER_JOB = "group-series-extender";
  * the last row, not from today — so a Tuesday class stays a Tuesday class.
  */
 export function weeklyDatesToCreate(o: { existing: readonly string[]; from: string; horizon: string }): string[] {
+  // 🔴 TASK-465 — the loop below compares dates as STRINGS, which is only a bound when both sides ARE dates. With a
+  // horizon of `"NaN-NaN-NaN"`, `"2026-11-13" <= "NaN-NaN-NaN"` is TRUE (digits sort before "N") and stays true for
+  // ever — measured: 360,756 steps in 300 ms, past the year 8940, synchronous, the array growing without end. So the
+  // inputs are checked here, where the loop is, not only by the caller.
+  for (const [name, v] of [["from", o.from], ["horizon", o.horizon]] as const) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error(`weeklyDatesToCreate: ${name} is not a date ("${v}")`);
+  }
   const last = [...o.existing].sort().pop();
   if (!last) return []; // a series with no row at all is not a series — nothing to extend, nothing to guess
   const out: string[] = [];

@@ -157,9 +157,27 @@ export interface ResolvedSetting<V extends number | string = number | string> {
  */
 export function resolveSetting<K extends SettingKey>(key: K, rawFromDb: unknown): ResolvedSetting<SettingValue<K>> {
   const spec: SettingSpec = SETTINGS[key];
-  const fallback = (reason: string) => ({ value: spec.default as SettingValue<K>, isDefault: true, reason });
+  const fallback = (reason: string) => refuseCoercion(key, { value: spec.default as SettingValue<K>, isDefault: true, reason });
   if (rawFromDb === undefined || rawFromDb === null) return fallback("no override set — using default");
   const parsed = spec.parse(rawFromDb);
   if (parsed === null) return fallback(`stored override is invalid — using default (${spec.default})`);
-  return { value: parsed as SettingValue<K>, isDefault: false };
+  return refuseCoercion(key, { value: parsed as SettingValue<K>, isDefault: false });
+}
+
+/**
+ * 🔴 TASK-465 — a resolved setting is an OBJECT (`{ value, isDefault, reason }`), and `Number(obj)` of it is `NaN`:
+ * that is how the extender's horizon became `NaN-NaN-NaN` on every box, silently, and TypeScript could not object
+ * because `Number()` accepts anything. So the object now REFUSES to become a primitive — `Number(obj)`, `+obj`,
+ * `obj * 7` and `\`${obj}\`` all THROW, naming the setting and the fix, on the first call, on every box.
+ * 🔑 Non-enumerable and symbol-keyed, so every CORRECT use is untouched: `.value`, destructuring, `toEqual`,
+ * `JSON.stringify`. A loud error on the wrong line beats a plausible-looking wrong answer three calls later.
+ */
+function refuseCoercion<T extends object>(key: string, resolved: T): T {
+  Object.defineProperty(resolved, Symbol.toPrimitive, {
+    enumerable: false,
+    value: () => {
+      throw new TypeError(`setting "${key}" is a resolved object ({ value, isDefault }) — read \`.value\` (or use getNumberSetting)`);
+    },
+  });
+  return resolved;
 }

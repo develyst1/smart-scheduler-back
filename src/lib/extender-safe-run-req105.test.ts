@@ -44,7 +44,10 @@ const groupRow = (key: string, date: string, o: { closed?: boolean } = {}) => ({
 /** Spy the reads, and COUNT every write — the dry run's whole promise is that this stays at zero. */
 const world = (rows: any[]) => {
   const writes: string[] = [];
-  spies.push(spyOn(settings, "getSetting").mockImplementation((async () => 2) as any)); // 2 weeks ahead
+  // 🔻 TASK-465 — this used to be `spyOn(settings, "getSetting") → 2`: a BARE NUMBER where production returns an OBJECT,
+  // which is exactly why this suite passed while every real box computed `NaN-NaN-NaN`. Now only the ROW is faked, and the
+  // value goes through the real resolver — a test that mocks the thing under test proves only the mock.
+  spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => ({ key: "group_series_weeks_ahead", value: 2 })) as any)); // 2 weeks ahead
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => rows) as any));
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => { writes.push("tx"); return fn({} as any); }) as any));
   spies.push(spyOn(sched, "insertBooking").mockImplementation((async (_tx: any, _s: any, input: any) => { writes.push(`insert ${input.groupKey}/${input.date}`); return uuidFor(`n-${input.date}`); }) as any));

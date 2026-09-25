@@ -85,7 +85,10 @@ const groupRow = (o: { key: string; date: string; closed?: boolean }) => ({
 
 const runWith = async (rows: any[], opts: { failOn?: string } = {}) => {
   const inserted: any[] = [], runs: any[] = [];
-  spies.push(spyOn(settings, "getSetting").mockImplementation((async () => 2) as any)); // 2 weeks ahead
+  // 🔻 TASK-465 — this used to be `spyOn(settings, "getSetting") → 2`: a BARE NUMBER where production returns an OBJECT,
+  // which is exactly why this suite passed while every real box computed `NaN-NaN-NaN`. Now only the ROW is faked, and the
+  // value goes through the real resolver — a test that mocks the thing under test proves only the mock.
+  spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => ({ key: "group_series_weeks_ahead", value: 2 })) as any)); // 2 weeks ahead
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => rows) as any));
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn({} as any)) as any));
   spies.push(spyOn(db, "insert").mockImplementation(((table: any) => ({ values: async (val: any) => { runs.push({ table: table === jobRuns ? "jobRuns" : "other", val }); } })) as any));
