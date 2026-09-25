@@ -540,7 +540,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null });
+    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null, provenance: !scope }); // TASK-481 — B
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
@@ -561,7 +561,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
           with: withBookingRelations,
           orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)],
         });
-        return rows.map((row) => toBookingDTO(row));
+        return rows.map((row) => toBookingDTO(row, { provenance: !scope })); // TASK-481 — B
       })()
     : undefined;
 
@@ -928,6 +928,7 @@ export async function getBookings(f: {
           additionalTeachers: extraTeachers.get(r.b.id) ?? [],
           rental: rentalRows.get(r.b.id) ?? null,
         },
+        { provenance: !scope }, // TASK-481 — B: raw for an admin, null for a scoped teacher
       ),
     ),
     page: f.page,

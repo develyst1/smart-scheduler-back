@@ -75,7 +75,7 @@ describe("🔑 the TRAY — on request only, every CANCELLED row in range, date/
     expect(TRAY()).not.toContain("pendingSlot"); // every cancelled row, no B.1 filter — the tray is a list, not a grid
   });
   test("the rows are full BookingDTOs (the rental rides as a relation since TASK-371); `courseLast` is never passed (false by construction)", () => {
-    expect(TRAY()).toContain("rows.map((row) => toBookingDTO(row))");
+    expect(TRAY()).toContain("rows.map((row) => toBookingDTO(row, { provenance: !scope }))"); // 🔻 TASK-481 — + the provenance rule (B); still no courseLast
     expect(TRAY()).not.toContain("courseLast");
   });
   test("🔴 the key is ABSENT when not asked for — today's response byte for byte; present (possibly []) when asked", () => {

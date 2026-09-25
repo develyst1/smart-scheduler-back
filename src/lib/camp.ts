@@ -72,14 +72,20 @@ export const campTokenExpiry = (date: string): Date => new Date(`${date}T23:59:5
 
 /**
  * The camp SCAN (TASK-403, the public `POST /checkin/camp`): what one scan means for a day row. Pure — the service
- * does the write through `markDay`. `"already"` = ATTENDED (idempotent, nothing written); `"attend"` = PLANNED or
- * ABSENT (the child turned up — the ATTENDED ↔ ABSENT correction through the SAME transition); a CANCELLED row is
+ * does the write through `markDay`. `"already"` = ATTENDED (idempotent, nothing written) — and 🔴 ABSENT (TASK-480);
+ * `"attend"` = PLANNED only. A CANCELLED row is
  * `409 CAMP_DAY_TRANSITION`; a scan on any other date than the day's is `409 CAMP_DAY_NOT_TODAY` (the token exists
  * from the first QR view, so the wrong day must refuse); an expired token is `410 CAMP_TOKEN_EXPIRED` — the camp's
  * code; the session's page keeps its 400, on purpose.
  */
 export function campScanOutcome(day: { status: string; date: string; checkinTokenExpiresAt?: Date | null }, today: string, now: Date): "already" | "attend" {
   if (day.status === "ATTENDED") return "already";
+  // 🔴 TASK-480 — ABSENT is TERMINAL TO EVERY SCAN (the roster QR link and the shop-front QR — both reach this rule). A COACH
+  // marked it; a token is paper on a wall or a link in a chat, and it must never outrank the person who was in the room. It
+  // was silent: `consumes()` is true for ABSENT and ATTENDED alike, so the flip moved no unit and nothing looked wrong.
+  // ⚠️ ABSENT → ATTENDED stays LEGAL FOR AN ADMIN (`assertDayTransition`, via `markDay`) — a coach who marked the wrong child
+  // must be able to correct it. The rule is WHO may overturn a human's judgement, so it lives here and not in the transition.
+  if (day.status === "ABSENT") return "already";
   if (day.status === "CANCELLED") throw conflict("CAMP_DAY_TRANSITION", "วันแคมป์นี้ถูกยกเลิกแล้ว");
   if (day.checkinTokenExpiresAt && day.checkinTokenExpiresAt < now) throw new ApiException(410, "CAMP_TOKEN_EXPIRED", tb("checkin_too_late")); // TASK-479 — the parent's words (the API code is internal and stays)
   if (day.date !== today) throw conflict("CAMP_DAY_NOT_TODAY", `วันแคมป์นี้คือวันที่ ${day.date} — เช็คอินได้เฉพาะวันนั้น`);

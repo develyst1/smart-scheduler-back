@@ -282,13 +282,15 @@ export async function updateWeekDay(weekId: string, date: string, input: { teach
 }
 
 // ───────────── packages (the sale) ─────────────
-const toPackageDTO = (p: any, days: any[]) => {
+/** TASK-481 — `markedBy` (camp's provenance: `checkin-qr` · `shopfront-qr` · `end-of-day` · a staff username) is RAW for an
+ *  unscoped read that asks (`provenance`), `null` otherwise — the same rule as a session's `checkinSource` (ruling B). */
+const toPackageDTO = (p: any, days: any[], opts: { provenance?: boolean } = {}) => {
   const planned = days.filter((d) => d.status === "PLANNED").reduce((s, d) => s + d.units, 0);
   return {
     id: p.id, studentId: p.studentId, kind: p.kind, plan: p.plan, totalUnits: p.totalUnits, usedUnits: p.usedUnits, plannedUnits: planned, credit: creditOf(p, planned),
     saleId: p.saleId ?? null, note: p.note ?? null,
     discount: p.discountKind ? { kind: p.discountKind, value: p.discountValue, reason: p.discountReason, actor: p.discountActor } : null,
-    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null })),
+    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null, markedBy: opts.provenance ? (d.markedBy ?? null) : null })),
     createdBy: p.createdBy ?? null, createdAt: new Date(p.createdAt).toISOString(),
   };
 };
@@ -300,11 +302,11 @@ async function packageDTO(id: string, exec: any = db) {
   return toPackageDTO(p, days);
 }
 
-export async function listPackages(studentId: string) {
+export async function listPackages(studentId: string, opts: { provenance?: boolean } = {}) { // TASK-481 — the route passes !scope
   const rows = await db.query.campPackages.findMany({ where: (p, { eq: e }) => e(p.studentId, studentId), orderBy: (p, { desc }) => [desc(p.createdAt)] });
   const ids = rows.map((p) => p.id);
   const days = ids.length ? await db.query.campDays.findMany({ where: (d, { inArray: inA }) => inA(d.campPackageId, ids), with: { week: true }, orderBy: (d, { asc: a }) => [a(d.date)] }) : [];
-  return { packages: rows.map((p) => toPackageDTO(p, days.filter((d) => d.campPackageId === p.id))) };
+  return { packages: rows.map((p) => toPackageDTO(p, days.filter((d) => d.campPackageId === p.id), opts)) };
 }
 
 /**

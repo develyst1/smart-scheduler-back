@@ -138,7 +138,8 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     const now = new Date("2026-10-05T03:00:00Z"), today = "2026-10-05", live = new Date("2026-10-05T16:59:59+07:00"), dead = new Date("2026-10-04T16:59:59+07:00");
     expect(campScanOutcome({ status: "ATTENDED", date: today, checkinTokenExpiresAt: dead }, today, now)).toBe("already");
     expect(campScanOutcome({ status: "PLANNED", date: today, checkinTokenExpiresAt: live }, today, now)).toBe("attend");
-    expect(campScanOutcome({ status: "ABSENT", date: today, checkinTokenExpiresAt: live }, today, now)).toBe("attend");
+    // 🔻 TASK-480 — was "attend": a scan overturned a coach's ABSENT, silently (units unchanged). ABSENT is terminal to a scan.
+    expect(campScanOutcome({ status: "ABSENT", date: today, checkinTokenExpiresAt: live }, today, now)).toBe("already");
     expect(thrown(() => campScanOutcome({ status: "CANCELLED", date: today, checkinTokenExpiresAt: live }, today, now))).toMatchObject({ status: 409, code: "CAMP_DAY_TRANSITION" });
     expect(thrown(() => campScanOutcome({ status: "PLANNED", date: "2026-10-04", checkinTokenExpiresAt: dead }, today, now))).toEqual({ status: 410, code: "CAMP_TOKEN_EXPIRED", message: "เลยเวลาเช็คอินแล้ว\nCheck-in time has passed." } /* 🔻 TASK-479 — the parent's words */);
     expect(thrown(() => campScanOutcome({ status: "PLANNED", date: "2026-10-06", checkinTokenExpiresAt: new Date("2026-10-06T16:59:59+07:00") }, today, now))).toMatchObject({ status: 409, code: "CAMP_DAY_NOT_TODAY" });

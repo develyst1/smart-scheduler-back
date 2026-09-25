@@ -171,8 +171,15 @@ export const displayNameOf = (b: any): string => b.otherTitle ?? studentNamesOf(
 export const studentNamesOf = (b: any): string | null =>
   (b.coStudent ? joinChildNames(b.student, b.coStudent) : null) ?? b.student?.nickname ?? b.student?.name ?? null;
 
-export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null } = {}) => ({
+/**
+ * 🔴 TASK-481 — WHERE the check-in came from (`bookings.checkin_source`), RAW and untranslated: `shopfront-qr` · `checkin-qr` ·
+ * `line` · `end-of-day` · a staff USERNAME · `null`. It is `null` unless the caller asks for it (`provenance: true`), and
+ * a caller asks only for an UNSCOPED (admin) read — Sober's ruling B: a scoped teacher never sees which admin marked their
+ * class, and neither does a parent on the public scan. Opt-in on purpose: a new read defaults to hiding it.
+ */
+export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null; provenance?: boolean } = {}) => ({
   id: b.id,
+  checkinSource: opts.provenance ? ((b.checkinSource as string | null | undefined) ?? null) : null,
   date: b.date,
   startTime: hhmm(b.startTime),
   endTime: hhmm(b.endTime),

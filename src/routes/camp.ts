@@ -6,6 +6,7 @@ import { actorOf } from "../services/user.service";
 import { assertMayDiscount } from "../lib/discount-plan";
 import { campPriceList } from "../lib/sale-items";
 import { viewerOf } from "../lib/budget-visibility";
+import { scopeOf } from "../lib/own-scope";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
 // TASK-401 (REQ-095 Stage 3a, SPEC-082) — Balance camp. Mounted at `/api/camp` behind the guard; the access table maps
@@ -22,7 +23,8 @@ export const campRoutes = new Hono()
     return c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json")));
   })
   .get("/weeks/:id/days", async (c) => c.json(await camp.weekDays(c.req.param("id"))))
-  .get("/packages", zValidator("query", v.campPackagesQuery), async (c) => c.json(await camp.listPackages(c.req.valid("query").studentId)))
+  // TASK-481 — provenance (`markedBy`) raw for an admin, null for a scoped (linked-teacher) viewer: ruling B, as the calendar.
+  .get("/packages", zValidator("query", v.campPackagesQuery), async (c) => c.json(await camp.listPackages(c.req.valid("query").studentId, { provenance: !scopeOf(c.get("user")) })))
   .post("/packages", zValidator("json", v.createCampPackage), async (c) => {
     const body = c.req.valid("json");
     assertMayDiscount(body.discount, c.get("user"));
