@@ -8,6 +8,8 @@
 //   cd smart-scheduler-front # …e.g. the frontoffice web (has sharp installed)
 //   bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
 // Outputs parent-{th,en}.png (2500×1686) + teacher-{th,en}.png (2500×843) next to this script.
+// TASK-247 added unknown-th / known-th; TASK-472 adds menu-teacher.png (bilingual, 2500×843) — the file the publish reads.
+// (The two PARENT per-role files, menu-unknown / menu-customer, are the customer's art: see resize-customer-menus.mjs.)
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -116,14 +118,21 @@ return {
 };
 
 // One cell = centred icon (upper) + label (lower), with generous padding from the tap edges.
+// TASK-472 — an optional `sub` label (the English under the Thai, as on the customer's parent artwork). A cell without
+// one renders byte-for-byte as before, so the six shipped files do not move.
 function cellSvg(cell, labelSize, icons) {
   const cx = cell.x + cell.w / 2;
-  const iconY = cell.y + cell.h * 0.4;
-  const labelY = cell.y + cell.h * 0.74;
+  const iconY = cell.y + cell.h * (cell.sub ? 0.36 : 0.4);
+  const labelY = cell.y + cell.h * (cell.sub ? 0.7 : 0.74);
+  const sub = cell.sub
+    ? `
+    <text x="${cx}" y="${labelY + labelSize * 1.05}" font-family="${FONT}" font-size="${Math.round(labelSize * 0.72)}" font-weight="600"
+          fill="${TEXT}" text-anchor="middle">${esc(cell.sub)}</text>`
+    : "";
   return `
     ${icons[cell.icon](cx, iconY)}
     <text x="${cx}" y="${labelY}" font-family="${FONT}" font-size="${labelSize}" font-weight="600"
-          fill="${TEXT}" text-anchor="middle">${esc(cell.label)}</text>`;
+          fill="${TEXT}" text-anchor="middle">${esc(cell.label)}</text>${sub}`;
 }
 
 function menuSvg({ width, height, cells, labelSize, dividers, accent = BLUE }) {
@@ -157,6 +166,9 @@ const teacherCells = (L) => [
   { x: 1250, y: 0, w: 1250, h: 843, icon: "langhelp", label: L.langhelp },
 ];
 const teacherDividers = [{ x1: 1250, y1: 0, x2: 1250, y2: 843 }];
+// TASK-472 (REQ-107) — ONE teacher menu, bilingual: the SAME two cells at the SAME bounds, Thai over English.
+const teacherCellsBilingual = () =>
+  teacherCells(TEACHER.TH).map((c, i) => ({ ...c, sub: Object.values(TEACHER.EN)[i] }));
 
 // ── TASK-247 / REQ-079 — the two menu SETS. Bounds mirror UNKNOWN_RICH_MENU / KNOWN_RICH_MENU exactly, and
 // `line-rich-menu-artwork.test.ts` fails if either side moves a cell — the README's "never one side alone"
@@ -210,6 +222,10 @@ const jobs = [
   // TASK-247 — orange, and orange ONLY here (see the palette note).
   { file: "unknown-th.png", svg: menuSvg({ width: 2500, height: 843, cells: unknownCells(UNKNOWN.TH), labelSize: 88, dividers: unknownDividers, accent: ORANGE }) },
   { file: "known-th.png", svg: menuSvg({ width: 2500, height: 1686, cells: knownCells(KNOWN.TH), labelSize: 76, dividers: knownDividers, accent: ORANGE }) },
+  // TASK-472 — the per-role teacher file the publish reads. Bilingual (Sober's recommendation, put to the owner via
+  // Porter). ⏪ FALLBACK if the owner keeps the Thai-only picture: swap the svg below for teacher-th's —
+  //   svg: menuSvg({ width: 2500, height: 843, cells: teacherCells(TEACHER.TH), labelSize: 88, dividers: teacherDividers }),
+  { file: "menu-teacher.png", svg: menuSvg({ width: 2500, height: 843, cells: teacherCellsBilingual(), labelSize: 88, dividers: teacherDividers }) },
 ];
 
 for (const j of jobs) {

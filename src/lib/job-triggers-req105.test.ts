@@ -19,7 +19,8 @@ const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const INTERNAL = code(readSrc(readFileSync(resolve(root, "src/routes/internal.ts"), "utf8")));
 
 /** The job names the API actually serves — read from the router, never a list typed here. */
-const routeJobs = [...INTERNAL.matchAll(/\.post\("\/jobs\/([a-z0-9-]+)"/g)].map((m) => m[1]!).sort();
+// 🔻 TASK-467 — GET too: the read-only `job-runs` window is deployed the same way, so the same both-ways rule binds it.
+const routeJobs = [...INTERNAL.matchAll(/\.(?:post|get)\("\/jobs\/([a-z0-9-]+)"/g)].map((m) => m[1]!).sort();
 
 /** The triggers the owner copies to the box, and the job each one POSTs to. */
 const triggers = readdirSync(resolve(root, "sm-jobs"))
@@ -36,7 +37,7 @@ describe("🔑 TASK-461 — every internal job has a trigger, and every trigger 
     const have = new Set(triggers.map((t) => t.name));
     expect(routeJobs.filter((j) => !have.has(j))).toEqual([]);
     // the census, so a route added without its trigger is visible as a number too
-    expect(routeJobs).toEqual(["daily-digest", "daily-reminder", "end-of-day", "group-series-extender", "month-reset", "weekly-teacher-digest"]);
+    expect(routeJobs).toEqual(["daily-digest", "daily-reminder", "end-of-day", "group-series-extender", "job-runs", "month-reset", "weekly-teacher-digest"]);
   });
 
   test("← no trigger is DANGLING: every `sm-jobs/*.ps1` posts to a job the router serves, and to its OWN name", () => {

@@ -48,7 +48,9 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
       // entries below still carry it. This one now asserts the opposite for the one message that was ruled out
       // of it, rather than being dropped.
       "renderSchedule(rows, TEMPLATE_LANG, range)",
-      "both((l) => renderMyCourses(view, l))",
+      // 🔻 TASK-470 (f) — My Course is bilingual INSIDE the renderer now (heading via `tb`, lines once — Sober's
+      // ruling for data-only lines); pinned by value in `line-v2-messages-req107.test.ts`.
+      "textReply(renderMyCourses(view), lang)",
       'textReply(tb("cal_not_teacher"), lang)',
     ],
     "handover + mute": [

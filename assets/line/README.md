@@ -1,54 +1,41 @@
-# LINE rich-menu artwork (REQ-015 · REQ-079)
+# LINE rich-menu artwork (REQ-107 — one bilingual menu per role)
 
-`bun run line:publish-menus` uploads these **six** images to the LINE Official Account. Supply them here with
-**exactly these filenames** (the publish command's fixed path contract — TASK-040/041, extended by TASK-247):
+`bun run line:publish-menus` uploads **three** images, one per role, from **exactly these paths** (the fixed contract in
+`scripts/line-publish-menus.ts` → `IMAGE_PATHS`; a missing file refuses the whole run before any LINE call):
 
-| File | Menu | Size (px) | Tap layout (must align to these bounds) |
-|------|------|-----------|------------------------------------------|
-| `parent-th.png` | Parent (Thai) | **2500 × 1686** | 3×2 grid: **check-in · leave · my-children** / **add-child · language · help** |
-| `parent-en.png` | Parent (English) | 2500 × 1686 | same grid, English labels |
-| `teacher-th.png` | Teacher (Thai) | **2500 × 843** | 2 cells: **my-schedule** · **language** |
-| `teacher-en.png` | Teacher (English) | 2500 × 843 | same, English labels |
-| `unknown-th.png` | **ยังไม่รู้จัก** (Thai) — REQ-079 | **2500 × 843** | 2 cells: **เข้าใช้ระบบ** · **คุยกับแอดมิน** |
-| `known-th.png` | **รู้จักแล้ว** (Thai) — REQ-079 | **2500 × 1686** | 3×2 grid: **แจ้งลา · เช็คอิน · คอร์สของฉัน** / **เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน** |
+| File | Menu (role) | Size (px) | Cells (tap areas live in `src/lib/line-rich-menu.ts`) | Where it comes from |
+|------|-------------|-----------|--------------------------------------------------------|---------------------|
+| `menu-unknown.png` | unlinked chat (the account DEFAULT) | **2500 × 843** | 2 cells: **สมัครสมาชิก / Sign Up** · **คุยกับแอดมิน / Chat with Admin** | the customer's art, stretched (`resize-customer-menus.mjs`) |
+| `menu-customer.png` | linked parent | **2500 × 1686** | 3×2: **แจ้งลา · เช็คอิน · คอร์สของฉัน** / **เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน** | the customer's art, stretched (`resize-customer-menus.mjs`) |
+| `menu-teacher.png` | teacher | **2500 × 843** | 2 cells: **ตารางของฉัน / My schedule** · **ภาษา/ช่วยเหลือ / Language/Help** | generated (`generate-rich-menus.mjs`) |
 
-Tap areas/actions are defined in code (`src/lib/line-rich-menu.ts`); the image only needs to line up visually
-with those bounds. **No QR button** on the parent menu (by design). Re-run the command after any artwork change.
+## The rules a file must meet
+- **The exact size above.** The tap areas are a grid over the definition's `size`; an image of any other size puts the
+  buttons where the parent does not tap. 🔴 **This is a test:** `src/lib/rich-menu-images-req107.test.ts` reads each
+  file's PNG header and fails the suite if its width × height is not its menu's `size`.
+- **PNG, ≤ 1,000,000 bytes.** LINE's cap is "1 MB"; we hold to the stricter reading. Same test.
+- **Cells never change on one side alone.** A different layout means changing `line-rich-menu.ts` AND the art together.
 
-**The default menu is `unknown-th`** (TASK-247). ยังไม่รู้จัก is the state a chat lands in with no code running;
-รู้จักแล้ว is linked per user when a chat is bound, and there is deliberately **no unlink** — removing the link
-falls back to unknown by itself.
-
-**Colour:** the four REQ-015 menus are **blue**; the two REQ-079 menus are **orange** (the owner's entire art
-direction — *"อยากได้สีส้ม แค่นั้นแหละ"*). ⚠️ They are deliberately not repainted together: re-creating a menu
-changes its **richMenuId**, and every already-linked teacher keeps the OLD menu until they re-link. **A repaint
-is a migration, not a colour change.**
-
-**EN:** `unknown-en` / `known-en` are **not** produced. The defs exist, but a stored menu id whose image was
-never uploaded renders **blank** on a phone — worse than falling back to the default. If EN is ever wanted, the
-image and the stored id must arrive together.
-
-## Regenerating the artwork (TASK-041 · TASK-247)
-
-The 6 PNGs are generated from [`generate-rich-menus.mjs`](generate-rich-menus.mjs) — pure geometry (cell bounds
-mirror `line-rich-menu.ts`) + simple SVG icons, rasterised with `sharp`. `sharp` is **not** a dependency of this
-backend repo, so run the script from a repo that has it (the frontoffice web does):
+## Regenerating
+`sharp` is **not** a dependency of this backend; run both scripts from a repo that has it (the frontoffice web does):
 
 ```bash
-cd ../../../smart-scheduler-front   # any dir whose node_modules has `sharp`
+cd ../smart-scheduler-front
+bun ../smart-scheduler-back/assets/line/resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image>
 bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
 ```
 
-✅ Confirmed working on 2026-09-05 (`sharp` 0.34.5 in `smart-scheduler-front`): it rewrites all 6 PNGs here
-(indexed PNG, ~17–50 KB each) and the four REQ-015 files come out **byte-identical**, so a regeneration for the
-new menus cannot disturb the shipped ones. Edit the palette / icons / label maps in that script and re-run to
-tweak. Labels mirror `src/lib/line-i18n.ts` so the menu matches the bot replies: `my children` = `btn_children`
-(นักเรียนของฉัน / My children), `add child` = `btn_register` (เพิ่มนักเรียน / Add child), the merged
-language/help cell = `btn_langhelp` (ภาษา/ช่วยเหลือ) — the same string on the teacher menu and on the new known
-menu. `language` / `help` / `my schedule` have no dedicated i18n key (postback actions, not text buttons) → they
-use the SPEC-012 wording.
+- **`resize-customer-menus.mjs`** — the customer's two parent images (their originals live in the workspace's
+  `smart-scheduler/project-docs/customer-2026-09-25-richmenu/`; she sent 1527×1030 and 2160×728). Stretched to the exact
+  sizes by the owner's ruling (2026-09-25): use them now, and if full-size originals arrive, run it again on those. It
+  writes full-colour PNG first; if that is over the cap it writes a **256-colour PNG (quality 90, no dither)** and
+  **prints that it did**. On 2026-09-25: `menu-customer.png` 592 KB (256-colour, full colour was 2.7 MB) ·
+  `menu-unknown.png` 984 KB (full colour).
+- **`generate-rich-menus.mjs`** — draws `menu-teacher.png` from code: the teacher menu's same two cells, same blue,
+  Thai over English. ⏪ If the owner keeps the Thai-only picture instead, the one-line swap is written beside the job in
+  the script (use `teacher-th`'s svg). It also rewrites the six files below, byte-identical.
 
-> ⚠️ Keep the visual cells in sync with `line-rich-menu.ts`. If a tweak needs different bounds, change **both**
-> the code bounds and this artwork — never one side alone (that's the TASK-041 ↔ code contract).
-> 🔴 Since TASK-247 that sentence is also a **test**: `src/lib/line-rich-menu-artwork.test.ts` reads this
-> generator as text and fails if either side moves a cell on the two REQ-079 menus.
+## Older files in this folder (not published any more)
+`parent-th/en.png`, `teacher-th/en.png` (REQ-015) and `unknown-th.png`, `known-th.png` (REQ-079) are the language-era
+menus. Menus already on an account keep their images until `line:remove-menus` removes those menus (after the relink
+sweep, never before). `src/lib/line-rich-menu-artwork.test.ts` still pins the generator's geometry for them.

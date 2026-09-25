@@ -115,6 +115,23 @@ export const UNKNOWN_RICH_MENU_EN: RichMenuDef = { ...UNKNOWN_RICH_MENU, name: "
 export const KNOWN_RICH_MENU_EN: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-scheduler-known-en", chatBarText: "Menu" };
 
 /** 🔴 The invariant, as a function so it can be asserted rather than remembered. */
+// ─────────── TASK-468 (REQ-107 §1) — ONE BILINGUAL MENU PER ROLE ───────────
+//
+// The owner's artwork carries TH and EN on ONE image, so the per-language pair of every menu is redundant: the only thing
+// that ever differed within a pair was the picture. ⇒ one menu (one id) per ROLE. 🔑 The CELLS are read off the
+// customer's own sheet (`project-docs/customer-2026-09-25-richmenu/`) and they are today's cells, in today's order, at
+// today's sizes — so the three below reuse the existing `areas` rather than restate them: a second spelling of a cell
+// layout is how two menus that "should match" drift.
+// 🔑 Chat bar `เมนู | Menu` on all three (the owner's ruling). ⏸️ `คุยกับแอดมิน` keeps today's behaviour (the mute); the
+// "Chat with Admin closes the menu" behaviour is HELD until Khwan answers what she meant.
+
+/** Unlinked: `สมัครสมาชิก / Sign Up` · `คุยกับแอดมิน / Chat with Admin`. The account DEFAULT. (TASK-469 moves Sign Up's target.) */
+export const UNKNOWN_MENU: RichMenuDef = { ...UNKNOWN_RICH_MENU, name: "smart-scheduler-unknown", chatBarText: "เมนู | Menu", selected: true };
+/** Linked parent, six cells: แจ้งลา · เช็คอิน · คอร์สของฉัน / เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน. */
+export const CUSTOMER_MENU: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-scheduler-customer", chatBarText: "เมนู | Menu" };
+/** Teacher: the EXISTING artwork and cells, re-published so its id is live again (the old ids are dead on the real OA). */
+export const TEACHER_MENU: RichMenuDef = { ...TEACHER_RICH_MENU, name: "smart-scheduler-teacher", chatBarText: "เมนู | Menu" };
+
 export const menuHasAdminButton = (m: RichMenuDef): boolean =>
   m.areas.some((a) => a.action.data === "action=admin");
 
@@ -255,6 +272,14 @@ export async function linkRichMenuToUser(userId: string, richMenuId: string): Pr
 }
 
 export type MenuIds = {
+  // 🔴 TASK-468 — THE ids: one per ROLE. `menuIdFor` reads these three and nothing else first.
+  unknown?: string;
+  customer?: string;
+  teacher?: string;
+  // ⚠️ LEGACY — the per-language keys of the families above. Nothing CHOOSES them any more except the pinned fallback
+  // in `menuIdFor` (a box that has deployed this code but not yet re-published). They stay in the type because
+  // `mergeMenuIds` must keep them (TASK-247 — a publish never erases an id it did not create), and because the relink
+  // sweep needs them to RECOGNISE what an existing follower still holds (that is the `variant` outcome).
   parentTH?: string;
   parentEN?: string;
   teacherTH?: string;
@@ -283,6 +308,11 @@ export type MenuIds = {
  * that from the module's own exports rather than from a second list someone has to remember to update.
  */
 export const ALL_MENU_DEFS: readonly RichMenuDef[] = [
+  // TASK-468 — the three per-role menus. The eight below stay: this list answers "did WE name this?", and the old
+  // menus stay on channels until the owner removes them AFTER the relink sweep.
+  UNKNOWN_MENU,
+  CUSTOMER_MENU,
+  TEACHER_MENU,
   PARENT_RICH_MENU,
   PARENT_RICH_MENU_EN,
   TEACHER_RICH_MENU,
@@ -311,13 +341,12 @@ export const OUR_MENU_NAMES: ReadonlySet<string> = new Set(ALL_MENU_DEFS.map((m)
  *
  * ⚠️ **Do not collapse them into one list.** The bug that would produce is silent in opposite directions.
  */
+// 🔻 TASK-468 — what `publishRichMenus` creates is now THREE; the six per-language names left this map (they are
+// still in `OUR_MENU_NAMES` for provenance). `line:adopt-menus` therefore adopts the new set only.
 export const NAME_TO_KEY: Record<string, keyof MenuIds> = {
-  [PARENT_RICH_MENU.name]: "parentTH",
-  [PARENT_RICH_MENU_EN.name]: "parentEN",
-  [TEACHER_RICH_MENU.name]: "teacherTH",
-  [TEACHER_RICH_MENU_EN.name]: "teacherEN",
-  [UNKNOWN_RICH_MENU.name]: "unknownTH",
-  [KNOWN_RICH_MENU.name]: "knownTH",
+  [UNKNOWN_MENU.name]: "unknown",
+  [CUSTOMER_MENU.name]: "customer",
+  [TEACHER_MENU.name]: "teacher",
 };
 
 /** One row of `GET /v2/bot/richmenu/list`, reduced to what an ownership decision needs. */
@@ -459,35 +488,27 @@ export async function storeMenuIds(ids: MenuIds): Promise<void> {
  * with no uploaded image renders BLANK on a phone**, which is worse than falling back to the default.
  */
 export async function publishRichMenus(opts: {
-  parentThImage: string;
-  parentEnImage: string;
-  teacherThImage: string;
-  teacherEnImage: string;
-  unknownThImage: string;
-  knownThImage: string;
+  unknownImage: string;
+  customerImage: string;
+  teacherImage: string;
 }): Promise<MenuIds> {
-  const parentTH = await createRichMenu(PARENT_RICH_MENU);
-  await uploadRichMenuImage(parentTH, opts.parentThImage);
-  const parentEN = await createRichMenu(PARENT_RICH_MENU_EN);
-  await uploadRichMenuImage(parentEN, opts.parentEnImage);
-  const teacherTH = await createRichMenu(TEACHER_RICH_MENU);
-  await uploadRichMenuImage(teacherTH, opts.teacherThImage);
-  const teacherEN = await createRichMenu(TEACHER_RICH_MENU_EN);
-  await uploadRichMenuImage(teacherEN, opts.teacherEnImage);
-  // SPEC-071 / REQ-079 — the two menus the runtime has been reading for and never finding.
-  const unknownTH = await createRichMenu(UNKNOWN_RICH_MENU);
-  await uploadRichMenuImage(unknownTH, opts.unknownThImage);
-  const knownTH = await createRichMenu(KNOWN_RICH_MENU);
-  await uploadRichMenuImage(knownTH, opts.knownThImage);
-  const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN, unknownTH, knownTH };
+  // 🔴 TASK-468 — THREE menus, one per role, each image bilingual. The per-language pairs are gone: the only thing that
+  // ever differed within a pair was the picture.
+  const unknown = await createRichMenu(UNKNOWN_MENU);
+  await uploadRichMenuImage(unknown, opts.unknownImage);
+  const customer = await createRichMenu(CUSTOMER_MENU);
+  await uploadRichMenuImage(customer, opts.customerImage);
+  const teacher = await createRichMenu(TEACHER_MENU);
+  await uploadRichMenuImage(teacher, opts.teacherImage);
+  const ids: MenuIds = { unknown, customer, teacher };
+  // MERGED (TASK-247): the old per-language ids survive this write — the relink sweep needs them to recognise what
+  // existing followers still hold, and the legacy fallback needs them on a box between deploy and publish.
   await storeMenuIds(ids);
-  // 🔴 The default is the UNKNOWN menu — the state a chat lands in with no code running. The known menu is the
-  // per-user link (`linkKnownRichMenu`), and there is deliberately no unlink: removing the link falls back here.
-  await setDefaultRichMenu(unknownTH);
+  // 🔴 The default is the UNKNOWN menu — the state a chat lands in with no code running.
+  await setDefaultRichMenu(unknown);
   // 🔴 TASK-446 (REQ-105 §6) — a publish mints NEW ids, and LINE serves the channel default ONLY to a follower with no
-  // per-user link. Every already-linked follower therefore keeps the menu of the PREVIOUS publish — which is how a customer
-  // ended up looking at an old English menu months later. Nothing here can fix that (re-linking N followers is a sweep with a
-  // plan the human reads, not a side effect of publishing), so the one thing this must not do is finish SILENTLY.
+  // per-user link. Every already-linked follower therefore keeps the menu of the PREVIOUS publish. The sweep fixes that
+  // with a plan the human reads; the one thing this must not do is finish SILENTLY.
   for (const line of await publishRelinkWarning()) console.warn(line);
   return ids;
 }
@@ -557,18 +578,10 @@ export async function getUserRichMenuId(userId: string): Promise<string | null> 
  * Best-effort, like : a menu that has not been published yet leaves the chat on the default,
  * which is the correct menu for a chat we cannot yet serve.
  */
-export async function linkKnownRichMenu(userId: string, lang: Lang = "TH"): Promise<void> {
-  // 🔻 TASK-452 — resolves through `menuIdFor` like every other caller. For a customer that IS the known menu when
-  // one is published, so this keeps its meaning and its name; it simply no longer spells the rule out for itself.
-  await linkResolvedRichMenu(userId, "customer", lang);
-}
-
-export async function linkRoleRichMenu(
-  userId: string,
-  role: "customer" | "teacher",
-  lang: Lang = "TH",
-): Promise<void> {
-  await linkResolvedRichMenu(userId, role, lang);
+// 🔻 TASK-468 — `linkKnownRichMenu` is gone: it was the SECOND call of a two-step rule (role menu, then the known menu
+// on top), and with one menu per role there is one step. `settleLinkedRole` calls the linker below once.
+export async function linkRoleRichMenu(userId: string, role: "customer" | "teacher"): Promise<void> {
+  await linkResolvedRichMenu(userId, role);
 }
 
 /**
@@ -578,7 +591,7 @@ export async function linkRoleRichMenu(
  * Best-effort as both linkers always were: a menu that has not been published leaves the chat where it is — which,
  * for a chat that has never been linked, is the account default, and that is the correct menu for it.
  */
-async function linkResolvedRichMenu(userId: string, role: "customer" | "teacher", lang: Lang): Promise<void> {
-  const target = menuIdFor(role, lang === "EN" ? "EN" : "TH", await getMenuIds());
+async function linkResolvedRichMenu(userId: string, role: "customer" | "teacher"): Promise<void> {
+  const target = menuIdFor(role, await getMenuIds()); // 🔻 TASK-468 — no language: one menu per role
   if (target) await linkRichMenuToUser(userId, target);
 }

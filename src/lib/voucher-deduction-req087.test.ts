@@ -99,13 +99,14 @@ describe("🔴 TASK-335 §1c — no Thai in a value the SYSTEM generates", () =>
     // 🔻 The task warned that `remainingLabel` has two readers and one is the card. **It is not.**
     // `line-course-view.ts` computes and renders its own and imports nothing from `course-deduction`.
     // ⇒ **there was nothing to un-share**, which is why `§3` needed no second function and no parameter.
-    const CARD = src("src/lib/line-course-view.ts");
-    expect(CARD).not.toContain("remainingLabel");
-    expect(CARD).not.toContain("course-deduction");
-    expect(CARD).toContain("const remaining = Math.max(0, c.size - c.usedSessions);");
-    // 📌 The card's own string, owner-verified in TASK-234 — it says `เหลือ` and it stays saying it. `§4`
-    // governs a NOTIFICATION; the card is a conversation surface the owner signed off.
-    expect(t("course_row", "TH")).toContain("เหลือ {remaining}/{total}");
+    // 🔻 TASK-470 (REQ-107 §3) — the card's LINE moved to `line-v2-lines.ts` (`courseLineV2`), in the customer's newer format
+    // (`[Remain: 6/10]`), which supersedes TASK-234's owner-verified `เหลือ 6/10` on this surface. The claim that matters here
+    // is unchanged and still pinned: the card computes its OWN remaining and never shares the notification's helper.
+    for (const f of ["src/lib/line-course-view.ts", "src/lib/line-v2-lines.ts"]) {
+      const CARD = src(f);
+      expect({ f, shares: CARD.includes("remainingLabel") || CARD.includes("course-deduction") }).toEqual({ f, shares: false });
+    }
+    expect(src("src/lib/line-v2-lines.ts")).toContain("[Remain: ${Math.max(0, c.size - c.usedSessions)}/${c.size}]");
   });
 
   test("🚫 `Remark` is NOT added to the deduction — `§1b`'s premise was wrong", () => {

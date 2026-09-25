@@ -14,15 +14,12 @@ import { guardOaWriteOrExit } from "../src/lib/oa-guard";
 
 /** Fixed image-path contract with TASK-041 (Fern). Paths are relative to the repo (bun run cwd). */
 export const IMAGE_PATHS = {
-  parentThImage: "assets/line/parent-th.png",
-  parentEnImage: "assets/line/parent-en.png",
-  teacherThImage: "assets/line/teacher-th.png",
-  teacherEnImage: "assets/line/teacher-en.png",
-  // TASK-247 (REQ-079) — the two menus the bot has been reading for since TASK-234. Same fixed-filename
-  // contract, and the same preflight: a missing image refuses the whole run BEFORE any LINE call, so "one
-  // menu created, the other not" is not a state this command can leave the channel in.
-  unknownThImage: "assets/line/unknown-th.png",
-  knownThImage: "assets/line/known-th.png",
+  // 🔴 TASK-468 (REQ-107) — THREE bilingual images, one per role (TH + EN on one picture). Same fixed-filename contract and
+  // the same preflight: a missing image refuses the whole run BEFORE any LINE call. The teacher image is the EXISTING
+  // teacher artwork (unchanged cells), re-published so its id is live again.
+  unknownImage: "assets/line/menu-unknown.png",
+  customerImage: "assets/line/menu-customer.png",
+  teacherImage: "assets/line/menu-teacher.png",
 } as const;
 
 /** Pure precondition check — returns a list of blocking errors (empty = ready to publish). */
@@ -75,7 +72,7 @@ async function main() {
     console.error("✗ line:publish-menus — cannot publish:");
     for (const e of errors) console.error(`  - ${e}`);
     console.error(
-      "\nProvide the 4 images (TASK-041) under smart-scheduler-back/assets/line/ and set LINE_CHANNEL_ACCESS_TOKEN, then re-run.",
+      "\nProvide the 3 bilingual images (TASK-468) under smart-scheduler-back/assets/line/ and set LINE_CHANNEL_ACCESS_TOKEN, then re-run.",
     );
     process.exit(1);
   }

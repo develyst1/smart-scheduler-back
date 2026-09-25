@@ -73,7 +73,7 @@ describe("🔴 TASK-313 §2 — `add เมนู` REFUSES and creates nothing (
 
 describe("✅ TASK-313 §1 — the EN menu advertises the customer's phrase, and `add child` still ADDS", () => {
   test("🔑 `Add Student`, screen 8's own words — not a second English phrase for an act they already named", () => {
-    expect(t("menu_body", "EN")).toContain("· Add Student — register a child");
+    expect(t("menu_body", "EN")).toContain("· Add Student — Up to 5"); // 🔻 TASK-470 — the customer's own wording for it
     expect(t("menu_body", "EN")).not.toContain("add child");
   });
 
@@ -111,9 +111,12 @@ describe("🔑 TASK-313 §3(2) — every token the MENU advertises is reserved (
       .filter((l) => l.startsWith("· "))
       .map((l) => l.slice(2).split(" — ")[0].trim());
 
-  test("the parser sees the whole menu — six commands per language", () => {
-    expect(advertised("TH").length).toBe(6);
-    expect(advertised("EN").length).toBe(6);
+  test("the parser sees the whole menu — FOUR commands per language (TASK-470: the customer's shorter list)", () => {
+    // 🔻 TASK-470 — qr · menu · children left the LIST (they still WORK — pinned in `line-v2-messages-req107.test.ts`).
+    // 🔴 And this guard earned its keep the day it moved: her list advertises "My Course" and "Request Leave", which were
+    // NOT commands — a parent following the list would have got nothing back. Both are now in `line-commands.ts`.
+    expect(advertised("TH")).toEqual(["เพิ่มนักเรียน", "คอร์สของฉัน", "เช็คอิน", "แจ้งลา"]);
+    expect(advertised("EN")).toEqual(["Add Student", "My Course", "Check-in", "Request Leave"]);
     expect(advertised("EN")).toContain("Add Student");
     expect(advertised("TH")).toContain("เพิ่มนักเรียน");
   });

@@ -1,7 +1,7 @@
 // TASK-446 (`REQ-105 §6`) — the stale per-user rich-menu link: LINE serves the channel default ONLY to a follower with no
 // per-user link, so every follower linked before a re-publish keeps that publish's id forever. This pins the decision half by
-// value (`expectedMenuKey` mirroring the runtime's TWO calls and its silent no-op — a TH customer ⇒ `knownTH`, an EN customer ⇒
-// `parentEN`, because `knownEN` is deliberately never published; the five outcomes; the de-dupe), the user census by source and
+// value (🔻 TASK-468: `expectedMenuKey` is now the ROLE's menu — no language — with a TH-only legacy fallback before the
+// per-role publish; the five outcomes, `variant` being the migration case; the de-dupe), the user census by source and
 // by value (teachers first; the three unswept tables named), the plan's printed shape, the script's flow by source (dry-run
 // writes nothing · the confirmation phrase carries the count · only `expectedId` is ever written · a per-user failure continues),
 // and the publish-time warning. No migration (56 = 56).
@@ -29,57 +29,48 @@ const MENU = code(src("src/lib/line-rich-menu.ts"));
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); });
 
-/** The ids a current publish stores: the six it creates. `knownEN` / `unknownEN` are deliberately absent (TASK-247 §4). */
-const IDS = { parentTH: "p-th", parentEN: "p-en", teacherTH: "t-th", teacherEN: "t-en", unknownTH: "u-th", knownTH: "k-th" };
+/** 🔻 TASK-468 — what a box holds right after the per-role publish: the three role ids BESIDE the old per-language ones
+ *  (the merge keeps them). No teacher menu here on purpose, so the "blocked" outcome has a case. */
+const IDS = { customer: "c", unknown: "u", parentTH: "p-th", parentEN: "p-en", unknownTH: "u-th", knownTH: "k-th" };
 const user = (over: Partial<MenuUser> = {}): MenuUser => ({ lineUserId: "U1", name: "Khwan", role: "customer", lang: "TH", linkedMenuId: null, ...over });
 
-describe("🔴 the expected menu MIRRORS the runtime's two calls — including the no-op that leaves an EN customer on `parentEN`", () => {
-  test("`expectedMenuKey` by value: TH customer ⇒ knownTH (the second call wins); EN customer ⇒ parentEN (knownEN unpublished); teachers ⇒ their own; nothing published ⇒ null", () => {
-    expect(expectedMenuKey("customer", "TH", IDS)).toBe("knownTH");
-    expect(expectedMenuKey("customer", "EN", IDS)).toBe("parentEN");
-    expect(expectedMenuKey("teacher", "TH", IDS)).toBe("teacherTH");
-    expect(expectedMenuKey("teacher", "EN", IDS)).toBe("teacherEN");
-    expect(expectedMenuKey("customer", "EN", { ...IDS, knownEN: "k-en" })).toBe("knownEN"); // if an EN known menu is ever published, the rule follows it
-    expect(expectedMenuKey("customer", "TH", { parentTH: "p-th" })).toBe("parentTH"); // no known menu ⇒ the role link is the last one that took
-    expect(expectedMenuKey("teacher", "EN", { teacherTH: "t-th" })).toBeNull();
-    expect(expectedMenuKey("customer", "TH", {})).toBeNull();
-    // the source it mirrors: the role link, then the customer's known link, which is a silent no-op when unpublished
+describe("🔴 the expected menu is the ROLE's menu — the one rule the live link uses (TASK-468: no language)", () => {
+  test("`expectedMenuKey` by value: the per-role key wins; the TH-only legacy fallback before the publish; nothing published ⇒ null", () => {
+    expect(expectedMenuKey("customer", IDS)).toBe("customer");
+    expect(expectedMenuKey("teacher", { ...IDS, teacher: "t", teacherTH: "t-th" })).toBe("teacher");
+    // before the per-role publish — the legacy fallback: customer → knownTH → parentTH, teacher → teacherTH
+    expect(expectedMenuKey("customer", { knownTH: "k-th", parentTH: "p-th" })).toBe("knownTH");
+    expect(expectedMenuKey("customer", { parentTH: "p-th" })).toBe("parentTH");
+    expect(expectedMenuKey("teacher", { teacherTH: "t-th" })).toBe("teacherTH");
+    expect(expectedMenuKey("teacher", { teacherEN: "t-en" })).toBeNull(); // EN variants are not in the fallback — they ARE the gap
+    expect(expectedMenuKey("customer", {})).toBeNull();
+    // the source it mirrors: ONE link call in the account-link (the known-menu second call is gone)
     const SETTLE = region(code(src("src/services/line-register.service.ts")), "export async function settleLinkedRole(", "\n}\n");
-    expect(SETTLE).toContain("await linkRoleRichMenu(lineUserId, role, seed);");
-    expect(SETTLE).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed);');
-    // 🔻 TASK-452: both linkers now resolve through the ONE rule (`menuIdFor`) — the known link keeps its meaning and
-    // its name, it simply no longer spells the rule out for itself. The best-effort "no id ⇒ leave the chat alone" is
-    // unchanged; it lives in the one resolver now.
-    expect(region(MENU, "export async function linkKnownRichMenu(", "\n}\n")).toContain('await linkResolvedRichMenu(userId, "customer", lang);');
+    expect(SETTLE).toContain("await linkRoleRichMenu(lineUserId, role);");
+    expect(SETTLE).not.toContain("linkKnownRichMenu");
     expect(region(MENU, "async function linkResolvedRichMenu(", "\n}\n")).toContain("if (target) await linkRichMenuToUser(userId, target);");
-    expect(MENU).toContain("[KNOWN_RICH_MENU.name]: \"knownTH\",");
-    expect(region(MENU, "export const NAME_TO_KEY", "};")).not.toContain("knownEN"); // never published, by design
+    expect(region(MENU, "export const NAME_TO_KEY", "};")).toContain("[CUSTOMER_MENU.name]: \"customer\",");
   });
   test("the five outcomes by value — ok · stale · variant · unlinked · blocked; `toRelink` is the three fixable ones, in order", () => {
     const users = [
-      user({ lineUserId: "U-ok", name: "Ok", linkedMenuId: "k-th" }),
-      user({ lineUserId: "U-stale", name: "Khwan", lang: "EN", linkedMenuId: "old-known-en" }), // an id from a PREVIOUS publish
-      user({ lineUserId: "U-var", name: "Toggled", linkedMenuId: "p-th" }), // one of ours, but the toggle path left it
+      user({ lineUserId: "U-ok", name: "Ok", linkedMenuId: "c" }),
+      user({ lineUserId: "U-stale", name: "Khwan", lang: "EN", linkedMenuId: "old-known-en" }), // an id we no longer store
+      user({ lineUserId: "U-var", name: "OldFamily", linkedMenuId: "k-th" }), // 🔑 TASK-468: the MIGRATION case — ours, old family
       user({ lineUserId: "U-none", name: "Never", linkedMenuId: null }),
       user({ lineUserId: "U-teach", name: "Ek", role: "teacher", lang: "EN", linkedMenuId: "t-en" }),
       user({ lineUserId: "U-blocked", name: "NoMenu", role: "teacher", lang: "EN", linkedMenuId: "whatever" }),
     ];
-    const plan = planRelink(users, { ...IDS, teacherEN: undefined as any });
+    const plan = planRelink(users, IDS);
     expect(plan.rows.map((r) => [r.user.name, r.outcome, r.expectedLabel, r.linkedLabel])).toEqual([
-      ["Ok", "ok", "knownTH", "knownTH"],
-      ["Khwan", "stale", "parentEN", null],
-      ["Toggled", "variant", "knownTH", "parentTH"],
-      ["Never", "unlinked", "knownTH", null],
+      ["Ok", "ok", "customer", "customer"],
+      ["Khwan", "stale", "customer", null], // 🔑 her language no longer picks a menu: EN or TH, the customer menu
+      ["OldFamily", "variant", "customer", "knownTH"],
+      ["Never", "unlinked", "customer", null],
       ["Ek", "no-menu-published", null, null],
       ["NoMenu", "no-menu-published", null, null],
     ]);
-    expect(plan.toRelink.map((r) => [r.user.lineUserId, r.expectedId])).toEqual([["U-stale", "p-en"], ["U-var", "k-th"], ["U-none", "k-th"]]);
+    expect(plan.toRelink.map((r) => [r.user.lineUserId, r.expectedId])).toEqual([["U-stale", "c"], ["U-var", "c"], ["U-none", "c"]]);
     expect(plan.counts).toEqual({ ok: 1, stale: 1, variant: 1, unlinked: 1, "no-menu-published": 2 });
-    // 🔑 Khwan's case with everything published: the stale EN id ⇒ re-linked to the CURRENT `parentEN`
-    const fixed = planRelink([user({ name: "Khwan", lang: "EN", linkedMenuId: "old-known-en" })], IDS);
-    expect(fixed.toRelink[0]).toMatchObject({ outcome: "stale", expectedLabel: "parentEN", expectedId: "p-en" });
-    // …and if her stored lang is TH, the same stale link lands on `knownTH` — the sweep prints the lang it used either way
-    expect(planRelink([user({ name: "Khwan", lang: "TH", linkedMenuId: "old-known-en" })], IDS).toRelink[0]!.expectedLabel).toBe("knownTH");
   });
   test("`dedupeMenuUsers`: one account listed twice keeps the FIRST (the script feeds teachers first, so a coach who is also a parent keeps the teacher menu)", () => {
     const out = dedupeMenuUsers([
@@ -91,7 +82,7 @@ describe("🔴 the expected menu MIRRORS the runtime's two calls — including t
     expect(out.map((u) => [u.lineUserId, u.role, u.name])).toEqual([["U1", "teacher", "Ek"], ["U2", "customer", "Mum"]]);
   });
   test("the printed plan: the account FIRST, the mode, one line per user with the language, the counts, and the blocked warning", () => {
-    const plan = planRelink([user({ name: "Khwan", lang: "EN", linkedMenuId: "old-known-en" }), user({ lineUserId: "U2", name: "Ek", role: "teacher", lang: "EN", linkedMenuId: "t-en" })], { ...IDS, teacherEN: undefined as any });
+    const plan = planRelink([user({ name: "Khwan", lang: "EN", linkedMenuId: "old-known-en" }), user({ lineUserId: "U2", name: "Ek", role: "teacher", lang: "EN", linkedMenuId: "t-en" })], IDS);
     const out = formatRelinkPlan(plan, { apply: false, account: "SOM-Balance-Demo" });
     const lines = out.split("\n");
     expect(lines[0]).toBe("LINE account: SOM-Balance-Demo");
@@ -99,15 +90,15 @@ describe("🔴 the expected menu MIRRORS the runtime's two calls — including t
     expect(lines[3]).toContain("RELINK");
     expect(lines[3]).toContain("Khwan");
     expect(lines[3]).toContain("customer");
-    expect(lines[3]).toContain("EN");
+    expect(lines[3]).toContain("EN"); // the chat's BOT language, printed for the operator — it no longer chooses the menu
     expect(lines[3]).toContain("linked unknown-id");
-    expect(lines[3]).toContain("expected parentEN");
+    expect(lines[3]).toContain("expected customer");
     expect(lines[4]).toContain("BLOCKED");
     expect(lines[4]).toContain("expected — none published —");
     expect(out).toContain("2 known LINE account(s): 0 ok · 1 stale · 0 variant · 0 unlinked · 1 blocked (no menu published)");
     expect(out).toContain("⚠️  BLOCKED users hold no fixable menu");
-    expect(formatRelinkPlan(planRelink([user({ linkedMenuId: "k-th" })], IDS), { apply: true, account: "X" })).toContain("MODE: --apply (links will be written)");
-    expect(formatRelinkPlan(planRelink([user({ linkedMenuId: "k-th" })], IDS), { apply: true, account: "X" })).not.toContain("BLOCKED users hold");
+    expect(formatRelinkPlan(planRelink([user({ linkedMenuId: "c" })], IDS), { apply: true, account: "X" })).toContain("MODE: --apply (links will be written)");
+    expect(formatRelinkPlan(planRelink([user({ linkedMenuId: "c" })], IDS), { apply: true, account: "X" })).not.toContain("BLOCKED users hold");
   });
 });
 

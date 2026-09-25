@@ -20,12 +20,15 @@ import { parseAddCommand } from "./line-add-student";
 /** Restart registration. Works from any state, which is why it is checked before the route is computed. */
 export const CMD_REGISTER = ["สมัคร", "register", "ลงทะเบียน", "เริ่มต้น"] as const;
 export const CMD_MENU = ["เมนู", "menu", "help", "ช่วยเหลือ"] as const;
-export const CMD_COURSES = ["คอร์ส", "คอร์สของฉัน", "courses", "mycourses"] as const;
+// 🔻 TASK-470 — `my course`: the customer's command list advertises "My Course", and TASK-313's guard (every advertised
+// token is reserved) caught that it was not a command — a parent following the list would have got nothing back.
+export const CMD_COURSES = ["คอร์ส", "คอร์สของฉัน", "courses", "mycourses", "my course"] as const;
 export const CMD_ADMIN = ["แอดมิน", "คุยกับแอดมิน", "admin"] as const;
 export const CMD_CHILDREN = ["นักเรียน", "ลูก", "รายชื่อ", "children", "students"] as const;
 export const CMD_QR = ["qr", "คิวอาร์"] as const;
 export const CMD_CHECKIN = ["เช็คอิน", "checkin", "check-in"] as const;
-export const CMD_LEAVE = ["ลา", "แจ้งลา", "sick", "leave"] as const;
+// 🔻 TASK-470 — `request leave`: advertised as "Request Leave" in the customer's list (the same TASK-313 catch).
+export const CMD_LEAVE = ["ลา", "แจ้งลา", "sick", "leave", "request leave"] as const;
 export const CMD_SCHEDULE = ["ตาราง", "ตารางสอน", "schedule"] as const;
 export const CMD_CALENDAR = ["ปฏิทิน", "calendar"] as const;
 

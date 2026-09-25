@@ -149,7 +149,7 @@ export async function approveTeacherLinkRequest(
   // Best-effort side effects: the link is already granted and must not be rolled back because LINE is down.
   // Loud on failure — TASK-066's lesson: a silent `void` is how a broken step goes unnoticed for days.
   try {
-    await linkRoleRichMenu(request.lineUserId, "teacher", lang);
+    await linkRoleRichMenu(request.lineUserId, "teacher"); // 🔻 TASK-468 — one menu per role; `lang` is the BOT's only
   } catch (e) {
     console.error("[teacher-link] approved but rich-menu link failed:", e);
   }

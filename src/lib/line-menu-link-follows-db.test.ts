@@ -10,6 +10,7 @@
 // one week that a documented mechanism had no caller (`UNKNOWN_RICH_MENU` before TASK-247, `menuHasAdminButton`
 // before its test, this). **The comment is not the mechanism**, which is why the assertions below are about
 // call sites rather than about intent.
+import { menuIdFor } from "./line-relink-plan";
 import { describe, expect, test } from "bun:test";
 import { readSrc } from "./read-src";
 
@@ -82,21 +83,24 @@ describe("🔴 every DB link-clear clears the menu link too — asserted as a PA
   });
 });
 
-describe("⚠️ the link ORDER at account-link — the known menu wins only because it is second", () => {
-  test("`linkRoleRichMenu` runs BEFORE `linkKnownRichMenu` for a customer", () => {
-    // Swap them and every newly-linked parent lands on the old REQ-015 parent menu instead of menu B — a
-    // regression nothing else in the suite would notice, because both calls would still be present and both
-    // would still succeed. Same shape as the `สมัคร` ordering pinned in TASK-246.
-    // 🔻 TASK-347 (`REQ-088`) — the seed-then-menus sequence (`settleLinkedRole`) moved to `line-register.service.ts`, the ONE home of the registration
-    // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
-    const branch = code(REG).slice(code(REG).indexOf("await linkRoleRichMenu(lineUserId, role, seed)"));
-    expect(branch.indexOf("linkRoleRichMenu")).toBeLessThan(branch.indexOf("linkKnownRichMenu"));
-    expect(branch.slice(0, 400)).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed)');
+describe("🔻 TASK-468 — the link ORDER hazard is RETIRED: there is one call, so nothing can be second", () => {
+  test("the account-link makes ONE menu call — the role's — where it used to make two whose order decided the menu", () => {
+    // Until TASK-468 a customer got the role menu and then the known menu on top, and SWAPPING those two lines would have
+    // landed every new parent on the old menu with both calls still succeeding (the hazard this block used to pin). With
+    // one bilingual menu per role there is no second call to misorder — the hazard is gone, not guarded.
+    const settle = code(REG).slice(code(REG).indexOf("export async function settleLinkedRole("));
+    const body = settle.slice(0, settle.indexOf("\n}\n"));
+    expect((body.match(/linkRoleRichMenu\(/g) ?? []).length).toBe(1);
+    expect(body).toContain("await linkRoleRichMenu(lineUserId, role);");
+    expect(body).not.toContain("linkKnownRichMenu");
   });
 
-  test("…and the known menu is only for customers — a teacher must not get the family menu", () => {
-    expect(code(REG)).toContain('if (role === "customer") await linkKnownRichMenu');
-    // …and the chat reaches it through the ONE sequence, so both doors link the same menus in the same order.
+  test("…and a teacher still never gets the family menu — the role is passed straight through to the ONE rule", () => {
+    expect(code(REG)).toContain("await linkRoleRichMenu(lineUserId, role);");
+    const ids = { customer: "c", teacher: "t" };
+    expect(menuIdFor("teacher", ids)).toBe("t");
+    expect(menuIdFor("teacher", ids)).not.toBe(menuIdFor("customer", ids));
+    // …and the chat reaches it through the ONE sequence, so both doors link the same menu.
     expect(code(SVC)).toContain('if (role !== "admin") await settleLinkedRole(lineUserId, role);');
   });
 });

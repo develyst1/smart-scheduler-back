@@ -18,7 +18,7 @@ import { lineLinkSessions, parents, teachers } from "../db/schema";
 import { bindFamilyLine, familyOfLineUser } from "../lib/family-link";
 import { clearParentLineLink } from "./parent.service";
 import { getProfileLang } from "../lib/line-client";
-import { linkKnownRichMenu, linkRoleRichMenu } from "../lib/line-rich-menu";
+import { linkRoleRichMenu } from "../lib/line-rich-menu";
 import type { Lang } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { isReservedWord } from "../lib/line-commands";
@@ -179,8 +179,7 @@ export async function settleLinkedRole(lineUserId: string, role: "customer" | "t
     db.update(parents).set({ lineLang: seed }).where(eq(parents.lineUserId, lineUserId)),
   ]).catch((e) => console.error("[line-register] seed lang failed:", e));
   try {
-    await linkRoleRichMenu(lineUserId, role, seed);
-    if (role === "customer") await linkKnownRichMenu(lineUserId, seed);
+    await linkRoleRichMenu(lineUserId, role); // 🔻 TASK-468 — one menu per role, one call; the language is the BOT's only
   } catch (e) {
     console.error("[line-register] linkRoleRichMenu failed:", e);
   }

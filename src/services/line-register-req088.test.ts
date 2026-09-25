@@ -32,7 +32,7 @@ describe("🔴 RULE 1 — no decision exists in TWO places, by ABSENCE on both d
     'kind: "student_registered"',
     'getSetting("line_parent_2fa")',
     "draft: { twoFaCode: code }",
-    "linkKnownRichMenu(",
+    "linkRoleRichMenu(", // 🔻 TASK-468 — the menu decision is ONE call now (one menu per role); it still lives only here
   ];
 
   test("🔑 the one home has every one of them", () => {
@@ -151,7 +151,9 @@ describe("✅ RULES 3–6, each an assertion", () => {
     expect(link.indexOf("settleLinkedRole(")).toBeLessThan(link.indexOf("clearLinkSession("));
     const settle = fnIn(reg, "export async function settleLinkedRole(");
     expect(settle.indexOf("getProfileLang(")).toBeLessThan(settle.indexOf("linkRoleRichMenu("));
-    expect(settle.indexOf("linkRoleRichMenu(")).toBeLessThan(settle.indexOf("linkKnownRichMenu("));
+    // 🔻 TASK-468 — the second link call is gone (one menu per role), so "role menu, THEN known menu" has one step left.
+    expect((settle.match(/linkRoleRichMenu\(/g) ?? []).length).toBe(1);
+    expect(settle).not.toContain("linkKnownRichMenu(");
     // …and the chat runs the same sequence before it touches its session.
     const after = chat.slice(chat.indexOf("const res = await verifyAndLink(lineUserId, role, text, lang);"));
     expect(after.indexOf("settleLinkedRole(")).toBeLessThan(after.indexOf("afterParentLink("));

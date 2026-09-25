@@ -221,8 +221,13 @@ const TABLE: Record<string, Entry> = {
   // chat. The command list is the right home because the person reading it is, by definition, the lost one.
   // 🚫 Deliberately NOT a new rich-menu cell: that needs an image the owner has not asked for (task scope).
   menu_body: {
-    TH: "คำสั่งที่ใช้ได้:\n· เพิ่มนักเรียน — เพิ่มลูกเข้าระบบ (สูงสุด 5 คน)\n· นักเรียน — ดูรายชื่อลูกของคุณ\n· เช็คอิน — เช็คอินคาบวันนี้\n· ลา — แจ้งลาคาบวันนี้\n· qr — รับลิงก์เช็คอิน\n· เมนู — แสดงคำสั่งนี้อีกครั้ง\n\nหรือพิมพ์คำถามเข้ามาได้เลยค่ะ เดี๋ยวแอดมินมาตอบนะคะ 🙏",
-    EN: "Available commands:\n· Add Student — register a child (up to 5)\n· children — list your children\n· check-in — check in today's class\n· leave — report sick leave today\n· qr — get a check-in link\n· menu — show this again\n\nOr just type your question — an admin will read it and reply. 🙏",
+    // 🔴 TASK-470 (REQ-107 §3) — the customer's shorter list, byte for byte (a blank line after the heading: an empty cell
+    // between lines is her convention for a blank line throughout the sheet). ⚠️ Her list DROPS the closing line
+    // ("…an admin will read it and reply 🙏") — the sheet wins, and TASK-470 flags it to the owner explicitly, because it
+    // removes the reassurance the comment above exists to explain rather than rewording it. 🔑 `qr`, `menu` and
+    // `children` leave the LIST only — the commands themselves still WORK (pinned).
+    TH: "คำสั่งที่ใช้ได้:\n\n· เพิ่มนักเรียน — สูงสุด 5 คน\n· คอร์สของฉัน — คอร์สเรียนที่มี\n· เช็คอิน — ลงทะเบียนเข้าเรียน\n· แจ้งลา",
+    EN: "Available Commands:\n\n· Add Student — Up to 5\n· My Course — Registered Course\n· Check-in — Check in today's class\n· Request Leave",
   },
 
   btn_checkin: { TH: "เช็คอิน", EN: "Check-in" },
@@ -232,11 +237,13 @@ const TABLE: Record<string, Entry> = {
   btn_langhelp: { TH: "ภาษา/ช่วยเหลือ", EN: "Language/Help" },
   btn_back: { TH: "‹ เมนู", EN: "‹ Menu" },
 
-  pick_checkin: { TH: "เลือกคาบที่จะเช็คอิน 👇", EN: "Pick a class to check in 👇" },
-  pick_leave: { TH: "เลือกคาบที่จะแจ้งลา 👇", EN: "Pick a class to report leave 👇" },
-  empty_checkin: { TH: "วันนี้ไม่มีคาบที่พร้อมเช็คอิน", EN: "No class to check in today" },
+  // 🔴 TASK-470 (REQ-107 §3) — the customer's sheet, byte for byte. ⚠️ Her TH cell for `pick_leave` is ENGLISH text —
+  // copied as written ("the sheet wins", "do not improve her phrasing") and flagged for the owner in TASK-470.
+  pick_checkin: { TH: "กรุณาเลือกคลาส 👇", EN: "Pick class👇" },
+  pick_leave: { TH: "Pick class to request leave 👇", EN: "Pick class to request leave 👇" },
+  empty_checkin: { TH: "วันนี้ไม่มีคลาส", EN: "No class today" },
   // TASK-135 (REQ-046) / TASK-145 (REQ-050): leave AND check-in are per SESSION — the pickers say which one.
-  pick_leave_child: { TH: "ลาให้ใครคะ 👇", EN: "Which child? 👇" },
+  pick_leave_child: { TH: "กรุณาเลือกนักเรียนค่ะ", EN: "Which child? 👇" }, // TASK-470 — her sheet
   session_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
   // 🔴 TASK-316 §4(d) — the message had to become TRUE. `ลา` now looks at every UPCOMING session, so *"today"*
   // was no longer what it had checked. ⚠️ And the two situations are DIFFERENT: nothing to cancel at all, and
@@ -251,7 +258,7 @@ const TABLE: Record<string, Entry> = {
   },
 
   // SPEC-071 / TASK-234 (AC-15) — the parent-facing course view. Five fields, in the customer template.
-  course_title: { TH: "คอร์สของคุณ", EN: "Your courses" },
+  course_title: { TH: "คอร์สของฉัน :", EN: "My Course:" }, // TASK-470 — her sheet
   course_none: { TH: "ยังไม่มีคอร์สที่ใช้งานอยู่ค่ะ", EN: "No active courses." },
   course_row: {
     TH: "· {course} · ครู{teacher} · เหลือ {remaining}/{total} · สิทธิ์ลาเหลือ {leave} · หมดอายุ {expiry}",
@@ -269,6 +276,9 @@ const TABLE: Record<string, Entry> = {
   // 🔴 TASK-248/DEF-9: renamed from `enter_ask_admin`. The old name read as *"tell them to ask an admin"* while
   // the text asked for a phone, and **that mismatch is the likeliest reason nobody wired the step behind it**:
   // the handler did what the KEY said and only replied. A key that argues with its own copy is a defect waiting.
+  // 🔴 TASK-469 (REQ-107 §2) — the customer's sheet, rows 41–42, byte for byte. The link itself follows on its own line
+  // (row 43), built from `LIFF_ID` in `liff-link.ts` — never copied from the sheet.
+  liff_add_student: { TH: "กรุณากดที่ลิ้งค์ด้านล่างเพื่อเพิ่มนักเรียนค่ะ", EN: "Please click the link below to add a student." },
   enter_ask_phone: {
     TH: "กรุณาพิมพ์เบอร์โทรที่ลงทะเบียนไว้ค่ะ หากยังไม่เคยลงทะเบียน กรุณาติดต่อแอดมิน",
     EN: "Please type your registered phone number. If you have never registered, please contact an admin.",
@@ -380,13 +390,15 @@ const TABLE: Record<string, Entry> = {
   skip_done: { TH: "เรียบร้อยค่ะ ✅", EN: "All set ✅" },
 
   // TASK-145 (REQ-050 AC-3): the confirmation names the session — child · time · teacher · program.
+  // 🔴 TASK-470 — her sheet: `Checked in ✅` then the class line. ⚠️ Her TH cell is ENGLISH (`Checked in ✅`) — copied as
+  // written, flagged. `checkin_already` is NOT on her sheet: its heading stays ours, its line becomes hers (one line shape).
   checkin_ok: {
-    TH: "เช็คอินสำเร็จ ✅\n{name} · {time} น. · ครู{teacher} · {program}",
-    EN: "Checked in ✅\n{name} · {time} · {teacher} · {program}",
+    TH: "Checked in ✅\n{line}",
+    EN: "Checked in ✅\n{line}",
   },
   checkin_already: {
-    TH: "เช็คอินแล้วก่อนหน้านี้\n{name} · {time} น. · ครู{teacher} · {program}",
-    EN: "Already checked in\n{name} · {time} · {teacher} · {program}",
+    TH: "เช็คอินแล้วก่อนหน้านี้\n{line}",
+    EN: "Already checked in\n{line}",
   },
   checkin_notfound: { TH: "ไม่พบคาบที่เลือก", EN: "Class not found" },
   checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
@@ -398,9 +410,17 @@ const TABLE: Record<string, Entry> = {
   // REQ's; `{extended}`/`{locked}` keep the existing make-up + quota lines.
   // `{name}` is back on Porter's ruling (TASK-135 Q2, 2026-08-16): a parent with two children must not have to
   // guess which child's session was cancelled — that is the point of REQ-046.
+  // 🔴 TASK-470 — her sheet: `Record Leave: …` / `บันทึการลา : …` (HER spelling — kept). Her note: "ไม่ต้องบอกเรื่อง move class
+  // to the end ค่ะ" ⇒ the "moves to the end" clause AND the make-up date (`{extended}`) are gone. `{locked}` STAYS: it is a
+  // conditional warning her normal-case example never shows, and dropping a warning is not something the sheet asked.
+  // 🔴 TASK-471 — THE CHILD'S NAME STAYS. 📌 DECIDED TWICE, OPPOSITE WAYS — this is the standing answer: TASK-135 Q2 put
+  // the name here; the customer's sheet (REQ-107 §3) drops it; 🔑 the OWNER ruled on 2026-09-25 (via Sober, TASK-471) that
+  // the NAME STAYS, for TASK-135's reason: a parent with three children must see WHICH child was excused. ⛔ Her sheet has
+  // no name on this line — do NOT "fix" it back to match her sheet. The shape is TASK-135's (`<heading>: {name} — <session>`);
+  // her words (heading, spelling, session line) stay hers.
   leave_ok_session: {
-    TH: "แจ้งลาแล้ว: {name} — {date} {time} น. ครู{teacher} — คาบนี้จะถูกเลื่อนไปต่อท้ายคอร์ส{extended}{locked}",
-    EN: "Leave recorded: {name} — {date} {time} with {teacher} — this session moves to the end of the course.{extended}{locked}",
+    TH: "บันทึการลา : {name} — {line}{locked}",
+    EN: "Record Leave: {name} — {line}{locked}",
   },
   leave_extline: { TH: "\nคาบขยาย: {date} {time}", EN: "\nMake-up class: {date} {time}" },
   leave_lockline: { TH: "\n⚠️ โควตาลาครบแล้ว — ต้องปลดล็อกโดยแอดมิน", EN: "\n⚠️ Leave quota used up — needs admin unlock" },

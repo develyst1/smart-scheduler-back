@@ -54,17 +54,19 @@ describe("TASK-252 — the registry is DERIVED, never retyped", () => {
     const c = code(RICH);
     const registry = c.slice(c.indexOf("export const ALL_MENU_DEFS"), c.indexOf("export interface ChannelMenuRef"));
     expect(registry).not.toMatch(/"smart-scheduler-/);
-    expect(registry).toContain("[PARENT_RICH_MENU.name]:");
+    expect(registry).toContain("[UNKNOWN_MENU.name]:"); // 🔻 TASK-468 — the per-role set is what the map spells now
     expect(registry).toContain("ALL_MENU_DEFS.map((m) => m.name)");
   });
 
-  test("🔑 NAME_TO_KEY is SIX and OUR_MENU_NAMES is EIGHT — two questions, two answers", () => {
+  test("🔑 NAME_TO_KEY is THREE and OUR_MENU_NAMES is ELEVEN — two questions, two answers", () => {
     // The task's Question. `adopt` asks "which names must be PRESENT for a complete map?" and `selectMenuIds`
     // aborts on any gap, so a name we define but never publish must stay OUT of it. Ownership asks "did WE name
     // this?" — and a menu called `smart-scheduler-unknown-en` on a channel is unambiguously ours whether or not
     // we ever published one.
-    expect(Object.keys(NAME_TO_KEY)).toHaveLength(6);
-    expect(OUR_MENU_NAMES.size).toBe(8);
+    // 🔻 TASK-468 — what publish CREATES is three per-role menus; what we have EVER named is those three plus the eight
+    // per-language ones, which stay on channels until the owner removes them after the relink sweep — ours all the same.
+    expect(Object.keys(NAME_TO_KEY)).toHaveLength(3);
+    expect(OUR_MENU_NAMES.size).toBe(11);
     for (const name of Object.keys(NAME_TO_KEY)) expect(OUR_MENU_NAMES.has(name)).toBe(true);
     // The two that differ, named so the difference is deliberate rather than an oversight someone "fixes".
     expect(OUR_MENU_NAMES.has("smart-scheduler-unknown-en")).toBe(true);
@@ -88,10 +90,10 @@ describe("TASK-252 — ourMenuMatch is the single predicate", () => {
   });
 
   test("🔴 our name with NO stored ids at all — the state remove-menus leaves behind", () => {
-    expect(ourMenuMatch({ richMenuId: "rm-old", name: "smart-scheduler-known-th" }, {})).toEqual({
-      label: "knownTH",
-      matchedBy: "name",
-    });
+    expect(ourMenuMatch({ richMenuId: "rm-new", name: "smart-scheduler-customer" }, {})).toEqual({ label: "customer", matchedBy: "name" });
+    // 🔻 TASK-468 — an OLD per-language name is still OURS (that is the claim), and now reads with the same readable
+    // label TASK-252 gives any defined-but-unpublished name (`known-th`), because it is no longer in the publish map.
+    expect(ourMenuMatch({ richMenuId: "rm-old", name: "smart-scheduler-known-th" }, {})).toEqual({ label: "known-th", matchedBy: "name" });
   });
 
   test("a name we never chose is not ours, and neither is a missing one", () => {

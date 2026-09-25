@@ -97,6 +97,8 @@ import { hhmm, weekRange } from "../lib/time";
 import { renderSchedule } from "../lib/line-schedule";
 import { TEMPLATE_LANG } from "../lib/line-message-fields";
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
+import { checkinLine, joinItems, leaveLine } from "../lib/line-v2-lines";
+import { liffLinkBody } from "../lib/liff-link";
 import { toCourseSummary } from "../lib/leave";
 import {
   checkinByToken,
@@ -107,6 +109,12 @@ import {
   getCheckinQr,
 } from "./checkin.service";
 import { updateBookingStatus } from "./scheduler.service";
+
+/** TASK-469 — the LIFF-link reply, or `null` when this box has no `LIFF_ID` (the caller keeps the typed flow). */
+function liffLinkReply(lang: Lang) {
+  const body = liffLinkBody();
+  return body ? textReply(body, lang) : null;
+}
 
 // TASK-245 — the router's vocabulary now lives in `lib/line-commands.ts`, because the reserved set and the
 // words the bot advertises MUST be the same list. A second copy is how "the bot said it is a command" and
@@ -853,13 +861,24 @@ function sessionPicker(
   // the text than a parent can tap is a list with unreachable entries, and widening the window is what made
   // that reachable.
   const shown = picks.slice(0, 12);
-  const body = [prompt, ...shown.map((p) => `· ${p.body}`)].join("\n");
+  // 🔴 TASK-470 (REQ-107 §3) — the BODY is the customer's format, a BLANK LINE between items (her note on every list).
+  // Check-in lines carry NO bullet, leave lines do — both exactly as her sheet has them. The BUTTONS keep their short
+  // labels: her lines run 40–50 characters and LINE caps a button at 20 (TASK-316's body/button split). `qr` is not on
+  // her sheet and keeps its old form.
+  const rowsById = new Map(rows.map((b) => [b.id, b]));
+  const chosen = shown.map((p) => rowsById.get(p.id));
+  const body =
+    action === "checkin"
+      ? `${prompt}\n${joinItems(chosen.map((b) => checkinLine(b)))}`
+      : action === "leave"
+        ? `${prompt}\n${joinItems(chosen.map((b) => `· ${leaveLine(b)}`))}`
+        : [prompt, ...shown.map((p) => `· ${p.body}`)].join("\n");
   return bookingPicker(body, action, shown, lang);
 }
 
 async function doCheckin(lineUserId: string, replyToken: string, date: string, lang: Lang) {
   const today = await findTodayBookingsForParent(lineUserId, date);
-  if (!today.length) return send(replyToken, [textReply(tb("empty_checkin"), lang)]);
+  if (!today.length) return send(replyToken, [textReply(tb("empty_checkin"), lang)]); // TASK-470 — her words; still bilingual (TASK-276)
   if (today.length === 1) return doCheckinBooking(lineUserId, today[0]!.id, replyToken, date, lang);
   return send(replyToken, [sessionPicker(t("pick_checkin", lang), "checkin", today, lang, true)]);
 }
@@ -892,12 +911,8 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
     const result = await checkinByToken(qr.token);
     const key = result.already ? "checkin_already" : "checkin_ok";
     // TASK-145 (AC-3): the confirmation names WHICH session was checked in, not just the child and the time.
-    const body = t(key, lang, {
-      name: b.student.name,
-      time: hhmm(b.startTime),
-      teacher: b.teacher?.nickname ?? "-",
-      program: b.subject?.name ?? "-",
-    });
+    // TASK-470 — the customer's class line (the ONE name rule leads it; a DUO row reads both children).
+    const body = t(key, lang, { line: checkinLine(b) });
     return send(replyToken, [textReply(body, lang)]);
   } catch (e: any) {
     return send(replyToken, [textReply(e?.message ?? t("checkin_err", lang), lang)]);
@@ -980,18 +995,11 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
     return send(replyToken, [textReply(e?.message ?? tb("leave_err"), lang)]);
   }
   const locked = result.locked ? t("leave_lockline", lang) : "";
-  const extended = result.extended
-    ? t("leave_extline", lang, { date: result.extended.date, time: result.extended.startTime })
-    : "";
-  // TASK-135 (AC-1/AC-3): the confirmation names the session that was cancelled — date · time · teacher.
-  const body = t("leave_ok_session", lang, {
-    name: b.student.name,
-    date: b.date,
-    time: hhmm(b.startTime),
-    teacher: b.teacher?.nickname ?? "-",
-    extended,
-    locked,
-  });
+  // 🔴 TASK-470 — the customer's success line. The make-up date (`leave_extline`) is NOT printed any more: her note is
+  // "do not tell them about moving the class to the end". The make-up session itself is still created, exactly as before.
+  // TASK-471 — the name stays (owner ruling over her sheet; reason and history on `leave_ok_session` in line-i18n.ts).
+  // Through the ONE name rule, so a DUO row reads both children.
+  const body = t("leave_ok_session", lang, { name: studentNamesOf(b) ?? "-", line: leaveLine(b), locked });
   return send(replyToken, [textReply(body, lang)]);
 }
 
@@ -1025,7 +1033,7 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
     // ⚠️ A course has NO teacher column — the teacher is a fact about its sessions (TASK-140 moved the PROGRAM
     // onto the course but deliberately left the teacher on the bookings, because a course can be re-teachered).
     // So it is read from the sessions, and a course whose teacher changed shows the one actually teaching it.
-    with: { subject: true, bookings: { with: { teacher: true } } },
+    with: { subject: true, student: true, coStudent: true, bookings: { with: { teacher: true } } }, // TASK-470 — the name leads the line
   });
   const view = rows
     // 🔴 `toCourseSummary` is called on the ROW — `leaveUsed` and `adminUnlocked` are real columns, so nothing
@@ -1033,6 +1041,7 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
     .map((c: any) => ({ c, s: toCourseSummary(c) }))
     .filter(({ s }: any) => s.status === "ACTIVE")
     .map(({ c, s }: any) => ({
+      studentName: studentNamesOf(c), // 🔑 TASK-470 — her note: "show whose course it is"; the ONE name rule (a DUO course reads both)
       subjectName: c.subject?.name ?? null,
       // 🔴 The NEXT upcoming session's teacher, not the first ever (SA fix). A course is re-teacherable by
       // design, so a split course is the NORMAL result of one — and a parent is asking "who is teaching my
@@ -1043,8 +1052,10 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
       leaveRemaining: s.leaveRemaining,
       expiryDate: s.expiryDate,
     }));
-  // Same shape as the schedule: one whole list per language.
-  return send(replyToken, [textReply(both((l) => renderMyCourses(view, l)), lang)]);
+  // Same shape as the schedule: one whole list per language (TASK-276, unchanged). ⚠️ TASK-470 — her lines are identical in
+  // both languages, so this now prints each course twice under the two headings: a question for the owner, not a change here.
+  // TASK-470 (f) — the heading in both languages, each class line once (Sober's ruling; `renderMyCourses`).
+  return send(replyToken, [textReply(renderMyCourses(view), lang)]);
 }
 
 /**
@@ -1494,22 +1505,22 @@ async function handlePostback(ev: LineWebhookEvent) {
     return send(replyToken, [askRole(lang)]);
   }
   if (action === "enter") {
+    // 🔴 TASK-469 (REQ-107 §2) — Sign Up answers with the `/register` LIFF link. No step is set: the page does the
+    // linking. 🔑 The typed-phone path is untouched — no `LIFF_ID` falls through to it below, and `สมัคร` / a phone
+    // typed unprompted (TASK-447) still link a family exactly as before (the owner's ruling: working, unadvertised).
+    const link = liffLinkReply(lang);
+    if (link) return send(replyToken, [link]);
     await setStep(lineUserId, "AWAIT_CODE", "customer");
     return send(replyToken, [textReply(tb("enter_ask_phone"), lang)]);
   }
 
-  // Language toggle — flip, re-link the matching-language menu, confirm in the NEW language.
+  // Language toggle — flip and confirm in the NEW language.
+  // 🔻 TASK-468 — it NO LONGER re-links a menu: the menus are bilingual, one per role, so there is nothing for a toggle to
+  // choose. That retires the TASK-452 drift class at the root (a toggle picking a different menu family from the link).
   if (action === "lang") {
     const next = await toggleLang(lineUserId, lang);
-    const linked = await detectLinkedRole(lineUserId);
-    if (linked === "customer" || linked === "teacher") {
-      try {
-        await linkRoleRichMenu(lineUserId, linked, next);
-      } catch (e) {
-        console.error("[line-webhook] relink menu on toggle failed:", e);
-      }
-    }
-    return send(replyToken, [textReply(t("lang_switched", next), next)]);
+    // 🔴 TASK-470 — her Language/Help reply: the confirmation AND the command list, in ONE message, in the NEW language.
+    return send(replyToken, [textReply(`${t("lang_switched", next)}\n${t("menu_body", next)}`, next)]);
   }
 
   const linked = await detectLinkedRole(lineUserId);
@@ -1552,9 +1563,14 @@ async function handlePostback(ev: LineWebhookEvent) {
     // TASK-234 (AC-15) — คอร์สของฉัน on the known menu.
     case "mycourses":
       return doMyCourses(lineUserId, replyToken, lang);
-    case "register":
+    case "register": {
+      // 🔴 TASK-469 — Add Student answers with the same LIFF link (`/register` `create` is the one writer, with the cap).
+      // No `LIFF_ID` ⇒ today's in-chat flow. Typed `เพิ่มนักเรียน` is unchanged.
+      const link = liffLinkReply(lang);
+      if (link) return send(replyToken, [link]);
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
       return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang), lang), lang)]);
+    }
     default: // menu / help / unknown → the menu
       return doMenu(replyToken, lang);
   }

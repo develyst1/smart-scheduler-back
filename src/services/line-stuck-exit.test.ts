@@ -13,6 +13,7 @@
 //
 // ⚠️ The end-to-end run of the owner's exact three messages needs session ROWS — that half is Tanya's. What is
 // pinned here is everything provable without a database: the vocabulary, the wiring, and the invariant.
+import { CUSTOMER_MENU, UNKNOWN_MENU, menuHasAdminButton } from "../lib/line-rich-menu";
 import { describe, expect, test } from "bun:test";
 import { readSrc } from "../lib/read-src";
 import {
@@ -261,11 +262,15 @@ describe("🔴 3 — the invariant: no rejection bypasses the strike counter", (
 });
 
 describe("✅ Face 2 — the bot is silent, but a PERSON is reachable", () => {
-  test("the command list ends with the line that says someone will answer", () => {
-    // AC-16 made the bot silent by default and nothing told the person in front of it that a human still reads
-    // the chat. The list is the right home: whoever is reading it is, by definition, the one who is lost.
-    expect(t("menu_body", "TH")).toContain("หรือพิมพ์คำถามเข้ามาได้เลยค่ะ เดี๋ยวแอดมินมาตอบนะคะ 🙏");
-    expect(t("menu_body", "EN")).toContain("admin will read it and reply");
+  test("⚠️ TASK-470 — the list no longer says someone will answer; a PERSON is still reachable through the menu's admin cell", () => {
+    // AC-16 made the bot silent by default, and this line was how the person in front of it learned a human still reads the
+    // chat. 🔴 The customer's sheet (REQ-107 §3) REMOVES it from the command list — the sheet wins, and TASK-470 put it to the
+    // owner explicitly, because this removes a reassurance rather than rewording it. PENDING his confirmation.
+    expect(t("menu_body", "TH")).not.toContain("แอดมินมาตอบ");
+    expect(t("menu_body", "EN")).not.toContain("admin will read it");
+    // 🔑 What still guarantees the property: `คุยกับแอดมิน` is a CELL on both parent-facing menus (REQ-079's unchanged rule).
+    expect(menuHasAdminButton(UNKNOWN_MENU)).toBe(true);
+    expect(menuHasAdminButton(CUSTOMER_MENU)).toBe(true);
   });
 
   test("🔑 both `เมนู` AND `ช่วยเหลือ` render it — one string, one branch", () => {

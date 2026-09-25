@@ -148,44 +148,39 @@ describe("🔴 `คุยกับแอดมิน` is on both menus — the i
 describe("🔴 the publish path — the reason the menus never reached a phone", () => {
   const PUB = fn(SRC, "export async function publishRichMenus");
 
-  test("it creates and uploads all SIX menus", () => {
-    for (const def of [
-      "PARENT_RICH_MENU)",
-      "PARENT_RICH_MENU_EN)",
-      "TEACHER_RICH_MENU)",
-      "TEACHER_RICH_MENU_EN)",
-      "UNKNOWN_RICH_MENU)",
-      "KNOWN_RICH_MENU)",
-    ]) {
+  test("it creates and uploads all THREE per-role menus (TASK-468 — one bilingual menu per role)", () => {
+    for (const def of ["UNKNOWN_MENU)", "CUSTOMER_MENU)", "TEACHER_MENU)"]) {
       expect(code(PUB)).toContain(`createRichMenu(${def}`);
     }
-    expect(code(PUB).match(/uploadRichMenuImage\(/g)).toHaveLength(6);
+    expect(code(PUB).match(/uploadRichMenuImage\(/g)).toHaveLength(3);
+    // 🚫 no per-language menu is created any more — the pairs differed only in the picture
+    expect(code(PUB)).not.toMatch(/createRichMenu\((PARENT|KNOWN|UNKNOWN_RICH|TEACHER_RICH)/);
   });
 
-  test("🔑 it STORES `unknownTH` and `knownTH` — the ids the runtime has been reading for", async () => {
-    // `linkKnownRichMenu` has read `ids.knownTH` since TASK-234 and nothing ever wrote it. That single missing
-    // write is the whole of what a parent saw as "the menu never changed".
-    expect(code(PUB)).toContain("const ids: MenuIds = { parentTH, parentEN, teacherTH, teacherEN, unknownTH, knownTH }");
-    // 🔻 TASK-452 — the key pair is still the rule for a bound customer, but it is READ in ONE place now
-    // (`expectedMenuKey`, `lib/line-relink-plan.ts`), which both live linkers and the relink sweep ask. The claim this
-    // line guards — that `knownTH` is what a bound TH customer is linked to — is unchanged; only its home is.
+  test("🔑 it STORES the ids the runtime reads — the three per-role keys, and nothing reads a key nobody writes", async () => {
+    // The TASK-247 lesson this test was written for: `linkKnownRichMenu` read `ids.knownTH` for months and nothing
+    // wrote it. 🔻 TASK-468 — the keys are now `unknown · customer · teacher`; publish writes exactly those, and the ONE
+    // rule (`expectedMenuKey`) reads exactly those first.
+    expect(code(PUB)).toContain("const ids: MenuIds = { unknown, customer, teacher };");
     const PLAN = readSrc(await Bun.file(new URL("./line-relink-plan.ts", import.meta.url)).text());
-    expect(code(PLAN)).toContain('const knownKey = (lang === "EN" ? "knownEN" : "knownTH") as keyof MenuIds;');
-    expect(code(SRC)).toContain('const target = menuIdFor(role, lang === "EN" ? "EN" : "TH", await getMenuIds());');
+    expect(code(PLAN)).toContain('const roleKey: keyof MenuIds = role === "teacher" ? "teacher" : "customer";');
+    expect(code(SRC)).toContain("const target = menuIdFor(role, await getMenuIds());");
   });
 
   test("🔴 the ACCOUNT DEFAULT is the unknown menu, not the old parent menu", () => {
     // The file's own note says ยังไม่รู้จัก is where a chat lands with no code running — and the only call that
     // sets a default pointed at the REQ-015 parent menu. The design and the code disagreed; the code is what runs.
-    expect(code(PUB)).toContain("setDefaultRichMenu(unknownTH)");
+    expect(code(PUB)).toContain("setDefaultRichMenu(unknown)"); // 🔻 TASK-468 — the per-role unknown menu
     expect(code(PUB)).not.toContain("setDefaultRichMenu(parentTH)");
   });
 
   test("the publish command refuses BEFORE any LINE call when an image is missing", () => {
     // Six images now, one contract: a run that cannot finish must not start, or the channel is left with some
     // menus created and others not — and the ids of the half that succeeded are already stored.
-    expect(PUBLISH).toContain('unknownThImage: "assets/line/unknown-th.png"');
-    expect(PUBLISH).toContain('knownThImage: "assets/line/known-th.png"');
+    // 🔻 TASK-468 — three bilingual images now, one contract
+    expect(PUBLISH).toContain('unknownImage: "assets/line/menu-unknown.png"');
+    expect(PUBLISH).toContain('customerImage: "assets/line/menu-customer.png"');
+    expect(PUBLISH).toContain('teacherImage: "assets/line/menu-teacher.png"');
     const main = fn(PUBLISH, "async function main");
     expect(main.indexOf("preflightErrors")).toBeLessThan(main.indexOf("publishRichMenus("));
   });

@@ -23,6 +23,12 @@ const extenderBody = endOfDayBody.extend({
   maxDates: z.number().int().min(1).max(5000).optional(),
 });
 
+// TASK-467 — the read-only runs window's query: an optional job name, and a limit that cannot be raised past the cap.
+const jobRunsQuery = z.object({
+  job: z.string().regex(/^[a-z0-9-]+$/).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 /** Shared `INTERNAL_JOB_SECRET` gate (x-internal-secret header). Returns an error Response to send,
  *  or null to proceed. Disabled (503) when the secret is unset → never an open endpoint. */
 function internalSecretError(c: Context): Response | null {
@@ -86,6 +92,14 @@ export const internalJobs = new Hono()
     const r = await jobs.startGroupSeriesExtenderRun(date, { maxSeries, maxDates });
     if ("alreadyRunning" in r) return c.json({ error: { code: "ALREADY_RUNNING", message: `run ${r.alreadyRunning} is still in progress` } }, 409);
     return c.json(r, 202);
+  })
+  // TASK-467 — READ-ONLY: the last job runs, newest first. The same secret as the triggers; no write of any kind.
+  // 📌 Named `job-runs` (not `runs`) so its trigger file `sm-jobs/job-runs.ps1` calls a route with ITS OWN NAME —
+  // TASK-461's walk rule, kept rather than bent: the file name is the one the owner types, so it is the clear one.
+  .get("/jobs/job-runs", zValidator("query", jobRunsQuery), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await jobs.listJobRuns(c.req.valid("query")));
   })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {

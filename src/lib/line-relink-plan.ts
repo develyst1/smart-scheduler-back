@@ -25,7 +25,10 @@ export interface MenuUser {
 }
 
 /** `ok` = already right · `stale` = an id that is not one of ours any more · `variant` = one of ours, but not the expected
- *  one (a language toggle leaves a customer on `parentTH`) · `unlinked` = a known user on the channel default ·
+ *  one — 🔴 TASK-468: this is THE MIGRATION PATH. After the per-role publish every existing follower still holds an OLD
+ *  per-language id that the merge keeps stored, so the first sweep reads them all as `variant` and `--apply` moves them.
+ *  (Deleting this outcome would relabel them `stale` — "not ours" — which is false.) Afterwards it narrows to a chat on
+ *  the OTHER role's menu. `unlinked` = a known user on the channel default ·
  *  `no-menu-published` = the expected menu was never published on this account — the sweep cannot fix it, and says so. */
 export type RelinkOutcome = "ok" | "stale" | "variant" | "unlinked" | "no-menu-published";
 
@@ -45,13 +48,22 @@ export interface RelinkPlan {
   counts: Record<RelinkOutcome, number>;
 }
 
-/** The menu key the runtime's two calls would leave this user on — the LAST one that actually has a stored id. */
-export function expectedMenuKey(role: MenuRole, lang: MenuLang, ids: MenuIds): keyof MenuIds | null {
-  const roleKey = ((role === "teacher" ? "teacher" : "parent") + lang) as keyof MenuIds;
-  const knownKey = (lang === "EN" ? "knownEN" : "knownTH") as keyof MenuIds;
-  if (role === "customer" && ids[knownKey]) return knownKey; // the second call wins when it is published
+/**
+ * 🔴 TASK-468 — the menu a ROLE gets. No language: the artwork is bilingual, so there is ONE menu per role.
+ *
+ * The per-role key wins whenever it is stored. 🔑 The LEGACY FALLBACK exists for exactly one window — a box that has
+ * deployed this code but not yet re-published — and it keeps linking what that box linked before for a TH chat:
+ * customer → `knownTH` → `parentTH`, teacher → `teacherTH`. TH only, on purpose: the EN variants are the gap this
+ * change closes (`knownEN` was never published), so an EN chat gets what an EN customer already got. Nothing goes blank.
+ */
+const LEGACY_FALLBACK: Record<MenuRole, ReadonlyArray<keyof MenuIds>> = {
+  customer: ["knownTH", "parentTH"],
+  teacher: ["teacherTH"],
+};
+export function expectedMenuKey(role: MenuRole, ids: MenuIds): keyof MenuIds | null {
+  const roleKey: keyof MenuIds = role === "teacher" ? "teacher" : "customer";
   if (ids[roleKey]) return roleKey;
-  return null;
+  return LEGACY_FALLBACK[role].find((k) => !!ids[k]) ?? null;
 }
 
 /**
@@ -66,8 +78,8 @@ export function expectedMenuKey(role: MenuRole, lang: MenuLang, ids: MenuIds): k
  *
  * ⇒ `linkRoleRichMenu`, `linkKnownRichMenu` and the sweep now all resolve through THIS. One rule, three callers.
  */
-export function menuIdFor(role: MenuRole, lang: MenuLang, ids: MenuIds): string | null {
-  const key = expectedMenuKey(role, lang, ids);
+export function menuIdFor(role: MenuRole, ids: MenuIds): string | null {
+  const key = expectedMenuKey(role, ids);
   return key ? (ids[key] ?? null) : null;
 }
 
@@ -76,8 +88,8 @@ const labelOf = (id: string, ids: MenuIds): string | null =>
 
 export function planRelink(users: MenuUser[], ids: MenuIds): RelinkPlan {
   const rows: RelinkRow[] = users.map((user) => {
-    const key = expectedMenuKey(user.role, user.lang, ids);
-    const expectedId = menuIdFor(user.role, user.lang, ids); // TASK-452 — the same expression the live links use
+    const key = expectedMenuKey(user.role, ids);
+    const expectedId = menuIdFor(user.role, ids); // TASK-452 — the same expression the live links use (TASK-468: no language)
     const linkedLabel = user.linkedMenuId ? labelOf(user.linkedMenuId, ids) : null;
     const outcome: RelinkOutcome = !expectedId
       ? "no-menu-published"

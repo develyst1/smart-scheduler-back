@@ -20,7 +20,7 @@
 // had not turned up because nobody pressed a button. On `uat` it did that to 15 real children in one weekend.
 // Good customers are separated by **CRM points at check-in**, and this path awards none — that absence is the
 // signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, lineWebhookEvents, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
@@ -40,7 +40,7 @@ import { REMINDABLE, dueSends, groupReminders, reminderReach, reminderSends } fr
 import { campReminderSends } from "../lib/camp-reminder";
 import { WEEKLY_DIGEST_JOB, groupWeekRows, weekOf, weeklyDigestKey } from "../lib/weekly-digest";
 import { GROUP_EXTENDER_JOB, weeklyDatesToCreate } from "../lib/group-extend";
-import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
+import { COURSE_LIVE, COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { attachAdditionalTeachers, insertBooking } from "./scheduler.service";
 import { ApiException } from "../lib/http";
 import { addDays, hhmm } from "../lib/time";
@@ -642,13 +642,27 @@ export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOp
   const horizon = addDays(runDate, weeks * 7);
   // A job that cannot compute its horizon has BROKEN — it must fail loudly, never report a green zero with `weeks: null`.
   if (!ISO_DATE.test(horizon)) throw new Error(`[${GROUP_EXTENDER_JOB}] horizon is not a date ("${horizon}") — runDate=${runDate} weeks=${weeks}`);
+  // 🔴 TASK-466 — ONE read of EVERY group row, any status, split in memory into two questions:
+  //  · "which dates has this series ever HAD?" ⇒ ALL rows (live, cancelled, attended). This used to be the live rows
+  //    only, so a date an admin CANCELLED was invisible here — and if it was the series' last date, the anchor fell back
+  //    to the last live row and the job re-created the cancelled session that night (a CANCELLED row holds no slot, so
+  //    nothing clashed and nothing complained). The TASK-456 reasoning that removed the "already exists" guard was
+  //    sound about LIVE rows; it was the wrong set.
+  //  · "does this series still run, and what does it look like now?" ⇒ the LIVE rows, exactly as before: a series with
+  //    no live row left (cancelled in full) is not iterated at all — a cancel-all stays terminal — and the template is
+  //    still the last LIVE row, because a cancelled row is not what the class looks like today.
   const rows = await db.query.bookings.findMany({
-    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES])),
+    where: (b: any, { eq: e }: any) => e(b.bookingType, "GROUP"),
     with: { additionalTeachers: true, teacher: true },
     orderBy: (b: any, { asc }: any) => [asc(b.date)],
   });
-  const series = new Map<string, any[]>();
-  for (const r of rows) if (r.groupKey) series.set(r.groupKey, [...(series.get(r.groupKey) ?? []), r]);
+  const series = new Map<string, any[]>(); // live rows, by key
+  const hadDates = new Map<string, string[]>(); // EVERY date the series has had, any status, by key
+  for (const r of rows) {
+    if (!r.groupKey) continue;
+    hadDates.set(r.groupKey, [...(hadDates.get(r.groupKey) ?? []), r.date]);
+    if (COURSE_LIVE.has(r.status)) series.set(r.groupKey, [...(series.get(r.groupKey) ?? []), r]);
+  }
 
   const plan: Array<ExtenderPlanItem & { template: any }> = [];
   let closed = 0, planned = 0, pending = 0;
@@ -657,7 +671,10 @@ export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOp
     // 🚫 A CLOSED series gains nothing — that is what closing is FOR, and it is the only off switch. ⚠️ Said plainly:
     // a series somebody ABANDONED without closing WILL keep being extended. That is the design, not an oversight.
     if (group.some((r: any) => r.groupClosedAt)) { closed++; continue; }
-    const dates = weeklyDatesToCreate({ existing: group.map((r: any) => r.date), from: runDate, horizon });
+    // 🔑 TASK-466 — the ANCHOR is the last date the series ever HAD (cancelled ones included): a cancelled session is a
+    // cancelled session, not the end of a weekly class. Anchoring on the last LIVE date instead would re-create the
+    // cancelled dates — and would silently shorten nothing, it would REPEAT them.
+    const dates = weeklyDatesToCreate({ existing: hadDates.get(groupKey) ?? [], from: runDate, horizon });
     if (!dates.length) continue;
     // 🔴 TASK-462 — the bound is checked BEFORE the series is taken, and a series is never split across runs: half a
     // series extended is a series whose later weeks look missing to a human reading the calendar.
@@ -753,4 +770,25 @@ export async function startGroupSeriesExtenderRun(date: string | undefined, opts
     }
   })();
   return { runId, status: "running" };
+}
+
+// ─────── TASK-467 — a READ-ONLY window into `job_runs` ───────
+//
+// TASK-462 moved a job's outcome out of the PowerShell window into a `job_runs` row — so that "it ran long" and "it
+// died" stop looking identical — and gave the owner no way to read that row. This is the window: newest first, capped,
+// and nothing else. 🔑 A `running` row with no `finishedAt` is returned EXACTLY as it is: an unfinished run must read as
+// unfinished, because that absence is the signal the whole TASK-462 design rests on.
+export const JOB_RUNS_DEFAULT_LIMIT = 20;
+export const JOB_RUNS_MAX_LIMIT = 100;
+export async function listJobRuns(opts: { job?: string; limit?: number } = {}) {
+  const limit = Math.min(opts.limit ?? JOB_RUNS_DEFAULT_LIMIT, JOB_RUNS_MAX_LIMIT);
+  const rows = await db
+    .select()
+    .from(jobRuns)
+    .where(opts.job ? eq(jobRuns.job, opts.job) : undefined)
+    .orderBy(desc(jobRuns.startedAt))
+    .limit(limit);
+  return {
+    runs: rows.map((r: any) => ({ job: r.job, runId: r.id, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt ?? null, summary: r.summary ?? null })),
+  };
 }

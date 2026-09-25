@@ -9,9 +9,12 @@
 // derivation of "sessions remaining" is how a parent and an admin end up quoting different figures at each
 // other, which is the one thing this view must never cause.
 
-import { t, type Lang } from "./line-i18n";
+import { tb } from "./line-i18n";
+import { courseLineV2, joinItems } from "./line-v2-lines";
 
 export interface MyCourseRow {
+  /** 🔴 TASK-470 — whose course it is, through the ONE name rule (`studentNamesOf`): her line leads with it. */
+  studentName: string | null;
   /** The program — what the family calls the course. */
   subjectName: string | null;
   teacherNickname: string | null;
@@ -22,28 +25,10 @@ export interface MyCourseRow {
   expiryDate: string;
 }
 
-/**
- * AC-15's five fields: `คอร์ส · ครู · เหลือ n/N · สิทธิ์ลาเหลือ · วันหมดอายุ`.
- *
- * ⚠️ **"เหลือ" is REMAINING, not used** — `size − usedSessions`. Showing the used count under a label that says
- * "remaining" is the kind of quiet inversion a family only notices when they run out early, and by then they
- * have already planned around the wrong number. Clamped at 0: an over-attended course (possible after an
- * import correction) must read "0 left", never a negative.
- *
- * A missing program or teacher renders as `-` rather than being omitted — an absent field on a money document
- * reads as "the system knows and is not saying".
- */
-export function courseLine(c: MyCourseRow, lang: Lang): string {
-  const remaining = Math.max(0, c.size - c.usedSessions);
-  return t("course_row", lang, {
-    course: c.subjectName ?? "-",
-    teacher: c.teacherNickname ?? "-",
-    remaining: String(remaining),
-    total: String(c.size),
-    leave: String(c.leaveRemaining),
-    expiry: c.expiryDate,
-  });
-}
+// 🔻 TASK-470 — the old `courseLine` (AC-15's five fields incl. the leave quota) is gone: the customer's format replaced it
+// (`courseLineV2`, `line-v2-lines.ts`) and nothing else called it. Its claims — REMAINING not used, clamped at 0, a missing field
+// printed as `-` — moved with it and are pinned on the new line. The `course_row` i18n key stays: another suite pins it as a
+// shared label pattern.
 
 /** Just enough of a session to answer "who is teaching this course?". */
 export interface CourseSession {
@@ -78,8 +63,16 @@ export function nextSessionTeacher(sessions: CourseSession[], today: string): st
   return latestPast?.teacher?.nickname ?? null;
 }
 
-/** The whole reply. An empty list says so plainly rather than sending a bare heading. */
-export function renderMyCourses(rows: MyCourseRow[], lang: Lang): string {
-  if (!rows.length) return t("course_none", lang);
-  return [t("course_title", lang), ...rows.map((c) => courseLine(c, lang))].join("\n");
+/**
+ * The whole reply. An empty list says so plainly rather than sending a bare heading.
+ * 🔴 TASK-470 — the customer's format: `My Course:` / `คอร์สของฉัน :`, then one line per course with a BLANK LINE between
+ * (`courseLineV2`): the name, the program, the teacher, what REMAINS and when it EXPIRES — and 🚫 no leave quota (her note:
+ * "เอาสิทธิการลาออกค่ะ"; the MESSAGE only — the quota is still on every staff screen and in `toCourseSummary`).
+ * 🔑 Sober's ruling (TASK-470 f): the HEADING is bilingual, the class LINES are printed ONCE. TASK-276 prints both
+ * languages so either parent can READ a message; her line has no translated word in it, so printing it once per
+ * language only doubled the scroll. Words stay bilingual (the heading, "no courses"); data-only lines do not.
+ */
+export function renderMyCourses(rows: MyCourseRow[]): string {
+  if (!rows.length) return tb("course_none");
+  return `${tb("course_title")}\n${joinItems(rows.map((c) => courseLineV2(c)))}`;
 }

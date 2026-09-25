@@ -14,7 +14,8 @@ import {
   UNKNOWN_RICH_MENU_EN,
   menuHasAdminButton,
 } from "../lib/line-rich-menu";
-import { courseLine, nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
+import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
+import { courseLineV2 } from "../lib/line-v2-lines";
 import { needsChildStep } from "../lib/line-leave";
 import { t } from "../lib/line-i18n";
 
@@ -79,15 +80,20 @@ describe("the two menu sets — unknown is the DEFAULT, known is the per-user li
     // nothing ever removed one, so a cleared family kept the family menu on their phone. Removing a link and
     // linking a chat TO unknown are different acts: the first is the fallback's caller, the second would be a
     // second definition of the state. The first now exists; the second still must not.
-    expect(MENU).toContain("export async function linkKnownRichMenu");
+    // 🔻 TASK-468 — `linkKnownRichMenu` is gone (one menu per role ⇒ one linker, `linkRoleRichMenu`). The claim stands:
+    // a chat is linked to its ROLE's menu or unlinked back to the default, and nothing links a chat TO unknown.
+    expect(MENU).toContain("export async function linkRoleRichMenu");
     expect(MENU).toContain("export async function unlinkRichMenuFromUser");
     expect(code(MENU)).not.toContain("linkUnknownRichMenu");
   });
 
-  test("a bound family chat gets the known menu", () => {
+  test("a bound family chat gets the CUSTOMER menu — one call, no language", () => {
     // 🔻 TASK-347 (`REQ-088`) — the menu link (`settleLinkedRole`) moved to `line-register.service.ts`, the ONE home of the registration
     // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
-    expect(REG).toContain('if (role === "customer") await linkKnownRichMenu(lineUserId, seed)');
+    // 🔻 TASK-468 — ONE call now: the role's menu IS the family menu (it used to be the role menu and then the known menu on
+    // top, the second write winning). No `seed` passed: the language is the BOT's, never the menu's.
+    expect(REG).toContain("await linkRoleRichMenu(lineUserId, role);");
+    expect(REG).not.toContain("linkKnownRichMenu");
     expect(SVC).toContain('await settleLinkedRole(lineUserId, role)');
   });
 
@@ -116,8 +122,9 @@ describe("the two menu sets — unknown is the DEFAULT, known is the per-user li
   });
 });
 
-describe("🔴 AC-15 — คอร์สของฉัน shows all five fields", () => {
+describe("🔴 AC-15 → TASK-470 — คอร์สของฉัน in the CUSTOMER's format (her sheet; the leave quota removed by her note)", () => {
   const row = {
+    studentName: "Feen",
     subjectName: "Surfskate",
     teacherNickname: "หนึ่ง",
     size: 10,
@@ -126,36 +133,33 @@ describe("🔴 AC-15 — คอร์สของฉัน shows all five fields
     expiryDate: "2026-12-31",
   };
 
-  test("course · teacher · เหลือ n/N · สิทธิ์ลาเหลือ · วันหมดอายุ", () => {
-    const line = courseLine(row, "TH");
-    expect(line).toContain("Surfskate");
-    expect(line).toContain("ครูหนึ่ง");
-    expect(line).toContain("เหลือ 6/10"); // 10 purchased − 4 used
-    expect(line).toContain("สิทธิ์ลาเหลือ 2");
-    expect(line).toContain("2026-12-31");
+  test("🔑 by value: name · program · teacher · Remain n/N · EXPIRE DD.MM.YY — and 🚫 no leave quota", () => {
+    expect(courseLineV2(row)).toBe(".  Feen: Surfskate / Teacher หนึ่ง [Remain: 6/10] *EXPIRE: 31.12.26");
+    expect(courseLineV2(row)).not.toMatch(/สิทธิ์ลา|leave/i); // her note: "เอาสิทธิการลาออกค่ะ" — the MESSAGE only
   });
 
-  test("🔴 'เหลือ' is REMAINING, not used — the inversion a family only notices when they run out early", () => {
-    expect(courseLine({ ...row, usedSessions: 9 }, "TH")).toContain("เหลือ 1/10");
-    expect(courseLine({ ...row, usedSessions: 0 }, "TH")).toContain("เหลือ 10/10");
+  test("🔴 'Remain' is REMAINING, not used — the inversion a family only notices when they run out early", () => {
+    expect(courseLineV2({ ...row, usedSessions: 9 })).toContain("[Remain: 1/10]");
+    expect(courseLineV2({ ...row, usedSessions: 0 })).toContain("[Remain: 10/10]");
   });
 
   test("an over-attended course reads 0 left, never a negative", () => {
-    // Reachable after an import correction; a negative on a money-adjacent line reads as a system fault.
-    expect(courseLine({ ...row, usedSessions: 12 }, "TH")).toContain("เหลือ 0/10");
+    expect(courseLineV2({ ...row, usedSessions: 12 })).toContain("[Remain: 0/10]");
   });
 
-  test("a missing program or teacher renders `-`, not an omitted field", () => {
-    // An absent field on a money document reads as "the system knows and is not saying".
-    const line = courseLine({ ...row, subjectName: null, teacherNickname: null }, "TH");
-    expect(line).toContain("· - ·");
+  test("a missing name, program or teacher renders `-`, not an omitted field", () => {
+    const line = courseLineV2({ ...row, studentName: null, subjectName: null, teacherNickname: null });
+    expect(line).toBe(".  -: - / Teacher - [Remain: 6/10] *EXPIRE: 31.12.26");
     expect(line).not.toContain("null");
     expect(line).not.toContain("undefined");
   });
 
-  test("no courses says so plainly", () => {
-    expect(renderMyCourses([], "TH")).toBe(t("course_none", "TH"));
-    expect(renderMyCourses([row], "TH")).toContain(t("course_title", "TH"));
+  test("no courses says so plainly; two courses are separated by a BLANK line (her note)", () => {
+    expect(renderMyCourses([])).toBe(`${t("course_none", "TH")}\n${t("course_none", "EN")}`);
+    // TASK-470 (f) — heading in both languages, each line ONCE (Sober's ruling).
+    expect(renderMyCourses([row, { ...row, studentName: "Pun" }])).toBe(
+      "คอร์สของฉัน :\nMy Course:\n.  Feen: Surfskate / Teacher หนึ่ง [Remain: 6/10] *EXPIRE: 31.12.26\n\n.  Pun: Surfskate / Teacher หนึ่ง [Remain: 6/10] *EXPIRE: 31.12.26",
+    );
   });
 
   test("🔑 the numbers come from `toCourseSummary` — the SAME builder every staff screen uses", () => {
