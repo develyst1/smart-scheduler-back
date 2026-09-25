@@ -63,7 +63,7 @@ describe("✅ default 0 ⇒ today's window, byte for byte (no row stored)", () =
     settingsTable({});
     const attended = scan({});
     at("2026-09-25", "17:01");
-    expect(await refused(checkinByToken("tok"))).toBe("โทเคนเช็คอินหมดอายุแล้ว"); // the stored stamp expired at 17:00:59 — as today
+    expect(await refused(checkinByToken("tok"))).toBe("เลยเวลาเช็คอินแล้ว\nCheck-in time has passed.") /* 🔻 TASK-479 — words only; WHEN unchanged */; // the stored stamp expired at 17:00:59 — as today
     expect(attended).toEqual([]);
     expect(checkinWindowMessage("2026-09-25", "16:00", "17:00", 30)).toBe("เช็คอินได้ 2026-09-25 เวลา 15:30–17:00 น.");
   });
@@ -81,7 +81,7 @@ describe("✅ 30 minutes ⇒ open to end+30, refused at end+31 — through the R
     settingsTable({ checkin_late_minutes: 30 });
     const attended = scan({ checkinTokenExpiresAt: new Date("2026-09-25T17:30:59+07:00") });
     at("2026-09-25", "17:31");
-    expect(await refused(checkinByToken("tok"))).toBe("โทเคนเช็คอินหมดอายุแล้ว");
+    expect(await refused(checkinByToken("tok"))).toBe("เลยเวลาเช็คอินแล้ว\nCheck-in time has passed.") /* 🔻 TASK-479 — words only; WHEN unchanged */;
     expect(attended).toEqual([]);
     expect(checkinWindowMessage("2026-09-25", "16:00", "17:00", 30, 30)).toBe("เช็คอินได้ 2026-09-25 เวลา 15:30–17:30 น.");
   });

@@ -1,6 +1,9 @@
 import { db } from "../db";
 import { CALENDAR_HIDDEN_STATUSES } from "../db/schema";
-import { notFound, badRequest } from "../lib/http";
+import { ApiException, notFound, badRequest } from "../lib/http";
+
+/** TASK-479 — the code of "the check-in link has expired" (session 400 · camp keeps its 410 `CAMP_TOKEN_EXPIRED` code). */
+export const CHECKIN_TOO_LATE = "CHECKIN_TOO_LATE";
 import { isWithinCheckinWindow, checkinWindowMessage } from "../lib/checkin";
 import { formatCheckinPayload, issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
@@ -79,7 +82,7 @@ export async function checkinByToken(token: string, source: "checkin-qr" | "line
   const row = await db.query.bookings.findFirst({
     where: (b, { eq: e }) => e(b.checkinToken, token),
   });
-  if (!row) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
+  if (!row) throw notFound(tb("checkin_bad_link")); // TASK-479 — the parent's words, not "token"
   // 🔴 TASK-476 — a SUSPENDED household is refused here as the LINE path refuses it: the same rule, the same words
   // (`suspended_notice`), and FIRST — before "already", so it gets no data back (REQ-019 / TASK-048).
   if (await anyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));
@@ -104,7 +107,9 @@ export async function checkinByToken(token: string, source: "checkin-qr" | "line
   // exactly the old check.
   const inLateWindow = lateMinutes > 0 && isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes, lateMinutes);
   if (row.checkinTokenExpiresAt && row.checkinTokenExpiresAt < new Date() && !inLateWindow) {
-    throw badRequest("โทเคนเช็คอินหมดอายุแล้ว");
+    // TASK-479 — the parent's words, and its own CODE so the LINE reply can answer in the chat's language. WHEN it fires is
+    // TASK-474's rule and unchanged; the status stays 400 (the session page's contract).
+    throw new ApiException(400, CHECKIN_TOO_LATE, tb("checkin_too_late"));
   }
   if (!isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes, lateMinutes)) {
     throw badRequest(

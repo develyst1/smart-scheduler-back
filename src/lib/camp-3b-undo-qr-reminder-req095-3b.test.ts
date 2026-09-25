@@ -140,7 +140,7 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     expect(campScanOutcome({ status: "PLANNED", date: today, checkinTokenExpiresAt: live }, today, now)).toBe("attend");
     expect(campScanOutcome({ status: "ABSENT", date: today, checkinTokenExpiresAt: live }, today, now)).toBe("attend");
     expect(thrown(() => campScanOutcome({ status: "CANCELLED", date: today, checkinTokenExpiresAt: live }, today, now))).toMatchObject({ status: 409, code: "CAMP_DAY_TRANSITION" });
-    expect(thrown(() => campScanOutcome({ status: "PLANNED", date: "2026-10-04", checkinTokenExpiresAt: dead }, today, now))).toEqual({ status: 410, code: "CAMP_TOKEN_EXPIRED", message: "โทเคนเช็คอินหมดอายุแล้ว" });
+    expect(thrown(() => campScanOutcome({ status: "PLANNED", date: "2026-10-04", checkinTokenExpiresAt: dead }, today, now))).toEqual({ status: 410, code: "CAMP_TOKEN_EXPIRED", message: "เลยเวลาเช็คอินแล้ว\nCheck-in time has passed." } /* 🔻 TASK-479 — the parent's words */);
     expect(thrown(() => campScanOutcome({ status: "PLANNED", date: "2026-10-06", checkinTokenExpiresAt: new Date("2026-10-06T16:59:59+07:00") }, today, now))).toMatchObject({ status: 409, code: "CAMP_DAY_NOT_TODAY" });
   });
   test("by source: minted only when absent (never at redeem); the scan attends through `markDay(…, \"ATTENDED\", \"checkin-qr\")`; no CRM points; the public route beside the session's with its own codes", () => {
@@ -162,7 +162,7 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     expect(RT).toContain("TWO ROUTES, TWO\n * CODES, ON PURPOSE");
     expect(RT).toContain("410 CAMP_TOKEN_EXPIRED");
     // the session's own expiry answer is untouched
-    expect(code(src("src/services/checkin.service.ts"))).toContain('throw badRequest("โทเคนเช็คอินหมดอายุแล้ว");');
+    expect(code(src("src/services/checkin.service.ts"))).toContain('throw new ApiException(400, CHECKIN_TOO_LATE, tb("checkin_too_late"));'); // 🔻 TASK-479 — the words, not the status
     expect((ROUTE_ACCESS as any)["GET /camp/days/:id/checkin"]).toEqual({ menus: ["menu:camp"] });
   });
 });
@@ -298,7 +298,7 @@ describe("🔴 the routes through the ROOT app — the undo's 400 before the ser
     process.env.SKIP_AUTH = "true";
     const q = spyOn(camp, "getDayCheckinQr").mockImplementation((async (id: string) => ({ dayId: id, token: "tok-1234567890", url: "/checkin/camp?token=tok-1234567890", expiresAt: "2026-10-05T16:59:59.000Z", studentName: "น้องเอ", date: "2026-10-05", half: "AM" })) as any);
     const c = spyOn(camp, "checkinCampByToken").mockImplementation((async (token: string) => {
-      if (token === "expired-token") throw new ApiException(410, "CAMP_TOKEN_EXPIRED", "โทเคนเช็คอินหมดอายุแล้ว");
+      if (token === "expired-token") throw new ApiException(410, "CAMP_TOKEN_EXPIRED", "เลยเวลาเช็คอินแล้ว\nCheck-in time has passed.");
       if (token === "tomorrow-token") throw new ApiException(409, "CAMP_DAY_NOT_TODAY", "วันแคมป์นี้คือวันที่ 2026-10-06 — เช็คอินได้เฉพาะวันนั้น");
       return { already: token === "already-token", day: { dayId: D1, status: "ATTENDED" } };
     }) as any);
@@ -311,7 +311,7 @@ describe("🔴 the routes through the ROOT app — the undo's 400 before the ser
       expect(await (await post("already-token")).json()).toEqual({ already: true, day: { dayId: D1, status: "ATTENDED" } });
       const gone = await post("expired-token");
       expect(gone.status).toBe(410);
-      expect(await gone.json()).toEqual({ error: { code: "CAMP_TOKEN_EXPIRED", message: "โทเคนเช็คอินหมดอายุแล้ว" } });
+      expect(await gone.json()).toEqual({ error: { code: "CAMP_TOKEN_EXPIRED", message: "เลยเวลาเช็คอินแล้ว\nCheck-in time has passed." } /* 🔻 TASK-479 — the parent's words */ });
       const early = await post("tomorrow-token");
       expect(early.status).toBe(409);
       expect(((await early.json()) as any).error.code).toBe("CAMP_DAY_NOT_TODAY");

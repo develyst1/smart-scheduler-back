@@ -410,6 +410,11 @@ const TABLE: Record<string, Entry> = {
     EN: "Already checked in\n{line}",
   },
   checkin_notfound: { TH: "ไม่พบคาบที่เลือก", EN: "Class not found" },
+  // 🔴 TASK-479 — a parent never reads "token" / "โทเคน": the check-in link's two refusals, in the PARENT's terms.
+  // `checkin_too_late` is Porter's wording; `checkin_bad_link` is the wording the check-in PAGE already shows the family
+  // (front `invalidLink`: "ลิงก์เช็คอินไม่ถูกต้อง") — one voice on both sides of the wire.
+  checkin_too_late: { TH: "เลยเวลาเช็คอินแล้ว", EN: "Check-in time has passed." },
+  checkin_bad_link: { TH: "ลิงก์เช็คอินไม่ถูกต้อง", EN: "This check-in link is not valid." },
   checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
   // TASK-146: fallback when the leave refusal has no server message (mirrors `checkin_err`).
   leave_err: { TH: "ไม่สามารถแจ้งลาได้ในขณะนี้", EN: "Can't record leave right now" },

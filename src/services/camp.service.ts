@@ -434,7 +434,7 @@ export async function getDayCheckinQr(dayId: string) {
  */
 export async function checkinCampByToken(token: string, source: "checkin-qr" | "shopfront-qr" = "checkin-qr") { // TASK-475 — `marked_by` says where from
   const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token), with: { package: true } });
-  if (!d) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
+  if (!d) throw notFound(tb("checkin_bad_link")); // TASK-479 — the parent's words, not "token"
   // 🔴 TASK-476 — camp's token page had the SAME gap: a suspended household is refused, FIRST, as the LINE path refuses it.
   if (await anyHouseholdSuspended((d as any).package?.studentId ? [(d as any).package.studentId] : [])) throw badRequest(tb("suspended_notice"));
   const { date: today } = bangkokNow();

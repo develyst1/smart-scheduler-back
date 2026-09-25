@@ -102,6 +102,7 @@ import { liffLinkBody } from "../lib/liff-link";
 import { toCourseSummary } from "../lib/leave";
 import {
   checkinByToken,
+  CHECKIN_TOO_LATE,
   findBookingsForTeacher,
   findTodayBookingsForParent,
   findUpcomingBookingsForParent,
@@ -933,6 +934,8 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
     const body = t(key, lang, { line: checkinLine(b) });
     return send(replyToken, [textReply(body, lang)]);
   } catch (e: any) {
+    // TASK-479 — "too late" answers in the CHAT's language (the thrown message is bilingual, for the web page).
+    if (e?.code === CHECKIN_TOO_LATE) return send(replyToken, [textReply(t("checkin_too_late", lang), lang)]);
     return send(replyToken, [textReply(e?.message ?? t("checkin_err", lang), lang)]);
   }
 }

@@ -2,6 +2,7 @@
 // arithmetic (one currency: a full day = 2 units, a half = 1 — integers, so credit never becomes 0.5), the credit
 // formula, the day-status transitions. No DB, no clock — every rule here is asserted with values.
 import { ApiException, conflict } from "./http";
+import { tb } from "./line-i18n";
 
 export const CAMP_KINDS = ["FULL", "HALF"] as const;
 export const CAMP_PLANS = ["FULL_WEEK", "DAILY"] as const;
@@ -80,7 +81,7 @@ export const campTokenExpiry = (date: string): Date => new Date(`${date}T23:59:5
 export function campScanOutcome(day: { status: string; date: string; checkinTokenExpiresAt?: Date | null }, today: string, now: Date): "already" | "attend" {
   if (day.status === "ATTENDED") return "already";
   if (day.status === "CANCELLED") throw conflict("CAMP_DAY_TRANSITION", "วันแคมป์นี้ถูกยกเลิกแล้ว");
-  if (day.checkinTokenExpiresAt && day.checkinTokenExpiresAt < now) throw new ApiException(410, "CAMP_TOKEN_EXPIRED", "โทเคนเช็คอินหมดอายุแล้ว");
+  if (day.checkinTokenExpiresAt && day.checkinTokenExpiresAt < now) throw new ApiException(410, "CAMP_TOKEN_EXPIRED", tb("checkin_too_late")); // TASK-479 — the parent's words (the API code is internal and stays)
   if (day.date !== today) throw conflict("CAMP_DAY_NOT_TODAY", `วันแคมป์นี้คือวันที่ ${day.date} — เช็คอินได้เฉพาะวันนั้น`);
   return "attend";
 }
