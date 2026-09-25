@@ -822,19 +822,33 @@ async function addStudentAndReply(
 // ── Shared tap/keyword actions (reused by both the keyword branch and the postback branch) ──
 // (`bookingLabel` — name + time — retired by TASK-145: check-in, leave and qr now all use `sessionLabel`.)
 
+/**
+ * 🔴 TASK-477 — the ONE list of quick-reply chips, and it is the MENU's four commands in K1's order (REQ-107): Add Student ·
+ * My Course · Check-in · Request Leave — so a parent meets one vocabulary on the menu, in the list and under the reply.
+ * ⚠️ A BEHAVIOUR change, not a relabel: the third chip used to fire `action=children` (list my children); it now fires
+ * `mycourses` (the course view). Relabelling `children` as "My Course" would have put a true-sounding word on the wrong
+ * action (Sober's ruling). `children` still works for anyone who types it.
+ */
+export const PARENT_CHIPS = [
+  ["btn_register", "register"],
+  ["btn_mycourses", "mycourses"],
+  ["btn_checkin", "checkin"],
+  ["btn_leave", "leave"],
+] as const;
+
 function parentActionItems(lang: Lang) {
   const mk = (labelKey: string, action: string) => ({
     type: "action" as const,
     action: { type: "postback" as const, label: t(labelKey, lang), data: `action=${action}`, displayText: t(labelKey, lang) },
   });
-  return [mk("btn_checkin", "checkin"), mk("btn_leave", "leave"), mk("btn_children", "children"), mk("btn_register", "register")];
+  return PARENT_CHIPS.map(([labelKey, action]) => mk(labelKey, action));
 }
 
-function doMenu(replyToken: string, lang: Lang) {
+function doMenu(replyToken: string, lang: Lang, body: string = tb("menu_body")) {
   // 🔴 TASK-276 — the BODY is bilingual; `parentActionItems(lang)` builds the quick-reply LABELS and stays
   // single-language, under LINE's 20-character cap. Same split as everywhere else, at the one site where
-  // both halves of it are visible on one line.
-  return send(replyToken, [{ type: "text", text: tb("menu_body"), quickReply: { items: parentActionItems(lang) } }]);
+  // both halves of it are visible on one line. (TASK-477: the un-mute passes its own, single-language body.)
+  return send(replyToken, [{ type: "text", text: body, quickReply: { items: parentActionItems(lang) } }]);
 }
 
 /** TASK-145 (AC-3): the check-in picker names the SESSION, like the leave one. Button labels are clamped to
@@ -912,7 +926,7 @@ async function doCheckinBooking(lineUserId: string, bookingId: string, replyToke
   if (!b) return send(replyToken, [textReply(tb("checkin_notfound"), lang)]);
   const qr = await getCheckinQr(b.id);
   try {
-    const result = await checkinByToken(qr.token);
+    const result = await checkinByToken(qr.token, "line"); // TASK-475 — provenance
     const key = result.already ? "checkin_already" : "checkin_ok";
     // TASK-145 (AC-3): the confirmation names WHICH session was checked in, not just the child and the time.
     // TASK-470 — the customer's class line (the ONE name rule leads it; a DUO row reads both children).
@@ -1280,7 +1294,8 @@ async function handleMessage(ev: LineWebhookEvent) {
     // here: the un-mute must be a thing you choose, not a thing you reach for.
     if (isReopenWord(lower)) {
       await unmute(lineUserId);
-      return doMenu(replyToken, lang);
+      // 🔴 TASK-477 — the CHAT's language (not both at once), the list's own blank line after the heading — K1's shape.
+      return doMenu(replyToken, lang, t("menu_body", lang));
     }
     // AC-25 — `เมนู`, `เพิ่มนักเรียน`, free text: still silent, and the session is NOT touched. The parent may
     // be mid-flow, and clearing their step would lose it while a person is helping them.

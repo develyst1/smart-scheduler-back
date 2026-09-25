@@ -102,8 +102,8 @@ describe("🔴 §1 the mirror, by value — and what it is NOT", () => {
 describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PREDICATE is the witness", () => {
   test("56 = 56: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56);
-    expect(journal.entries.length).toBe(56);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
+    expect(journal.entries.length).toBe(57);
     expect(journal.entries[54]).toMatchObject({ idx: 54, tag: "0054_group_slot_yield" });
     expect(MIG).toContain("db:verify` expects 55");
     const stmts = MIG.split("--> statement-breakpoint").map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);

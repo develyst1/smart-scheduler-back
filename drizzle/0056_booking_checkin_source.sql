@@ -1,0 +1,22 @@
+-- TASK-475 (REQ-108) — WHERE a session's check-in came from: `bookings.checkin_source`.
+--
+-- 🔑 WHY: the shop-front QR checks a child in on a PHONE NUMBER alone. For a family with no linked LINE — and for every
+-- trial / single session, which sends no notice at all — nothing tells anyone it happened. So when a parent says "we were
+-- not there", this column is the only evidence an admin will ever have that it came from the wall QR rather than from
+-- staff: `shopfront-qr` · `checkin-qr` (the token link) · `line` (the bot's button) · the staff actor · `end-of-day`.
+--
+-- 🚫 NOT `note`: `note` is the status-reason field, and the admin's cancel reason OVERWRITES it — the provenance would be
+-- erased at precisely the moment it is needed as evidence (Sober, TASK-475 ❓1). Written on the ATTEND transition only
+-- and KEPT through a later cancel. Camp days need nothing: `camp_days.marked_by` already carries it.
+--
+-- 🔴 Numbering: counted at the moment of writing — `drizzle/*.sql` = 56 (0000-0055) and journal tags = 56 before this,
+-- newest `0055`, so this is `0056` — the 57th file. Hand-authored + journal-registered per drizzle/README.md; do NOT run
+-- `db:generate` (snapshots stop at 0003).
+--
+-- 📌 THE CUTOVER ORDER: `0038` -> ... -> `0055` -> THIS — one `db:migrate` run; `db:verify` expects 57. No enum.
+--
+-- ⚠️ LOCKS: ADD COLUMN of a NULLABLE column with no default is a catalog-only change (no rewrite). Rerunnable (IF NOT EXISTS).
+--
+-- 🔑 THE WITNESS (`lib/migration-witness.ts`): the column — it is this file's only object.
+
+ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "checkin_source" text;

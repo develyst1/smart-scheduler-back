@@ -118,7 +118,7 @@ describe("🔑 TASK-459 — every witness probes something the CURRENT schema st
   });
 
   test("📌 the walk is not vacuous — every witness is actually classified, and the kinds are the ones that exist", () => {
-    expect(SCHEDULING_WITNESSES.length).toBe(56);
+    expect(SCHEDULING_WITNESSES.length).toBe(57);
     const kinds = new Set(SCHEDULING_WITNESSES.map((w) => w.probe.kind));
     expect([...kinds].sort()).toEqual(["column", "column-absent", "constraint", "constraint-def", "enum-label", "index", "index-predicate", "superseded-by", "table"].filter((k) => kinds.has(k as any)) as any);
     for (const w of SCHEDULING_WITNESSES) expect({ tag: w.tag, what: stillDeclared(w).what }).not.toMatchObject({ what: expect.stringContaining("unknown probe kind") });
@@ -158,7 +158,7 @@ describe("🔴 TASK-459 — `0052`'s verdict is INHERITED from `0053`, and the d
       SCHEDULING_WITNESSES.map((x) => [x.tag, x.tag === "0052_camp_day_rates" ? false : true] as const),
     );
     const judged = judge([...SCHEDULING_WITNESSES], results);
-    expect(judged.filter((r) => r.verdict === "applied").length).toBe(56);
+    expect(judged.filter((r) => r.verdict === "applied").length).toBe(57);
     expect(judged.filter((r) => r.verdict !== "applied").map((r) => `${r.tag} ${r.verdict}`)).toEqual([]);
     const j52 = judged.find((r) => r.tag === "0052_camp_day_rates")!;
     expect({ verdict: j52.verdict, found: j52.found, probe: j52.probe }).toEqual({

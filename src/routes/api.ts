@@ -277,7 +277,7 @@ export const api = new Hono()
     assertScopedStatusAction(c.get("user"), action);
     await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));
     return c.json(
-      await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode),
+      await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode, actorOf(c)), // TASK-475 — a staff attend records WHO
     );
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) => {

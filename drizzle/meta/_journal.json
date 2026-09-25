@@ -393,6 +393,13 @@
       "when": 1783000000051,
       "tag": "0055_line_webhook_events",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1783000000052,
+      "tag": "0056_booking_checkin_source",
+      "breakpoints": true
     }
   ]
 }

@@ -37,10 +37,10 @@ describe("🔴 the migration — 0037, counted, witnessed, the `users` lock name
   const SQL = readFileSync(resolve(root, "drizzle/0037_roles.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (0038 … 0055 added since): `0037_roles` is the 38th file, idx 37", () => {
-    expect(files.length).toBe(56);
+    expect(files.length).toBe(57);
     expect(files[37]).toBe("0037_roles.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(56);
+    expect(j.entries.length).toBe(57);
     expect(j.entries[37]).toMatchObject({ idx: 37, tag: "0037_roles" });
   });
   test("five statements in the contract's order: roles · lower(name) UNIQUE · users.role_id RESTRICT · role_permissions CASCADE · the (role_id, key) UNIQUE LAST; all IF NOT EXISTS", () => {

@@ -42,8 +42,8 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
   test("56 = 56: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(56);
-    expect(journal.entries.length).toBe(56);
+    expect(files.length).toBe(57);
+    expect(journal.entries.length).toBe(57);
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");
@@ -153,7 +153,9 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     const C = region(SVC, "export async function checkinCampByToken(", "const dayDTO");
     expect(C).toContain("const outcome = campScanOutcome(d, today, new Date());");
     expect(C).toContain('if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };'); // 🔻 TASK-443: + the credit
-    expect(C).toContain('await markDay(d.id, "ATTENDED", "checkin-qr");');
+    // 🔻 TASK-475 — the actor is now the SOURCE (the wall QR passes `shopfront-qr`); the scan page's default is still `checkin-qr`.
+    expect(C).toContain('await markDay(d.id, "ATTENDED", source);');
+    expect(C).toContain('source: "checkin-qr" | "shopfront-qr" = "checkin-qr"');
     expect(SVC).not.toMatch(/awardCrmPoints|CRM_POINT_RULES/);
     const RT = src("src/routes/checkin.ts");
     expect(code(RT)).toContain('.post("/checkin/camp", zValidator("json", checkinBody), async (c) => c.json(await camp.checkinCampByToken(c.req.valid("json").token)))');

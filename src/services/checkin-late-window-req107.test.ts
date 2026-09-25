@@ -36,6 +36,7 @@ const ROW = { id: "b1", date: "2026-09-25", startTime: "16:00:00", endTime: "17:
 const scan = (row: Record<string, unknown>) => {
   const attended: string[] = [];
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => ({ ...ROW, ...row })) as any));
+  spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async () => ({ id: "s1", parentId: null })) as any)); // TASK-476 — the suspension read; no parent = never blocked
   spies.push(spyOn(schedulerSvc, "updateBookingStatus").mockImplementation((async (id: string) => { attended.push(id); return { booking: { id } }; }) as any));
   spies.push(spyOn(lineAdmin, "awardCrmPoints").mockImplementation((async () => {}) as any));
   return attended;

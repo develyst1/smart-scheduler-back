@@ -74,8 +74,8 @@ describe("🔴 the migration — 0051, counted, three nullable columns on a smal
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0051_voucher_end.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0051_voucher_end` is the 52nd file, idx 51 (TASK-443 added 0052 after it); 'expects 52'; the six statements", () => {
-    expect(files.length).toBe(56);
-    expect(journal.entries.length).toBe(56);
+    expect(files.length).toBe(57);
+    expect(journal.entries.length).toBe(57);
     expect(files[51]).toBe("0051_voucher_end.sql");
     expect(journal.entries[51]).toMatchObject({ idx: 51, tag: "0051_voucher_end" });
     expect(sql).toContain("`db:verify` expects 52");

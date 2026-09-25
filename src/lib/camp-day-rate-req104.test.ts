@@ -52,8 +52,8 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(56);
-    expect(journal.entries.length).toBe(56);
+    expect(files.length).toBe(57);
+    expect(journal.entries.length).toBe(57);
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");

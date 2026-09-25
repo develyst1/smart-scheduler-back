@@ -259,6 +259,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN();")); // 🔻 TASK-426: EVERY listed key
   });
   test("56 = 56 — Stage 3 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(56);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(57);
   });
 });

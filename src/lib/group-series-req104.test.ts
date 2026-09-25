@@ -79,8 +79,8 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
     expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56);
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(56);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(57);
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");

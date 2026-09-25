@@ -526,6 +526,10 @@ export const bookings = pgTable(
     /** C.1: one-time token for QR / link check-in; issued on confirm */
     checkinToken: text("checkin_token"),
     checkinTokenExpiresAt: timestamp("checkin_token_expires_at", { withTimezone: true }),
+    // TASK-475 (REQ-108) `0056` — WHERE the check-in came from: `shopfront-qr` · `checkin-qr` · `line` · the staff actor ·
+    // `end-of-day`. Written on the ATTEND transition only, KEPT through a later cancel (it is the evidence the reversal
+    // refers to). 🚫 Not `note`: a cancel reason overwrites `note`, which would erase this exactly when it is needed.
+    checkinSource: text("checkin_source"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

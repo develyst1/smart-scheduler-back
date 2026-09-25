@@ -24,7 +24,9 @@ const SVC = code(src("src/services/line-webhook.service.ts"));
 describe("TASK-276 — all five flows, asserted by enumerating their bodies", () => {
   const FLOWS: Record<string, string[]> = {
     "menu / command list": [
-      'text: tb("menu_body")',
+      // 🔻 TASK-477 — `doMenu` takes its body, DEFAULTING to the bilingual list (typed `menu` / Help unchanged); only the
+      // un-mute passes the chat's single language (Tanya's TEST-071), pinned by value in `unmute-and-chips-req107.test.ts`.
+      'body: string = tb("menu_body")',
       'reply(replyToken, tb("teacher_linked_menu"))',
       'reply(replyToken, tb("admin_linked_menu"))',
       'both((l) => `${msg}\\n\\n${t("menu_body", l)}`)',

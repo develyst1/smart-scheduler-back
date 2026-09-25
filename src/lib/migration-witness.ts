@@ -576,6 +576,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "IF NOT EXISTS on both.",
     rerunnable: true,
   },
+  {
+    tag: "0056_booking_checkin_source",
+    probe: { kind: "column", table: "bookings", column: "checkin_source" },
+    why:
+      "TASK-475 (REQ-108). WHERE a session's check-in came from (shopfront-qr · checkin-qr · line · staff actor · " +
+      "end-of-day) — the only evidence an unlinked family will ever have. The column is this file's ONLY object, so its " +
+      "existence is the whole proof. Rerunnable: IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

@@ -3429,6 +3429,11 @@ export async function updateBookingStatus(
    * A fifth optional argument rather than a signature change, so every existing caller is untouched.
    */
   reasonCode?: string,
+  /**
+   * TASK-475 (REQ-108) — WHERE an `attend` came from, stored on `bookings.checkin_source`: `shopfront-qr` · `checkin-qr` ·
+   * `line` · the staff actor. A sixth optional argument: every other action ignores it, every existing caller is untouched.
+   */
+  checkinSource?: string | null,
 ) {
   const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
@@ -3528,7 +3533,7 @@ export async function updateBookingStatus(
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
-        await tx.update(bookings).set({ status: "ATTENDED" }).where(eq(bookings.id, id));
+        await tx.update(bookings).set({ status: "ATTENDED", checkinSource: checkinSource ?? null }).where(eq(bookings.id, id)); // TASK-475
         if (current.courseId && current.course) {
           const used = current.course.usedSessions + 1;
           await tx

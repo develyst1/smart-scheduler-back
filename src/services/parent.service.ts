@@ -6,7 +6,7 @@ import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, notInArray, or,
 import { db } from "../db";
 import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
 import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
-import { isSuspended } from "../lib/suspend";
+import { blockedBySuspension, isSuspended } from "../lib/suspend";
 import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { clearFamilyLine, familyLineUserIds, familyOfLineUser } from "../lib/family-link";
@@ -591,6 +591,17 @@ export async function unarchiveParent(id: string) {
     return rows.length;
   });
   return { parent: await getParent(id), restoredStudents: restored };
+}
+
+/**
+ * 🔴 TASK-476 — is ANY household on this row suspended? For the two PUBLIC token pages (`/checkin`, `/checkin/camp`), which
+ * refused nobody while the LINE path refused a suspended household (`isSuspendedLineParent`). The rule is not restated: it is
+ * `blockedBySuspension` (`lib/suspend.ts`, on `isSuspended` — the LINE path's own predicate) over each child's parent. A DUO
+ * row has two households; either one suspended refuses the row. A walk-in with no parent is never blocked (the same carve-out).
+ */
+export async function anyHouseholdSuspended(studentIds: string[], exec: any = db): Promise<boolean> {
+  for (const id of studentIds) if (blockedBySuspension(await findParentOfStudent(id, exec))) return true;
+  return false;
 }
 
 export async function findParentOfStudent(studentId: string, exec: any = db) {

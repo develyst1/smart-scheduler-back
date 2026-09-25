@@ -104,7 +104,7 @@ describe("🔴 AC-23 / AC-26 — `เปิดเมนู` is the way back in, 
   test("it un-mutes and shows the command list", () => {
     const reopen = MUTED_BRANCH.slice(MUTED_BRANCH.indexOf("isReopenWord(lower)"));
     expect(reopen).toContain("await unmute(lineUserId)");
-    expect(reopen).toContain("doMenu(replyToken, lang)");
+    expect(reopen).toContain("doMenu(replyToken, lang, t(\"menu_body\", lang))"); // 🔻 TASK-477 — the chat's language, not both
   });
 
   test("🔑 AC-26 — it starts NO flow: no step, no draft, no picker", () => {

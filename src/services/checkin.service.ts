@@ -9,7 +9,8 @@ import { getNumberSetting, getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
 import { updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
-import { findParentByLineUserId } from "./parent.service";
+import { anyHouseholdSuspended, findParentByLineUserId } from "./parent.service";
+import { tb } from "../lib/line-i18n";
 import { duoStudentIds, familyRowsWhere } from "../lib/duo-course";
 
 /**
@@ -69,11 +70,19 @@ export async function getCheckinQr(bookingId: string) {
   );
 }
 
-export async function checkinByToken(token: string) {
+/**
+ * The check-in act — the ONE every path runs (the token link, the LINE button, the shop-front QR).
+ * TASK-475 — `source` is WHERE it came from, recorded on the booking (`checkin_source`): the token page `checkin-qr`
+ * (the default, so the public route is unchanged), the bot `line`, the wall QR `shopfront-qr`.
+ */
+export async function checkinByToken(token: string, source: "checkin-qr" | "line" | "shopfront-qr" = "checkin-qr") {
   const row = await db.query.bookings.findFirst({
     where: (b, { eq: e }) => e(b.checkinToken, token),
   });
   if (!row) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
+  // 🔴 TASK-476 — a SUSPENDED household is refused here as the LINE path refuses it: the same rule, the same words
+  // (`suspended_notice`), and FIRST — before "already", so it gets no data back (REQ-019 / TASK-048).
+  if (await anyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));
   if (row.status === "ATTENDED") {
     const booking = await loadBooking(row.id);
     return { already: true, booking, remaining: await remainingOf(row, booking) };
@@ -103,7 +112,7 @@ export async function checkinByToken(token: string) {
     );
   }
 
-  const result = await updateBookingStatus(row.id, "attend");
+  const result = await updateBookingStatus(row.id, "attend", undefined, false, undefined, source);
   for (const sid of duoStudentIds(row)) await awardCrmPoints(sid, CRM_POINT_RULES.ON_TIME_CHECKIN); // TASK-420 — both kids of a DUO row
   return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };
 }

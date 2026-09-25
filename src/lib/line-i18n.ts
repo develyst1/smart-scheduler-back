@@ -230,10 +230,13 @@ const TABLE: Record<string, Entry> = {
     EN: "Available Commands:\n\n· Add Student — Up to 5\n· My Course — Registered Course\n· Check-in — Check in today's class\n· Request Leave",
   },
 
+  // 🔴 TASK-477 — the quick-reply chips speak the MENU's vocabulary (REQ-107): Add Student · My Course · Check-in · Request Leave.
   btn_checkin: { TH: "เช็คอิน", EN: "Check-in" },
-  btn_leave: { TH: "แจ้งลา", EN: "Leave" },
+  btn_leave: { TH: "แจ้งลา", EN: "Request Leave" },
+  btn_mycourses: { TH: "คอร์สของฉัน", EN: "My Course" },
+  // 🔻 TASK-477 — no longer a chip (`children` is retired from the ADVERTISEMENT, not from the code: typing it still works).
   btn_children: { TH: "นักเรียนของฉัน", EN: "My children" },
-  btn_register: { TH: "เพิ่มนักเรียน", EN: "Add child" },
+  btn_register: { TH: "เพิ่มนักเรียน", EN: "Add Student" },
   btn_langhelp: { TH: "ภาษา/ช่วยเหลือ", EN: "Language/Help" },
   btn_back: { TH: "‹ เมนู", EN: "‹ Menu" },
 

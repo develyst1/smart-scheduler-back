@@ -41,8 +41,8 @@ describe("🔴 the migration — 0046, counted, three NULLABLE adds on `parents`
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0046_parent_archive.sql"), "utf8");
   test("56 = 56: `0046_parent_archive` is the 47th file, idx 46 (TASK-418 added 0047 after it); 'expects 47' in the header", () => {
-    expect(files.length).toBe(56);
-    expect(journal.entries.length).toBe(56);
+    expect(files.length).toBe(57);
+    expect(journal.entries.length).toBe(57);
     expect(files[46]).toBe("0046_parent_archive.sql");
     expect(journal.entries[46]).toMatchObject({ idx: 46, tag: "0046_parent_archive" });
     expect(sql).toContain("`db:verify` expects 47");

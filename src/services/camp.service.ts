@@ -18,7 +18,8 @@ import { generateCheckinToken } from "../lib/checkin";
 import { checkinUrl } from "../lib/checkin-token";
 import { type CampDayInput, type CampWeekInput } from "../lib/camp-reminder";
 import { familyLineUserIdsBulk } from "../lib/family-link";
-import { assertStudentActive } from "./parent.service";
+import { anyHouseholdSuspended, assertStudentActive } from "./parent.service";
+import { tb } from "../lib/line-i18n";
 import { assertHouseholdNotSuspended, insertBooking } from "./scheduler.service";
 import { CAMP_KIND } from "../lib/other-kind";
 
@@ -431,13 +432,15 @@ export async function getDayCheckinQr(dayId: string) {
  * rule (`campScanOutcome`); an attend goes through the SAME `markDay` transition (consumes the units). 🚫 No CRM
  * points — a camp day has no "on time" (Sober 09-19: on the owner's list, not built).
  */
-export async function checkinCampByToken(token: string) {
-  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token) });
+export async function checkinCampByToken(token: string, source: "checkin-qr" | "shopfront-qr" = "checkin-qr") { // TASK-475 — `marked_by` says where from
+  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token), with: { package: true } });
   if (!d) throw notFound("โทเคนเช็คอินไม่ถูกต้อง");
+  // 🔴 TASK-476 — camp's token page had the SAME gap: a suspended household is refused, FIRST, as the LINE path refuses it.
+  if (await anyHouseholdSuspended((d as any).package?.studentId ? [(d as any).package.studentId] : [])) throw badRequest(tb("suspended_notice"));
   const { date: today } = bangkokNow();
   const outcome = campScanOutcome(d, today, new Date());
   if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };
-  const { package: pkg } = await markDay(d.id, "ATTENDED", "checkin-qr");
+  const { package: pkg } = await markDay(d.id, "ATTENDED", source);
   // TASK-443 (REQ-104 §2 item 5a) — the scan page shows what is left to consume: total − used, in DAYS (a future PLANNED day
   // is still the family's credit). No mask: the scan is the family's own, by token.
   return { already: false, day: pkg.days.find((x) => x.dayId === d.id) ?? dayDTO({ ...d, status: "ATTENDED" }), credit: creditDTO(pkg) };

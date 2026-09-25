@@ -82,7 +82,7 @@ export async function runEndOfDayJob(date?: string) {
     let coursesAutoAttended = 0;
     let vouchersAutoAttended = 0;
     for (const b of due) {
-      await tx.update(bookings).set({ status: "ATTENDED" }).where(eq(bookings.id, b.id));
+      await tx.update(bookings).set({ status: "ATTENDED", checkinSource: "end-of-day" }).where(eq(bookings.id, b.id)); // TASK-475 — provenance
       if (b.courseId) {
         // 🔴 TASK-254 — deduction site 2 of 2, and since REQ-070 it is the MAJORITY path: the day-end
         // auto-attends every unmarked class, so most sessions are deducted here rather than by a person.

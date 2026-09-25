@@ -161,6 +161,6 @@ describe("🔴 the script and the publish warning — the plan is the deliverabl
     out = await publishRelinkWarning();
     expect(out[0]).toContain("Followers still hold the menu ids of the PREVIOUS publish");
     expect(out[0]).not.toContain("null");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(56); // no migration
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57); // no migration
   });
 });
