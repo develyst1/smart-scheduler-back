@@ -48,16 +48,17 @@ describe("needsChildStep / childrenWithSessions (AC-3, AC-5)", () => {
 });
 
 describe("sessionLabel (AC-2)", () => {
-  test("TH names time · teacher · program", () => {
-    expect(sessionLabel(oneChildTwoSessions[0]!, "TH")).toBe("09:00 · ครูก้อง · Surfskate");
+  // 🔻 TASK-473 K4 (REQ-107 §7) — the customer: `Teacher <name>` in BOTH languages (was `ครู<name>` / a bare name).
+  test("TH names time · Teacher · program", () => {
+    expect(sessionLabel(oneChildTwoSessions[0]!, "TH")).toBe("09:00 · Teacher ก้อง · Surfskate");
   });
 
-  test("EN drops the ครู prefix, same fields", () => {
-    expect(sessionLabel(oneChildTwoSessions[1]!, "EN")).toBe("11:00 · ก้อง · Bike");
+  test("EN names time · Teacher · program — the SAME row as TH", () => {
+    expect(sessionLabel(oneChildTwoSessions[1]!, "EN")).toBe("11:00 · Teacher ก้อง · Bike");
   });
 
   test("a session with no teacher/subject row still renders (never a raw key or 'undefined')", () => {
     const bare = session({ id: "b9", studentId: "s9", startTime: "15:00:00", teacher: null, subject: null });
-    expect(sessionLabel(bare, "TH")).toBe("15:00 · ครู- · -");
+    expect(sessionLabel(bare, "TH")).toBe("15:00 · Teacher - · -");
   });
 });

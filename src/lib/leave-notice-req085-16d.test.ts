@@ -241,7 +241,7 @@ describe("🚫 TASK-318 §6 — what must not change", () => {
       { id: "b1", studentId: "s1", date: "2026-09-22", startTime: "15:00:00", student: { name: "มิลล่า" }, teacher: { nickname: "Bank" }, subject: { name: "Skateboard" } },
       "TH",
     );
-    expect(row.body).toBe("อังคาร 22/09 · 15:00 · ครูBank · Skateboard");
+    expect(row.body).toBe("อังคาร 22/09 · 15:00 · Teacher Bank · Skateboard"); // 🔻 TASK-473 K4 — `Teacher <name>` (REQ-107 §7)
     expect(leave("2026-09-22")).not.toContain("22/09");
   });
 });

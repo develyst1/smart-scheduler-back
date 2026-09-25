@@ -25,7 +25,7 @@ const clampLabel = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s);
 export function bookingPicker(
   prompt: string,
   action: "checkin" | "leave" | "qr",
-  bookings: Array<{ id: string; label: string }>,
+  bookings: Array<{ id: string; label: string; text?: string }>,
   lang: Lang,
 ): LineMessage {
   const items: LineQuickReply["items"] = bookings.slice(0, 12).map((b) => ({
@@ -34,7 +34,8 @@ export function bookingPicker(
       type: "postback",
       label: clampLabel(b.label),
       data: `action=${action}&bookingId=${b.id}`,
-      displayText: b.label,
+      // TASK-473 K4 — the chat shows the FULL row (`text`), never the clamped label; `label` is only what fits the button.
+      displayText: b.text ?? b.label,
     },
   }));
   items.push(backToMenuItem(lang));

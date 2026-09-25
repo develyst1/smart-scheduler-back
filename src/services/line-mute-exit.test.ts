@@ -15,7 +15,7 @@
 import { describe, expect, test } from "bun:test";
 import { readSrc } from "../lib/read-src";
 import { CMD_MENU, CMD_REOPEN, isCancelWord, isReopenWord, isReservedWord } from "../lib/line-commands";
-import { decideMessageRoute, isMuted, muteUntilFrom } from "../lib/line-routing";
+import { MUTE_MINUTES, decideMessageRoute, isMuted, muteUntilFrom } from "../lib/line-routing";
 import { t } from "../lib/line-i18n";
 
 const SVC = readSrc(await Bun.file(new URL("./line-webhook.service.ts", import.meta.url)).text());
@@ -165,10 +165,11 @@ describe("🔴 AC-25 — everything else stays SILENT. The owner proved this wor
 });
 
 describe("🔴 AC-24 — the word is TOLD, not discovered", () => {
-  test("BOTH messages that mute a chat name it, in both languages", () => {
-    // A way out nobody was told about is not a way out — and these two messages are the only screens a muted
-    // parent is guaranteed to have read.
-    for (const key of ["handover_to_admin", "admin_called"]) {
+  // 🔻 TASK-473 K3 (REQ-107 §7) — `admin_called` is now the customer's own sentence and DROPS the hint (ruled by Sober on
+  // 2026-09-25). What still gets a muted parent back without being told: the mute EXPIRES (pinned below). The handover
+  // message keeps naming the word.
+  test("the handover message still names it, in both languages", () => {
+    for (const key of ["handover_to_admin"]) {
       expect(t(key, "TH")).toContain("เปิดเมนู");
       expect(t(key, "EN")).toContain("reopen");
     }
@@ -177,11 +178,24 @@ describe("🔴 AC-24 — the word is TOLD, not discovered", () => {
   test("🔑 the word it advertises IS the word the router matches", () => {
     // The TASK-245 lesson applied to a message instead of a step: copy that names a word the code does not
     // accept is the same lie, one layer up.
-    for (const key of ["handover_to_admin", "admin_called"]) {
+    for (const key of ["handover_to_admin"]) {
       const th = t(key, "TH");
       expect(CMD_REOPEN.some((w) => th.includes(w))).toBe(true);
       expect(isReopenWord(th.slice(th.indexOf("เปิดเมนู"), th.indexOf("เปิดเมนู") + "เปิดเมนู".length))).toBe(true);
     }
+  });
+});
+
+describe("🔴 TASK-473 K3 — Chat with Admin: her words, no hint, and the way back still works", () => {
+  test("by value, both languages", () => {
+    expect([t("admin_called", "TH"), t("admin_called", "EN")]).toEqual(["สักครู่นะคะ แอดมินจะเข้ามาตอบกลับเร็ว ๆ นี้นะคะ", "Admin will talk to you soon."]);
+  });
+  test("🔑 the hint is gone, so the mute MUST end by itself — 60 minutes — and `เปิดเมนู` still reopens early", () => {
+    expect(MUTE_MINUTES).toBe(60);
+    const now = new Date("2026-09-25T10:00:00Z");
+    expect(muteUntilFrom(now).toISOString()).toBe("2026-09-25T11:00:00.000Z");
+    expect(decideMessageRoute(undefined, "customer", { mutedUntil: muteUntilFrom(new Date(Date.now() - 61 * 60_000)) })).not.toBe("muted");
+    expect(isReopenWord("เปิดเมนู")).toBe(true);
   });
 });
 

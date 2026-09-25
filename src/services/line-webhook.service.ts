@@ -111,8 +111,8 @@ import {
 import { updateBookingStatus } from "./scheduler.service";
 
 /** TASK-469 — the LIFF-link reply, or `null` when this box has no `LIFF_ID` (the caller keeps the typed flow). */
-function liffLinkReply(lang: Lang) {
-  const body = liffLinkBody();
+function liffLinkReply(lang: Lang, key: "liff_add_student" | "liff_signup") {
+  const body = liffLinkBody(key);
   return body ? textReply(body, lang) : null;
 }
 
@@ -852,10 +852,14 @@ function sessionPicker(
   // carries the decision and its reasons; here the only thing that matters is that the body row and the button
   // beside it describe the SAME session. ⚠️ check-in and `qr` are today-only lists and keep the old form: a
   // date on them would be noise, not information.
+  // 🔴 TASK-473 K4 — what a tap SENDS (`text` → `displayText`) is the full row with `Teacher <name>`, for check-in AND leave
+  // (leave used to send only its 11-character button, `24/10 15:00` — no teacher at all; the two picks had diverged). The
+  // BUTTON stays what fits LINE's 20-character label. The child's name comes from the ONE rule (`studentNamesOf`), not a
+  // hand-built `nickname || name`, so a DUO row names both.
   const picks = rows.map((b) => {
     const dated = action === "leave" ? sessionPick(b, lang) : null;
-    const label = withChild ? `${b.student.nickname || b.student.name} · ${sessionLabel(b, lang)}` : sessionLabel(b, lang);
-    return { id: b.id, label: dated?.button ?? label, body: dated?.body ?? label };
+    const label = withChild ? `${studentNamesOf(b) ?? "-"} · ${sessionLabel(b, lang)}` : sessionLabel(b, lang);
+    return { id: b.id, label: dated?.button ?? label, body: dated?.body ?? label, text: dated?.body ?? label };
   });
   // 🔑 The body lists exactly the rows the buttons offer. `bookingPicker` slices to LINE's 12; listing more in
   // the text than a parent can tap is a list with unreachable entries, and widening the window is what made
@@ -1508,7 +1512,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     // 🔴 TASK-469 (REQ-107 §2) — Sign Up answers with the `/register` LIFF link. No step is set: the page does the
     // linking. 🔑 The typed-phone path is untouched — no `LIFF_ID` falls through to it below, and `สมัคร` / a phone
     // typed unprompted (TASK-447) still link a family exactly as before (the owner's ruling: working, unadvertised).
-    const link = liffLinkReply(lang);
+    const link = liffLinkReply(lang, "liff_signup"); // TASK-473 K0a — Sign Up's own words
     if (link) return send(replyToken, [link]);
     await setStep(lineUserId, "AWAIT_CODE", "customer");
     return send(replyToken, [textReply(tb("enter_ask_phone"), lang)]);
@@ -1520,7 +1524,9 @@ async function handlePostback(ev: LineWebhookEvent) {
   if (action === "lang") {
     const next = await toggleLang(lineUserId, lang);
     // 🔴 TASK-470 — her Language/Help reply: the confirmation AND the command list, in ONE message, in the NEW language.
-    return send(replyToken, [textReply(`${t("lang_switched", next)}\n${t("menu_body", next)}`, next)]);
+    // TASK-473 K1 — a BLANK LINE after the confirmation (REQ-107 §7). One path for both directions: TH→EN and EN→TH are
+    // the same line with a different `next` (pinned by value through the real dispatcher, both ways).
+    return send(replyToken, [textReply(`${t("lang_switched", next)}\n\n${t("menu_body", next)}`, next)]);
   }
 
   const linked = await detectLinkedRole(lineUserId);
@@ -1566,7 +1572,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     case "register": {
       // 🔴 TASK-469 — Add Student answers with the same LIFF link (`/register` `create` is the one writer, with the cap).
       // No `LIFF_ID` ⇒ today's in-chat flow. Typed `เพิ่มนักเรียน` is unchanged.
-      const link = liffLinkReply(lang);
+      const link = liffLinkReply(lang, "liff_add_student");
       if (link) return send(replyToken, [link]);
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
       return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang), lang), lang)]);

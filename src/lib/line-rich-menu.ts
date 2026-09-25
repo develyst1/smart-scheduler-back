@@ -126,11 +126,15 @@ export const KNOWN_RICH_MENU_EN: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smar
 // "Chat with Admin closes the menu" behaviour is HELD until Khwan answers what she meant.
 
 /** Unlinked: `สมัครสมาชิก / Sign Up` · `คุยกับแอดมิน / Chat with Admin`. The account DEFAULT. (TASK-469 moves Sign Up's target.) */
-export const UNKNOWN_MENU: RichMenuDef = { ...UNKNOWN_RICH_MENU, name: "smart-scheduler-unknown", chatBarText: "เมนู | Menu", selected: true };
+// 🔴 TASK-473 K3 (REQ-107 §7) — all three published COLLAPSED (`selected: false`): the customer's "Chat with Admin closes
+// the menu", as LINE allows it — LINE cannot close a menu on a tap, but a collapsed menu leaves the keyboard free and the
+// chat bar opens it. Stated on EACH definition, not inherited, so no legacy default can reopen one. ⚠️ A definition
+// change ⇒ a republish (new ids) ⇒ another relink sweep.
+export const UNKNOWN_MENU: RichMenuDef = { ...UNKNOWN_RICH_MENU, name: "smart-scheduler-unknown", chatBarText: "เมนู | Menu", selected: false };
 /** Linked parent, six cells: แจ้งลา · เช็คอิน · คอร์สของฉัน / เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน. */
-export const CUSTOMER_MENU: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-scheduler-customer", chatBarText: "เมนู | Menu" };
+export const CUSTOMER_MENU: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-scheduler-customer", chatBarText: "เมนู | Menu", selected: false };
 /** Teacher: the EXISTING artwork and cells, re-published so its id is live again (the old ids are dead on the real OA). */
-export const TEACHER_MENU: RichMenuDef = { ...TEACHER_RICH_MENU, name: "smart-scheduler-teacher", chatBarText: "เมนู | Menu" };
+export const TEACHER_MENU: RichMenuDef = { ...TEACHER_RICH_MENU, name: "smart-scheduler-teacher", chatBarText: "เมนู | Menu", selected: false };
 
 export const menuHasAdminButton = (m: RichMenuDef): boolean =>
   m.areas.some((a) => a.action.data === "action=admin");

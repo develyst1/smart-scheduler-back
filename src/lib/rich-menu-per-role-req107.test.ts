@@ -20,7 +20,8 @@ const actions = (m: RichMenuDef) => m.areas.map((a: any) => a.action.data);
 describe("🔑 TASK-468 — the three per-role menus, by value", () => {
   test("UNLINKED (2 cells): สมัครสมาชิก / Sign Up · คุยกับแอดมิน / Chat with Admin — the account DEFAULT", () => {
     expect({ name: UNKNOWN_MENU.name, bar: UNKNOWN_MENU.chatBarText, size: UNKNOWN_MENU.size, selected: UNKNOWN_MENU.selected }).toEqual({
-      name: "smart-scheduler-unknown", bar: "เมนู | Menu", size: { width: 2500, height: 843 }, selected: true,
+      // 🔻 TASK-473 K3 — published COLLAPSED (REQ-107 §7); it is still the account DEFAULT (`setDefaultRichMenu(unknown)`).
+      name: "smart-scheduler-unknown", bar: "เมนู | Menu", size: { width: 2500, height: 843 }, selected: false,
     });
     expect(actions(UNKNOWN_MENU)).toEqual(["action=enter", "action=admin"]); // Sign Up is still `enter` — TASK-469 moves it
   });

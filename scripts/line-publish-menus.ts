@@ -5,6 +5,7 @@
 // Re-run to republish after artwork changes. Fails clearly BEFORE any LINE API call if the token or any image
 // is missing (never half-publishes). Do NOT run against the real OA from a dev box.
 import {
+  getMenuIds,
   listRichMenus,
   publishRichMenus,
   summariseOurMenus,
@@ -62,6 +63,31 @@ export function formatPublishFootprint(
   }
   return out;
 }
+/**
+ * 🔴 TASK-473 K0b — the report of what was STORED, read back from `app_settings` after the merge.
+ *
+ * ⚠️ TASK-468 changed the publish to three per-role menus and left this report printing six LEGACY keys, which are never
+ * set by a publish any more ⇒ it printed `undefined` six times. That output is what an operator reads to know what happened
+ * on a REAL account. So: the three per-role ids first (each marked NEW if this run created it, ⚠️ NOT STORED if the read-back
+ * lacks it), then every legacy id still kept — by what was stored, never by what we assume was stored.
+ * Pure: the IO shell hands it the read-back and the created ids.
+ */
+export const ROLE_KEYS = ["unknown", "customer", "teacher"] as const;
+export function formatStoredIds(stored: MenuIds, created: MenuIds): string[] {
+  const out = ["✓ Published rich menus — ids STORED in app_settings.line_rich_menu_ids (read back after the merge):"];
+  for (const k of ROLE_KEYS) {
+    const v = stored[k];
+    const tag = !v ? "⚠️ NOT STORED" : v === created[k] ? "NEW" : "kept from an earlier publish";
+    out.push(`  ${k.padEnd(9)}: ${v ?? "-"}   ← ${tag}${k === "unknown" ? " · account DEFAULT" : ""}`);
+  }
+  const legacy = Object.entries(stored).filter(([k, v]) => !(ROLE_KEYS as readonly string[]).includes(k) && !!v);
+  if (legacy.length) {
+    out.push("  legacy ids still stored (the relink sweep reads them to recognise old followers; removed only with the old menus):");
+    for (const [k, v] of legacy.sort(([a], [b]) => a.localeCompare(b))) out.push(`    ${k.padEnd(10)}: ${v}`);
+  }
+  return out;
+}
+
 async function main() {
   const missing: string[] = [];
   for (const p of Object.values(IMAGE_PATHS)) {
@@ -81,13 +107,7 @@ async function main() {
   await guardOaWriteOrExit();
 
   const ids = await publishRichMenus(IMAGE_PATHS);
-  console.log("✓ Published rich menus (ids stored in app_settings.line_rich_menu_ids):");
-  console.log(`  parent-TH : ${ids.parentTH}`);
-  console.log(`  parent-EN : ${ids.parentEN}`);
-  console.log(`  teacher-TH: ${ids.teacherTH}`);
-  console.log(`  teacher-EN: ${ids.teacherEN}`);
-  console.log(`  unknown-TH: ${ids.unknownTH}   ← account DEFAULT (REQ-079)`);
-  console.log(`  known-TH  : ${ids.knownTH}     ← linked per user when a chat is bound`);
+  for (const line of formatStoredIds(await getMenuIds(), ids)) console.log(line);
 
   // §4 — the footprint, read back from LINE rather than assumed from what we just created.
   for (const line of formatPublishFootprint(await listRichMenus(), ids)) console.log(`  ${line}`);

@@ -157,6 +157,6 @@ describe("🔑 the handlers compose exactly these pieces (by source)", () => {
     expect(fn).toContain("with: { subject: true, student: true, coStudent: true, bookings: { with: { teacher: true } } }");
   });
   test("the language toggle answers with the confirmation AND the list, in the NEW language", () => {
-    expect(SVC).toContain('textReply(`${t("lang_switched", next)}\\n${t("menu_body", next)}`, next)');
+    expect(SVC).toContain('textReply(`${t("lang_switched", next)}\\n\\n${t("menu_body", next)}`, next)'); // TASK-473 K1 — the blank line
   });
 });

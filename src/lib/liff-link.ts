@@ -16,8 +16,11 @@ export const liffUrl = (): string | undefined => {
   return id ? `https://liff.line.me/${id}` : undefined;
 };
 
-/** The customer's sentence (both languages — words are bilingual) and then the link ONCE (data, Sober's ruling f). */
-export const liffLinkBody = (): string | null => {
+/**
+ * The customer's sentence (both languages — words are bilingual) and then the link ONCE (data, Sober's ruling f).
+ * TASK-473 K0a — each cell has its OWN sentence (Sign Up ≠ Add Student); the link is the same.
+ */
+export const liffLinkBody = (key: "liff_add_student" | "liff_signup"): string | null => {
   const url = liffUrl();
-  return url ? `${tb("liff_add_student")}\n${url}` : null;
+  return url ? `${tb(key)}\n${url}` : null;
 };

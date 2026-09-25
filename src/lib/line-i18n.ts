@@ -244,7 +244,9 @@ const TABLE: Record<string, Entry> = {
   empty_checkin: { TH: "วันนี้ไม่มีคลาส", EN: "No class today" },
   // TASK-135 (REQ-046) / TASK-145 (REQ-050): leave AND check-in are per SESSION — the pickers say which one.
   pick_leave_child: { TH: "กรุณาเลือกนักเรียนค่ะ", EN: "Which child? 👇" }, // TASK-470 — her sheet
-  session_row: { TH: "{time} · ครู{teacher} · {program}", EN: "{time} · {teacher} · {program}" },
+  // 🔴 TASK-473 K4 (REQ-107 §7) — `Teacher <name>` in BOTH languages (was `ครู<name>` in TH and a bare name in EN). This
+  // row is what a tapped check-in / leave pick SENDS into the chat (`displayText`), and the same row in both picks.
+  session_row: { TH: "{time} · Teacher {teacher} · {program}", EN: "{time} · Teacher {teacher} · {program}" },
   // 🔴 TASK-316 §4(d) — the message had to become TRUE. `ลา` now looks at every UPCOMING session, so *"today"*
   // was no longer what it had checked. ⚠️ And the two situations are DIFFERENT: nothing to cancel at all, and
   // classes that exist but are all inside the cut-off. **A parent could be TOO EARLY and TOO LATE and read the
@@ -265,11 +267,13 @@ const TABLE: Record<string, Entry> = {
     EN: "· {course} · {teacher} · {remaining}/{total} left · {leave} leave left · expires {expiry}",
   },
   // Flow 7 — the way to a human. On BOTH menus, and never removed by any flow.
-  // TASK-246 / AC-24 — the second message that mutes a chat. Same rule as the handover: it names the word,
-  // because a parent who taps this is choosing silence and must be told how to end it.
+  // TASK-246 / AC-24 named the un-mute word here. 🔻 TASK-473 K3 (REQ-107 §7) — the customer's own words, and they DROP
+  // the "(type: reopen)" hint. Ruled safe (Sober, 2026-09-25): the mute EXPIRES by itself (`MUTE_MINUTES` = 60 in
+  // `line-routing.ts`), so the parent gets the bot back within the hour without doing anything, and `เปิดเมนู` still
+  // reopens early. The words changed; the way back did not. (`handover_to_admin` still names the word — pinned.)
   admin_called: {
-    TH: "แจ้งแอดมินให้แล้วนะคะ รอสักครู่ เดี๋ยวมีเจ้าหน้าที่มาคุยด้วยค่ะ 🙏\n(ถ้าต้องการใช้บอทอีกครั้ง พิมพ์ เปิดเมนู ค่ะ)",
-    EN: "I have told an admin — someone will reply here shortly. 🙏\n(To use the bot again, type: reopen)",
+    TH: "สักครู่นะคะ แอดมินจะเข้ามาตอบกลับเร็ว ๆ นี้นะคะ",
+    EN: "Admin will talk to you soon.",
   },
   // เข้าใช้ระบบ on the unknown menu. Flow 2 is deleted (§15) and amendment #2 made the entry the PHONE ALONE,
   // so this asks for the phone — and points at a person only for someone who has never registered.
@@ -279,6 +283,8 @@ const TABLE: Record<string, Entry> = {
   // 🔴 TASK-469 (REQ-107 §2) — the customer's sheet, rows 41–42, byte for byte. The link itself follows on its own line
   // (row 43), built from `LIFF_ID` in `liff-link.ts` — never copied from the sheet.
   liff_add_student: { TH: "กรุณากดที่ลิ้งค์ด้านล่างเพื่อเพิ่มนักเรียนค่ะ", EN: "Please click the link below to add a student." },
+  // 🔴 TASK-473 K0a (REQ-107 §7) — Sign Up gets its OWN words; the link is the same `LIFF_ID` link (TASK-469).
+  liff_signup: { TH: "กรุณากดที่ลิ้งค์ด้านล่างเพื่อสมัครสมาชิกค่ะ", EN: "Please click the link below to sign up." },
   enter_ask_phone: {
     TH: "กรุณาพิมพ์เบอร์โทรที่ลงทะเบียนไว้ค่ะ หากยังไม่เคยลงทะเบียน กรุณาติดต่อแอดมิน",
     EN: "Please type your registered phone number. If you have never registered, please contact an admin.",

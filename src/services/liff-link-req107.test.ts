@@ -20,6 +20,8 @@ const root = resolve(import.meta.dir, "..", "..");
 const FAKE = "0000000000-FAKEfake";
 const U = "Uaeeb9c20ca9";
 const WORDS = "กรุณากดที่ลิ้งค์ด้านล่างเพื่อเพิ่มนักเรียนค่ะ\nPlease click the link below to add a student.";
+// TASK-473 K0a — Sign Up's OWN words (REQ-107 §7); the link is the same.
+const SIGNUP = "กรุณากดที่ลิ้งค์ด้านล่างเพื่อสมัครสมาชิกค่ะ\nPlease click the link below to sign up.";
 
 const spies: Array<{ mockRestore: () => void }> = [];
 const savedLiff = process.env.LIFF_ID;
@@ -54,17 +56,17 @@ describe("🔑 the link comes from THIS box's `LIFF_ID` — never a literal", ()
   test("by value: set ⇒ the customer's words (both languages) then the link once; unset or blank ⇒ null", () => {
     process.env.LIFF_ID = FAKE;
     expect(liffUrl()).toBe(`https://liff.line.me/${FAKE}`);
-    expect(liffLinkBody()).toBe(`${WORDS}\nhttps://liff.line.me/${FAKE}`);
+    expect(liffLinkBody("liff_add_student")).toBe(`${WORDS}\nhttps://liff.line.me/${FAKE}`);
     process.env.LIFF_ID = "  ";
-    expect(liffLinkBody()).toBeNull();
+    expect(liffLinkBody("liff_add_student")).toBeNull();
     delete process.env.LIFF_ID;
-    expect(liffLinkBody()).toBeNull();
+    expect(liffLinkBody("liff_add_student")).toBeNull();
   });
   test("🔴 a different box, a different page — the demo env and the real env each send their OWN id", () => {
     process.env.LIFF_ID = "1111111111-demoDEMO";
-    expect(liffLinkBody()).toEndWith("\nhttps://liff.line.me/1111111111-demoDEMO");
+    expect(liffLinkBody("liff_add_student")).toEndWith("\nhttps://liff.line.me/1111111111-demoDEMO");
     process.env.LIFF_ID = "2222222222-realREAL";
-    expect(liffLinkBody()).toEndWith("\nhttps://liff.line.me/2222222222-realREAL");
+    expect(liffLinkBody("liff_add_student")).toEndWith("\nhttps://liff.line.me/2222222222-realREAL");
   });
   test("the sheet's bytes (rows 41–42)", () => {
     expect(tb("liff_add_student")).toBe(WORDS);
@@ -90,11 +92,11 @@ describe("🔑 the link comes from THIS box's `LIFF_ID` — never a literal", ()
 });
 
 describe("✅ SIGN UP (`action=enter`) — the link, not the phone question", () => {
-  test("with `LIFF_ID`: one reply, the words + the link, and 🚫 NO step set (the page does the linking)", async () => {
+  test("with `LIFF_ID`: one reply, SIGN UP's words (TASK-473 K0a) + the link, and 🚫 NO step set (the page does the linking)", async () => {
     process.env.LIFF_ID = FAKE;
     const c = chat({ linked: null });
     await handleLineWebhookEvents([tap("action=enter")]);
-    expect(c.replies.map((r) => r.text)).toEqual([`${WORDS}\nhttps://liff.line.me/${FAKE}`]);
+    expect(c.replies.map((r) => r.text)).toEqual([`${SIGNUP}\nhttps://liff.line.me/${FAKE}`]);
     expect(steps(c)).toEqual([]);
   });
   test("🔑 without `LIFF_ID`: exactly today's flow — the phone question and `AWAIT_CODE` + customer", async () => {

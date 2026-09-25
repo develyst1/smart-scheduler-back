@@ -53,8 +53,9 @@ describe("🔴 TASK-316 §2 — two sessions of the SAME weekly course are DISTI
   });
 
   test("🔑 the BODY names the date in full — weekday first, then the date that tells one Tuesday from the next", () => {
-    expect(sessionPick(WEEKLY[1]!, "TH").body).toBe("อังคาร 22/09 · 15:00 · ครูBank · Skateboard");
-    expect(sessionPick(WEEKLY[1]!, "EN").body).toBe("Tuesday 22/09 · 15:00 · Bank · Skateboard");
+    // 🔻 TASK-473 K4 — `Teacher <name>` in both languages (REQ-107 §7); the weekday-then-date claim is unchanged.
+    expect(sessionPick(WEEKLY[1]!, "TH").body).toBe("อังคาร 22/09 · 15:00 · Teacher Bank · Skateboard");
+    expect(sessionPick(WEEKLY[1]!, "EN").body).toBe("Tuesday 22/09 · 15:00 · Teacher Bank · Skateboard");
   });
 
   test("🔴 §3 — the BUTTON fits LINE's 20 characters, and the old label did NOT", () => {
