@@ -43,6 +43,7 @@ describe("registry shape (TASK-101)", () => {
       // until the owner approves the copy. A SETTING so that turning it on is a decision, never a deploy.
       "camp_reminder_enabled",
       "checkin_early_minutes",
+      "checkin_late_minutes", // TASK-474 (REQ-107 §7 K5) — check-in after the class ends, default 0
       // 🔻 TASK-456 (REQ-105 §3) — how far ahead the rolling extender keeps a non-closed group series stocked.
       // The one number an admin can feel: too small and the calendar ends in a fortnight, too large and a series
       // nobody closed fills the grid for a year.

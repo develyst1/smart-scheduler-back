@@ -5,7 +5,7 @@ import { isWithinCheckinWindow, checkinWindowMessage } from "../lib/checkin";
 import { formatCheckinPayload, issueCheckinToken } from "../lib/checkin-token";
 import { CRM_POINT_RULES } from "../lib/crm";
 import { awardCrmPoints } from "../lib/line-admin";
-import { getSetting } from "./settings.service";
+import { getNumberSetting, getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
 import { updateBookingStatus } from "./scheduler.service";
 import { toBookingDTO } from "../db/mappers";
@@ -54,16 +54,18 @@ export async function getCheckinQr(bookingId: string) {
   });
   if (!row) throw notFound("ไม่พบคาบเรียน");
   const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
+  const lateMinutes = await getNumberSetting("checkin_late_minutes"); // TASK-474
   if (!row.checkinToken) {
-    const issued = await issueCheckinToken(bookingId);
+    const issued = await issueCheckinToken(bookingId, undefined, lateMinutes);
     if (!issued) throw notFound("ไม่พบคาบเรียน");
-    return formatCheckinPayload(row, issued.token, issued.expiresAt, earlyMinutes);
+    return formatCheckinPayload(row, issued.token, issued.expiresAt, earlyMinutes, lateMinutes);
   }
   return formatCheckinPayload(
     row,
     row.checkinToken,
     row.checkinTokenExpiresAt?.toISOString() ?? "",
     earlyMinutes,
+    lateMinutes,
   );
 }
 
@@ -76,17 +78,28 @@ export async function checkinByToken(token: string) {
     const booking = await loadBooking(row.id);
     return { already: true, booking, remaining: await remainingOf(row, booking) };
   }
+  // SPEC-029: the early-window is a configurable rule — resolve at action time, pass into the pure check.
+  const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
+  const lateMinutes = await getNumberSetting("checkin_late_minutes"); // TASK-474 — the real setting, read the one way
+  // 🔴 TASK-474 ruling 2 — a SETTLED row is never flipped by a late scan. ATTENDED answered "already" above (that is what
+  // the day-end leaves a started class as); a NO_SHOW — staff's own mark — answers the window's "too late" and changes
+  // NOTHING: re-opening a consumed unit hours after the shop closed its day is what nothing downstream expects.
+  if (row.status === "NO_SHOW") {
+    throw badRequest(checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime), earlyMinutes, lateMinutes));
+  }
   if (row.status !== "CONFIRMED") {
     throw badRequest("คาบนี้ยังไม่พร้อมเช็คอิน (ต้องยืนยันตารางก่อน)");
   }
-  if (row.checkinTokenExpiresAt && row.checkinTokenExpiresAt < new Date()) {
+  // TASK-474 — a token minted BEFORE the late setting existed (or before it was raised) expires at the class end; inside
+  // the late window it is still honoured, because the window — not the stored stamp — is the rule. With 0 this is
+  // exactly the old check.
+  const inLateWindow = lateMinutes > 0 && isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes, lateMinutes);
+  if (row.checkinTokenExpiresAt && row.checkinTokenExpiresAt < new Date() && !inLateWindow) {
     throw badRequest("โทเคนเช็คอินหมดอายุแล้ว");
   }
-  // SPEC-029: the early-window is a configurable rule — resolve at action time, pass into the pure check.
-  const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
-  if (!isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes)) {
+  if (!isWithinCheckinWindow(row.date, hhmm(row.startTime), hhmm(row.endTime), undefined, earlyMinutes, lateMinutes)) {
     throw badRequest(
-      checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime), earlyMinutes),
+      checkinWindowMessage(row.date, hhmm(row.startTime), hhmm(row.endTime), earlyMinutes, lateMinutes),
     );
   }
 

@@ -69,6 +69,18 @@ export const SETTINGS = {
     label: "เปิดเช็คอินก่อนเริ่มคลาส (นาที)",
     parse: intInRange(0, 240),
   },
+  // 🔴 TASK-474 (REQ-107 §7 K5) — how long AFTER the class ends a parent may still check in. Default 0 = today's window,
+  // byte for byte. 0–180, and the window never crosses midnight (`lateWindowEnd` clamps to 23:59 — Sober's ruling 1).
+  // 📌 In practice the late window is only real between the class END and the day-END run: the day-end marks every
+  // started CONFIRMED class ATTENDED, and a scan after that answers "already" and changes nothing (ruling 2).
+  checkin_late_minutes: {
+    key: "checkin_late_minutes",
+    type: "number",
+    default: 0,
+    unit: "minutes",
+    label: "เช็คอินได้หลังจบคลาส (นาที)",
+    parse: intInRange(0, 180),
+  },
   // SPEC-048 / REQ-047 — the leave cut-off, per teacher type, editable by staff instead of hard-coded in
   // `lib/leave-notice.ts` (was 60/60/120 minutes). PART_TIME deliberately shares the full-time rule.
   leave_cutoff_hours_fulltime: {

@@ -33,7 +33,7 @@ import {
   hasEnoughTeacherChangeNotice,
   teacherChangeNoticeMessage,
 } from "../lib/teacher-change-notice";
-import { getSetting } from "./settings.service";
+import { getNumberSetting, getSetting } from "./settings.service";
 import {
   courseExpiry,
   courseSessionDates,
@@ -3512,7 +3512,7 @@ export async function updateBookingStatus(
           // record that we tried.
           if (t.id === current.teacherId) notification = res;
         }
-        await issueCheckinToken(id, tx);
+        await issueCheckinToken(id, tx, await getNumberSetting("checkin_late_minutes", tx)); // TASK-474 — the token lives to the window end
         // TASK-207 (3A) — the parent hears about their own child's session too, not only the teacher. One
         // extra row for this one booking; an unlinked parent gets a SKIPPED row exactly like an unlinked
         // teacher, never an error.
@@ -4423,6 +4423,7 @@ export async function confirmCourse(id: string) {
     const pending = rows.filter((r: any) => r.status === "PENDING");
     const results: BulkConfirmResult[] = [];
     let confirmed = 0;
+    const lateMinutes = await getNumberSetting("checkin_late_minutes", tx); // TASK-474 — read ONCE for the batch
 
     for (const b of pending) {
       try {
@@ -4430,7 +4431,7 @@ export async function confirmCourse(id: string) {
           .update(bookings)
           .set({ status: "CONFIRMED", confirmedAt: new Date() })
           .where(eq(bookings.id, b.id));
-        await issueCheckinToken(b.id, tx);
+        await issueCheckinToken(b.id, tx, lateMinutes);
         // The money side effect still happens per session — a course confirm draws exactly what ten single
         // confirms would draw. Only the NOTIFICATION is collapsed, never the ledger.
         await reconcileBookingHolds(tx, b.id, b.teacherId, "CONFIRMED", false);
