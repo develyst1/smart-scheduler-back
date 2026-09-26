@@ -56,7 +56,10 @@ describe("🔴 the path a proceeding id takes is the REAL single confirm — whi
 describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is upstream, never here", () => {
   const JOB = readSrc(readFileSync(resolve(root, "src/services/jobs.service.ts"), "utf8")).replace(/\r\n/g, "\n");
   test("the literal", () => {
-    expect(JOB).toContain('      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended));');
+    // 🔻 TASK-492 (Sober's ruling ❓2) — the literal moved ON PURPOSE: one clause added, `notUndoneCheckin()` — a session whose
+    // check-in an admin UNDID is not auto-attended (else the Undo is re-done at the cut and the deduction message sent). Still
+    // CONFIRMED-only, still no status list; the clause narrows the set, never widens it.
+    expect(JOB).toContain('      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended, notUndoneAttendance()));'); // 🔻 TASK-497 — renamed + widened (any undone attendance)
     expect(code(JOB)).not.toMatch(/inArray\(bookings\.status/);
     expect(code(JOB)).not.toContain('"EXTENDED"');
   });
@@ -66,6 +69,6 @@ describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is
     expect(JOB).toContain('eq(bookings.status, "CONFIRMED")');
   });
   test("56 = 56 — REQ-094 added no migration (0038 … 0055 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(57);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(60); // TASK-497: +0059
   });
 });

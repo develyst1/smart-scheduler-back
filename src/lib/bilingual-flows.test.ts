@@ -49,7 +49,9 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
       // 🔑 The property this file protects — a CONVERSATION reply is bilingual — is unchanged, and the two
       // entries below still carry it. This one now asserts the opposite for the one message that was ruled out
       // of it, rather than being dropped.
-      "renderSchedule(rows, TEMPLATE_LANG, range)",
+      // 🔻 TASK-486 — the ONE teacher formatter, in the CHAT's language (Sober moved TASK-304's EN-only reply, 09-26). Still ONE
+      // language per message — the list is never doubled — which is the property this entry protected.
+      "textReply(renderTeacherSchedule(rows, range), lang, [...toggle, calendarBtn])", // TASK-493 — the schedule takes no language; the chips do
       // 🔻 TASK-470 (f) — My Course is bilingual INSIDE the renderer now (heading via `tb`, lines once — Sober's
       // ruling for data-only lines); pinned by value in `line-v2-messages-req107.test.ts`.
       "textReply(renderMyCourses(view), lang)",

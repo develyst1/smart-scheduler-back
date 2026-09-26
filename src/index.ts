@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { api } from "./routes/api";
-import { ApiException, pgErrorCode } from "./lib/http";
+import { errorEnvelope } from "./lib/http";
 import { startOutboxWorker } from "./services/outbox.service";
 import { authMiddleware, accessGuard } from "./middleware/auth";
 import { coachRateMask } from "./middleware/coach-rate-mask";
@@ -33,7 +33,11 @@ app.use(
 ); // explicit methods so PATCH passes preflight even on older Hono builds
 
 // Start the LINE outbox delivery worker (idle if LINE isn't configured).
-startOutboxWorker();
+// 🔴 TASK-505 — ONLY when this file is the process ENTRY: `bun src/index.ts` (start), `bun --watch src/index.ts` (dev) and the
+// compiled binary (`bun build src/index.ts --compile`) — all three verified to report `import.meta.main === true`. A TEST only ever
+// IMPORTS the app (~25 files do), where it is `false` — so a test run no longer becomes a second outbox worker that reads the
+// outbox and DELIVERS its pending LINE rows with whatever token `.env` holds. No env var decides it: nothing to forget to set.
+if (import.meta.main) startOutboxWorker();
 
 // 🔴 TASK-462 — the process must SURVIVE a database blip. On 2026-09-24 the shared Postgres cluster on `sid` went into
 // recovery (`57P03`) and every in-flight query rejected at once. A rejection nobody awaited used to TERMINATE the
@@ -49,20 +53,35 @@ startOutboxWorker();
 //    without a handler the process already died here — this adds the line saying why.
 // 🚫 Neither handler may swallow silently, neither may exit(0) (a supervisor would read a crash as a clean stop), and
 // neither answers a request — they are last-resort logs, not error handling.
-process.on("unhandledRejection", (reason) => {
+// 🔴 TASK-506 — the SERVER's crash policy, so it is INSTALLED only when this file is the process entry (the same
+// `import.meta.main` rule as the outbox worker, TASK-505): a test IMPORTS the app, and there an uncaught throw must fail
+// the test that caused it — not `exit(1)` the whole run. The handlers are exported so their behaviour stays testable
+// by value; what they DO is unchanged.
+export const onUnhandledRejection = (reason: unknown) => {
   console.error("[process] unhandledRejection — logged, still serving:", reason);
-});
-process.on("uncaughtException", (err) => {
+};
+export const onUncaughtException = (err: unknown) => {
   console.error("[process] uncaughtException — state unknown, exiting(1) for a clean restart:", err);
   process.exit(1);
-});
+};
+if (import.meta.main) {
+  process.on("unhandledRejection", onUnhandledRejection);
+  process.on("uncaughtException", onUncaughtException);
+}
 
 app.get("/health", async (c) => {
   const r = await db.execute(sql`select 1 as ok`);
   return c.json({ ok: true, db: r[0]?.ok === 1 });
 });
 
-// API docs (Swagger UI) — public
+// API docs (Swagger UI) — 🔴 PUBLIC ON PURPOSE: ANOTHER TEAM USES THEM (owner's ruling, 2026-09-26 — TASK-509). Do not put them
+// behind the guards to "fix" them: that breaks a consumer you cannot see from this file. Closing them is the owner's call.
+// What they expose, as walked (TASK-509) — not a reassurance:
+// · `openapi.json` — a HAND-WRITTEN, PARTIAL schema (`openapi/document.ts`: 17 paths of the ~130 guarded routes, 7 schemas):
+//   route names, request/response shapes, the bearer-token scheme. No customer data, no host, no coach-rate field. Its login
+//   example is `admin` / `admin` — the bootstrap username of `.env.example`; the password cannot be set (8+ chars required).
+// · `docs` — the Swagger UI page for that document; its script and style load from cdn.jsdelivr.net (the package default).
+// Both are mounted TWICE: under `/api` (the reverse proxy's) and at the root (a direct hit on the Bun port).
 app.route("/", rootDocs);
 app.route("/api", apiDocs);
 
@@ -103,21 +122,9 @@ app.notFound((c) =>
 );
 
 app.onError((err, c) => {
-  if (err instanceof ApiException) {
-    return c.json(
-      { error: { code: err.code, message: err.message, details: err.details } },
-      err.status as any,
-    );
-  }
-  const code = pgErrorCode(err);
-  if (code === "23505") {
-    return c.json({ error: { code: "SLOT_TAKEN", message: "มีคาบในช่วงเวลานี้แล้ว" } }, 409);
-  }
-  if (code === "23503") {
-    return c.json({ error: { code: "VALIDATION", message: "ข้อมูลอ้างอิงไม่ถูกต้อง" } }, 400);
-  }
-  console.error(err);
-  return c.json({ error: { code: "INTERNAL", message: "เกิดข้อผิดพลาดภายในระบบ" } }, 500);
+  // TASK-490 — the mapping lives in `errorEnvelope` (lib/http.ts), shared with the shop-front batch's per-item results.
+  const { status, body } = errorEnvelope(err);
+  return c.json(body, status as any);
 });
 
 export type AppType = typeof routes;

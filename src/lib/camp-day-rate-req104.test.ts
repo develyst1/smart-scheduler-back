@@ -52,8 +52,8 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");
@@ -162,7 +162,8 @@ describe("🔴 the two scans carry what is left — camp `credit` in DAYS (half-
     spies.push(spyOn(db.query.campDays, "findFirst").mockImplementation((async () => ({ id: "d1", campWeekId: W1, campPackageId: P1, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null })) as any));
     spies.push(spyOn(db.query.campPackages, "findFirst").mockImplementation((async () => ({ id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, createdAt: new Date() })) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
-    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { dayId: "d1", weekId: W1, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
+    // TASK-502 — both scan paths answer ONE 8-key shape (Sober's ruling): "already" now carries `weekName` too — null here, the fake package has no days
+    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { dayId: "d1", weekId: W1, weekName: null, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
     expect(unitsToDays(8)).toBe(4);
     expect(region(SVC, "export async function checkinCampByToken(", "const dayDTO")).toContain("credit: creditDTO(pkg)"); // the attend path too
   });
@@ -170,6 +171,10 @@ describe("🔴 the two scans carry what is left — camp `credit` in DAYS (half-
     const base = { id: "b1", status: "ATTENDED", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", teacherId: T1, studentId: S1, student: { id: S1, name: "Aiwa" }, teacher: { id: T1, name: "Ek" }, subject: { name: "Freeskate" }, additionalTeachers: [], rental: null };
     let row: any = { ...base, courseId: "c1", course: { id: "c1", size: 10, usedSessions: 4, startDate: "2026-09-01", startTime: "10:00:00", weekday: 1, expiryDate: "2027-01-01", usedSessions_: 0 } };
     spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => row) as any));
+    // 🔴 TASK-504 — `checkinByToken` runs the suspension guard (TASK-476/489) BEFORE it computes `remaining`, and the guard reads
+    // the child's household — a read this test (older than the guard) never declared, so it needed a real database. Declared
+    // here, answered by the REAL id asked for: S1 exists with NO parent (a walk-in), so there is no household to be suspended.
+    spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async (q: any) => (q.where({ id: "id" }, { eq: (_c: unknown, v: string) => v }) === S1 ? { id: S1, parentId: null } : undefined)) as any));
     const vSpy = spyOn(db.query.vouchers, "findFirst").mockImplementation((async () => ({ id: "v1", totalHours: 10, usedHours: 6 })) as any); spies.push(vSpy);
     expect((await checkin.checkinByToken("tok-12345678") as any).remaining).toEqual({ used: 4, total: 10, unit: "sessions" });
     expect(vSpy).not.toHaveBeenCalled();
@@ -178,7 +183,8 @@ describe("🔴 the two scans carry what is left — camp `credit` in DAYS (half-
     expect(vSpy).toHaveBeenCalledTimes(1);
     row = { ...base, bookingType: "FIRST_TRIAL", course: null };
     expect((await checkin.checkinByToken("tok-12345678") as any).remaining).toBeNull();
-    expect(code(src("src/services/checkin.service.ts"))).toContain("return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };");
+    // 🔻 TASK-499 — `booking` is now the PUBLIC allow-list shape; `remaining` is still computed from the FULL booking (unchanged).
+    expect(code(src("src/services/checkin.service.ts"))).toContain("return { already: false, booking: toPublicCheckinBooking(result.booking), crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };");
   });
 });
 
@@ -218,7 +224,8 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     expect(tx.indexOf("notifyCampDeductions")).toBeGreaterThan(tx.indexOf("cutCampDays(tx, runDate)"));
     expect((J.match(/notifyCourseDeduction\(tx, \{/g) ?? []).length).toBe(2); // the Private deduction's two day-end sites, untouched
     const K = region(SVC, "export async function cutCampDays(", "\n}\n");
-    expect(K).toContain('await tx.update(campDays).set({ status: "ATTENDED", markedBy: "end-of-day", markedAt: new Date() }).where(eq(campDays.id, d.id));');
+    // 🔻 TASK-488 — + the split pair (channel `end-of-day`, no actor); `marked_by` still written until its drop
+    expect(K).toContain('await tx.update(campDays).set({ status: "ATTENDED", markedBy: "end-of-day", markChannel: "end-of-day", markActor: null, markedAt: new Date() }).where(eq(campDays.id, d.id));');
     expect(K).not.toContain("enqueueLine"); // the cut cuts; the pass notifies
     expect(region(SVC, "export async function markDay(", "\n}\n")).not.toContain("enqueueLine"); // not at scan / not at the manual mark — the owner's ruling
     expect(SVC).not.toMatch(/camp_deduction_enabled|getSetting\("camp_deduction/);

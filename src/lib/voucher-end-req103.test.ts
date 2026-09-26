@@ -21,6 +21,8 @@ import { bookings, notificationOutbox, vouchers } from "../db/schema";
 import { toVoucherDTO } from "../db/mappers";
 import { readSrc } from "./read-src";
 import { addDays, fmtDate } from "./time";
+import { PgDialect } from "drizzle-orm/pg-core"; // TASK-512
+import * as ownScope from "./own-scope";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -64,7 +66,13 @@ const fakeTx = (v: any, rows: any[]) => {
     },
     insert: (table: any) => ({ values: (val: any) => { writes.push({ op: "insert", table: table === notificationOutbox ? "outbox" : "other", val }); const ret = { returning: async () => [{ id: "new" }], onConflictDoNothing: async () => {} }; return Object.assign(Promise.resolve(), ret); } }),
     update: (table: any) => ({ set: (patch: any) => ({ where: async (w: any) => { writes.push({ op: "update", table: table === bookings ? "bookings" : table === vouchers ? "vouchers" : "other", patch, where: String(w) }); } }) }),
-    select: () => ({ from: () => ({ where: async () => [] }) }),
+    // TASK-512 — the bulk coach notice asks `teachersOfBooking` (`select … from teachers inner join bookings on id = $1 and <THE predicate>`):
+    // answered from these rows — their primary coach (none of these draws has an additional teacher).
+    select: () => ({ from: () => ({ where: async () => [], innerJoin: async (_t: any, cond: any) => {
+      const id = new PgDialect().sqlToQuery(cond).params[0];
+      const r = rows.find((x) => x.id === id);
+      return r?.teacherId ? [{ id: r.teacherId, lineUserId: r.teacherId === T1 ? "U1" : r.teacherId === T2 ? "U2" : null }] : [];
+    } }) }),
   };
   return { tx, writes, reconciled };
 };
@@ -74,8 +82,8 @@ describe("🔴 the migration — 0051, counted, three nullable columns on a smal
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0051_voucher_end.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0051_voucher_end` is the 52nd file, idx 51 (TASK-443 added 0052 after it); 'expects 52'; the six statements", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[51]).toBe("0051_voucher_end.sql");
     expect(journal.entries[51]).toMatchObject({ idx: 51, tag: "0051_voucher_end" });
     expect(sql).toContain("`db:verify` expects 52");
@@ -199,6 +207,24 @@ describe("🔴 `endVoucher` by value through a fake tx — the doomed rows, the 
     expect(E).not.toContain("enqueueParentCopies");
     expect(E).not.toContain("class_cancelled");
   });
+  test("🔴 TASK-512 — a CO-TAUGHT voucher ends: EVERY coach gets ONE message with the dates THEY lose — a shared date is in BOTH (correct: each loses that class); no family", async () => {
+    const c2 = draw({ date: shift(2), status: "CONFIRMED" }), c3 = draw({ date: shift(3), status: "CONFIRMED", teacherId: T2 }), c4 = draw({ date: shift(4), status: "CONFIRMED" });
+    const p5 = draw({ date: shift(5), status: "PENDING" }); // never announced ⇒ nobody, whoever teaches it
+    const f = fakeTx(voucher(), [c4, c2, c3, p5]);
+    // the coaches of each row, as THE predicate answers them: c2 and c4 co-taught by Ek (primary) + Ple (additional); c3 Ple alone
+    spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async (_e: any, id: string) =>
+      id === c3.id ? [{ id: T2, lineUserId: "U2" }] : id === p5.id ? [{ id: T1, lineUserId: "U1" }, { id: T2, lineUserId: "U2" }] : [{ id: T1, lineUserId: "U1" }, { id: T2, lineUserId: "U2" }]) as any));
+    spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(f.tx)) as any));
+    await sched.endVoucher(V, { reason: "CUSTOMER_CANCELLED" }, "dev");
+    const outbox = f.writes.filter((w) => w.op === "insert" && w.table === "outbox").map((w) => w.val);
+    expect(outbox.map((o) => [o.recipientType, o.recipientLineUserId, o.bookingId, o.payload.dates])).toEqual([
+      ["teacher", "U1", c2.id, [shift(2), shift(4)]], // Ek: the two co-taught classes
+      ["teacher", "U2", c2.id, [shift(2), shift(3), shift(4)]], // Ple: the same two AND his own — shift(2) and shift(4) are in BOTH messages, on purpose
+    ]);
+    expect(outbox.every((o) => o.payload.kind === "course_dropped_teacher" && o.payload.cause === "voucher_ended")).toBe(true);
+    expect(JSON.stringify(f.writes)).not.toContain('"parent"');
+  });
+
   test("`previewVoucherEnd`: the course preview's shape + `remaining`; writes nothing; a today row is counted", async () => {
     const rows = [draw({ date: shift(-1), status: "CONFIRMED" }), draw({ date: TODAY, status: "CONFIRMED" }), draw({ date: shift(3), status: "PENDING", teacherId: T2, teacher: { id: T2, nickname: "Ple", name: "Ple" } })];
     spies.push(spyOn(db.query.vouchers, "findFirst").mockImplementation((async () => voucher()) as any));
@@ -259,7 +285,7 @@ describe("🔴 the creator, the sender, the shared cancel branch, the course end
   test("the undo of a PAST draw on an ENDED voucher stays open: the status cancel's voucher return has no `endedAt` guard — the end freezes the future, not history", () => {
     const U = region(SVC, "export async function updateBookingStatus(", "\n}\n");
     expect(U).toContain("if (current.voucherId && current.voucher) {");
-    expect(U).toContain(".set({ usedHours: afterReturn(current.voucher.usedHours) })");
+    expect(U).toContain(".set({ usedHours: sql`GREATEST(${vouchers.usedHours} - 1, 0)` })"); // 🔻 TASK-496: was `afterReturn(…)` (read-modify-write)
     expect(U).not.toContain("isVoucherEnded");
     expect(U).not.toContain("VOUCHER_ENDED");
   });

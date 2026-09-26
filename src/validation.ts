@@ -383,6 +383,9 @@ export const createVoucher = z.object({
   discount: discountInput.optional(),
 });
 
+/** TASK-492 — the admin Undo: an optional reason, recorded on the append-only `booking_undos` row. */
+export const undoBooking = z.object({ reason: z.string().trim().max(500).optional() });
+
 export const updateStatus = z.object({
   action: z.enum(["confirm", "attend", "sick-leave", "cancel"]),
   reason: z.string().optional(),

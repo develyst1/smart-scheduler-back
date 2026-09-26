@@ -78,8 +78,8 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");
@@ -106,7 +106,7 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
 
 describe("🔑 key 58, the access rows, the validators, the routes through the ROOT app", () => {
   test("58 keys; `action:calendar.other-cancel-all` labelled; the nine rows; none in TEACHER_ALLOWED; add-dates is the creator's key", () => {
-    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate
+    expect(ACTION_KEYS.length).toBe(60); // 🔻 TASK-431: + bookings.coach-rate
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.other-cancel-all")).toMatchObject({ labelTh: "ยกเลิกตารางอื่นๆ ทั้งชุด", labelEn: "Cancel a whole Other series" });
     expect(ROUTE_ACCESS["GET /other-series"]).toEqual({ menus: ["menu:calendar"] });
     expect(ROUTE_ACCESS["GET /other-series/:key"]).toEqual({ menus: ["menu:calendar"] });

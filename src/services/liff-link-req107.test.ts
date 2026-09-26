@@ -12,6 +12,7 @@ import { handleLineWebhookEvents } from "./line-webhook.service";
 import * as registerSvc from "./line-register.service";
 import * as lineClient from "../lib/line-client";
 import { db } from "../db";
+import { fakeFamilyLinks } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's family read, faked at the boundary
 import { tb } from "../lib/line-i18n";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -41,6 +42,7 @@ const chat = (o: { linked?: "customer" | null } = {}) => {
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => (o.linked === "customer" ? { id: "p1", lineUserId: U, lineLang: "TH", status: "active" } : undefined)) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => (o.linked === "customer" ? { parentId: "p1", lineUserId: U } : undefined)) as any));
+  fakeFamilyLinks(spies, o.linked === "customer" ? { [U]: "p1" } : {}); // TASK-504 — the SAME family, at the `db.select` boundary `familyOfLineUser` really uses
   spies.push(spyOn(db, "insert").mockImplementation((() => ({
     values: (val: any) => ({ onConflictDoUpdate: async () => { writes.push({ op: "setStep", val }); session = { lineUserId: U, updatedAt: new Date(), mutedUntil: null, strikes: 0, draft: null, ...val }; }, onConflictDoNothing: async () => {} }),
   })) as any));

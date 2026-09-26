@@ -102,8 +102,8 @@ describe("🔴 §1 the mirror, by value — and what it is NOT", () => {
 describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PREDICATE is the witness", () => {
   test("56 = 56: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(journal.entries[54]).toMatchObject({ idx: 54, tag: "0054_group_slot_yield" });
     expect(MIG).toContain("db:verify` expects 55");
     const stmts = MIG.split("--> statement-breakpoint").map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);
@@ -365,8 +365,9 @@ describe("🟢 §6 the clash note — the owner approved the bytes (TASK-453b), 
       { date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: true },
       { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa", clash: false },
     ];
-    expect(renderWeeklySchedule(rows)).toContain("06-10-2026 · 15:00-16:00 · Skate Kids ⚠️ CLASH — awaiting admin");
-    expect(renderWeeklySchedule(rows)).toContain("07-10-2026 · 16:00-17:00 · Freeskate / Aiwa\n");
+    // 🔻 TASK-486 — Khwan's format; the approved suffix KEPT, byte-identical, on the clashing row's STATUS line (Sober §B2)
+    expect(renderWeeklySchedule(rows)).toContain("@ 15:00 / Skate Kids\n　Confirmed ⚠️ CLASH — awaiting admin\n");
+    expect(renderWeeklySchedule(rows)).toContain("@ 16:00 / Aiwa\n　Freeskate / Confirmed\n");
     expect(renderWeeklySchedule([rows[1]!])).not.toContain("CLASH");
   });
 

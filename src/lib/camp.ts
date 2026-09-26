@@ -64,8 +64,8 @@ export function unitsDelta(from: string, to: CampDayStatus, units: number): numb
   return after - before;
 }
 
-/** `used_units` after a delta — never below zero, whatever the row holds (the check-in-correction floor). */
-export const usedAfter = (used: number, delta: number): number => Math.max(0, (used ?? 0) + delta);
+// 🔻 TASK-496 — `usedAfter` (the floored `used_units` after a delta) is gone: `markDay` now moves the counter in SQL,
+// `GREATEST(used_units + delta, 0)`, so the floor lives in the write itself (pinned by `counter-sql-req108.test.ts`).
 
 /** A camp day's token lives the whole DATE (no start time): 23:59:59 Bangkok of that date. */
 export const campTokenExpiry = (date: string): Date => new Date(`${date}T23:59:59+07:00`);

@@ -175,10 +175,10 @@ describe("🔴 the migration — 0038, counted, witnessed, the `course_packages`
   const SQL = readFileSync(resolve(root, "drizzle/0038_course_rental_marker.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (0039 … 0055 added since): `0038_course_rental_marker` is the 39th file, idx 38", () => {
-    expect(files.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
     expect(files[38]).toBe("0038_course_rental_marker.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(57);
+    expect(j.entries.length).toBe(60); // TASK-497: +0059
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" });
   });
   test("two nullable column adds on `course_packages`, the marker then the variant, both IF NOT EXISTS, nothing else", () => {

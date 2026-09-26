@@ -214,9 +214,10 @@ describe("🔴 resume — AC-13 · AC-14 · AC-16", () => {
 describe("🔴 AC-7 — the teacher message, and the no-teacher rule is an ENQUEUE rule", () => {
   test("no teacher ⇒ NO row at all, asserted by position", () => {
     // Not a SKIPPED row: that records *we tried to reach someone*, and there was nobody to reach (SPEC-072 §5).
+    // 🔻 TASK-513 — now per coach (every coach of the class, `teachersOfBooking`): the same rule, checked before each send.
     for (const body of [PAUSE, RESUME]) {
-      expect(body).toMatch(/teacher??.(lineUserId|teacher)/);
-      expect(body.indexOf("lineUserId")).toBeLessThan(body.indexOf("enqueueLine("));
+      expect(body).toContain("if (!coach.lineUserId) continue; // AC-7");
+      expect(body.indexOf("if (!coach.lineUserId) continue;")).toBeLessThan(body.indexOf("enqueueLine("));
     }
   });
 

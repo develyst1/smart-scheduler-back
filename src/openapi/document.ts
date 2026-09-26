@@ -51,8 +51,11 @@ export const openApiDocument = {
         type: "object",
         required: ["username", "password"],
         properties: {
-          username: { type: "string", example: "admin" },
-          password: { type: "string", example: "admin" },
+          // TASK-511 — PLACEHOLDERS, on purpose: this page is public (TASK-509), and `admin` was .env.example's bootstrap username — a
+          // free hint at the first super-admin. Obviously not real, and still valid shapes (USERNAME_RE; 8+ chars), so the example
+          // never teaches a login that would be rejected.
+          username: { type: "string", example: "your.username" },
+          password: { type: "string", example: "your-password-here" },
         },
       },
       LoginResponse: {

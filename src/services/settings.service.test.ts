@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { resetSetting } from "./settings.service";
+import { PgDialect } from "drizzle-orm/pg-core"; // TASK-507
+import { appSettings } from "../db/schema";
 
 // A minimal stub of the Drizzle exec — records the delete so we don't touch a real DB (brownfield).
 function stubExec() {
-  const calls: { deleted: boolean; where: unknown } = { deleted: false, where: undefined };
+  const calls: { deleted: boolean; where: unknown; table?: unknown } = { deleted: false, where: undefined };
   const exec = {
-    delete: () => {
+    delete: (table: unknown) => {
       calls.deleted = true;
+      calls.table = table; // TASK-507
       return { where: (cond: unknown) => ((calls.where = cond), Promise.resolve()) };
     },
   };
@@ -19,6 +22,10 @@ describe("resetSetting — true reset-to-default (TASK-122)", () => {
     const r = await resetSetting("checkin_early_minutes", exec);
     expect(calls.deleted).toBe(true); // it removes the row, not PUT-the-default
     expect(calls.where).toBeDefined(); // scoped by key
+    // 🔻 TASK-507 — the line above passes for ANY where (even one matching every row). The claim, pinned: app_settings, by THIS key.
+    expect(calls.table).toBe(appSettings);
+    const q = new PgDialect().sqlToQuery(calls.where as any);
+    expect([q.sql, q.params]).toEqual(['"app_settings"."key" = $1', ["checkin_early_minutes"]]);
     expect(r).toEqual({
       key: "checkin_early_minutes",
       label: expect.any(String),

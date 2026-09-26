@@ -29,7 +29,9 @@ export const CMD_QR = ["qr", "คิวอาร์"] as const;
 export const CMD_CHECKIN = ["เช็คอิน", "checkin", "check-in"] as const;
 // 🔻 TASK-470 — `request leave`: advertised as "Request Leave" in the customer's list (the same TASK-313 catch).
 export const CMD_LEAVE = ["ลา", "แจ้งลา", "sick", "leave", "request leave"] as const;
-export const CMD_SCHEDULE = ["ตาราง", "ตารางสอน", "schedule"] as const;
+// 🔻 TASK-485 — `ตารางของฉัน` / `my schedule`: the teacher's Language/Help list (REQ-109 §6, approved) advertises them, and a
+// list under "Available Commands" is a promise about TYPING (TASK-470's precedent; Sober's ruling A). They join the reserved set.
+export const CMD_SCHEDULE = ["ตาราง", "ตารางสอน", "schedule", "ตารางของฉัน", "my schedule"] as const;
 export const CMD_CALENDAR = ["ปฏิทิน", "calendar"] as const;
 
 /** TASK-245 — the exit, available at every step of every flow. */

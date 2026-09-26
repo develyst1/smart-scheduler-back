@@ -3,6 +3,7 @@
 // is that the rental post IS the event — there's no other artifact — so a failed post is SURFACED, never a silent 200.
 
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
+import { teachersOfBooking } from "../lib/own-scope"; // TASK-513
 import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../db";
 import { assertNotCampRow } from "./scheduler.service"; // TASK-418 — a derived camp hour is owned by its day
@@ -117,15 +118,22 @@ async function notifyRentalAddedSameDay(
   const today = bangkokNow().date;
   if (booking.date !== today) return null;
   if (!(await reminderRanOn(today))) return null;
-  const teacher = booking.teacherId
-    ? await db.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.teacherId) })
-    : null;
-  return enqueueLine({
-    recipientType: "teacher",
-    recipientLineUserId: teacher?.lineUserId ?? null,
-    bookingId: booking.id,
-    payload: { kind: "rental_added_teacher", bookingId: booking.id, bookingType: booking.bookingType ?? null, rental: { code: row.code, remark: row.remark } },
-  });
+  // 🔴 TASK-513 — EVERY coach of the class (`teachersOfBooking`). This notice exists only to carry the `Rental :` line the
+  // morning reminder could not — and that reminder goes to every coach of the session (primary + additional), so its
+  // stand-in must too. Unlinked ⇒ SKIPPED, as before. ⇒ the primary's result (the one this always returned), else the first.
+  let primary: Awaited<ReturnType<typeof enqueueLine>> | null = null;
+  let first: Awaited<ReturnType<typeof enqueueLine>> | null = null;
+  for (const coach of await teachersOfBooking(db, booking.id)) {
+    const res = await enqueueLine({
+      recipientType: "teacher",
+      recipientLineUserId: coach.lineUserId ?? null,
+      bookingId: booking.id,
+      payload: { kind: "rental_added_teacher", bookingId: booking.id, bookingType: booking.bookingType ?? null, rental: { code: row.code, remark: row.remark } },
+    });
+    first ??= res;
+    if (coach.id === booking.teacherId) primary = res;
+  }
+  return primary ?? first;
 }
 
 /**

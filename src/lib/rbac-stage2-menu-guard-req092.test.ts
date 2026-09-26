@@ -13,6 +13,7 @@ import { authMiddleware, accessGuard, requireMenu } from "../middleware/auth";
 import { ApiException } from "./http";
 import { signToken } from "./jwt";
 import * as usersSvc from "../services/user.service";
+import { db } from "../db"; // TASK-507
 import { readSrc } from "./read-src";
 import { uuidFor } from "./test-uuid";
 
@@ -174,8 +175,17 @@ describe("🔑 the routes — `/api/me`, the self password change, `PUT /users/:
     process.env.SKIP_AUTH = "false";
     expect((await app.fetch(new Request("http://localhost/api/me"))).status).toBe(401);
     expect((await app.fetch(new Request("http://localhost/api/me/password", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))).status).toBe(401);
+    // 🔻 TASK-507 — this line was `expect(login.status).not.toBe(401 + 1000)`: it could NEVER fail (no status is 1401), so the test
+    // looked like a check that login stays public and asserted nothing. Its own comment says the intent — login REACHES the
+    // handler: *a 401 from `authenticate`, never the guard's*. Both refusals are `401 UNAUTHORIZED`, so a STATUS cannot tell them
+    // apart (the likely reason a placeholder was left); their SENTENCES can: the guard says "ต้องเข้าสู่ระบบก่อน", `authenticate`
+    // says "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง". The unknown user `x` is declared at the `users` table, answered by the real username.
+    const asked: unknown[] = [];
+    spies.push(spyOn(db.query.users, "findFirst").mockImplementation((async (q: any) => { asked.push(q.where({ username: "username" }, { eq: (_c: unknown, v: unknown) => v })); return undefined; }) as any));
     const login = await app.fetch(new Request("http://localhost/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "x", password: "y" }) }));
-    expect(login.status).not.toBe(401 + 1000); // reaches the handler (a 401 from authenticate, never the guard's)
+    expect(login.status).toBe(401);
+    expect(((await login.json()) as any).error).toEqual({ code: "UNAUTHORIZED", message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }); // authenticate's sentence — NOT the guard's
+    expect(asked).toEqual(["x"]); // …because the request really reached `authenticate`, which looked the user up
   });
   test("🚫 TASK-383: `/api/auth/me` and `/api/auth/me/password` are GONE (404, no alias) — NextAuth owns `/api/auth/*` on the FE host", async () => {
     process.env.SKIP_AUTH = "true";
@@ -274,6 +284,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
   test("56 = 56 — Stage 2 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(57);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(60); // TASK-497: +0059
   });
 });

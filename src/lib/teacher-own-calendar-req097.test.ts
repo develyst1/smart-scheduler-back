@@ -48,8 +48,8 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("56 = 56: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -246,7 +246,7 @@ describe("🔴 `attend` only, the leave for a LINKED account only, the users pag
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, null);");
     expect(S).toContain("if (input.teacherId) await assertTeacherFree(input.teacherId, id);");
     expect(S).toContain("patch.teacherId = input.teacherId;");
-    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-411: + people.parent-archive
+    expect(ACTION_KEYS.length).toBe(60); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-411: + people.parent-archive
     expect(ACTION_REGISTRY.find((a) => a.key === "action:calendar.teacher-leave")).toMatchObject({ labelTh: "แจ้งลาสอน (ครู)", labelEn: "Report own teaching leave" });
     expect(code(src("src/routes/me.ts"))).toContain("teacherId: u.teacherId }");
   });
@@ -303,7 +303,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // the other teachers: minus me, CONFIRMED only
     const O = region(SCHED, "async function sendClassCancelledToOtherTeachers(", "export async function reportOwnLeave(");
     expect(O).toContain('if (current.status !== "CONFIRMED") return 0;');
-    expect(O).toContain(".filter((x): x is string => !!x && x !== me)");
+    expect(O).toContain("const rows = (await teachersOfBooking(tx, current.id)).filter((t) => t.id !== me);"); // 🔻 TASK-510: THE predicate minus me (was a hand-written union — the same answer, a fourth copy)
     expect(O).toContain('kind: "class_cancelled_teacher"');
     // the route: literal before the param routes (TASK-029), the linked assertion inline
     expect(API.indexOf('.post("/teachers/me/leave"')).toBeLessThan(API.indexOf('.get("/teachers", zValidator("query", v.teachersQuery)'));
@@ -378,7 +378,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(stmts[2]).toBe('ALTER TABLE "bookings" VALIDATE CONSTRAINT "bookings_cancel_reason_chk"');
     expect(last).toContain("SHARE UPDATE EXCLUSIVE");
     expect(last).toContain("`db:verify` expects 46");
-    expect(files.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");
@@ -443,7 +443,11 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
   });
   test("the check-in QR read for a linked user goes through `assertOwnBooking` before the service (source); the public scan has no user at all", () => {
     expect(region(API, '.get("/bookings/:id/checkin"', ".get(\"/bookings/:id/posted-sale\"")).toContain('await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));');
-    expect(code(src("src/services/checkin.service.ts"))).not.toMatch(/scopeOf|ownScope|teacherId === /);
+    // 🔻 TASK-487 — narrowed to the SCAN's two functions: the same file now holds the teacher's own read (`findBookingsForTeacher`),
+    // which rightly uses `ownScopeWhere` (primary OR additional teacher). The claim — the public scan knows no user — is unchanged.
+    const CK = code(src("src/services/checkin.service.ts"));
+    expect(region(CK, "export async function getCheckinQr(", "export async function checkinByToken(")).not.toMatch(/scopeOf|ownScope|teacherId === /);
+    expect(region(CK, "export async function checkinByToken(", "export async function linkedStudentIds(")).not.toMatch(/scopeOf|ownScope|teacherId === /);
     void checkin;
   });
 });

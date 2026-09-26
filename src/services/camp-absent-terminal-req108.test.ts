@@ -72,6 +72,9 @@ describe("🔴 DOOR 2 — the shop-front QR (`POST /api/checkin/shopfront`): an 
     spies.push(spyOn(db.query.students, "findMany").mockImplementation((async () => [{ id: "s1", parentId: "p1" }]) as any));
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => []) as any));
     spies.push(spyOn(duo, "familyRowsWhere").mockImplementation(((ids: string[]) => ({ family: ids })) as any));
+    // 🔴 TASK-504 — the shop front reads the check-in window from `app_settings` (early / late minutes): undeclared, so this test ran
+    // on WHATEVER the real database's settings held. Declared: no rows ⇒ the DEFAULTS. An ABSENT day is refused whatever the window.
+    spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
     const r = await post("/checkin/shopfront", { phone: "0924912848", campDayId: DAY });
     expect(r.status).toBe(409);
     expect(((await r.json()) as any).error.code).toBe("NOT_CHECKINABLE");
@@ -102,8 +105,8 @@ describe("🔑 the ADMIN's door stays OPEN — ABSENT → ATTENDED through the r
     spies.push(spyOn(db.query.campPackages, "findFirst").mockImplementation((async () => ({ id: "cp1", studentId: "s1", totalUnits: 10, usedUnits: 4, createdAt: new Date("2026-09-01T00:00:00Z") })) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
     setSystemTime(new Date(`${TODAY}T11:00:00+07:00`));
-    await campSvc.markDay(DAY, "ATTENDED", "admin-dong");
-    expect(writes[0]).toMatchObject({ status: "ATTENDED", markedBy: "admin-dong" });
+    await campSvc.markDay(DAY, "ATTENDED", { channel: "staff", actor: "admin-dong" }); // 🔻 TASK-488 — a channel and a person
+    expect(writes[0]).toMatchObject({ status: "ATTENDED", markedBy: "admin-dong", markChannel: "staff", markActor: "admin-dong" });
     expect(writes.length).toBe(1); // ABSENT and ATTENDED both consume ⇒ no unit moves on the correction either
   });
   test("by source: the guard lives in `campScanOutcome` ONLY — `assertDayTransition` still allows ABSENT → ATTENDED", () => {

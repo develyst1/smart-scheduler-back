@@ -8,6 +8,7 @@ import { handleLineWebhookEvents } from "./line-webhook.service";
 import * as checkinSvc from "./checkin.service";
 import * as lineClient from "../lib/line-client";
 import { db } from "../db";
+import { fakeDispatchBoundary } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's own un-mute write + family read, faked at the boundary
 import { t, tb } from "../lib/line-i18n";
 import { CUSTOMER_MENU, TEACHER_MENU, UNKNOWN_MENU } from "../lib/line-rich-menu";
 import { sessionPick } from "../lib/line-leave";
@@ -28,6 +29,7 @@ const parentChat = (lang: "TH" | "EN") => {
   const replies: any[] = [];
   const writes: any[] = [];
   spies.push(spyOn(db.query.lineLinkSessions, "findFirst").mockImplementation((async () => undefined) as any));
+  fakeDispatchBoundary(spies); // TASK-504
   spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => ({ id: "p1", lineUserId: U, lineLang: lang, status: "active" })) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));

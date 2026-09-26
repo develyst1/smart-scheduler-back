@@ -2,7 +2,10 @@
 // these; all domain rules (quota/extension/idempotency) live here.
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
-import { ownScopeWhere, scopeOf } from "../lib/own-scope";
+import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance
+import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
+import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
+import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
 import { db } from "../db";
 import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
@@ -22,7 +25,7 @@ import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
 import { holdsSlot, slotHolderWhere } from "../lib/slot-holder";
 import { isGroupSlotClash, takesYieldedSlot } from "../lib/group-clash";
 import { firstFreeWeeklySlot, searchExhausted, weeksBetween } from "../lib/extension-slot";
-import { afterReturn, returnsConsumedUnit } from "../lib/checkin-correction";
+import { returnsConsumedUnit } from "../lib/checkin-correction";
 import {
   COURSE_SUBJECT_LOCKED,
   COURSE_SUBJECT_LOCKED_MESSAGE,
@@ -447,7 +450,7 @@ const withBookingRelations = {
   campWeekDay: true,
 } as const;
 
-async function loadBookingDTO(exec: any, id: string) {
+export async function loadBookingDTO(exec: any, id: string) { // TASK-492: exported — the Undo answers with the same DTO
   const row = await exec.query.bookings.findFirst({
     where: (b: any, { eq }: any) => eq(b.id, id),
     with: withBookingRelations,
@@ -540,7 +543,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null, provenance: !scope }); // TASK-481 — B
+    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null, provenance: scope ? "masked" : "raw" }); // TASK-481 — B
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
@@ -561,7 +564,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
           with: withBookingRelations,
           orderBy: (b, { asc: a }) => [a(b.date), a(b.startTime)],
         });
-        return rows.map((row) => toBookingDTO(row, { provenance: !scope })); // TASK-481 — B
+        return rows.map((row) => toBookingDTO(row, { provenance: scope ? "masked" : "raw" })); // TASK-481 — B · TASK-488 — the three-state read
       })()
     : undefined;
 
@@ -928,7 +931,7 @@ export async function getBookings(f: {
           additionalTeachers: extraTeachers.get(r.b.id) ?? [],
           rental: rentalRows.get(r.b.id) ?? null,
         },
-        { provenance: !scope }, // TASK-481 — B: raw for an admin, null for a scoped teacher
+        { provenance: scope ? "masked" : "raw" }, // TASK-481 — B: raw for an admin, null for a scoped teacher (TASK-488: three-state)
       ),
     ),
     page: f.page,
@@ -2281,7 +2284,7 @@ export async function createCoursePackage(input: any) {
       const toFlip = makeupsToFlip(ordered as any[], input.size, absentWeeks);
       if (!toFlip.length) break;
       for (const r of toFlip) {
-        await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true }).where(eq(bookings.id, r.id));
+        await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true, leaveCharged: false }).where(eq(bookings.id, r.id)); // TASK-492 — free
       }
       await reconcileCoursePlan(tx, course.id);
     }
@@ -3006,7 +3009,7 @@ async function planPreviewResult(tx: any, courseId: string, applied: any) {
  * ✅ **Non-throwing.** `enqueueLine` writes a SKIPPED row when a coach has no LINE link ⇒ **a leave — or a
  * plan edit — never fails because of a notification.**
  */
-async function sendLeaveNotice(
+export async function sendLeaveNotice( // TASK-510: exported — its recipients are pinned by value on a co-taught class
   tx: any,
   booking: { id: string; studentId: string | null; coStudentId?: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null },
   opts: { size: number | null; via: string },
@@ -3016,9 +3019,6 @@ async function sendLeaveNotice(
     : null;
   const coStudent = booking.coStudentId // TASK-425 — a DUO row's second child, for the `Student :` line
     ? await tx.query.students.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.coStudentId) })
-    : null;
-  const teacher = booking.teacherId
-    ? await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.teacherId) })
     : null;
   const payload = {
     kind: "leave_notice",
@@ -3032,15 +3032,20 @@ async function sendLeaveNotice(
     via: opts.via,
   };
   await notifyAdmins(payload, tx, booking.id);
-  await enqueueLine(
-    {
-      recipientType: "teacher",
-      recipientLineUserId: teacher?.lineUserId ?? null,
-      bookingId: booking.id,
-      payload,
-    },
-    tx,
-  );
+  // 🔴 TASK-510 — EVERY coach of the class, through THE predicate (TASK-487 / TASK-508's `teachersOfBooking`): it read
+  // `booking.teacherId` alone, so on a co-taught class the ADDITIONAL teacher was never told the class was off — and a coach
+  // not told a class is off TURNS UP. The words are unchanged; only who receives them. An unlinked coach ⇒ a SKIPPED row.
+  for (const coach of await teachersOfBooking(tx, booking.id)) {
+    await enqueueLine(
+      {
+        recipientType: "teacher",
+        recipientLineUserId: coach.lineUserId ?? null,
+        bookingId: booking.id,
+        payload,
+      },
+      tx,
+    );
+  }
 }
 
 /**
@@ -3064,25 +3069,42 @@ async function sendClassCancelledToTeacher(
   reason: { cancelReason: string | null; note: string | null },
 ) {
   if (current.status !== "CONFIRMED") return null;
-  const teacher = current.teacherId
-    ? await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, current.teacherId) })
-    : null;
-  return enqueueLine(
-    {
-      recipientType: "teacher",
-      recipientLineUserId: teacher?.lineUserId ?? null,
-      bookingId: current.id,
-      payload: {
-        kind: "class_cancelled_teacher",
+  return sendClassCancelledToCoaches(tx, current, reason);
+}
+
+/**
+ * 🔴 TASK-510 — the coach's cancel notice to EVERY coach of the class (primary + additional, `teachersOfBooking`): it read
+ * `current.teacherId` alone. No gate here — each caller owns "did the coach hold this class?" (the admin's cancel: it WAS
+ * CONFIRMED; a leave Undo's make-up: it was EXTENDED / CONFIRMED). The words are unchanged. ⇒ the PRIMARY's result (the
+ * one the admin's response has always reported), else the first coach's; `null` when the row has no coach at all.
+ */
+export async function sendClassCancelledToCoaches(
+  tx: any,
+  current: { id: string; teacherId: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null },
+  reason: { cancelReason: string | null; note: string | null },
+): Promise<NotifyResult | null> {
+  let primary: NotifyResult | null = null, first: NotifyResult | null = null;
+  for (const coach of await teachersOfBooking(tx, current.id)) {
+    const res = await enqueueLine(
+      {
+        recipientType: "teacher",
+        recipientLineUserId: coach.lineUserId ?? null,
         bookingId: current.id,
-        bookingType: current.bookingType ?? null,
-        size: current.course?.size ?? current.voucher?.totalHours ?? null,
-        cancelReason: reason.cancelReason,
-        note: reason.note,
+        payload: {
+          kind: "class_cancelled_teacher",
+          bookingId: current.id,
+          bookingType: current.bookingType ?? null,
+          size: current.course?.size ?? current.voucher?.totalHours ?? null,
+          cancelReason: reason.cancelReason,
+          note: reason.note,
+        },
       },
-    },
-    tx,
-  );
+      tx,
+    );
+    first ??= res;
+    if (coach.id === current.teacherId) primary = res;
+  }
+  return primary ?? first;
 }
 
 /**
@@ -3153,9 +3175,9 @@ async function sendClassCancelledToOtherTeachers(
   me: string,
 ): Promise<number> {
   if (current.status !== "CONFIRMED") return 0;
-  const ids = [...new Set([current.teacherId, ...(current.additionalTeachers ?? []).map((a) => a.teacherId)].filter((x): x is string => !!x && x !== me))];
-  if (!ids.length) return 0;
-  const rows = await tx.query.teachers.findMany({ where: (x: any, { inArray: inA }: any) => inA(x.id, ids) });
+  // 🔑 TASK-510 — THE predicate, minus me: this was a hand-written union of `teacherId` + `additionalTeachers` — the same
+  // answer today, but a FOURTH copy of "whose class is this?". One answer, so the three coach notices cannot drift apart.
+  const rows = (await teachersOfBooking(tx, current.id)).filter((t) => t.id !== me);
   for (const t of rows) {
     await enqueueLine(
       {
@@ -3217,19 +3239,24 @@ async function sendCourseDroppedToTeachers(
   cause: "dropped" | "ended" | "voucher_ended",
   reason: { cancelReason: string | null; note: string | null },
 ) {
-  const byTeacher = new Map<string, typeof cancelled>();
+  // 🔴 TASK-512 — grouped by EVERY coach of each row (`teachersOfBooking`, THE predicate), not by `b.teacherId`: a co-taught
+  // course's ADDITIONAL teacher was never told it stopped. Each coach's message lists the dates THEY lose — so on a co-taught
+  // course two coaches get the SAME dates, one message each. That is correct (each loses those classes), not a duplicate.
+  const byTeacher = new Map<string, { lineUserId: string | null; rows: typeof cancelled }>();
   for (const b of confirmedOnly(cancelled)) {
-    if (!b.teacherId) continue;
-    byTeacher.set(b.teacherId, [...(byTeacher.get(b.teacherId) ?? []), b]);
+    for (const coach of await teachersOfBooking(tx, b.id)) {
+      const g = byTeacher.get(coach.id) ?? { lineUserId: coach.lineUserId ?? null, rows: [] };
+      g.rows.push(b);
+      byTeacher.set(coach.id, g);
+    }
   }
-  for (const [teacherId, rows] of byTeacher) {
-    const teacher = await tx.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, teacherId) });
+  for (const [, { lineUserId, rows }] of byTeacher) {
     const ordered = [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const first = ordered[0]!;
     await enqueueLine(
       {
         recipientType: "teacher",
-        recipientLineUserId: teacher?.lineUserId ?? null,
+        recipientLineUserId: lineUserId,
         bookingId: first.id,
         payload: {
           kind: "course_dropped_teacher",
@@ -3307,16 +3334,18 @@ export async function applyPlanChange(
         if (!change.planned && !change.override && toCourseSummary(course).leaveLocked) {
           throw conflict("LEAVE_LOCKED", "โควตาการลาเต็มแล้ว — ต้องปลดล็อกโดยแอดมินก่อน");
         }
+        // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave took quota (the Undo refunds only a recorded true).
         await tx
           .update(bookings)
-          .set({ status: "SICK_LEAVE", note: change.reason ?? b.note })
+          .set({ status: "SICK_LEAVE", note: change.reason ?? b.note, leaveCharged: !b.plannedAtCreation })
           .where(eq(bookings.id, b.id));
         // TASK-148 (REQ-045 B): an absence DECLARED AT CREATION is free, so re-marking such a row must not
         // start charging quota for it. Every other mark-absence — including a later planned one — consumes.
+        // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write: two leaves at the same moment each read N and wrote N+1.
         if (!b.plannedAtCreation) {
           await tx
             .update(coursePackages)
-            .set({ leaveUsed: course.leaveUsed + 1 })
+            .set({ leaveUsed: sql`${coursePackages.leaveUsed} + 1` })
             .where(eq(coursePackages.id, courseId));
         }
         const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
@@ -3434,8 +3463,9 @@ export async function updateBookingStatus(
    * TASK-475 (REQ-108) — WHERE an `attend` came from, stored on `bookings.checkin_source`: `shopfront-qr` · `checkin-qr` ·
    * `line` · the staff actor. A sixth optional argument: every other action ignores it, every existing caller is untouched.
    */
-  checkinSource?: string | null,
+  checkinSource?: Provenance | null, // 🔻 TASK-488 — a CHANNEL (closed) and, for a person, an ACTOR; never one string for both
 ) {
+  let reverseSaleAfterCommit = false; // TASK-496 — set by the attendance undo; the reversal runs only once the transaction has committed
   const result = await db.transaction(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
@@ -3534,13 +3564,16 @@ export async function updateBookingStatus(
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
-        await tx.update(bookings).set({ status: "ATTENDED", checkinSource: checkinSource ?? null }).where(eq(bookings.id, id)); // TASK-475
+        await tx.update(bookings).set({ status: "ATTENDED", checkinSource: legacySourceOf(checkinSource), checkinChannel: checkinSource?.channel ?? null, checkinActor: checkinSource?.actor ?? null }).where(eq(bookings.id, id)); // TASK-475
         if (current.courseId && current.course) {
-          const used = current.course.usedSessions + 1;
-          await tx
+          // 🔴 TASK-496 — `sql` arithmetic, and the post-value read back from the WRITE (`.returning()`), exactly as the day-end
+          // job does it: a value read in JS and written back loses a count when two writers meet.
+          const [counted] = await tx
             .update(coursePackages)
-            .set({ usedSessions: used })
-            .where(eq(coursePackages.id, current.courseId));
+            .set({ usedSessions: sql`${coursePackages.usedSessions} + 1` })
+            .where(eq(coursePackages.id, current.courseId))
+            .returning({ usedSessions: coursePackages.usedSessions });
+          const used = counted!.usedSessions;
           // 🔴 TASK-254 — deduction site 1 of 2 (the manual one). The message is enqueued INSIDE this `if`,
           // so it is tied to the write that caused it: a second "attend" on an already-ATTENDED booking
           // deducts nothing and therefore announces nothing. `used` is the post-value, exact by construction.
@@ -3556,11 +3589,12 @@ export async function updateBookingStatus(
         }
         // Voucher hour deduction on real attendance (B.5).
         if (current.voucherId && current.voucher) {
-          const used = current.voucher.usedHours + 1;
-          await tx
+          const [counted] = await tx // TASK-496 — `sql` arithmetic, the post-value from the write
             .update(vouchers)
-            .set({ usedHours: used })
-            .where(eq(vouchers.id, current.voucherId));
+            .set({ usedHours: sql`${vouchers.usedHours} + 1` })
+            .where(eq(vouchers.id, current.voucherId))
+            .returning({ usedHours: vouchers.usedHours });
+          const used = counted!.usedHours;
           await notifyCourseDeduction(tx, {
             bookingId: id,
             studentId: current.studentId,
@@ -3641,14 +3675,14 @@ export async function updateBookingStatus(
         if (current.courseId && current.course) {
           await tx
             .update(coursePackages)
-            .set({ usedSessions: afterReturn(current.course.usedSessions) })
+            .set({ usedSessions: sql`GREATEST(${coursePackages.usedSessions} - 1, 0)` }) // TASK-496 — floored `sql`, not read-modify-write
             .where(eq(coursePackages.id, current.courseId));
         }
         if (current.voucherId && current.voucher) {
           // A voucher has no make-up to re-owe — without this the family's hour is simply gone.
           await tx
             .update(vouchers)
-            .set({ usedHours: afterReturn(current.voucher.usedHours) })
+            .set({ usedHours: sql`GREATEST(${vouchers.usedHours} - 1, 0)` }) // TASK-496 — floored `sql`, not read-modify-write
             .where(eq(vouchers.id, current.voucherId));
         }
       }
@@ -3668,33 +3702,22 @@ export async function updateBookingStatus(
       }
     } else if (action === "sick-leave" && current.status === "ATTENDED") {
       // ═══ SPEC-073 / TASK-258 (REQ-083) — UNDO an attendance. It sits here, beside the `attend` branch it
-      // reverses, so `ATTENDED → SICK_LEAVE` behaves identically however it is reached (§6).
+      // reverses, so the undo behaves identically however it is reached (§6). 🔻 TASK-497: it now ends CONFIRMED (below).
       //
       // 🔴 AC-1 — accepted, and **no reason is required**. It deliberately does NOT run the advance-notice
       // check: that rule asks whether leave was declared before the class, and this session has already
       // happened — the answer is always "too late", which would refuse every correction there is.
-      await tx
-        .update(bookings)
-        .set({ status: "SICK_LEAVE", note: reason ?? current.note })
-        .where(eq(bookings.id, id));
-
-      // 🔴 AC-2 — the entitlement goes back. `usedSessions` / `usedHours` are the running counters; a decrement
-      // is exactly the inverse of what `attend` and the day-end wrote, and it leaves `priorSessions` alone
-      // (deliberately not derived from them — TASK-165).
-      // ⚠️ Floored at 0: a balance can never be more than what was bought, and a negative on a money-adjacent
-      // number reads as a system fault to whoever sees it first.
-      if (current.courseId && current.course) {
-        await tx
-          .update(coursePackages)
-          .set({ usedSessions: Math.max(0, current.course.usedSessions - 1) })
-          .where(eq(coursePackages.id, current.courseId));
-      }
-      if (current.voucherId && current.voucher) {
-        await tx
-          .update(vouchers)
-          .set({ usedHours: Math.max(0, current.voucher.usedHours - 1) })
-          .where(eq(vouchers.id, current.voucherId));
-      }
+      // 🔴 TASK-497 (owner ruling 09-26; Sober's (ii) 09-27) — back to CONFIRMED, NOT SICK_LEAVE: a child marked present by mistake
+      // was not on sick leave, and the family's record said a leave they never took. Through THE SHARED WRITES (the check-in
+      // Undo's, `attendance-revert.service`): the GUARDED flip (`… AND status = 'ATTENDED'`; the check-in columns cleared — their
+      // provenance moves to the event), the note as before, and —
+      // 🔴 AC-2 — the entitlement goes back: `usedSessions` / `usedHours`, the exact inverse of what `attend` and the day-end
+      // wrote, FLOORED at 0 in `sql` (TASK-496), `priorSessions` untouched (TASK-165).
+      await revertAttendance(tx, current, { note: reason ?? current.note });
+      // 🔑 …and the EVENT, whose KIND is the truth (a parent's check-in ⇒ `checkin`; a staff / day-end mark ⇒ `attendance`).
+      // It is also what keeps tonight's day-end from RE-ATTENDING this now-CONFIRMED row (`notUndoneAttendance`) — the unit
+      // taken again and the deduction message sent. The old SICK_LEAVE label was, by accident, what protected it.
+      await recordUndo(tx, current, { kind: attendanceUndoKind(current), undoneBy: checkinSource?.actor ?? null, reason: reason ?? null });
 
       // 🔴 AC-4 — **no leave quota is consumed** (the owner's named exception to C-22). Nothing here touches
       // `leaveUsed`, and the guard is the session's own **status** — it is in this branch only because it was
@@ -3708,7 +3731,9 @@ export async function updateBookingStatus(
       // posted, nothing at all when it did not (a course/voucher posts at SALE time, so it has no `rev:`
       // movement), and is idempotent on its own key. Best-effort, like every other posting in this codebase:
       // a correction to a booking must not fail because bookkeeping did.
-      await reverseBookingSale(id);
+      // 🔴 TASK-496 — AFTER the commit (below), not here: `reverseBookingSale` writes through `db`, OUTSIDE this transaction,
+      // so called here it left a reversal in the books whenever the transaction then rolled back. TASK-492's Undo shape.
+      reverseSaleAfterCommit = true;
 
       // 🚫 TASK-254's `COURSE DEDUCTION` is NOT re-fired here: that message is enqueued inside the branch that
       // WRITES the deduction, and this branch reverses one. A "session returned" message is @Porter's to decide.
@@ -3734,19 +3759,24 @@ export async function updateBookingStatus(
         }
       }
 
+      // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave takes quota, decided by the SAME conditions as the increment
+      // below: a course leave within quota that was not declared at creation. An over-quota leave (status set, `locked`) and a
+      // voucher / single leave take none — and before 0058 nothing on the row said so.
+      const charges = !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);
       await tx
         .update(bookings)
-        .set({ status: "SICK_LEAVE", note: reason ?? current.note })
+        .set({ status: "SICK_LEAVE", note: reason ?? current.note, leaveCharged: charges })
         .where(eq(bookings.id, id));
 
       if (current.courseId && current.course) {
         if (canTakeLeave(current.course)) {
           // TASK-148 (REQ-045 B): a row born `plannedAtCreation` is a free absence — taking leave on it again
           // must not start charging quota. A normal sick leave (the overwhelming case) is unaffected.
-          if (!current.plannedAtCreation) {
+          // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write (a concurrent leave used to lose a count).
+          if (charges) {
             await tx
               .update(coursePackages)
-              .set({ leaveUsed: current.course.leaveUsed + 1 })
+              .set({ leaveUsed: sql`${coursePackages.leaveUsed} + 1` })
               .where(eq(coursePackages.id, current.courseId));
           }
 
@@ -3830,6 +3860,7 @@ export async function updateBookingStatus(
     return { booking, extended, course: booking.course, locked, notification };
   });
 
+  if (reverseSaleAfterCommit) await reverseBookingSale(id); // TASK-496 — the attendance undo's reversal, after the commit
   return result;
 }
 
@@ -4598,17 +4629,22 @@ export async function pauseBooking(id: string) {
 
     // 🔴 AC-7 is an ENQUEUE rule, not a rendering one: no teacher ⇒ **no row at all**. A SKIPPED row would read
     // as *we tried to reach someone* when there was nobody to reach (SPEC-072 §5's shape).
+    // 🔴 TASK-513 — EVERY coach of the class (`teachersOfBooking`, THE predicate): it read `current.teacher` alone, so on a
+    // co-taught class the second coach was never told it STOPPED. AC-7 unchanged: a coach with no link gets NO row. The
+    // response's `notification` still describes the primary, as it always has.
     let notification: NotifyResult | null = null;
-    if (current.teacher?.lineUserId) {
-      notification = await enqueueLine(
+    for (const coach of await teachersOfBooking(tx, id)) {
+      if (!coach.lineUserId) continue; // AC-7
+      const res = await enqueueLine(
         {
           recipientType: "teacher",
-          recipientLineUserId: current.teacher.lineUserId,
+          recipientLineUserId: coach.lineUserId,
           bookingId: id,
           payload: { kind: "booking_paused" },
         },
         tx,
       );
+      if (coach.id === current.teacherId) notification = res;
     }
 
     const row = await tx.query.bookings.findFirst({
@@ -4668,21 +4704,22 @@ export async function resumeBooking(id: string, input: { date: string; startTime
       throw e;
     }
 
-    const withTeacher = await tx.query.bookings.findFirst({
-      where: (b: any, { eq: e }: any) => e(b.id, id),
-      with: { teacher: true },
-    });
+    // 🔴 TASK-513 — EVERY coach of the class as it now stands (after the write: a resume may choose a new primary), through
+    // THE predicate — the PAIR of the pause above: a coach told a class stopped and never told it resumed is worse off than one
+    // told neither. AC-7 unchanged (no link ⇒ no row); `notification` still describes the (new) primary.
     let notification: NotifyResult | null = null;
-    if (withTeacher?.teacher?.lineUserId) {
-      notification = await enqueueLine(
+    for (const coach of await teachersOfBooking(tx, id)) {
+      if (!coach.lineUserId) continue; // AC-7
+      const res = await enqueueLine(
         {
           recipientType: "teacher",
-          recipientLineUserId: withTeacher.teacher.lineUserId,
+          recipientLineUserId: coach.lineUserId,
           bookingId: id,
           payload: { kind: "booking_resumed" },
         },
         tx,
       );
+      if (coach.id === teacherId) notification = res;
     }
 
     const row = await tx.query.bookings.findFirst({
@@ -4704,7 +4741,7 @@ export async function resumeBooking(id: string, input: { date: string; startTime
  * ⚠️ It records **from and to even when they are equal**? No — a no-op write is not a change, and an audit
  * full of rows saying nothing happened is how people stop reading it. The caller decides; see below.
  */
-async function recordExpiryChange(
+export async function recordExpiryChange( // TASK-492: exported — the Undo's expiry restore is audited by the ONE writer
   exec: any,
   row: { courseId: string; from: string; to: string; actor?: string | null },
 ) {

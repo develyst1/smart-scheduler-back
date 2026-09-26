@@ -142,8 +142,10 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
 
   test("bulk: only the rows that WERE confirmed, grouped by coach, one row each, `bookingId` = his first date", () => {
     expect(BULK).toContain("for (const b of confirmedOnly(cancelled)) {");
-    expect(BULK).toContain("byTeacher.set(b.teacherId, [...(byTeacher.get(b.teacherId) ?? []), b]);");
-    expect(BULK).toContain("for (const [teacherId, rows] of byTeacher) {");
+    // 🔻 TASK-512 — grouped by EVERY coach of each row (`teachersOfBooking`), no longer by `b.teacherId`: same claim, one row per coach.
+    expect(BULK).toContain("for (const coach of await teachersOfBooking(tx, b.id)) {");
+    expect(BULK).toContain("byTeacher.set(coach.id, g);");
+    expect(BULK).toContain("for (const [, { lineUserId, rows }] of byTeacher) {");
     expect(BULK).toContain("bookingId: first.id,");
     expect(BULK).toContain("dates: ordered.map((r) => r.date),");
     expect((BULK.match(/enqueueLine\(/g) ?? []).length).toBe(1);
@@ -164,11 +166,13 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
     expect(src("src/lib/line-i18n.ts")).toContain('TH: "คาบนี้ถูกพักไว้ชั่วคราวค่ะ — {student} · {date} {time} · ยังไม่มีกำหนดใหม่",');
   });
 
-  test("unlinked ⇒ SKIPPED by `enqueueLine` itself: both senders pass `teacher?.lineUserId ?? null`, never branch on it", () => {
-    for (const R of [SINGLE, BULK]) {
-      expect(R).toContain("recipientLineUserId: teacher?.lineUserId ?? null,");
-      expect(R).not.toContain("if (teacher?.lineUserId)");
-    }
+  test("unlinked ⇒ SKIPPED by `enqueueLine` itself: both senders pass the coach's link `?? null`, never branch on it", () => {
+    // 🔻 TASK-510 — the single cancel sends to EVERY coach (`coach`, from `teachersOfBooking`); 🔻 TASK-512 — so does the bulk one, whose
+    // group carries the coach's link (`coach.lineUserId ?? null` when the group is made). Neither branches on the link.
+    expect(SINGLE).toContain("recipientLineUserId: coach.lineUserId ?? null,");
+    expect(BULK).toContain("lineUserId: coach.lineUserId ?? null, rows: []");
+    expect(BULK).toContain("recipientLineUserId: lineUserId,");
+    for (const R of [SINGLE, BULK]) expect(R).not.toMatch(/if \((coach|teacher)\??\.lineUserId\)|if \(lineUserId\)/);
     expect(code(src("src/lib/line.ts"))).toContain('status: "SKIPPED",');
   });
 

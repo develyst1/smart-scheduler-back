@@ -6,7 +6,8 @@
 // ⚠️ None of them is on the owner's release path: (1) is read by LINE's servers, (2) by a calendar client,
 // (3) by a developer typo or a stale client. **They are worth closing because DEF-5 established that "nobody
 // would ever hit it" survives exactly until one gate moves.**
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { db } from "../db"; // TASK-504
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readSrc } from "../lib/read-src";
@@ -67,7 +68,12 @@ describe("TASK-297 (2) — the ICS route KEEPS its plain 404, on purpose", () =>
   });
 
   test("…and it still answers 404 with a body a calendar client can ignore", () => {
-    return get("/api/calendar/nonexistent.ics").then(async (res) => {
+    // 🔴 TASK-504 — the feed looks its teacher up by calendar token: a read this test never declared, so the 404 it pins was the
+    // REAL database answering "no such teacher". Declared: no teacher holds `nonexistent` (answered by the real token asked for).
+    const asked: unknown[] = [];
+    const spy = spyOn(db.query.teachers, "findFirst").mockImplementation((async (q: any) => { asked.push(q.where({ calendarToken: "calendarToken" }, { eq: (_c: unknown, v: unknown) => v })); return undefined; }) as any);
+    return get("/api/calendar/nonexistent.ics").finally(() => spy.mockRestore()).then(async (res) => {
+      expect(asked).toEqual(["nonexistent"]); // it really asked, by that token
       expect(res.status).toBe(404);
       expect(await res.text()).toBe("404 Not Found");
     });

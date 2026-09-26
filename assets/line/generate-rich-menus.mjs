@@ -8,7 +8,8 @@
 //   cd smart-scheduler-front # …e.g. the frontoffice web (has sharp installed)
 //   bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
 // Outputs parent-{th,en}.png (2500×1686) + teacher-{th,en}.png (2500×843) next to this script.
-// TASK-247 added unknown-th / known-th; TASK-472 adds menu-teacher.png (bilingual, 2500×843) — the file the publish reads.
+// TASK-247 added unknown-th / known-th. (TASK-472 generated menu-teacher.png here; 🔻 TASK-484 moved it to the customer's art —
+// see resize-customer-menus.mjs.)
 // (The two PARENT per-role files, menu-unknown / menu-customer, are the customer's art: see resize-customer-menus.mjs.)
 
 import { fileURLToPath } from "node:url";
@@ -222,10 +223,10 @@ const jobs = [
   // TASK-247 — orange, and orange ONLY here (see the palette note).
   { file: "unknown-th.png", svg: menuSvg({ width: 2500, height: 843, cells: unknownCells(UNKNOWN.TH), labelSize: 88, dividers: unknownDividers, accent: ORANGE }) },
   { file: "known-th.png", svg: menuSvg({ width: 2500, height: 1686, cells: knownCells(KNOWN.TH), labelSize: 76, dividers: knownDividers, accent: ORANGE }) },
-  // TASK-472 — the per-role teacher file the publish reads. Bilingual (Sober's recommendation, put to the owner via
-  // Porter). ⏪ FALLBACK if the owner keeps the Thai-only picture: swap the svg below for teacher-th's —
-  //   svg: menuSvg({ width: 2500, height: 843, cells: teacherCells(TEACHER.TH), labelSize: 88, dividers: teacherDividers }),
-  { file: "menu-teacher.png", svg: menuSvg({ width: 2500, height: 843, cells: teacherCellsBilingual(), labelSize: 88, dividers: teacherDividers }) },
+  // 🔻 TASK-484 — `menu-teacher.png` is NO LONGER generated: the owner chose the customer's ORANGE teacher art (REQ-109 §1),
+  // which `resize-customer-menus.mjs` writes. Generating it here would OVERWRITE her file on the next run. ⏪ To go back to the
+  // generated bilingual blue art, restore this job:
+  //   { file: "menu-teacher.png", svg: menuSvg({ width: 2500, height: 843, cells: teacherCellsBilingual(), labelSize: 88, dividers: teacherDividers }) },
 ];
 
 for (const j of jobs) {

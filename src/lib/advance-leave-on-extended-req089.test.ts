@@ -124,7 +124,7 @@ describe("🔑 ONE rule, THREE callers — the preview and the save agree becaus
     expect((loop.match(/\bbreak;/g) ?? []).length).toBe(1);
     expect(loop.indexOf("if (!toFlip.length) break;")).toBeLessThan(loop.indexOf("for (const r of toFlip)"));
     expect(loop).toContain("await reconcileCoursePlan(tx, course.id);");
-    expect(create).toContain('await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true }).where(eq(bookings.id, r.id));');
+    expect(create).toContain('await tx.update(bookings).set({ status: "SICK_LEAVE", plannedAtCreation: true, leaveCharged: false }).where(eq(bookings.id, r.id));'); // 🔻 TASK-492: + leaveCharged false (a declared absence takes no quota — now RECORDED)
     // the engine, again — and ONLY the engine: the create places no make-up itself.
     expect((create.match(/await reconcileCoursePlan\(tx, course\.id\);/g) ?? []).length).toBe(2);
     expect(create).not.toContain("findFreeExtensionDate(");

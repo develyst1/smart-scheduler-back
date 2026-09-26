@@ -9,6 +9,7 @@
 //  - Enum string values match the frontend unions exactly (no mapping layer).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { CheckinChannel } from "../lib/checkin-channel";
 import { relations, sql } from "drizzle-orm";
 import {
   pgTable,
@@ -530,6 +531,14 @@ export const bookings = pgTable(
     // `end-of-day`. Written on the ATTEND transition only, KEPT through a later cancel (it is the evidence the reversal
     // refers to). 🚫 Not `note`: a cancel reason overwrites `note`, which would erase this exactly when it is needed.
     checkinSource: text("checkin_source"),
+    // 🔴 TASK-488 `0057` — the provenance SPLIT: the CHANNEL (a closed type — a sixth value is a compile error at every writer,
+    // and the DB CHECKs it) and the ACTOR (free text: a username). `checkin_source` above is KEPT, still written, until its drop.
+    checkinChannel: text("checkin_channel").$type<CheckinChannel>(),
+    checkinActor: text("checkin_actor"),
+    // 🔴 TASK-492 `0058` — did THIS leave take quota? Written by the two leave doors at the moment they charge (true) or do not
+    // (false); NULL = a leave from before 0058. The Undo refunds ONLY a recorded true (legacy: inferred where certain, else
+    // refused). "Took quota" is not `!plannedAtCreation` — an over-quota leave and an undone attendance took none either.
+    leaveCharged: boolean("leave_charged"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -848,6 +857,34 @@ export const teacherLinkRequests = pgTable(
 );
 
 // ───────────────────────── Job runs (UC-012 auto-cut) ─────────────────────────
+/**
+ * 🔴 TASK-492 `0058` — APPEND-ONLY: one row per admin Undo (a mistaken leave, a false check-in). An undo is an EVENT, not a
+ * property of the booking. It keeps the ORIGINAL check-in's provenance (`prior_checkin_*`, owner ruling 2) — the booking's
+ * own columns are cleared by a check-in Undo. The day-end reads it: a session whose check-in was undone is not auto-attended.
+ */
+export const bookingUndos = pgTable(
+  "booking_undos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"leave" | "checkin" | "attendance">().notNull(), // TASK-497 (0059): + `attendance` — a staff / day-end mark undone
+    undoneBy: text("undone_by"),
+    undoneAt: timestamp("undone_at", { withTimezone: true }).defaultNow().notNull(),
+    reason: text("reason"),
+    priorStatus: text("prior_status").notNull(),
+    priorCheckinChannel: text("prior_checkin_channel"),
+    priorCheckinActor: text("prior_checkin_actor"),
+    leaveRefunded: boolean("leave_refunded").notNull().default(false),
+    makeupCancelledId: uuid("makeup_cancelled_id"),
+    expiryFrom: date("expiry_from"),
+    expiryTo: date("expiry_to"),
+  },
+  (t) => [
+    check("booking_undos_kind_chk", sql`${t.kind} IN ('leave', 'checkin', 'attendance')`), // TASK-497 (0059)
+    index("booking_undos_booking_idx").on(t.bookingId, t.kind),
+  ],
+);
+
 // Audit log for the end-of-day sweep, so ops can confirm the Windows Task Scheduler
 // trigger actually fired and see what it cut. One row per run (idempotent re-runs
 // just append another row with cut=0).
@@ -1097,6 +1134,10 @@ export const campDays = pgTable(
     status: text("status").notNull().default("PLANNED"),
     markedBy: text("marked_by"),
     markedAt: timestamp("marked_at", { withTimezone: true }),
+    // 🔴 TASK-488 `0057` — the same split for a camp day's MARK (`marked_by` KEPT, still written, until its drop). Named
+    // `mark_*`, not `checkin_*`: it records every mark — a scan, a staff ABSENT, an undo, the day-end cut (Sober's ruling).
+    markChannel: text("mark_channel").$type<CheckinChannel>(),
+    markActor: text("mark_actor"),
     // TASK-403 (0043) — the camp day's check-in token (the session QR's pattern), issued lazily on the first QR view;
     // the undo's reason (ATTENDED | ABSENT → PLANNED), cleared by the next mark.
     checkinToken: text("checkin_token"),

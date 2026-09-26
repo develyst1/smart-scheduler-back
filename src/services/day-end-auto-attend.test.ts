@@ -23,7 +23,7 @@ const TX = code(JOB.slice(0, JOB.indexOf("// TASK-007")));
 
 describe("the day-end auto-mark (TASK-180)", () => {
   test("🔴 it writes ATTENDED — the word NO_SHOW does not appear in the write path at all", () => {
-    expect(TX).toContain('set({ status: "ATTENDED", checkinSource: "end-of-day" })'); // 🔻 TASK-475 — + where it came from
+    expect(TX).toContain('set({ status: "ATTENDED", checkinSource: "end-of-day", checkinChannel: "end-of-day", checkinActor: null })'); // 🔻 TASK-475 — + where it came from
     expect(TX).not.toContain("NO_SHOW");
   });
 

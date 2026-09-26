@@ -87,7 +87,7 @@ describe("🔴 the payload writers and the other booking-row name sites — by s
     expect(region(CK, "export async function findBookingsForTeacher(", "\n}\n")).toContain("with: { student: true, coStudent: true, subject: true },");
     expect(code(src("src/routes/calendar.ts"))).toContain("studentName: studentNamesOf(b),");
     expect(region(code(src("src/services/calendar.service.ts")), "export async function findBookingsForCalendarToken(", "\n}\n")).toContain("with: { student: true, coStudent: true, subject: true },");
-    expect(region(code(src("src/services/line-webhook.service.ts")), "async function doTeacherSchedule(", "\n}\n")).toContain('studentName: studentNamesOf(b) ?? "",');
+    expect(region(code(src("src/services/line-webhook.service.ts")), "async function doTeacherSchedule(", "\n}\n")).toContain("name: displayNameOf(b) || null,"); // 🔻 TASK-486 — still the ONE rule (`displayNameOf` = title ?? `studentNamesOf`), so a DUO row still reads both
     expect(formatCheckinPayload({ id: "b", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", student: KK, coStudent: PRAO }, "tok", "2026-10-05T03:00:00.000Z").studentName).toBe("KKTEST & Prao");
   });
   test("🔴 THE CENSUS — every `studentName:` assignment of a BOOKING row in src goes through `studentNamesOf` / `displayNameOf`; the per-child sites (a group seat, a camp package, a registered student) are the named allow-list", () => {

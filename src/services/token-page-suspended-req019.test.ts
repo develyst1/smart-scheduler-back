@@ -56,11 +56,13 @@ describe("🔴 `/checkin` — a suspended household's token is refused, FIRST; a
     expect(r.status).toBe(400);
     expect(JSON.stringify(await r.json())).not.toContain("booking");
   });
-  test("a DUO row: the CO-student's household suspended ⇒ refused (either family refuses the row)", async () => {
+  // 🔨 TASK-489 — MOVED. This pinned the defect: "either family refuses the row" told family A "your account is suspended"
+  // (false about A, a disclosure about B). Sober's (ii): a DUO row is refused only when EVERY household on it is suspended.
+  test("a DUO row: only the CO-student's household suspended ⇒ checked in (TASK-489 (ii); both suspended ⇒ refused)", async () => {
     households(["p2"]);
     const attended = scan({ coStudentId: "s2" });
-    expect((await post("/checkin", "token-123456")).status).toBe(400);
-    expect(attended).toEqual([]);
+    expect((await post("/checkin", "token-123456")).status).toBe(200);
+    expect(attended).toEqual(["b1"]);
   });
   test("an ACTIVE household ⇒ checked in exactly as before", async () => {
     households([]);
@@ -101,15 +103,18 @@ describe("🔴 `/checkin/camp` — it had the SAME gap; now refused the same way
 });
 
 describe("🔑 by source: ONE rule, not a second reading of 'suspended'", () => {
-  test("both pages call `anyHouseholdSuspended`, which is `blockedBySuspension` over each child's parent — and neither page reads `suspendedAt` itself", () => {
+  // TASK-489 — the session page asks EVERY household on the row (a DUO token is shared); camp has one child, so any = every.
+  test("both pages ask `blockedBySuspension` over each child's parent (session: EVERY household; camp: its one) — and neither page reads `suspendedAt` itself", () => {
     const P = src("src/services/parent.service.ts");
     expect(P).toContain("for (const id of studentIds) if (blockedBySuspension(await findParentOfStudent(id, exec))) return true;");
+    expect(P).toContain("for (const id of studentIds) if (!blockedBySuspension(await findParentOfStudent(id, exec))) return false;");
     const C = src("src/services/checkin.service.ts"), K = src("src/services/camp.service.ts");
-    expect(C).toContain('if (await anyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));');
+    expect(C).toContain('if (await everyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));');
+    expect(C).not.toContain("anyHouseholdSuspended");
     expect(K).toContain('throw badRequest(tb("suspended_notice"));');
     for (const [f, s] of [["checkin", C], ["camp", K]] as const) expect({ f, reads: /suspendedAt|isSuspended\(/.test(s) }).toEqual({ f, reads: false });
     // FIRST: before the ATTENDED "already" answer, so a suspended household gets no data back
-    expect(C.indexOf("anyHouseholdSuspended(")).toBeLessThan(C.indexOf('if (row.status === "ATTENDED")'));
+    expect(C.indexOf("everyHouseholdSuspended(")).toBeLessThan(C.indexOf('if (row.status === "ATTENDED")'));
     expect(K.indexOf("anyHouseholdSuspended(")).toBeLessThan(K.indexOf("campScanOutcome(d, today"));
   });
 });

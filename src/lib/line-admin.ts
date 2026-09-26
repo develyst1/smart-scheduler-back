@@ -3,7 +3,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings, students } from "../db/schema";
-import { applyPoints } from "./crm";
+import { levelCaseSql } from "./crm";
 import { enqueueLine } from "./line";
 
 const ADMIN_KEY = "line_admin_user_ids";
@@ -58,14 +58,15 @@ export async function awardCrmPoints(
   exec: any = db,
 ): Promise<{ points: number; level: number } | null> {
   if (delta === 0) return null;
-  const row = await exec.query.students.findFirst({
-    where: (s: any, { eq: e }: any) => e(s.id, studentId),
-  });
-  if (!row) return null;
-  const { points, level } = applyPoints(row.crmPoints ?? 0, delta);
-  await exec
+  // 🔴 TASK-498 — ONE statement: the points move by `sql` (floored, TASK-496's shape) and the level is the ladder applied to
+  // THAT SAME new total. Postgres evaluates both SETs against the one old row it has locked, so two awards at once can no
+  // longer lose points (the old read-then-write did), and the level can never disagree with its points (computing it from a
+  // value read earlier would have made that reachable). The answer comes from the write, never from a read.
+  const total = sql`GREATEST(${students.crmPoints} + ${delta}, 0)`;
+  const [row] = await exec
     .update(students)
-    .set({ crmPoints: points, crmLevel: level.level })
-    .where(eq(students.id, studentId));
-  return { points, level: level.level };
+    .set({ crmPoints: total, crmLevel: levelCaseSql(total) })
+    .where(eq(students.id, studentId))
+    .returning({ points: students.crmPoints, level: students.crmLevel });
+  return row ? { points: row.points, level: row.level } : null;
 }

@@ -168,6 +168,9 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // ended course has no live row (ending cancels them), so nothing of it is reachable — the marker on an ended
   // course is inert. No money moves, so there is no ledger to protect either.
   "DELETE /courses/:id/rental": "unrelated",
+  // 🔴 TASK-492 — the admin Undo returns a leave or a false check-in to CONFIRMED: a REVIVING write, so it asks the ONE guard
+  // (`assertCourseWritable` — ended AND paused) inside its transaction, before anything is written. Pinned in booking-undo-req108.
+  "POST /bookings/:id/undo": "guarded",
 };
 
 describe("every write route is classified against the ended-course rule (TASK-185)", () => {

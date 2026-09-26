@@ -104,6 +104,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /bookings/:id/rental/paid": act(CAL_BOOK, "action:calendar.rental"),
   "POST /bookings/:id/resume": act(CAL_BOOK, "action:calendar.pause"),
   "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
+  "POST /bookings/:id/undo": act(CAL_BOOK, "action:calendar.undo"), // TASK-492 — a linked account never (the route asserts)
   "PATCH /bookings/:id/status": act(CAL_BOOK, "action:calendar.status"), // + `action:calendar.leave-override` on its `override` flag (route)
   "POST /bookings/bulk-confirm": act(BOOKINGS, "action:bookings.bulk-confirm"),
   // ── the booking FORM's reads (opened from both pages) ──

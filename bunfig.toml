@@ -1,0 +1,4 @@
+# TASK-503 — before any test file loads, refuse to run if .env points at the CUSTOMER'S system (uat / the real OA).
+# Tests run against sid by design; this only reads and refuses. See src/lib/test-env-guard.ts.
+[test]
+preload = ["./src/test-env-guard.preload.ts"]

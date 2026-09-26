@@ -24,8 +24,8 @@ const rootApp = (await import("../index")).default as { fetch: (r: Request) => P
 
 describe("🔑 the registry — 54 keys (50 + TASK-401's four camp acts), one rule, labels beside the keys", () => {
   test("54 keys, every one `action:<area>.<verb>` with a known area, TH + EN labels, no duplicates", () => {
-    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
-    expect(new Set(ACTION_KEYS).size).toBe(59); // 🔻 TASK-411: + people.parent-archive
+    expect(ACTION_KEYS.length).toBe(60); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // 🔻 TASK-406: + calendar.teacher-leave // 🔻 TASK-390/392/394/397: + 4; 🔻 TASK-401: + camp.week-open / sell / redeem / day-mark
+    expect(new Set(ACTION_KEYS).size).toBe(60); // 🔻 TASK-411: + people.parent-archive
     for (const a of ACTION_REGISTRY) {
       const m = /^action:([a-z-]+)\.([a-z-]+)$/.exec(a.key);
       expect({ key: a.key, ok: !!m && (ACTION_AREAS as readonly string[]).includes(m[1]!) && a.area === m[1] }).toEqual({ key: a.key, ok: true });
@@ -259,6 +259,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN();")); // 🔻 TASK-426: EVERY listed key
   });
   test("56 = 56 — Stage 3 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(57);
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(60); // TASK-497: +0059
   });
 });

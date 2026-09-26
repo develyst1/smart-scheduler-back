@@ -585,6 +585,35 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "existence is the whole proof. Rerunnable: IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0057_checkin_channel_actor",
+    probe: { kind: "constraint-def", constraint: "camp_days_mark_channel_chk", contains: "shopfront-qr" },
+    why:
+      "TASK-488. The provenance split into a CHANNEL (closed set, CHECKed) and an ACTOR (free text), on bookings and camp_days, " +
+      "with the backfill from the old columns (kept). 🚫 NOT a column probe: the columns are the file's FIRST statements, so a " +
+      "column probe passes on a file that stopped before its backfill. The camp CHECK is created LAST, after both backfills " +
+      "(NOT VALID + VALIDATE, the 0045 shape). Rerunnable: IF NOT EXISTS on the columns, DROP-IF-EXISTS before each CHECK.",
+    rerunnable: true,
+  },
+  {
+    tag: "0058_booking_undo",
+    probe: { kind: "index", index: "booking_undos_booking_idx" },
+    why:
+      "TASK-492. `bookings.leave_charged` (did this leave take quota — recorded, never inferred) and the APPEND-ONLY " +
+      "`booking_undos` (one row per admin Undo; keeps the original check-in provenance). The index is the LAST object the file " +
+      "creates, after the column and the table, so it proves the whole file ran. No backfill (legacy leaves stay NULL and the " +
+      "Undo refuses what it cannot infer). Rerunnable: IF NOT EXISTS on all three.",
+    rerunnable: true,
+  },
+  {
+    tag: "0059_attendance_undo_kind",
+    probe: { kind: "constraint-def", constraint: "booking_undos_kind_chk", contains: "attendance" },
+    why:
+      "TASK-497. `booking_undos.kind` gains `attendance`: an undone STAFF or DAY-END mark is recorded as what it was, never as a " +
+      "`checkin`. 🚫 NOT a name probe: 0058 already created a constraint of the same name — only its DEFINITION proves this file " +
+      "ran. Rerunnable: DROP IF EXISTS before the ADD; NOT VALID + VALIDATE.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

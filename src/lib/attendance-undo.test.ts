@@ -13,6 +13,7 @@ import { discountKey, revKey, revUndoKey } from "./sale-post";
 
 const POST = readSrc(await Bun.file(new URL("./sale-post.ts", import.meta.url)).text());
 const SCHED = readSrc(await Bun.file(new URL("../services/scheduler.service.ts", import.meta.url)).text());
+const REVERT_SRC = readSrc(await Bun.file(new URL("../services/attendance-revert.service.ts", import.meta.url)).text()); // TASK-497 — the shared writer
 const JOBS = readSrc(await Bun.file(new URL("../services/jobs.service.ts", import.meta.url)).text());
 /** Comments stripped — the repo convention for source assertions (Sober, 2026-09-02). */
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
@@ -125,16 +126,25 @@ describe("WIRING — the undo branch, beside the attend it reverses", () => {
   test("AC-1 — it is its own branch, and it does NOT run the advance-notice check", () => {
     // That rule asks whether leave was declared before the class; this session has already happened, so the
     // answer is always "too late" and every correction would be refused.
-    expect(branch).toContain('status: "SICK_LEAVE"');
+    // 🔻 TASK-497 (owner: CONFIRMED, not SICK_LEAVE) — was `toContain('status: "SICK_LEAVE"')`: the branch now ends CONFIRMED through the
+    // shared "put it back" writes, and records the event whose kind is the truth.
+    expect(branch).toContain("await revertAttendance(tx, current, { note: reason ?? current.note });");
+    expect(branch).toContain("await recordUndo(tx, current, { kind: attendanceUndoKind(current),");
+    expect(branch).not.toContain('status: "SICK_LEAVE"');
     expect(branch).not.toContain("hasEnoughLeaveNotice");
     expect(branch).not.toContain("LEAVE_NOTICE_TOO_LATE");
   });
 
   test("AC-2 — the entitlement goes back, on both kinds, floored at zero", () => {
-    expect(branch).toContain("usedSessions: Math.max(0, current.course.usedSessions - 1)");
-    expect(branch).toContain("usedHours: Math.max(0, current.voucher.usedHours - 1)");
+    // 🔻 TASK-496 — the same floor, in the WRITE (was `Math.max(0, current.… - 1)`, read-modify-write)
+    // 🔻 TASK-497 — the two decrements now live in the SHARED writer the branch calls (the check-in Undo's too): unchanged, floored.
+    const REVERT = code(REVERT_SRC);
+    expect(branch).toContain("revertAttendance(tx, current,");
+    expect(REVERT).toContain("usedSessions: sql`GREATEST(${coursePackages.usedSessions} - 1, 0)`");
+    expect(REVERT).toContain("usedHours: sql`GREATEST(${vouchers.usedHours} - 1, 0)`");
     // 🚫 `priorSessions` is deliberately not derived from these, so a decrement cannot disturb it.
     expect(branch).not.toContain("priorSessions");
+    expect(REVERT).not.toContain("priorSessions");
   });
 
   test("🔴 AC-4 — no leave quota, and the guard is the STATUS, not a request flag", () => {
@@ -154,7 +164,9 @@ describe("WIRING — the undo branch, beside the attend it reverses", () => {
   });
 
   test("AC-5 — the money reversal is called from the branch, best-effort like every other posting", () => {
-    expect(branch).toContain("await reverseBookingSale(id)");
+    // 🔻 TASK-496 — still called for this branch, but AFTER the commit: it writes through `db`, outside the transaction
+    expect(branch).toContain("reverseSaleAfterCommit = true;");
+    expect(branch).not.toContain("await reverseBookingSale(id)");
   });
 
   test("🚫 TASK-254's `COURSE DEDUCTION` does NOT fire on an undo", () => {

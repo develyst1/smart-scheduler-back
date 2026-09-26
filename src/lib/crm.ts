@@ -1,4 +1,5 @@
 // CRM points + customer levels (C.2). Pure rules — persistence in students table.
+import { sql, type SQL } from "drizzle-orm";
 
 export const CRM_POINT_RULES = {
   /** เช็คอินตรงเวลา (ภายในช่วงที่เปิดรับ) */
@@ -30,9 +31,20 @@ export function levelFromPoints(points: number): CrmLevel {
   return current;
 }
 
-export function applyPoints(current: number, delta: number): { points: number; level: CrmLevel } {
-  const points = Math.max(0, current + delta);
-  return { points, level: levelFromPoints(points) };
+/**
+ * 🔴 TASK-498 — THE SAME LADDER as `levelFromPoints`, as a SQL `CASE` over a points EXPRESSION, so the level can be computed
+ * in the very statement that moves the points (`awardCrmPoints`): both SETs read the same old row under the row lock, so the
+ * stored level can never disagree with the stored points, whatever races. Highest rung first — the first match wins, exactly
+ * as `levelFromPoints` keeps the last rung it passes. The ladder's numbers are INLINED (they are code constants, checked as
+ * integers): as bound parameters, every THEN would be an untyped param and Postgres would resolve the CASE to `text`, which
+ * a `smallint` column refuses at runtime.
+ * (🔻 `applyPoints` — the JS read-then-add this replaces — is gone; its floor is `GREATEST(…, 0)` in the write.)
+ */
+export function levelCaseSql(points: SQL): SQL {
+  const rungs = [...CRM_LEVELS].sort((a, b) => b.minPoints - a.minPoints);
+  for (const l of CRM_LEVELS) if (!Number.isInteger(l.level) || !Number.isInteger(l.minPoints)) throw new Error("CRM_LEVELS must be integers");
+  const whens = rungs.map((l) => sql`WHEN ${points} >= ${sql.raw(String(l.minPoints))} THEN ${sql.raw(String(l.level))}`);
+  return sql`CASE ${sql.join(whens, sql` `)} ELSE ${sql.raw(String(CRM_LEVELS[0]!.level))} END`;
 }
 
 export function levelName(level: number): string {

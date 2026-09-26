@@ -80,7 +80,7 @@ import {
   isReservedWord,
 } from "../lib/line-commands";
 import { claimReplyKey } from "../lib/teacher-link";
-import { studentNamesOf } from "../db/mappers";
+import { displayNameOf, studentNamesOf } from "../db/mappers";
 import { requestTeacherLink } from "./teacher-link.service";
 import { calendarUrls } from "../lib/calendar-link";
 import { isSuspended } from "../lib/suspend";
@@ -94,8 +94,7 @@ import {
   normalizePhone,
 } from "./parent.service";
 import { hhmm, weekRange } from "../lib/time";
-import { renderSchedule } from "../lib/line-schedule";
-import { TEMPLATE_LANG } from "../lib/line-message-fields";
+import { renderTeacherSchedule, type TeacherSchedRow } from "../lib/teacher-schedule"; // TASK-486 — the ONE teacher formatter
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
 import { checkinLine, joinItems, leaveLine } from "../lib/line-v2-lines";
 import { liffLinkBody } from "../lib/liff-link";
@@ -1114,24 +1113,22 @@ async function doTeacherSchedule(
   const wk = weekRange(date);
   const [from, to] = range === "week" ? [wk.start, wk.end] : [date, date];
   const bookings = await findBookingsForTeacher(lineUserId, from, to);
-  const rows = bookings.map((b: any) => ({
+  // 🔴 TASK-486 — the ONE teacher formatter (`lib/teacher-schedule.ts`), shared with the Monday digest's body.
+  const rows: TeacherSchedRow[] = bookings.map((b: any) => ({
     date: b.date,
     startTime: b.startTime,
-    studentName: studentNamesOf(b) ?? "", // TASK-425 — the ONE name rule's student part
-    subjectName: b.subject?.name ?? "",
+    name: displayNameOf(b) || null, // the ONE name rule — a GROUP/OTHER row's title in the student's place (§B5)
+    program: b.subject?.name ?? null, // raw; the formatter drops "Private " for teachers
     status: b.status,
-    attendeeNote: b.attendeeNote ?? null, // TASK-178 (REQ-068) — shown under the session when present
+    note: b.attendeeNote ?? null, // TASK-178 — the 📝 line, only when present
   }));
-  const toggle =
-    range === "week"
-      ? {
-          type: "action" as const,
-          action: { type: "postback" as const, label: t("btn_today", lang), data: "action=schedule", displayText: t("btn_today", lang) },
-        }
-      : {
-          type: "action" as const,
-          action: { type: "postback" as const, label: t("btn_week", lang), data: "action=schedule&range=week", displayText: t("btn_week", lang) },
-        };
+  // 🔴 TASK-486 (REQ-109 §6) — the pair `วันนี้` / `สัปดาห์นี้` on EVERY schedule reply; it REPLACES the old single toggle
+  // (`btn_week` on today / `btn_today` on the week) — one way to ask for each view, not two.
+  const chip = (labelKey: string, data: string) => ({
+    type: "action" as const,
+    action: { type: "postback" as const, label: t(labelKey, lang), data, displayText: t(labelKey, lang) },
+  });
+  const toggle = [chip("btn_today", "action=schedule"), chip("btn_week", "action=schedule&range=week")];
   // REQ-017: offer the phone-calendar subscription right where the teacher is reading their schedule.
   const calendarBtn = {
     type: "action" as const,
@@ -1159,7 +1156,8 @@ async function doTeacherSchedule(
     // COMMAND version loses one.
     // 📌 `TEMPLATE_LANG`, the same constant every §7 format renders in, rather than a fourth answer to
     // *"which language is a notification in?"*.
-    textReply(renderSchedule(rows, TEMPLATE_LANG, range), lang, [toggle, calendarBtn]),
+    // 🔻 TASK-486 — the CHAT's language now (TASK-304's EN-only `TEMPLATE_LANG` reply, moved by Sober's ruling 09-26).
+    textReply(renderTeacherSchedule(rows, range), lang, [...toggle, calendarBtn]),
   ]);
 }
 
@@ -1544,7 +1542,9 @@ async function handlePostback(ev: LineWebhookEvent) {
     // 🔴 TASK-470 — her Language/Help reply: the confirmation AND the command list, in ONE message, in the NEW language.
     // TASK-473 K1 — a BLANK LINE after the confirmation (REQ-107 §7). One path for both directions: TH→EN and EN→TH are
     // the same line with a different `next` (pinned by value through the real dispatcher, both ways).
-    return send(replyToken, [textReply(`${t("lang_switched", next)}\n\n${t("menu_body", next)}`, next)]);
+    // 🔴 TASK-485 — the ONE role check (Sober: no restructuring): a linked TEACHER gets their own list (REQ-109 §6), not the parent's.
+    const listKey = (await detectLinkedRole(lineUserId)) === "teacher" ? "teacher_menu_body" : "menu_body";
+    return send(replyToken, [textReply(`${t("lang_switched", next)}\n\n${t(listKey, next)}`, next)]);
   }
 
   const linked = await detectLinkedRole(lineUserId);

@@ -208,25 +208,26 @@ describe("🔴 §3 apply is ACKed with a run id; the `job_runs` row is the recor
 // ═══════════════════ §4 the process survives a database blip ═══════════════════
 
 describe("🔴 §4 a rejection storm is logged and survived; an uncaught throw is logged and restarts clean", () => {
-  test("by value: the registered `unhandledRejection` handler LOGS the reason and does NOT exit", () => {
+  test("by value: the registered `unhandledRejection` handler LOGS the reason and does NOT exit", async () => {
     const exits: number[] = [];
     spies.push(spyOn(process, "exit").mockImplementation(((c?: number) => { exits.push(c ?? 0); }) as any));
     const errs: string[] = [];
     spies.push(spyOn(console, "error").mockImplementation(((...a: any[]) => { errs.push(a.map(String).join(" ")); }) as any));
-    const ours = process.listeners("unhandledRejection").filter((l) => String(l).includes("still serving"));
-    expect(ours).toHaveLength(1);
-    ours[0]!(new Error("57P03 the database system is in recovery mode"), Promise.resolve());
+    // 🔻 TASK-506 — the policy is installed only on a real ENTRY (a test imports the app), so its handler is taken from the
+    // module's export rather than read off `process.listeners`; what it DOES is asserted exactly as before. The real-boot
+    // install is pinned by a real process in `crash-policy-req108.test.ts`.
+    const { onUnhandledRejection } = await import("../index");
+    onUnhandledRejection(new Error("57P03 the database system is in recovery mode"));
     expect(errs.some((e) => e.includes("unhandledRejection") && e.includes("57P03"))).toBe(true);
     expect(exits).toEqual([]); // 🔑 a DB blip must not take the API down
   });
 
-  test("by value: the `uncaughtException` handler LOGS and exits(1) — never 0, which a supervisor would read as a clean stop", () => {
+  test("by value: the `uncaughtException` handler LOGS and exits(1) — never 0, which a supervisor would read as a clean stop", async () => {
     const exits: number[] = [];
     spies.push(spyOn(process, "exit").mockImplementation(((c?: number) => { exits.push(c ?? 0); }) as any));
     spies.push(spyOn(console, "error").mockImplementation(((..._a: any[]) => {}) as any));
-    const ours = process.listeners("uncaughtException").filter((l) => String(l).includes("state unknown"));
-    expect(ours).toHaveLength(1);
-    ours[0]!(new Error("sync throw"), "uncaughtException");
+    const { onUncaughtException } = await import("../index"); // 🔻 TASK-506 — the export, not `process.listeners` (see above)
+    onUncaughtException(new Error("sync throw"));
     expect(exits).toEqual([1]);
   });
 

@@ -16,6 +16,7 @@ import { linkParentLine } from "./parent.service";
 import * as registerSvc from "./line-register.service";
 import * as lineClient from "../lib/line-client";
 import { db } from "../db";
+import { fakeFamilyLinks } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's family read, faked at the boundary
 import { readSrc } from "../lib/read-src";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -38,6 +39,7 @@ describe("🔴 (b) no webhook event ends in silence because something threw", ()
     spies.push(spyOn(console, "error").mockImplementation(((...a: any[]) => { logs.push(a.map(String).join(" ")); }) as any));
     spies.push(spyOn(console, "info").mockImplementation((() => {}) as any));
     spies.push(spyOn(db.query.lineLinkSessions, "findFirst").mockImplementation((async () => { if (o.throws) throw o.throws; return undefined; }) as any));
+    fakeFamilyLinks(spies); // TASK-504 — an unlinked chat: no family link (declared, not borrowed from sid)
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
@@ -156,6 +158,7 @@ describe("🔴 (a) the collision — one read of BOTH stores before any write, a
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db, "update").mockImplementation((() => ({ set: () => ({ where: async () => {} }) })) as any));
     spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: () => ({ onConflictDoUpdate: async () => {}, onConflictDoNothing: async () => {} }) })) as any));
+    fakeFamilyLinks(spies); // TASK-504 — this chat has no family link yet (the collision is the PARENT column's, via linkFamilyByPhone)
     spies.push(spyOn(registerSvc, "linkFamilyByPhone").mockImplementation((async () => ({ outcome: "line-bound-to-other-family" })) as any));
     spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { replies.push(...m); }) as any));
     await handleLineWebhookEvents([{ type: "message", replyToken: "rt-1", source: { userId: U }, message: { type: "text", text: "0924912848" } } as any]);

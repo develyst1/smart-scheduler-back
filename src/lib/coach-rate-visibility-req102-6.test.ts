@@ -12,6 +12,7 @@ import { COACH_RATE_KEY, COACH_RATE_KEYS, assertMayEditCoachRate, bodyEditsCoach
 import { BUDGET_VIEW_KEY, canSeeBudget } from "./budget-visibility";
 import { ACTION_KEYS, ACTION_REGISTRY, MENU_KEYS } from "./permissions";
 import * as sched from "../services/scheduler.service";
+import * as campSvc from "../services/camp.service"; // TASK-504
 import { toBookingDTO } from "../db/mappers";
 import { DEV_USER } from "../middleware/auth";
 import { db } from "../db";
@@ -43,7 +44,7 @@ const LINKED_ALL = { isSuperAdmin: true, grants: new Set<string>([...MENU_KEYS, 
 
 describe("🔑 key 59 — registered, labelled, granted to nobody; a body-level key (no route carries it); independent of 57", () => {
   test("59 keys; `action:bookings.coach-rate` with TH/EN labels; the two exact response keys", () => {
-    expect(ACTION_KEYS.length).toBe(59);
+    expect(ACTION_KEYS.length).toBe(60);
     expect(ACTION_REGISTRY.find((a) => a.key === COACH_RATE_KEY)).toMatchObject({ labelTh: "ดูและแก้ค่าสอน", labelEn: "View & edit coach rate" });
     expect([...COACH_RATE_KEYS]).toEqual(["rate", "classRateMinor", "teacherRates", "rateMinor", "teacherRateMinor"]); // 🔻 TASK-434: + the ECA/Group per-teacher rates · 🔻 TASK-463: + `rateMinor` (DEF-3) and `teacherRateMinor`
   });
@@ -97,7 +98,10 @@ describe("🔴 the READ mask — `maskCoachRate` by value; the seam by source (t
     spies.push(spyOn(db.query.boItem, "findMany").mockImplementation((async () => [{ ownerRef: T1, ceilingQty: 80, remainingQty: 30, unitPriceMinor: 50000, metadata: {} }]) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => null) as any));
     spies.push(spyOn(db.query.appSettings, "findMany").mockImplementation((async () => []) as any));
-    spies.push(spyOn(db.query.campWeeks, "findMany").mockImplementation((async () => []) as any));
+    // 🔻 TASK-504 — RE-AIMED: this spied `db.query.campWeeks.findMany`, a read the calendar no longer makes (it reads camp weeks
+    // through `weeksForCalendar` → `listWeeks`, a `db.select`), so the spy was dead and the real query went to the database. The
+    // intent is unchanged — no camp weeks in this range — now at the read the code actually makes.
+    spies.push(spyOn(campSvc, "weeksForCalendar").mockImplementation((async () => []) as any));
     spies.push(spyOn(db.query.coursePackages, "findMany").mockImplementation((async () => [{ id: uuidFor("c-1"), size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, createdAt: new Date(), classRateMinor: 700, coStudentId: B, student: { id: A, name: "Ploy" }, coStudent: { id: B, name: "Pun" }, subject: { id: SUBJ, name: "Balance" }, bookings: [] }]) as any));
     spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async () => ({ id: uuidFor("c-1"), size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-12-31", startDate: "2026-10-05", weekday: 1, startTime: "10:00:00", priorSessions: 0, leaveQuota: null, studentId: A, classRateMinor: 700, coStudentId: B, coStudent: { id: B, name: "Pun" } })) as any));
     spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async () => ({ id: A, name: "Ploy", nickname: "Ploy" })) as any));
@@ -182,6 +186,6 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
   });
 });

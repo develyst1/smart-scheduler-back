@@ -53,6 +53,18 @@ describe("🔴 each published image is exactly its menu's size — the buttons l
   });
 });
 
+describe("🔑 TASK-484 — the ORANGE teacher art's two cells ARE the teacher menu's two hit-boxes", () => {
+  test("left half = My Schedule (`schedule`), right half = Language / Help (`lang`), full height — the artwork's divider is at 1250", () => {
+    // The customer's art (REQ-109 §1) draws two equal cells split at x = 1250 of 2500 — checked by eye on the stretched file.
+    // A stretched picture over the OLD hit-boxes looks right and taps wrong; this pins the boxes the picture was drawn for.
+    expect(TEACHER_MENU.areas.map((a) => [a.action.data, a.bounds])).toEqual([
+      ["action=schedule", { x: 0, y: 0, width: 1250, height: 843 }],
+      ["action=lang", { x: 1250, y: 0, width: 1250, height: 843 }],
+    ]);
+    expect(TEACHER_MENU.size).toEqual({ width: 2500, height: 843 });
+  });
+});
+
 describe("`pngSize` reads the header it claims to", () => {
   test("a real file, and a refusal for a non-PNG", () => {
     expect(pngSize(readFileSync(resolve(root, "assets/line/teacher-th.png")))).toEqual({ width: 2500, height: 843 });

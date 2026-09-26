@@ -12,6 +12,7 @@ import { BUDGET_FIGURE_FIELDS, BUDGET_VIEW_KEY, canSeeBudget, maskBudget, viewer
 import { ACTION_KEYS, ACTION_REGISTRY, MENU_KEYS } from "./permissions";
 import { ROUTE_ACCESS } from "./route-access";
 import * as sched from "../services/scheduler.service";
+import * as campSvc from "../services/camp.service"; // TASK-504
 import { getAttention, maskAttentionFigures } from "../services/attention.service";
 import * as attentionSvc from "../services/attention.service";
 import { DEV_USER } from "../middleware/auth";
@@ -50,7 +51,7 @@ const dto = (): any => ({ id: T1, type: "FREELANCE" as const, ...figures, overLi
 
 describe("🔑 the key (57) — registered, labelled, granted to nobody by default; the two writes double-gated", () => {
   test("57 keys; `action:teachers.budget-view` with TH/EN labels, area teachers", () => {
-    expect(ACTION_KEYS.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all
+    expect(ACTION_KEYS.length).toBe(60); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all
     expect(ACTION_REGISTRY.find((a) => a.key === BUDGET_VIEW_KEY)).toMatchObject({ labelTh: "ดูงบ/เพดานค่าจ้างครู", labelEn: "View teachers' freelance budget" });
     expect(BUDGET_VIEW_KEY).toBe("action:teachers.budget-view");
   });
@@ -147,7 +148,10 @@ describe("🔴 the ONE mask by VALUE — with · without · a linked account wit
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => null) as any));
     spies.push(spyOn(db.query.appSettings, "findMany").mockImplementation((async () => []) as any));
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => []) as any));
-    spies.push(spyOn(db.query.campWeeks, "findMany").mockImplementation((async () => []) as any));
+    // 🔻 TASK-504 — RE-AIMED: this spied `db.query.campWeeks.findMany`, a read the calendar no longer makes (it reads camp weeks
+    // through `weeksForCalendar` → `listWeeks`, a `db.select`), so the spy was dead and the real query went to the database. The
+    // intent is unchanged — no camp weeks in this range — now at the read the code actually makes.
+    spies.push(spyOn(campSvc, "weeksForCalendar").mockImplementation((async () => []) as any));
     const teacherOf = (body: any) => body.groups.flatMap((g: any) => Object.values(g).find(Array.isArray) ?? [])[0];
     setUser(LINKED_ALL);
     let r = await json("GET", "/teachers");
@@ -194,6 +198,6 @@ describe("🔴 the attention line — the dashboard drops the number without the
     expect(M).not.toMatch(/classRateMinor|teacherRates|priceMinor|listPrice|recordSale|rate:/);
     expect(M).toContain('export const BUDGET_FIGURE_FIELDS = ["hourlyRate", "budgetMinor", "remainingMinor", "reorderMinor"] as const;');
     for (const f of ["src/db/mappers.ts", "src/lib/coach-rate.ts", "src/lib/sale-items.ts", "src/services/som-report.service.ts"]) expect(code(src(f))).not.toMatch(/maskBudget|budget-visibility/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
   });
 });

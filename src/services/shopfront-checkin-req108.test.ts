@@ -225,12 +225,15 @@ describe("✅ guard 4 — the rate limit counts MISSES per IP; a busy desk is ne
 describe("🔑 provenance — WHERE each check-in came from (`bookings.checkin_source`, migration 0056)", () => {
   test("every attend path passes its source; the column is written on ATTEND only, and a cancel does not touch it", () => {
     const S = src("src/services/scheduler.service.ts");
-    expect(S).toContain('await tx.update(bookings).set({ status: "ATTENDED", checkinSource: checkinSource ?? null }).where(eq(bookings.id, id));');
-    expect((S.match(/checkinSource/g) ?? []).length).toBe(3); // the parameter, its use in the attend write, and nothing in cancel
-    expect(src("src/services/checkin.service.ts")).toContain('await updateBookingStatus(row.id, "attend", undefined, false, undefined, source);');
-    expect(src("src/routes/api.ts")).toContain("svc.updateBookingStatus(c.req.param(\"id\"), action, reason, override, reasonCode, actorOf(c))");
-    expect(src("src/services/jobs.service.ts")).toContain('set({ status: "ATTENDED", checkinSource: "end-of-day" })');
-    expect(src("src/services/camp.service.ts")).toContain('await markDay(d.id, "ATTENDED", source);');
+    // 🔻 TASK-488 — the provenance is a CHANNEL + an ACTOR now (the legacy column still written beside them, until its drop)
+    expect(S).toContain('await tx.update(bookings).set({ status: "ATTENDED", checkinSource: legacySourceOf(checkinSource), checkinChannel: checkinSource?.channel ?? null, checkinActor: checkinSource?.actor ?? null }).where(eq(bookings.id, id));');
+    // the claim the old count stood for, pinned directly: the CANCEL branch touches none of the three
+    const cancel = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
+    expect(cancel).not.toMatch(/checkinSource|checkinChannel|checkinActor/);
+    expect(src("src/services/checkin.service.ts")).toContain('await updateBookingStatus(row.id, "attend", undefined, false, undefined, { channel: source });');
+    expect(src("src/routes/api.ts")).toContain("svc.updateBookingStatus(c.req.param(\"id\"), action, reason, override, reasonCode, { channel: \"staff\", actor: actorOf(c) })");
+    expect(src("src/services/jobs.service.ts")).toContain('set({ status: "ATTENDED", checkinSource: "end-of-day", checkinChannel: "end-of-day", checkinActor: null })');
+    expect(src("src/services/camp.service.ts")).toContain('await markDay(d.id, "ATTENDED", { channel: source });');
   });
   test("by value: checkinByToken hands its source to the ONE attend function", async () => {
     const got: any[] = [];
@@ -243,7 +246,7 @@ describe("🔑 provenance — WHERE each check-in came from (`bookings.checkin_s
     spies.push(spyOn(la, "awardCrmPoints").mockImplementation((async () => {}) as any));
     at("16:05");
     await (await import("./checkin.service")).checkinByToken("tok", "shopfront-qr");
-    expect(got).toEqual([["b1", "attend", undefined, false, undefined, "shopfront-qr"]]);
+    expect(got).toEqual([["b1", "attend", undefined, false, undefined, { channel: "shopfront-qr" }]]); // 🔻 TASK-488 — a channel, NO actor
   });
   test("the migration: 0056, the column is its only object and its witness; the rejection of `note` is written down", () => {
     const sql = readFileSync(resolve(root, "drizzle/0056_booking_checkin_source.sql"), "utf8");

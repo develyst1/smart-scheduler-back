@@ -604,6 +604,20 @@ export async function anyHouseholdSuspended(studentIds: string[], exec: any = db
   return false;
 }
 
+/**
+ * 🔴 TASK-489 (owner ruling 3, Sober's (ii)) — is EVERY household on this row suspended? The session check-in's question.
+ * A DUO row has ONE token shared by both families, so the token page cannot know who is asking; the only question it can
+ * answer honestly is "is anyone on this row allowed to be here?". "Any" refused family A for family B's suspension, with a
+ * `suspended_notice` that was false about A and a disclosure about B. A single-child row is unchanged (every = any), and a
+ * walk-in is never blocked (the same carve-out). The doors that DO know the requester refuse a suspended one before the act
+ * (LINE: `isSuspendedLineParent`; the shop front: the lookup's empty list).
+ */
+export async function everyHouseholdSuspended(studentIds: string[], exec: any = db): Promise<boolean> {
+  if (!studentIds.length) return false;
+  for (const id of studentIds) if (!blockedBySuspension(await findParentOfStudent(id, exec))) return false;
+  return true;
+}
+
 export async function findParentOfStudent(studentId: string, exec: any = db) {
   const student = await exec.query.students.findFirst({
     where: (s: any, { eq: e }: any) => e(s.id, studentId),

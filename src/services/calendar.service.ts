@@ -2,6 +2,7 @@
 // Isolation rule: a teacher id is NEVER accepted from the URL/query — the token resolves to exactly one teacher
 // and the booking query filters by that id (same rule as the TASK-038 pickers).
 
+import { ownScopeWhere } from "../lib/own-scope";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
@@ -55,9 +56,14 @@ export async function findBookingsForCalendarToken(token: string) {
   const { date } = bangkokNow();
   const from = addDays(date, -CALENDAR_WINDOW_BACK_DAYS);
   const to = addDays(date, CALENDAR_WINDOW_FORWARD_DAYS);
+  // 🔴 TASK-487 — a coach's classes are the ones they are PRIMARY on **and** the ones they are an ADDITIONAL teacher on
+  // (`booking_teachers`, TASK-228). This read predated additional teachers and was never widened — an OMISSION, not a decision —
+  // so a co-taught class was in the Monday digest and the daily reminder but NOT in this coach's own view. It now uses THE
+  // predicate every scoped read already shares (`ownScopeWhere`, TASK-406): one rule for "my classes", never a hand-written one.
+  // (The phone-calendar feed is the second reader that had the reply's answer — found while enumerating for TASK-487.)
   const rows = await db.query.bookings.findMany({
-    where: (b, { and, eq: e, gte, lte }) =>
-      and(e(b.teacherId, teacher.id), gte(b.date, from), lte(b.date, to)),
+    where: (b, { and, gte, lte }) =>
+      and(ownScopeWhere(teacher.id), gte(b.date, from), lte(b.date, to)),
     with: { student: true, coStudent: true, subject: true }, // TASK-425 — the ICS names a DUO row's pair
     orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
   });

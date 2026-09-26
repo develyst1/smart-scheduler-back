@@ -202,7 +202,8 @@ describe("🔴 TASK-306 §1 — the plan editor's door sends the SAME notice", (
     // ⚠️ Bounded by the function's OWN closing brace at column zero: the helper does not sit adjacent to
     // `updateBookingStatus`, and a slice that ran to it swept in unrelated code (it found a `throw` there).
     expect(builderBody(SVC)).not.toContain("throw");
-    expect(builderBody(SVC)).toContain("recipientLineUserId: teacher?.lineUserId ?? null,");
+    expect(builderBody(SVC)).toContain("recipientLineUserId: coach.lineUserId ?? null,"); // 🔻 TASK-510: every coach (was `teacher?.` — the primary alone); still never a branch on the link
+    expect(builderBody(SVC)).not.toContain("if (coach.lineUserId)");
   });
 
   test("🚫 the three paths §1 rules as FINE still send nothing", () => {

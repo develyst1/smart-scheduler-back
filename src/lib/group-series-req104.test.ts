@@ -79,8 +79,8 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
     expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(57);
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(57);
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(60); // TASK-497: +0059
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
@@ -268,7 +268,9 @@ describe("🔴 the Monday weekly coach digest — the window, the grouping, the 
     expect(weekOf("2026-10-12")).toEqual({ weekStart: "2026-10-12", weekEnd: "2026-10-18" });
     expect(weeklyDigestKey(T1, "2026-10-05")).toBe(`weekly-teacher:${T1}:2026-10-05`);
   });
-  test("`groupWeekRows`: CONFIRMED only; the primary AND every additional teacher; date+time order; a GROUP/OTHER row = its title alone; a DUO row `A & B`; a teacher with nothing is absent", () => {
+  // 🔻 TASK-486 — the rows are the WEEK set of the one table (CONFIRMED · ATTENDED · EXTENDED), and carry status · name · note ·
+  // subject for Khwan's format; PENDING and CANCELLED still never reach the digest (T3 still absent).
+  test("`groupWeekRows`: the WEEK set (was CONFIRMED only); the primary AND every additional teacher; date+time order; a GROUP/OTHER row = its title alone; a DUO row `A & B`; a teacher with nothing is absent", () => {
     const rows = [
       { id: "b2", date: "2026-10-07", startTime: "16:00:00", endTime: "17:00:00", status: "CONFIRMED", teacherId: T1, teacher: { lineUserId: "U1" }, subject: { name: "Freeskate" }, student: { name: "Aiwa", nickname: "Aiwa" }, coStudent: null, otherTitle: null, additionalTeachers: [] },
       { id: "b1", date: "2026-10-07", startTime: "15:00:00", endTime: "16:00:00", status: "CONFIRMED", teacherId: T1, teacher: { lineUserId: "U1" }, subject: { name: "Balance Bike" }, student: { name: "Bam", nickname: "Bam" }, coStudent: { name: "Cat", nickname: "Cat" }, otherTitle: null, additionalTeachers: [] },
@@ -280,30 +282,38 @@ describe("🔴 the Monday weekly coach digest — the window, the grouping, the 
     expect(g.map((x) => x.teacherId).sort()).toEqual([T1, T2].sort()); // T3 has nothing CONFIRMED ⇒ absent
     const ek = g.find((x) => x.teacherId === T1)!;
     expect(ek.lineUserId).toBe("U1");
+    const x = { note: null, status: "CONFIRMED" };
     expect(ek.rows).toEqual([
-      { date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false },
+      { date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false, ...x, name: "Skate Kids", subject: null },
       // 🔻 TASK-453b — every row now carries `clash`; `false` here, and the owner's suffix is pinned by value in
       // `group-slot-yield-req105.test.ts` §6.
-      { date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Balance Bike", studentName: "Bam & Cat", clash: false },
-      { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa", clash: false },
+      { date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Balance Bike", studentName: "Bam & Cat", clash: false, ...x, name: "Bam & Cat", subject: "Balance Bike" },
+      { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa", clash: false, ...x, name: "Aiwa", subject: "Freeskate" },
     ]);
-    expect(g.find((x) => x.teacherId === T2)!.rows).toEqual([{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false }]);
+    expect(g.find((y) => y.teacherId === T2)!.rows).toEqual([{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null, clash: false, ...x, name: "Skate Kids", subject: null }]);
   });
   test("🔴 the bytes — REQ-104 §3, ENGLISH ONLY: identical under TH and EN, no Thai code point, no `t()`/`lang` in the branch, no ISO date, no trailing whitespace; an empty payload renders", () => {
     const rows = [{ date: "2026-10-06", startTime: "15:00", endTime: "16:00", program: "Skate Kids", studentName: null }, { date: "2026-10-07", startTime: "16:00", endTime: "17:00", program: "Freeskate", studentName: "Aiwa" }];
-    const expected = "📅 THIS WEEK'S SCHEDULE\nHello, here is your teaching schedule for this week:\n\n06-10-2026 · 15:00-16:00 · Skate Kids\n07-10-2026 · 16:00-17:00 · Freeskate / Aiwa\n\nPlease review your schedule.";
+    // 🔻 TASK-486 — the BODY is Khwan's format (a payload queued BEFORE the change — no `status` — renders as CONFIRMED, which is all
+    // the old digest held); the owner's title, greeting and footer are KEPT (Sober: honour both). ⚠️ The END time is gone.
+    const expected = "📅 THIS WEEK'S SCHEDULE\nHello, here is your teaching schedule for this week:\n\n▸ TUE / 06/10\n@ 15:00 / Skate Kids\n　Confirmed\n\n▸ WED / 07/10\n@ 16:00 / Aiwa\n　Freeskate / Confirmed\n\nPlease review your schedule.";
     expect(renderWeeklySchedule(rows)).toBe(expected);
     expect([WEEKLY_TITLE, WEEKLY_GREETING, WEEKLY_FOOTER]).toEqual(["📅 THIS WEEK'S SCHEDULE", "Hello, here is your teaching schedule for this week:", "Please review your schedule."]);
     for (const lang of ["TH", "EN"] as const) {
       const out = formatOutboxMessage({ kind: "weekly_schedule_teacher", weekStart: "2026-10-05", rows } as any, { studentName: "น้องเอ", subject: "Freeskate" } as any, lang, "teacher");
       expect(out).toBe(expected);
-      expect(out).not.toMatch(/[฀-๿]/);
+      expect(out).not.toMatch(/[฀-๿]/); // these rows' NAMES are English; Thai names now appear by design — the FIXED words never do (pinned in teacher-schedule-req109)
       expect(out).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     }
     expect(formatOutboxMessage({ kind: "weekly_schedule_teacher" } as any, {}, "TH", "teacher")).toBe("📅 THIS WEEK'S SCHEDULE\nHello, here is your teaching schedule for this week:\n\n\nPlease review your schedule.");
     const branch = region(code(src("src/lib/line-message.ts")), 'case "weekly_schedule_teacher":', "case ");
     expect(branch).not.toMatch(/\bt\(|lang/);
     expect(code(src("src/lib/weekly-digest.ts"))).not.toMatch(/line-i18n|\bt\(/);
+    // 🔻 TASK-486 — the words now come through the ONE formatter. 🔻 TASK-493 — what keeps them English is no longer a literal
+    // "EN" the digest hands in: the formatter's words are English for EVERY teacher schedule (the customer's choice), so the
+    // body takes no language at all, and the digest passes none.
+    expect(code(src("src/lib/weekly-digest.ts"))).toContain('"week", { clashNote: CLASH_NOTE_WEEKLY },');
+    expect(code(src("src/lib/teacher-schedule.ts"))).toContain('export const TEACHER_SCHEDULE_WORDS: Lang = "EN";');
   });
   test("the job by VALUE: the Mon–Sun read; one outbox row per teacher with rows, keyed per week; nothing for a teacher with nothing; `job_runs` written; a second run is `duplicate`", async () => {
     const probes: any[] = [];
@@ -319,7 +329,7 @@ describe("🔴 the Monday weekly coach digest — the window, the grouping, the 
     const out = await jobs.runWeeklyTeacherDigestJob("2026-10-07");
     expect(probes[0]).toEqual([["gte", "2026-10-05"], ["lte", "2026-10-11"]]);
     expect(sends).toHaveLength(1); // T3 (PENDING only) gets nothing
-    expect(sends[0]).toEqual({ recipientType: "teacher", recipientLineUserId: "U1", payload: { kind: "weekly_schedule_teacher", weekStart: "2026-10-05", rows: [{ date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Freeskate", studentName: "Aiwa", clash: false }] }, skipReason: undefined, idempotencyKey: `weekly-teacher:${T1}:2026-10-05` });
+    expect(sends[0]).toEqual({ recipientType: "teacher", recipientLineUserId: "U1", payload: { kind: "weekly_schedule_teacher", weekStart: "2026-10-05", rows: [{ date: "2026-10-07", startTime: "15:00", endTime: "16:00", program: "Freeskate", studentName: "Aiwa", clash: false, status: "CONFIRMED", name: "Aiwa", note: null, subject: "Freeskate" }] }, skipReason: undefined, idempotencyKey: `weekly-teacher:${T1}:2026-10-05` });
     expect(out).toEqual({ date: "2026-10-07", weekStart: "2026-10-05", weekEnd: "2026-10-11", teachers: 1, sent: 1, skipped: 0, duplicate: 0 });
     expect(runs).toEqual([{ table: "jobRuns", val: expect.objectContaining({ job: WEEKLY_DIGEST_JOB, runDate: "2026-10-07", status: "success", summary: { weekStart: "2026-10-05", weekEnd: "2026-10-11", teachers: 1, sent: 1, skipped: 0, duplicate: 0 } }) }]);
     dup = true;

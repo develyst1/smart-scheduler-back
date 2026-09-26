@@ -24,6 +24,20 @@ export const forbidden = (message = "ไม่มีสิทธิ์") =>
   new ApiException(403, "FORBIDDEN", message);
 
 /**
+ * THE error envelope — what `app.onError` answers for a thrown error, as `{ status, body }`.
+ * TASK-490 — extracted so the shop-front BATCH reports each item's refusal with exactly the status and body the single
+ * call would have answered (a batch of one is byte-identical to today BY CONSTRUCTION, not by a second copy of this).
+ */
+export function errorEnvelope(err: unknown): { status: number; body: { error: { code: string; message: string; details?: unknown } } } {
+  if (err instanceof ApiException) return { status: err.status, body: { error: { code: err.code, message: err.message, details: err.details } } };
+  const code = pgErrorCode(err);
+  if (code === "23505") return { status: 409, body: { error: { code: "SLOT_TAKEN", message: "มีคาบในช่วงเวลานี้แล้ว" } } };
+  if (code === "23503") return { status: 400, body: { error: { code: "VALIDATION", message: "ข้อมูลอ้างอิงไม่ถูกต้อง" } } };
+  console.error(err);
+  return { status: 500, body: { error: { code: "INTERNAL", message: "เกิดข้อผิดพลาดภายในระบบ" } } };
+}
+
+/**
  * Postgres SQLSTATE from an error. Drizzle wraps driver errors in
  * DrizzleQueryError, so the code lives on `.cause` — walk the chain to find it.
  */

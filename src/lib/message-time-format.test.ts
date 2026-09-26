@@ -99,6 +99,14 @@ const TIME_OWNER: Record<TemplateKey, { kind: string; file: string; start: strin
     start: "startTime: hhmm(b.startTime),",
     end: "endTime: hhmm(b.endTime),",
   },
+  // 🔑 TASK-508 — the NINTH, refused by the Record again: the leave Undo's "class on again" to the coaches reads the same
+  // enrichment as the single cancel it mirrors.
+  class_on_again: {
+    kind: "class_on_again_teacher",
+    file: "src/services/outbox.service.ts",
+    start: "startTime: hhmm(b.startTime),",
+    end: "endTime: hhmm(b.endTime),",
+  },
 };
 
 describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", () => {
@@ -134,6 +142,7 @@ describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", 
       { key: "class_cancelled", printsTime: true, declared: true, start: true, end: true },
       { key: "course_dropped", printsTime: false, declared: true },
       { key: "rental_added", printsTime: true, declared: true, start: true, end: true }, // TASK-375 — the eighth
+      { key: "class_on_again", printsTime: true, declared: true, start: true, end: true }, // TASK-508 — the ninth
     ]);
   });
 

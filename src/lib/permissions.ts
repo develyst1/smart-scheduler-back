@@ -79,6 +79,9 @@ export const ACTION_REGISTRY = [
   // TASK-428 (REQ-101 §4 ruling 1) — the destructive door of the Manage-plan page has its OWN key: a wrong entry wipes N rows.
   A("action:calendar.other-cancel-all", "ยกเลิกตารางอื่นๆ ทั้งชุด", "Cancel a whole Other series"),
   A("action:calendar.teacher-leave", "แจ้งลาสอน (ครู)", "Report own teaching leave"), // TASK-406 (REQ-097) — a LINKED account's own leave; the link is the identity, the key is the door // TASK-397
+  // TASK-492 (SPEC-094) — the admin UNDO of a mistaken leave or a false check-in. Its OWN key: it moves money (a leave refunded,
+  // a unit returned), and a key that means two things cannot be withheld for one of them. A linked account never (the route).
+  A("action:calendar.undo", "ย้อนกลับการลา/การเช็คอินที่ผิดพลาด", "Undo a mistaken leave or check-in"),
   // ── bookings ──
   A("action:bookings.bulk-confirm", "ยืนยันคาบทั้งชุด", "Bulk-confirm sessions"),
   A("action:bookings.course-create", "เปิดคอร์ส", "Create a course"),

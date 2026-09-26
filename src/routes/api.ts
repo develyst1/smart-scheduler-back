@@ -20,7 +20,8 @@ import { isSettingKey } from "../lib/settings";
 import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
 import { actorOf } from "../services/user.service";
-import { assertLinked, assertOwnBooking, assertScopedStatusAction, scopeOf } from "../lib/own-scope";
+import { SCOPE_TEACHER, assertLinked, assertOwnBooking, assertScopedStatusAction, isScoped, scopeOf } from "../lib/own-scope";
+import * as undo from "../services/undo.service";
 import { viewerOf } from "../lib/budget-visibility";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
@@ -277,8 +278,14 @@ export const api = new Hono()
     assertScopedStatusAction(c.get("user"), action);
     await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));
     return c.json(
-      await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode, actorOf(c)), // TASK-475 — a staff attend records WHO
+      await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode, { channel: "staff", actor: actorOf(c) }), // TASK-475 · TASK-488 — the channel AND who
     );
+  })
+  // 🔴 TASK-492 (SPEC-094) — the admin UNDO of a mistaken leave or a false check-in. Silent (owner ruling 2). Its own key
+  // (`action:calendar.undo`, route-access); 🚫 a linked account never — it moves money on rows that are not theirs to judge.
+  .post("/bookings/:id/undo", zValidator("json", v.undoBooking), async (c) => {
+    if (isScoped(c.get("user"))) throw SCOPE_TEACHER();
+    return c.json(await undo.undoBooking(c.req.param("id"), { actor: actorOf(c), reason: c.req.valid("json").reason ?? null }));
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) => {
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-431 — the session's rate override ⇒ key 59; a body without it passes

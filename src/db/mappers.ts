@@ -1,6 +1,7 @@
 // DB rows → API DTOs. This is the "ready-to-use" layer: every booking ships with
 // its teacher/student/subject/course already embedded so the FE never joins.
 
+import type { ProvenanceView } from "../lib/checkin-channel";
 import { toCourseSummary } from "../lib/leave";
 import { voucherRemaining, voucherStatus } from "../lib/voucher";
 import { fmtDate, hhmm } from "../lib/time";
@@ -164,6 +165,27 @@ const otherFacts = (b: any): { kind: string | null; headCount: number | null; te
 export const displayNameOf = (b: any): string => b.otherTitle ?? studentNamesOf(b) ?? "";
 
 /**
+ * 🔴 TASK-499 — THE public check-in answer's `booking`, by ALLOW-LIST. The doors that take no login (the token page, the
+ * shop-front single and batch) answered with the whole admin DTO: the COACH'S PAY (`rate` — the key-59 mask is registered
+ * AFTER these routes and never ran on them), an ADMIN'S USERNAME (`discount.actor`), staff's `note`, the course's internals and
+ * the child's CRM fields — none of it read by any page. The pages read exactly these six, so the family loses nothing.
+ * 🔑 An allow-list, not a deny-list: the admin DTO has 33 keys and grows every round, so a deny-list makes every FUTURE field
+ * public by default. Here a new field is private until someone decides a family should see it — by adding it HERE.
+ * (DUO: the first child's name, exactly as before — unchanged inside a leak fix; named for @Fern.)
+ */
+export const toPublicCheckinBooking = (b: any) =>
+  b
+    ? {
+        date: b.date,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        student: b.student ? { name: b.student.name } : null,
+        subject: b.subject ? { name: b.subject.name } : null,
+        teacher: b.teacher ? { nickname: b.teacher.nickname } : null,
+      }
+    : null;
+
+/**
  * TASK-425 — the STUDENT part of that rule (no title): a DUO row's `A & B`, else the nickname, then the name; `null` for
  * a studentless row. The notice worker and the payload writers print it on the `Student :` line (an อื่นๆ row's title
  * already rides in `program`, so it must not repeat here); every other surface prints `displayNameOf`.
@@ -177,9 +199,20 @@ export const studentNamesOf = (b: any): string | null =>
  * a caller asks only for an UNSCOPED (admin) read — Sober's ruling B: a scoped teacher never sees which admin marked their
  * class, and neither does a parent on the public scan. Opt-in on purpose: a new read defaults to hiding it.
  */
-export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null; provenance?: boolean } = {}) => ({
+/**
+ * 🔴 TASK-488 — the THREE-STATE read (was TASK-481's boolean): `raw` — an unscoped admin read: the channel, the actor, and the
+ * legacy `checkinSource` (kept for the FE until the drop), as stored · `masked` — a scoped teacher: all three `null` · omitted
+ * — EVERY other read, incl. the PUBLIC scan: the keys are ABSENT. A parent never sees an actor — not masked, not coarsened, absent.
+ */
+const bookingProvenance = (b: any, view: ProvenanceView | undefined) =>
+  !view
+    ? {}
+    : view === "masked"
+      ? { checkinSource: null, checkinChannel: null, checkinActor: null }
+      : { checkinSource: (b.checkinSource as string | null | undefined) ?? null, checkinChannel: (b.checkinChannel as string | null | undefined) ?? null, checkinActor: (b.checkinActor as string | null | undefined) ?? null };
+export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null; provenance?: ProvenanceView } = {}) => ({
   id: b.id,
-  checkinSource: opts.provenance ? ((b.checkinSource as string | null | undefined) ?? null) : null,
+  ...bookingProvenance(b, opts.provenance),
   date: b.date,
   startTime: hhmm(b.startTime),
   endTime: hhmm(b.endTime),

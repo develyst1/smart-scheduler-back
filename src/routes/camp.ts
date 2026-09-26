@@ -24,7 +24,7 @@ export const campRoutes = new Hono()
   })
   .get("/weeks/:id/days", async (c) => c.json(await camp.weekDays(c.req.param("id"))))
   // TASK-481 — provenance (`markedBy`) raw for an admin, null for a scoped (linked-teacher) viewer: ruling B, as the calendar.
-  .get("/packages", zValidator("query", v.campPackagesQuery), async (c) => c.json(await camp.listPackages(c.req.valid("query").studentId, { provenance: !scopeOf(c.get("user")) })))
+  .get("/packages", zValidator("query", v.campPackagesQuery), async (c) => c.json(await camp.listPackages(c.req.valid("query").studentId, { provenance: scopeOf(c.get("user")) ? "masked" : "raw" })))
   .post("/packages", zValidator("json", v.createCampPackage), async (c) => {
     const body = c.req.valid("json");
     assertMayDiscount(body.discount, c.get("user"));
@@ -34,7 +34,7 @@ export const campRoutes = new Hono()
   // TASK-403: `status: "PLANNED"` + `reason` is the UNDO (units back, no money); the same act key — a mark is a mark.
   .patch("/days/:id", zValidator("json", v.markCampDay), async (c) => {
     const body = c.req.valid("json");
-    return c.json(await camp.markDay(c.req.param("id"), body.status, actorOf(c), body.reason ?? null));
+    return c.json(await camp.markDay(c.req.param("id"), body.status, { channel: "staff", actor: actorOf(c) }, body.reason ?? null)); // TASK-488
   })
   // TASK-403: the day's check-in QR — the token is minted on the first view (lazy), lives to 23:59:59 of the date.
   .get("/days/:id/checkin", async (c) => c.json(await camp.getDayCheckinQr(c.req.param("id"))));

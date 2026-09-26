@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  applyPoints,
   levelFromPoints,
   CRM_POINT_RULES,
   perksForLevel,
@@ -14,9 +13,8 @@ describe("crm (C.2)", () => {
     expect(levelFromPoints(300).level).toBe(5);
   });
 
-  test("applyPoints never goes negative", () => {
-    expect(applyPoints(5, -100).points).toBe(0);
-  });
+  // 🔻 TASK-498 — "applyPoints never goes negative" moved with the rule: the floor is `GREATEST(…, 0)` in the ONE write,
+  // evaluated by value in crm-level-req108.test.ts.
 
   test("point rules are positive", () => {
     expect(CRM_POINT_RULES.ON_TIME_CHECKIN).toBeGreaterThan(0);

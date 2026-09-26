@@ -13,8 +13,11 @@
 //
 // RUN (needs `sharp`, which lives in the frontoffice web repo — the same anchoring as the generator):
 //   cd smart-scheduler-front
-//   bun ../smart-scheduler-back/assets/line/resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image>
-// Writes menu-customer.png (2500×1686) and menu-unknown.png (2500×843) next to this script.
+//   bun ../smart-scheduler-back/assets/line/resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image> [teacher image]
+// Writes menu-customer.png (2500×1686) and menu-unknown.png (2500×843) next to this script — and, when the third file is
+// given, menu-teacher.png (2500×843). TASK-484 (REQ-109 §1): the teacher art is the customer's ORANGE file now
+// (`customer-2026-09-26-teacher/teacher-menu-orange-2000x672.webp`, the only original — a 1.25× upscale by the owner's
+// ruling), so it moved HERE from the generator, which would otherwise overwrite it on the next regeneration.
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -25,7 +28,7 @@ const sharp = createRequire(join(process.cwd(), "noop.js"))("sharp");
 const OUT_DIR = dirname(fileURLToPath(import.meta.url));
 const MAX_BYTES = 1_000_000; // LINE says "1 MB" — read as the STRICTER 1,000,000 bytes, so no reading of it can refuse the file
 
-const [linked, unlinked] = process.argv.slice(2);
+const [linked, unlinked, teacher] = process.argv.slice(2);
 if (!linked || !unlinked) {
   console.error("usage: resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image>");
   process.exit(1);
@@ -34,6 +37,7 @@ if (!linked || !unlinked) {
 const jobs = [
   { src: linked, file: "menu-customer.png", width: 2500, height: 1686 },
   { src: unlinked, file: "menu-unknown.png", width: 2500, height: 843 },
+  ...(teacher ? [{ src: teacher, file: "menu-teacher.png", width: 2500, height: 843 }] : []),
 ];
 
 for (const j of jobs) {

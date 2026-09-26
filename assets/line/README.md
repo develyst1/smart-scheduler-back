@@ -7,7 +7,7 @@
 |------|-------------|-----------|--------------------------------------------------------|---------------------|
 | `menu-unknown.png` | unlinked chat (the account DEFAULT) | **2500 × 843** | 2 cells: **สมัครสมาชิก / Sign Up** · **คุยกับแอดมิน / Chat with Admin** | the customer's art, stretched (`resize-customer-menus.mjs`) |
 | `menu-customer.png` | linked parent | **2500 × 1686** | 3×2: **แจ้งลา · เช็คอิน · คอร์สของฉัน** / **เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน** | the customer's art, stretched (`resize-customer-menus.mjs`) |
-| `menu-teacher.png` | teacher | **2500 × 843** | 2 cells: **ตารางของฉัน / My schedule** · **ภาษา/ช่วยเหลือ / Language/Help** | generated (`generate-rich-menus.mjs`) |
+| `menu-teacher.png` | teacher | **2500 × 843** | 2 cells: **ตารางของฉัน / My Schedule** · **ภาษา/ช่วยเหลือ / Language / Help** | the customer's ORANGE art, stretched (`resize-customer-menus.mjs`, 3rd file) — TASK-484 |
 
 ## The rules a file must meet
 - **The exact size above.** The tap areas are a grid over the definition's `size`; an image of any other size puts the
@@ -21,7 +21,7 @@
 
 ```bash
 cd ../smart-scheduler-front
-bun ../smart-scheduler-back/assets/line/resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image>
+bun ../smart-scheduler-back/assets/line/resize-customer-menus.mjs <linked-6cell image> <unlinked-2cell image> <teacher image>
 bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
 ```
 
@@ -31,9 +31,11 @@ bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
   writes full-colour PNG first; if that is over the cap it writes a **256-colour PNG (quality 90, no dither)** and
   **prints that it did**. On 2026-09-25: `menu-customer.png` 592 KB (256-colour, full colour was 2.7 MB) ·
   `menu-unknown.png` 984 KB (full colour).
-- **`generate-rich-menus.mjs`** — draws `menu-teacher.png` from code: the teacher menu's same two cells, same blue,
-  Thai over English. ⏪ If the owner keeps the Thai-only picture instead, the one-line swap is written beside the job in
-  the script (use `teacher-th`'s svg). It also rewrites the six files below, byte-identical.
+- **`menu-teacher.png`** — 🔻 TASK-484 (REQ-109 §1): the customer's ORANGE teacher art
+  (`customer-2026-09-26-teacher/teacher-menu-orange-2000x672.webp`, **the only original**), stretched 2000×672 → 2500×843
+  (1.25×) by the resize script's optional **third** file. 2026-09-26: **612,931 bytes, full colour.** It is NOT generated
+  any more — the generator would overwrite it; the old bilingual-blue job is left commented in the generator as the way back.
+- **`generate-rich-menus.mjs`** — rewrites the six older files below, byte-identical. (It no longer writes `menu-teacher.png`.)
 
 ## Older files in this folder (not published any more)
 `parent-th/en.png`, `teacher-th/en.png` (REQ-015) and `unknown-th.png`, `known-th.png` (REQ-079) are the language-era

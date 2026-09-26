@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { handleLineWebhookEvents } from "./line-webhook.service";
 import * as lineClient from "../lib/line-client";
 import { db } from "../db";
+import { fakeFamilyLinks } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's family read, faked at the boundary
 import { t, tb } from "../lib/line-i18n";
 import { readSrc } from "../lib/read-src";
 
@@ -31,6 +32,7 @@ const chat = (lang: "TH" | "EN", muted: boolean) => {
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => ({ id: "p1", lineUserId: U, lineLang: lang, status: "active", suspendedAt: null })) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => ({ parentId: "p1", lineUserId: U, lineLang: lang })) as any));
+  fakeFamilyLinks(spies, { [U]: "p1" }); // TASK-504 — the same family, answered at the `db.select` boundary `familyOfLineUser` really uses
   spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: (val: any) => ({ onConflictDoUpdate: async () => { writes.push(val); }, onConflictDoNothing: async () => {} }) })) as any));
   spies.push(spyOn(db, "update").mockImplementation((() => ({ set: (patch: any) => ({ where: async () => { writes.push(patch); } }) })) as any));
   spies.push(spyOn(db, "delete").mockImplementation((() => ({ where: async () => { writes.push("delete"); } })) as any));

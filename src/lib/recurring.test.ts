@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { courseExpiry, courseSessionDates, importedCourseExpiry, isCourseSize, weekdayOf } from "./recurring";
 import { addDays } from "./time";
+import { readFileSync } from "node:fs"; // TASK-507
+import { resolve } from "node:path";
+import { readSrc } from "./read-src";
 
 describe("recurring course (B.4)", () => {
   test("session dates are weekly, length = size", () => {
@@ -62,7 +65,15 @@ describe("courseExpiry — the native create path (AC-1)", () => {
 
   test("expiry is a function of the start date alone — nothing else moves it (AC-2)", () => {
     // A leave cannot change expiry because expiry never reads anything a leave touches.
-    expect(courseExpiry("2026-03-01", 10)).toBe(courseExpiry("2026-03-01", 10));
+    // 🔻 TASK-507 — this was `expect(courseExpiry(x)).toBe(courseExpiry(x))`: a call compared with ITSELF, true for any function.
+    // What really holds AC-2 is the SIGNATURE and a closed body, so that is what is pinned: the exact parameters (`quota` is the
+    // course's allowance, fixed at sale — not a leave taken), no `await`, and every name the body reads. A new input fails here.
+    const src = readSrc(readFileSync(resolve(import.meta.dir, "recurring.ts"), "utf8"));
+    const m = src.match(/export function courseExpiry\(([^)]*)\): string \{\n([\s\S]*?)\n\}\n/);
+    expect(m?.[1]).toBe("startDate: string, size: number, quota?: number | null");
+    const body = m![2].replace(/^\s*\/\/.*$/gm, "");
+    expect(body).not.toContain("await");
+    expect([...new Set(body.match(/\b[A-Za-z_]\w*\b/g))].sort()).toEqual(["LEAVE_QUOTA_BY_SIZE", "addDays", "const", "maxWeekFor", "quota", "return", "size", "startDate", "weekNumber"]);
   });
 });
 

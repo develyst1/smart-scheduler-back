@@ -68,10 +68,11 @@ describe("🔴 `Remaining` is the balance AFTER the write, taken FROM the write"
     expect(loop).not.toContain(".select(");
   });
 
-  test("the manual site passes the post-value it already holds", () => {
+  test("the manual site passes the post-value the WRITE returned (🔻 TASK-496: the day-end's shape — no longer read in JS + 1)", () => {
     const attend = code(SCHED).slice(code(SCHED).indexOf('} else if (action === "attend")'));
-    expect(attend.slice(0, 1400)).toContain("const used = current.course.usedSessions + 1");
-    expect(attend.slice(0, 1400)).toContain("used,");
+    expect(attend.slice(0, 1600)).toContain(".returning({ usedSessions: coursePackages.usedSessions });");
+    expect(attend.slice(0, 1600)).toContain("const used = counted!.usedSessions;");
+    expect(attend.slice(0, 1600)).toContain("used,");
   });
 
   test("🔻 TASK-338 — the doc-block is checked AGAINST THE FUNCTION, so THIS one cannot go stale silently", () => {

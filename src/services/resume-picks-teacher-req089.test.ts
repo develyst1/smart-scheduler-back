@@ -60,7 +60,10 @@ describe("🔴 the paused BOOKING — absent ⇒ its own teacher; present ⇒ th
     const send = RESUME_BOOKING.indexOf('payload: { kind: "booking_resumed" }');
     const update = RESUME_BOOKING.indexOf(".update(bookings)");
     expect(update).toBeLessThan(send);
-    expect(RESUME_BOOKING).toContain("with: { teacher: true },");
+    // 🔻 TASK-513 — the coaches are now read through `teachersOfBooking` (every coach, THE predicate) — still AFTER the update, so it
+    // still follows the row's (possibly new) teacher; the response's `notification` describes that primary.
+    expect(RESUME_BOOKING.indexOf("teachersOfBooking(tx, id)")).toBeGreaterThan(update);
+    expect(RESUME_BOOKING).toContain("if (coach.id === teacherId) notification = res;");
     expect((RESUME_BOOKING.match(/enqueueLine\(/g) ?? []).length).toBe(1); // still exactly one send
   });
 });

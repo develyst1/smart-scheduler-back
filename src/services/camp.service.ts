@@ -13,12 +13,13 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
-import { CAMP_WINDOW_DEFAULT, assertCampWindow, campSlotDiff, wantedCampSlots, assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, usedAfter, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
+import { CAMP_WINDOW_DEFAULT, assertCampWindow, campSlotDiff, wantedCampSlots, assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
 import { generateCheckinToken } from "../lib/checkin";
 import { checkinUrl } from "../lib/checkin-token";
 import { type CampDayInput, type CampWeekInput } from "../lib/camp-reminder";
 import { familyLineUserIdsBulk } from "../lib/family-link";
 import { anyHouseholdSuspended, assertStudentActive } from "./parent.service";
+import { legacySourceOf, type Provenance, type ProvenanceView } from "../lib/checkin-channel";
 import { tb } from "../lib/line-i18n";
 import { assertHouseholdNotSuspended, insertBooking } from "./scheduler.service";
 import { CAMP_KIND } from "../lib/other-kind";
@@ -284,13 +285,16 @@ export async function updateWeekDay(weekId: string, date: string, input: { teach
 // ───────────── packages (the sale) ─────────────
 /** TASK-481 — `markedBy` (camp's provenance: `checkin-qr` · `shopfront-qr` · `end-of-day` · a staff username) is RAW for an
  *  unscoped read that asks (`provenance`), `null` otherwise — the same rule as a session's `checkinSource` (ruling B). */
-const toPackageDTO = (p: any, days: any[], opts: { provenance?: boolean } = {}) => {
+/** TASK-488 — the three-state read for a camp day's mark: raw (admin) · null (scoped) · ABSENT (every other response). */
+const campProvenance = (d: any, view: ProvenanceView | undefined) =>
+  !view ? {} : view === "masked" ? { markedBy: null, markChannel: null, markActor: null } : { markedBy: d.markedBy ?? null, markChannel: d.markChannel ?? null, markActor: d.markActor ?? null };
+const toPackageDTO = (p: any, days: any[], opts: { provenance?: ProvenanceView } = {}) => {
   const planned = days.filter((d) => d.status === "PLANNED").reduce((s, d) => s + d.units, 0);
   return {
     id: p.id, studentId: p.studentId, kind: p.kind, plan: p.plan, totalUnits: p.totalUnits, usedUnits: p.usedUnits, plannedUnits: planned, credit: creditOf(p, planned),
     saleId: p.saleId ?? null, note: p.note ?? null,
     discount: p.discountKind ? { kind: p.discountKind, value: p.discountValue, reason: p.discountReason, actor: p.discountActor } : null,
-    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null, markedBy: opts.provenance ? (d.markedBy ?? null) : null })),
+    days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null, ...campProvenance(d, opts.provenance) })),
     createdBy: p.createdBy ?? null, createdAt: new Date(p.createdAt).toISOString(),
   };
 };
@@ -302,7 +306,7 @@ async function packageDTO(id: string, exec: any = db) {
   return toPackageDTO(p, days);
 }
 
-export async function listPackages(studentId: string, opts: { provenance?: boolean } = {}) { // TASK-481 — the route passes !scope
+export async function listPackages(studentId: string, opts: { provenance?: ProvenanceView } = {}) { // TASK-481 — the route passes !scope
   const rows = await db.query.campPackages.findMany({ where: (p, { eq: e }) => e(p.studentId, studentId), orderBy: (p, { desc }) => [desc(p.createdAt)] });
   const ids = rows.map((p) => p.id);
   const days = ids.length ? await db.query.campDays.findMany({ where: (d, { inArray: inA }) => inA(d.campPackageId, ids), with: { week: true }, orderBy: (d, { asc: a }) => [a(d.date)] }) : [];
@@ -392,7 +396,7 @@ export async function redeemDays(packageId: string, input: { weekId: string; dat
  * moves (there is no sale here — by absence). A mark clears a previous undo's reason. The day-end cut's rows
  * (`marked_by = "end-of-day"`) and a staff mark undo alike — only `status` is read.
  */
-export async function markDay(dayId: string, status: CampDayStatus, actor: string | null, reason?: string | null) {
+export async function markDay(dayId: string, status: CampDayStatus, by: Provenance, reason?: string | null) { // TASK-488 — channel + actor
   const { date: today } = bangkokNow();
   const packageId = await db.transaction(async (tx) => {
     const d = await tx.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId) });
@@ -401,10 +405,10 @@ export async function markDay(dayId: string, status: CampDayStatus, actor: strin
     const undo = isUndo(d.status, status);
     if (undo && !reason) throw badRequest("การยกเลิกการบันทึกต้องระบุเหตุผล");
     const delta = unitsDelta(d.status, status, d.units);
-    await tx.update(campDays).set({ status, markedBy: actor, markedAt: new Date(), undoReason: undo ? reason : null }).where(eq(campDays.id, dayId));
+    await tx.update(campDays).set({ status, markedBy: legacySourceOf(by), markChannel: by.channel, markActor: by.actor ?? null, markedAt: new Date(), undoReason: undo ? reason : null }).where(eq(campDays.id, dayId));
     if (delta !== 0) {
-      const p = await tx.query.campPackages.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, d.campPackageId) });
-      await tx.update(campPackages).set({ usedUnits: usedAfter(p?.usedUnits ?? 0, delta) }).where(eq(campPackages.id, d.campPackageId));
+      // TASK-496 — `sql` arithmetic, floored: the value is never read into JS and written back (two marks at once lost a count).
+      await tx.update(campPackages).set({ usedUnits: sql`GREATEST(${campPackages.usedUnits} + ${delta}, 0)` }).where(eq(campPackages.id, d.campPackageId));
     }
     return d.campPackageId;
   });
@@ -441,12 +445,27 @@ export async function checkinCampByToken(token: string, source: "checkin-qr" | "
   if (await anyHouseholdSuspended((d as any).package?.studentId ? [(d as any).package.studentId] : [])) throw badRequest(tb("suspended_notice"));
   const { date: today } = bangkokNow();
   const outcome = campScanOutcome(d, today, new Date());
-  if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };
-  const { package: pkg } = await markDay(d.id, "ATTENDED", source);
+  if (outcome === "already") return scanAnswer(true, d, await packageDTO(d.campPackageId));
+  const { package: pkg } = await markDay(d.id, "ATTENDED", { channel: source });
   // TASK-443 (REQ-104 §2 item 5a) — the scan page shows what is left to consume: total − used, in DAYS (a future PLANNED day
   // is still the family's credit). No mask: the scan is the family's own, by token.
-  return { already: false, day: pkg.days.find((x) => x.dayId === d.id) ?? dayDTO({ ...d, status: "ATTENDED" }), credit: creditDTO(pkg) };
+  return scanAnswer(false, d, pkg);
 }
+/**
+ * 🔴 TASK-502 — the public scan's ONE answer, for BOTH paths. The day comes from the ADMIN package DTO, so it is copied
+ * through an allow-list LITERAL — never a spread: a spread (or a spread with deletions) re-admits every field the admin DTO
+ * gains later, and the two it can gain are a per-coach day RATE (REQ-104) and the marker's identity (`provenance`). The 8
+ * keys are the family's own: `undoReason` is shown on purpose (the "undone" line). `studentName` is NOT here — a product
+ * question, ruled separately. Both paths answer the same shape, so the already-scanned reply carries `weekName` too.
+ */
+const scanAnswer = (already: boolean, d: any, pkg: Awaited<ReturnType<typeof packageDTO>>) => {
+  const x: any = pkg.days.find((y) => y.dayId === d.id) ?? { ...dayDTO(already ? d : { ...d, status: "ATTENDED" }), weekName: null };
+  return {
+    already,
+    day: { dayId: x.dayId, weekId: x.weekId, weekName: x.weekName ?? null, date: x.date, half: x.half, units: x.units, status: x.status, undoReason: x.undoReason ?? null },
+    credit: creditDTO(pkg),
+  };
+};
 const creditDTO = (p: { totalUnits: number; usedUnits: number }) => ({ remainingDays: unitsToDays(p.totalUnits - p.usedUnits), totalDays: unitsToDays(p.totalUnits) });
 const dayDTO = (d: any) => ({ dayId: d.id, weekId: d.campWeekId, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null });
 
@@ -482,7 +501,7 @@ export async function campReminderInputs(runDate: string): Promise<{ days: CampD
 export async function cutCampDays(tx: any, runDate: string): Promise<number> {
   const due = await tx.select({ id: campDays.id, packageId: campDays.campPackageId, units: campDays.units }).from(campDays).where(and(eq(campDays.status, "PLANNED"), lte(campDays.date, runDate)));
   for (const d of due) {
-    await tx.update(campDays).set({ status: "ATTENDED", markedBy: "end-of-day", markedAt: new Date() }).where(eq(campDays.id, d.id));
+    await tx.update(campDays).set({ status: "ATTENDED", markedBy: "end-of-day", markChannel: "end-of-day", markActor: null, markedAt: new Date() }).where(eq(campDays.id, d.id));
     await tx.update(campPackages).set({ usedUnits: sql`${campPackages.usedUnits} + ${d.units}` }).where(eq(campPackages.id, d.packageId));
   }
   return due.length;

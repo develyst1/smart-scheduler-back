@@ -38,8 +38,8 @@ describe("🔴 the migration — 0050, counted, the column with its default on a
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0050_subject_kind.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0050_subject_kind` is the 51st file, idx 50 (TASK-439 added 0051 after it); 'expects 51'; the four statements", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[50]).toBe("0050_subject_kind.sql");
     expect(journal.entries[50]).toMatchObject({ idx: 50, tag: "0050_subject_kind" });
     expect(sql).toContain("`db:verify` expects 51");

@@ -441,6 +441,12 @@ const TABLE: Record<string, Entry> = {
   num_notfound: { TH: "ไม่พบคาบตามหมายเลขที่เลือก", EN: "No class for that number" },
 
   teacher_linked: { TH: "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ", EN: "Teacher account linked — you'll get schedule notifications" },
+  // 🔴 TASK-485 (REQ-109 §6, owner-approved 09-26 — BYTE FOR BYTE, do not improve) — a linked TEACHER's Language/Help list:
+  // their two commands, not the parent's. ⚠️ No blank line after the heading: the approved copy has none (the parent list does).
+  teacher_menu_body: {
+    TH: "คำสั่งที่ใช้ได้:\n· ตารางของฉัน — ตารางสอนวันนี้ / สัปดาห์นี้\n· ปฏิทิน — ลิงก์ปฏิทินสอนทั้งหมด",
+    EN: "Available Commands:\n· My Schedule — Today's / This week's schedule\n· Calendar — Link to your full teaching calendar",
+  },
   teacher_linked_menu: { TH: "บัญชีครูผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ You'll be notified when a schedule is confirmed" },
   // Teacher "my schedule" (REQ-016 / TASK-043).
   //
@@ -465,6 +471,11 @@ const TABLE: Record<string, Entry> = {
   // words** — the convention `PENDING_RESCHEDULE` already uses, applied the moment we write copy ahead of them.
   tsched_title_week: { TH: "⏱️THIS WEEK'S SCHEDULE:", EN: "⏱️THIS WEEK'S SCHEDULE:" },
   tsched_empty: { TH: "ไม่มีคาบสอนในช่วงนี้", EN: "No classes in this range" },
+  // 🔴 TASK-486 (REQ-109 §3) — Khwan's weekly header, byte for byte (a space after the clock, no colon).
+  // 🔴 TASK-493 — ENGLISH in BOTH columns, ON PURPOSE: the owner answered for Khwan (09-26) that her coaches read the English
+  // labels of her sample more easily, Thai chat or not. Not an untranslated string — do not "fix" it.
+  // (`tsched_title_today` is KEPT as is: it is pinned equal to the approved AUTO message's title — §B4.)
+  tsched2_title_week: { TH: "⏱️ THIS WEEK'S SCHEDULE", EN: "⏱️ THIS WEEK'S SCHEDULE" },
   tsched_more: { TH: "…และอีก {count} คาบ", EN: "…and {count} more" },
   btn_week: { TH: "สัปดาห์นี้", EN: "This week" },
   btn_today: { TH: "วันนี้", EN: "Today" },
@@ -602,6 +613,11 @@ const TABLE: Record<string, Entry> = {
   ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
   ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
   ob_f_reason: { TH: "Reason", EN: "Reason" },
+  // 📖 **PLACEHOLDER — MINE, and the owner has NOT seen it** (TASK-508). A leave Undo puts a class BACK ON, and the coach is the
+  // one who has to be there. The stamp says the fact a coach needs between classes — the class is on — never our word for our
+  // own act ("a leave was undone"). House format (`ob_class_cancelled_title`'s): bilingual, identical in both columns, ‼️.
+  // Pinned by FORM until @Porter brings back his words; then the pin flips to bytes (the `ob_deduct_title` path).
+  ob_class_on_again_title: { TH: "CLASS ON AGAIN / มีคาบตามเดิม ‼️", EN: "CLASS ON AGAIN / มีคาบตามเดิม ‼️" },
   // ✅ TASK-375 / TASK-376 (`REQ-091` Deploy B) — **APPROVED by the owner as drafted** — the stamp of the same-day
   // rental notice, in `leave_notice`'s shape. 🚫 Byte-frozen from here (the `ob_deduct_title` convention: the owner
   // has seen it, so the test pins the bytes). `Rental` below is the customer's own section word (TASK-372), and

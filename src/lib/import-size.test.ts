@@ -61,6 +61,8 @@ describe("🔴 maxWeek = size + quota — one rule, and it answers for a size th
     expect(courseLeaveQuota({ size: 8, leaveQuota: 2 })).toBe(2);
     expect(maxWeekFor(8, 2)).toBe(10);
     expect(courseExpiry("2026-09-06", 8, 2)).toBe(courseExpiry("2026-09-06", 8, 2));
+    // 🔻 TASK-507 — the line above compares the function with ITSELF (same arguments), so it holds for any expiry at all. The date it means:
+    expect(courseExpiry("2026-09-06", 8, 2)).toBe("2026-11-08"); // week 10 ⇒ the start + 9 weeks
     // …and it is genuinely later than the start, which week-0 was not.
     expect(courseExpiry("2026-09-06", 8, 2) > "2026-09-06").toBe(true);
   });

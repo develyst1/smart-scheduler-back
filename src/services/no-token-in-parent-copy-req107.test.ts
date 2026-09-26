@@ -4,6 +4,7 @@ import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:tes
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { db } from "../db";
+import { fakeDispatchBoundary } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's own un-mute write + family read, faked at the boundary
 import { ApiException } from "../lib/http";
 import { t, tb } from "../lib/line-i18n";
 import * as checkinSvc from "./checkin.service";
@@ -59,6 +60,7 @@ describe("🔴 the LINE chat — the line Tanya saw, now in the CHAT's language"
   const chat = (lang: "TH" | "EN") => {
     const replies: any[] = [];
     spies.push(spyOn(db.query.lineLinkSessions, "findFirst").mockImplementation((async () => undefined) as any));
+  fakeDispatchBoundary(spies); // TASK-504
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => ({ id: "p1", lineUserId: U, lineLang: lang, status: "active", suspendedAt: null })) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));

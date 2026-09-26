@@ -8,6 +8,7 @@ import { readSrc } from "./read-src";
 import { formatBadSignature, formatEventFinish, formatInboundEvent } from "./line-log";
 import { SCHEDULING_WITNESSES } from "./migration-witness";
 import { createHmac } from "node:crypto";
+import { fakeDispatchBoundary } from "../test-support/line-dispatch-fakes"; // TASK-507
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -27,6 +28,24 @@ const rootApp = (await import("../index")).default as { fetch: (r: Request) => P
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); });
+// 🔴 TASK-507 — a postback first resolves its reply language (`resolveBotLang`: the sender's teacher / parent link), then un-mutes
+// the chat, reads the family link and the OA admin list. The by-value tests below declared none of it, so it went to the REAL database (unreachable,
+// the first read errored inside the handler — logged, and tolerated, since only ORDER / FINISH lines are asserted — and hid the
+// rest). Declared: U1 is nobody — no teacher, no parent, no session, no family (the shared dispatcher fakes), and there are no OA
+// admins (only the `line_admin_user_ids` setting is answered); anything else throws.
+const teacherAsked: unknown[] = [];
+const declareStranger = async () => {
+  const { db } = await import("../db");
+  teacherAsked.length = 0;
+  spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async (q: any) => { teacherAsked.push(q.where({ lineUserId: "lineUserId" }, { eq: (_c: unknown, v: unknown) => v })); return undefined; }) as any));
+  spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async (q: any) => {
+    const key = q.where({ key: "key" }, { eq: (_c: unknown, v: unknown) => v });
+    if (key !== "line_admin_user_ids") throw new Error(`unexpected app_settings read: ${key}`);
+    return undefined;
+  }) as any));
+  return fakeDispatchBoundary(spies);
+};
 
 const SECRET = process.env.LINE_CHANNEL_SECRET!;
 const sign = (body: string) => createHmac("sha256", SECRET).update(body).digest("base64");
@@ -132,6 +151,7 @@ describe("🔴 §3 a duplicate event has NO side effect", () => {
     // 🚫 no test may touch api.line.me — the apology path replies on an unknown action.
     spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async () => {}) as any));
     const ev = { type: "postback", webhookEventId: "dup-1", replyToken: "r", source: { userId: U1 }, postback: { data: "action=nothing" } } as any;
+    await declareStranger(); // TASK-507
 
     await svc.handleLineWebhookEvents([ev]);
     await svc.handleLineWebhookEvents([ev]); // LINE re-delivers the SAME event
@@ -143,7 +163,7 @@ describe("🔴 §3 a duplicate event has NO side effect", () => {
 
   test("the store: `0055`, 56 = 56, and the table is its own witness", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(journal.entries.length).toBe(57);
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(journal.entries[55]).toMatchObject({ idx: 55, tag: "0055_line_webhook_events" });
     const sql = readFileSync(resolve(root, "drizzle/0055_line_webhook_events.sql"), "utf8");
     expect(sql).toContain(`"webhook_event_id" text PRIMARY KEY`);
@@ -174,14 +194,21 @@ describe("🔴 §4 the per-chat queue — and what it is not", () => {
     const db = (await import("../db")).db;
     spies.push(spyOn(db, "insert").mockImplementation(((_t: any) => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "x" }] }) }) })) as any));
     spies.push(spyOn(console, "info").mockImplementation(((..._a: any[]) => {}) as any));
-    spies.push(spyOn(console, "error").mockImplementation(((..._a: any[]) => {}) as any));
-    // the dispatch itself is what we time: a postback with an unknown action does no I/O
+    const errors: string[] = []; // TASK-507 — was silenced outright: an undeclared read failing inside the handler vanished here
+    spies.push(spyOn(console, "error").mockImplementation(((...a: any[]) => { errors.push(a.map(String).join(" ")); }) as any));
+    // the dispatch itself is what we time: a postback with an unknown action does no I/O beyond the language read (declared — TASK-507)
+    const { unmutes } = await declareStranger();
     spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async () => {}) as any));
     const mk = (id: string) => ({ type: "postback", webhookEventId: id, replyToken: "r", source: { userId: U1 }, postback: { data: `action=slow-${id}` } }) as any;
     const slow = svc.handleLineWebhookEvents([mk("a")]).then(() => order.push("a"));
     const fast = svc.handleLineWebhookEvents([mk("b")]).then(() => order.push("b"));
     await Promise.all([slow, fast]);
     expect(order).toEqual(["a", "b"]); // b waited for a's tail
+    // TASK-507 — every teacher lookup was by the sender, and each event un-muted that one chat
+    expect(teacherAsked.length).toBeGreaterThan(0);
+    expect(teacherAsked.every((v) => v === U1)).toBe(true);
+    expect(unmutes.map((q) => q.params[0])).toEqual([U1, U1]);
+    expect(errors).toEqual([]); // both events handled cleanly — nothing failed behind the timing
   });
 
   test("📌 two DIFFERENT chats are NOT serialised — the lock is per chat, not a global queue", () => {

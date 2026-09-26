@@ -12,7 +12,7 @@
 // relational `where` callback and a `conds[]` array unchanged.
 import { and, eq, exists, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { bookingTeachers, bookings } from "../db/schema";
+import { bookingTeachers, bookings, teachers } from "../db/schema";
 import { ApiException, notFound } from "./http";
 
 export interface ScopedUser { teacherId: string | null }
@@ -23,11 +23,23 @@ export const isScoped = (u: ScopedUser): boolean => !!u.teacherId;
 export const scopeOf = (u: ScopedUser): string | null => u.teacherId ?? null;
 
 /** THE predicate: `bookings.teacher_id = me OR EXISTS booking_teachers(me)`. */
-export const ownScopeWhere = (me: string) =>
+export const ownScopeWhere = (me: string | typeof teachers.id) => // TASK-508 — or the teachers' own id column: the inverse question
   or(
     eq(bookings.teacherId, me),
     exists(db.select({ one: sql`1` }).from(bookingTeachers).where(and(eq(bookingTeachers.bookingId, bookings.id), eq(bookingTeachers.teacherId, me)))),
   );
+
+/**
+ * 🔴 TASK-508 — the coaches OF a booking: every teacher for whom THE predicate holds on this row (the primary AND each
+ * additional teacher). The inverse of "my classes", asked through the SAME predicate with the teacher's id column in place
+ * of a fixed id — so it can never know fewer people than a coach's own calendar does (TASK-487's lesson).
+ */
+export async function teachersOfBooking(exec: any, bookingId: string): Promise<Array<{ id: string; lineUserId: string | null }>> {
+  return exec
+    .select({ id: teachers.id, lineUserId: teachers.lineUserId })
+    .from(teachers)
+    .innerJoin(bookings, and(eq(bookings.id, bookingId), ownScopeWhere(teachers.id)));
+}
 
 /** Is this booking mine? The same predicate + the id — the by-id reads and the scoped write share it. */
 export async function isOwnBooking(exec: any, bookingId: string, me: string): Promise<boolean> {

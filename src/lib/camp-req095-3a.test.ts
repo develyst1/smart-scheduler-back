@@ -41,8 +41,8 @@ describe("🔴 the migration — 0042, counted, witnessed by the UNIQUE index, n
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0042_camp.sql"), "utf8");
   test("56 = 56: `0042_camp` is the 43rd file, idx 42 (TASK-403 added 0043 after it); the order 0038 → 0042 named in the header", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[42]).toBe("0042_camp.sql");
     expect(journal.entries[42]).toMatchObject({ idx: 42, tag: "0042_camp" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → THIS");
@@ -241,7 +241,7 @@ describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54)
   test("keys by value", () => {
     expect(MENU_KEYS.length).toBe(13);
     expect(MENU_KEYS[MENU_KEYS.indexOf("menu:badges") + 1]).toBe("menu:camp");
-    expect(ACTION_REGISTRY.length).toBe(59); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // TASK-411: + people.parent-archive // TASK-406: + calendar.teacher-leave
+    expect(ACTION_REGISTRY.length).toBe(60); // 🔻 TASK-431: + bookings.coach-rate // 🔻 TASK-428: + calendar.other-cancel-all // 🔻 TASK-426: + teachers.budget-view // TASK-411: + people.parent-archive // TASK-406: + calendar.teacher-leave
     const keys: string[] = ACTION_REGISTRY.map((a) => a.key);
     for (const k of ["action:camp.week-open", "action:camp.sell", "action:camp.redeem", "action:camp.day-mark"]) expect(keys).toContain(k);
     expect(ACTION_REGISTRY.find((a) => a.key === "action:camp.sell")).toMatchObject({ labelTh: "ขายแคมป์", labelEn: "Sell a camp package" });

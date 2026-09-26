@@ -98,12 +98,17 @@ describe("🔴 the service — count → refuse or delete in ONE transaction; th
     expect(SCHEMA).not.toMatch(/deletedAt|suspendedAt/);
   });
 
-  test("🔑 the restrict error (23503) is caught in the SERVICE and re-said as the same 409 — `onError` would render it 400 VALIDATION", () => {
+  test("🔑 the restrict error (23503) is caught in the SERVICE and re-said as the same 409 — `onError` would render it 400 VALIDATION", async () => {
     expect(DEL).toContain('if (pgErrorCode(e) !== "23503") throw e;');
     expect(DEL).toContain("throw studentHistoryRefusal(await countStudentHistory(id))");
     expect(DEL).toContain('conflict("STUDENT_HAS_HISTORY"');
     // …and the global mapping is untouched: it is still the 400 it always was, for every OTHER 23503.
-    expect(code(src("src/index.ts"))).toContain('if (code === "23503") {\n    return c.json({ error: { code: "VALIDATION", message: "ข้อมูลอ้างอิงไม่ถูกต้อง" } }, 400);');
+    // TASK-490 — the mapping MOVED (not changed) from `index.ts` into `errorEnvelope` (lib/http.ts), which `onError` calls, so
+    // the shop-front batch reports a refusal exactly as the single call does. Pinned where it now lives, and BY VALUE.
+    expect(code(src("src/lib/http.ts"))).toContain('if (code === "23503") return { status: 400, body: { error: { code: "VALIDATION", message: "ข้อมูลอ้างอิงไม่ถูกต้อง" } } };');
+    expect(code(src("src/index.ts"))).toContain("const { status, body } = errorEnvelope(err);");
+    const { errorEnvelope } = await import("../lib/http");
+    expect(errorEnvelope({ cause: { code: "23503" } })).toEqual({ status: 400, body: { error: { code: "VALIDATION", message: "ข้อมูลอ้างอิงไม่ถูกต้อง" } } });
   });
 
   test("audit is one log line with actor + name, not a table; the parent's count is LIVE so the slot frees itself", () => {

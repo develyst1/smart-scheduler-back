@@ -65,7 +65,9 @@ export type TemplateKey =
   | "class_cancelled"
   | "course_dropped"
   // TASK-375 (REQ-091) — a rental added the same day after the reminder went: `leave_notice`'s block again.
-  | "rental_added";
+  | "rental_added"
+  // TASK-508 — a leave Undo: the class is back on — `class_cancelled`'s block under its own stamp.
+  | "class_on_again";
 
 export type FieldKey =
   | "student"
@@ -115,6 +117,7 @@ export const TEMPLATE_FIELDS: Record<TemplateKey, readonly FieldKey[]> = {
   class_cancelled: ["student", "program", "date", "time", "coach"],
   course_dropped: ["student", "program", "coach"],
   rental_added: ["student", "program", "date", "time", "coach"],
+  class_on_again: ["student", "program", "date", "time", "coach"],
 };
 
 /**

@@ -118,7 +118,8 @@ describe("🔴 the gate — today (Bangkok) AND the reminder already ran; otherw
     expect(G).toContain('recipientType: "teacher"');
     expect(G).toContain('kind: "rental_added_teacher"');
     expect(G).toContain("rental: { code: row.code, remark: row.remark }");
-    expect(G).toContain("recipientLineUserId: teacher?.lineUserId ?? null,"); // unlinked ⇒ SKIPPED by enqueueLine
+    expect(G).toContain("recipientLineUserId: coach.lineUserId ?? null,"); // unlinked ⇒ SKIPPED by enqueueLine — 🔻 TASK-513: per coach (every coach of the session)
+    expect(G).toContain("for (const coach of await teachersOfBooking(db, booking.id)) {");
   });
   test("called ONLY from the session-rental writer, after the row is written; not from paid, remove, the course create or the reconcile", () => {
     const REC = region(SVC, "export async function recordBookingRental(", "async function notifyRentalAddedSameDay(");

@@ -6,7 +6,7 @@ import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { ApiException } from "./http";
-import { assertDayTransition, campScanOutcome, campTokenExpiry, isUndo, unitsDelta, usedAfter } from "./camp";
+import { assertDayTransition, campScanOutcome, campTokenExpiry, isUndo, unitsDelta } from "./camp";
 import { REMINDABLE, groupReminders, reminderKey, type ReminderSession } from "./daily-reminder";
 import { CAMP_REMINDABLE, campReminderKey, campReminderSends, type CampDayInput, type CampWeekInput } from "./camp-reminder";
 import { CAMP_NAMES_MAX, formatOutboxMessage } from "./line-message";
@@ -42,8 +42,8 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
   test("56 = 56: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(57);
-    expect(journal.entries.length).toBe(57);
+    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(journal.entries.length).toBe(60); // TASK-497: +0059
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");
@@ -95,10 +95,7 @@ describe("🔴 the UNDO — ATTENDED | ABSENT → PLANNED: units back, floored a
     expect(thrown(() => assertDayTransition("CANCELLED", "PLANNED", "2026-10-06", "2026-10-05"))).toMatchObject({ status: 409, code: "CAMP_DAY_TRANSITION" });
     expect(unitsDelta("ATTENDED", "PLANNED", 2)).toBe(-2);
     expect(unitsDelta("ABSENT", "PLANNED", 1)).toBe(-1);
-    expect(usedAfter(4, -2)).toBe(2);
-    expect(usedAfter(1, -2)).toBe(0); // 🔑 the floor — a row that was mis-counted never goes negative
-    expect(usedAfter(0, 2)).toBe(2);
-    expect(usedAfter(undefined as any, -1)).toBe(0);
+    // 🔻 TASK-496 — the floored arithmetic moved into the write (`GREATEST(used_units + delta, 0)`), pinned below and in counter-sql-req108
   });
   test("validation: PLANNED needs a reason (3..200); a mark refuses one; the three marks still pass", () => {
     expect(v.markCampDay.safeParse({ status: "PLANNED", reason: "บันทึกผิดคน" }).success).toBe(true);
@@ -113,7 +110,7 @@ describe("🔴 the UNDO — ATTENDED | ABSENT → PLANNED: units back, floored a
     expect(M).toContain("const undo = isUndo(d.status, status);");
     expect(M).toContain('if (undo && !reason) throw badRequest("การยกเลิกการบันทึกต้องระบุเหตุผล");');
     expect(M).toContain("undoReason: undo ? reason : null");
-    expect(M).toContain("usedUnits: usedAfter(p?.usedUnits ?? 0, delta)");
+    expect(M).toContain("usedUnits: sql`GREATEST(${campPackages.usedUnits} + ${delta}, 0)`"); // 🔻 TASK-496: was `usedAfter(p?.usedUnits ?? 0, delta)` (read-modify-write)
     expect(M).not.toContain("markedBy ==="); // only `status` is read — the cut's "end-of-day" rows and a staff mark are the same to it
     expect(M).not.toMatch(/recordSale|sales\b|refund/);
     expect((SVC.match(/recordSale\(/g) ?? []).length).toBe(1); // still the ONE post, in the sale
@@ -153,9 +150,10 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
     expect(P).not.toMatch(/checkinToken|generateCheckinToken/);
     const C = region(SVC, "export async function checkinCampByToken(", "const dayDTO");
     expect(C).toContain("const outcome = campScanOutcome(d, today, new Date());");
-    expect(C).toContain('if (outcome === "already") return { already: true, day: dayDTO(d), credit: creditDTO(await packageDTO(d.campPackageId)) };'); // 🔻 TASK-443: + the credit
+    expect(C).toContain('if (outcome === "already") return scanAnswer(true, d, await packageDTO(d.campPackageId));'); // 🔻 TASK-443: + the credit · 🔻 TASK-502: through the ONE allow-listed answer (credit built inside it)
+    expect(C).toContain("credit: creditDTO(pkg),"); // TASK-502 — both paths' credit, in `scanAnswer`
     // 🔻 TASK-475 — the actor is now the SOURCE (the wall QR passes `shopfront-qr`); the scan page's default is still `checkin-qr`.
-    expect(C).toContain('await markDay(d.id, "ATTENDED", source);');
+    expect(C).toContain('await markDay(d.id, "ATTENDED", { channel: source });'); // 🔻 TASK-488 — a CHANNEL, no actor
     expect(C).toContain('source: "checkin-qr" | "shopfront-qr" = "checkin-qr"');
     expect(SVC).not.toMatch(/awardCrmPoints|CRM_POINT_RULES/);
     const RT = src("src/routes/checkin.ts");

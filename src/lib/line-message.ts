@@ -328,6 +328,26 @@ function buildOutboxMessage(
         extra(t("ob_f_reason", lang), cancelReasonText(payload.cancelReason, payload.note, lang))
       );
     }
+    // 🔴 TASK-508 — a leave Undo put this class BACK ON: the coach is told, in `class_cancelled_teacher`'s shape (the house
+    // format), so the message that took the class off and the one that puts it back read as a pair. No `Reason`: the fact
+    // is the whole message. 🚫 Never the family (owner ruling) — the renderer does not decide that; the producer does.
+    case "class_on_again_teacher": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      return (
+        t("ob_class_on_again_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_on_again",
+          {
+            student: ctx.studentName ?? ((payload.studentName as string) || undefined),
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: ctx.coach,
+          },
+          { type, audience: recipientType, lang },
+        )
+      );
+    }
     case "course_dropped_teacher": {
       // One message per course per coach: `dates` are the CONFIRMED classes THIS coach loses, `startTime` /
       // `endTime` the slot; the count is theirs too. `cause` picks the stamp — a drop and an end are the same

@@ -136,8 +136,9 @@ describe("🔑 TASK-304 — COMMAND: one language, and the same `Remark`", () =>
     // *"แบบคำสั่งให้เป็นภาษาเดียวพอ"*. It was wrapped in `both()`, so a teacher asking for their schedule got
     // the WHOLE list twice. 🔑 Asserted at the call site, because the renderer never knew it was doubled.
     const SVC = code(src("src/services/line-webhook.service.ts"));
-    expect(SVC).toContain("renderSchedule(rows, TEMPLATE_LANG, range)");
-    expect(SVC).not.toContain("both((l) => renderSchedule(rows, l, range))");
+    // 🔻 TASK-486 — still sent ONCE (the claim); the language is now the chat's, not `TEMPLATE_LANG` (Sober's ruling moved TASK-304).
+    expect(SVC).toContain("renderTeacherSchedule(rows, range)"); // TASK-493 — no language: every word is English by the customer's choice
+    expect(SVC).not.toMatch(/both\(\(l\) => render\w*Schedule/);
   });
 
   test("`Remark` uses the customer's label, not the old 📝", () => {

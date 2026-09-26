@@ -11,10 +11,11 @@ import { awardCrmPoints } from "../lib/line-admin";
 import { getNumberSetting, getSetting } from "./settings.service";
 import { hhmm } from "../lib/time";
 import { updateBookingStatus } from "./scheduler.service";
-import { toBookingDTO } from "../db/mappers";
-import { anyHouseholdSuspended, findParentByLineUserId } from "./parent.service";
+import { toBookingDTO, toPublicCheckinBooking } from "../db/mappers";
+import { everyHouseholdSuspended, findParentByLineUserId } from "./parent.service";
 import { tb } from "../lib/line-i18n";
 import { duoStudentIds, familyRowsWhere } from "../lib/duo-course";
+import { ownScopeWhere } from "../lib/own-scope";
 
 /**
  * TASK-443 (REQ-104 §2 item 5a) — what the family has left, on the scan page: the course's sessions (the DTO's summary) or the
@@ -85,10 +86,15 @@ export async function checkinByToken(token: string, source: "checkin-qr" | "line
   if (!row) throw notFound(tb("checkin_bad_link")); // TASK-479 — the parent's words, not "token"
   // 🔴 TASK-476 — a SUSPENDED household is refused here as the LINE path refuses it: the same rule, the same words
   // (`suspended_notice`), and FIRST — before "already", so it gets no data back (REQ-019 / TASK-048).
-  if (await anyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));
+  // 🔴 TASK-489 — EVERY household on the row, not ANY: a DUO row's token is shared, so a suspended family next door no longer
+  // turns away a child whose own family owes nothing (and is no longer told "your account is suspended"). A single-child
+  // row is refused exactly as before. Cost, accepted (Sober (ii)): a suspended family holding the shared link can check the
+  // shared hour in — the class is one hour, their child is in the room whenever the other family checks in.
+  if (await everyHouseholdSuspended(duoStudentIds(row))) throw badRequest(tb("suspended_notice"));
   if (row.status === "ATTENDED") {
     const booking = await loadBooking(row.id);
-    return { already: true, booking, remaining: await remainingOf(row, booking) };
+    // 🔴 TASK-499 — the PUBLIC shape (allow-list); `remaining` is computed from the full row first, then nothing else leaves.
+    return { already: true, booking: toPublicCheckinBooking(booking), remaining: await remainingOf(row, booking) };
   }
   // SPEC-029: the early-window is a configurable rule — resolve at action time, pass into the pure check.
   const { value: earlyMinutes } = await getSetting("checkin_early_minutes");
@@ -117,9 +123,10 @@ export async function checkinByToken(token: string, source: "checkin-qr" | "line
     );
   }
 
-  const result = await updateBookingStatus(row.id, "attend", undefined, false, undefined, source);
+  const result = await updateBookingStatus(row.id, "attend", undefined, false, undefined, { channel: source }); // TASK-488 — a channel, no actor
   for (const sid of duoStudentIds(row)) await awardCrmPoints(sid, CRM_POINT_RULES.ON_TIME_CHECKIN); // TASK-420 — both kids of a DUO row
-  return { already: false, booking: result.booking, crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };
+  // 🔴 TASK-499 — the PUBLIC shape (allow-list): this answer goes to the token page, the shop front (single + batch) and LINE.
+  return { already: false, booking: toPublicCheckinBooking(result.booking), crmAwarded: CRM_POINT_RULES.ON_TIME_CHECKIN, remaining: await remainingOf(row, result.booking) };
 }
 
 /**
@@ -194,10 +201,14 @@ export async function findBookingsForTeacher(lineUserId: string, from: string, t
   // the schedule. 🚫 A `TEACHER_SCHEDULE_HIDDEN_STATUSES` whose contents equal an existing list is the
   // disagreement this project keeps paying for.
   // 📌 `CANCELLED`'s behaviour is unchanged; `PAUSED` is the only row that stops appearing.
+  // 🔴 TASK-487 — a coach's classes are the ones they are PRIMARY on **and** the ones they are an ADDITIONAL teacher on
+  // (`booking_teachers`, TASK-228). This read predated additional teachers and was never widened — an OMISSION, not a decision —
+  // so a co-taught class was in the Monday digest and the daily reminder but NOT in this coach's own view. It now uses THE
+  // predicate every scoped read already shares (`ownScopeWhere`, TASK-406): one rule for "my classes", never a hand-written one.
   return db.query.bookings.findMany({
-    where: (b, { and, eq, notInArray, gte, lte }) =>
+    where: (b, { and, notInArray, gte, lte }) =>
       and(
-        eq(b.teacherId, teacher.id),
+        ownScopeWhere(teacher.id), // TASK-487 — primary OR additional teacher (the ONE predicate)
         gte(b.date, from),
         lte(b.date, to),
         notInArray(b.status, [...CALENDAR_HIDDEN_STATUSES]),

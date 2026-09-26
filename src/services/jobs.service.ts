@@ -20,6 +20,7 @@
 // had not turned up because nobody pressed a button. On `uat` it did that to 15 real children in one weekend.
 // Good customers are separated by **CRM points at check-in**, and this path awards none — that absence is the
 // signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
+import { notUndoneAttendance } from "../lib/booking-undo"; // TASK-492 · TASK-497 (widened: any undone attendance)
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, lineWebhookEvents, notificationOutbox, vouchers } from "../db/schema";
@@ -77,12 +78,14 @@ export async function runEndOfDayJob(date?: string) {
         coStudentId: bookings.coStudentId, // TASK-420 — the deduction reaches both households
       })
       .from(bookings)
-      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended));
+      // 🔴 TASK-492 (Sober ❓2) — a session whose check-in an admin UNDID is not auto-attended: the admin decides what it becomes.
+      // Without this the Undo would be re-done at the cut, the unit consumed again and the deduction message sent.
+      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended, notUndoneAttendance()));
 
     let coursesAutoAttended = 0;
     let vouchersAutoAttended = 0;
     for (const b of due) {
-      await tx.update(bookings).set({ status: "ATTENDED", checkinSource: "end-of-day" }).where(eq(bookings.id, b.id)); // TASK-475 — provenance
+      await tx.update(bookings).set({ status: "ATTENDED", checkinSource: "end-of-day", checkinChannel: "end-of-day", checkinActor: null }).where(eq(bookings.id, b.id)); // TASK-475 — provenance
       if (b.courseId) {
         // 🔴 TASK-254 — deduction site 2 of 2, and since REQ-070 it is the MAJORITY path: the day-end
         // auto-attends every unmarked class, so most sessions are deducted here rather than by a person.
