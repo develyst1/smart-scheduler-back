@@ -65,7 +65,7 @@ describe("🔴 the outbox worker's `bookingContext` by VALUE — the fifth name 
   test("by source: the context loads `coStudent` and names `studentNamesOf`; no `b.student?.name` chain", () => {
     const O = code(src("src/services/outbox.service.ts"));
     const C = region(O, "export async function bookingContext(", "\n}\n");
-    expect(C).toContain("with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } } },");
+    expect(C).toContain("with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, group: "); // 🔻 TASK-522: + the seat's group (its coaches), same query
     expect(C).toContain("studentName: studentNamesOf(b) ?? undefined,");
     expect(C).not.toContain("b.student?.name");
   });
@@ -126,5 +126,25 @@ describe("🔴 the six renderers by VALUE with a DUO context — every `Student 
     const out = text(formatOutboxMessage(payload as any, payload.kind === "course_confirmed" ? {} : ctx, "TH", audience as any));
     expect(out).toContain("KKTEST & Prao");
     expect(out).not.toMatch(/KKTEST(?! & Prao)/); // never the primary alone
+  });
+});
+
+// ───────────────────────── TASK-522 addendum — the Coach line of a SEAT is the GROUP's ─────────────────────────
+describe("🔴 TASK-522 — `bookingContext`: a SEAT's Coach line names the GROUP's coaches; a private row is byte-identical", () => {
+  const ek = { nickname: "Ek", name: "Ekkachai" }, nok = { nickname: "Nok", name: "Noknoi" };
+  test("a SEAT on Ek + Nok's group ⇒ `Coach : Ek, Nok` (it read `Ek`: the seat carries no extras)", async () => {
+    const seat = { id: "s-1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", groupId: "g-1", student: { name: "Ploy", nickname: "Ploy" }, coStudent: null,
+      teacher: ek, additionalTeachers: [], subject: { name: "Freeskate" }, otherTitle: null,
+      group: { teacher: ek, additionalTeachers: [{ teacher: nok }] } };
+    spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => seat) as any));
+    const ctx = await bookingContext("s-1");
+    expect(ctx.coach).toBe("Ek, Nok");
+    expect([ctx.studentName, ctx.subject, ctx.date, ctx.startTime]).toEqual(["Ploy", "Freeskate", "2026-10-05", "10:00"]); // the seat's own lines, true
+  });
+  test("🚫 a PRIVATE row (no group) is byte-identical: its own coaches", async () => {
+    const row = { id: "p-1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", groupId: null, student: { name: "Ploy", nickname: "Ploy" }, coStudent: null,
+      teacher: ek, additionalTeachers: [{ teacher: nok }], subject: { name: "Freeskate" }, otherTitle: null, group: null };
+    spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => row) as any));
+    expect(await bookingContext("p-1")).toEqual({ studentName: "Ploy", teacherNickname: "Ek", coach: "Ek, Nok", subject: "Freeskate", title: undefined, date: "2026-10-05", startTime: "10:00", endTime: "11:00" });
   });
 });

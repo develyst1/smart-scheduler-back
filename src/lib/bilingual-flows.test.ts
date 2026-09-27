@@ -26,9 +26,10 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
     "menu / command list": [
       // 🔻 TASK-477 — `doMenu` takes its body, DEFAULTING to the bilingual list (typed `menu` / Help unchanged); only the
       // un-mute passes the chat's single language (Tanya's TEST-071), pinned by value in `unmute-and-chips-req107.test.ts`.
-      'body: string = tb("menu_body")',
-      'reply(replyToken, tb("teacher_linked_menu"))',
-      'reply(replyToken, tb("admin_linked_menu"))',
+      'body: string = tb(commandListKey(role))', // 🔻 TASK-521 — still the bilingual default; the list is now chosen by role
+      // 🔻 TASK-523 — the teacher's and admin's menu words go through the ONE decision (`doMenu` by role) — still bilingual by default
+      'return doMenu(replyToken, lang, "teacher");',
+      'return doMenu(replyToken, lang, "admin");',
       'both((l) => `${msg}\\n\\n${t("menu_body", l)}`)',
     ],
     "check-in · leave · QR": [

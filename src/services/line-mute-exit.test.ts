@@ -87,8 +87,9 @@ describe("🔴 `ยกเลิก` is honoured while muted — and the gate is 
     // …and the draft is nulled explicitly, since the row that used to carry it away now survives. Both writers
     // spell "no flow in progress" with the SAME constant, so it cannot come to mean two sets of columns.
     expect(clear).toContain("...FLOW_CLEARED");
-    expect(CODE).toContain(
-      "const FLOW_CLEARED = { step: MUTED_STEP, pendingRole: null, draft: null, unexpectedCount: 0 } as const",
+    // 🔻 TASK-520 — the constant moved (unchanged) to `lib/line-routing.ts`, shared with the link-completion helper; still NO mutedUntil.
+    expect(ROUTING).toContain(
+      "export const FLOW_CLEARED = { step: MUTED_STEP, pendingRole: null, draft: null, unexpectedCount: 0 } as const",
     );
   });
 
@@ -104,7 +105,7 @@ describe("🔴 AC-23 / AC-26 — `เปิดเมนู` is the way back in, 
   test("it un-mutes and shows the command list", () => {
     const reopen = MUTED_BRANCH.slice(MUTED_BRANCH.indexOf("isReopenWord(lower)"));
     expect(reopen).toContain("await unmute(lineUserId)");
-    expect(reopen).toContain("doMenu(replyToken, lang, t(\"menu_body\", lang))"); // 🔻 TASK-477 — the chat's language, not both
+    expect(reopen).toContain("doMenu(replyToken, lang, linked, t(commandListKey(linked), lang))"); // 🔻 TASK-477 — the chat's language, not both · 🔻 TASK-521 — the list BY ROLE
   });
 
   test("🔑 AC-26 — it starts NO flow: no step, no draft, no picker", () => {
@@ -129,7 +130,7 @@ describe("🔴 AC-23 / AC-26 — `เปิดเมนู` is the way back in, 
   test("it answers outside a mute too — a word the bot advertises means one thing everywhere", () => {
     // Told once in the mute message, it must not become an unknown word an hour later. Un-muting an unmuted
     // chat is a no-op, so this is the same act with no second behaviour (TASK-245's one-list rule).
-    expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang)");
+    expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang, \"customer\")"); // 🔻 TASK-521 — the role named
   });
 
   test("…and it can never become a child's name", () => {

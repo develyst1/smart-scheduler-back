@@ -617,6 +617,11 @@ const TABLE: Record<string, Entry> = {
   // one who has to be there. The stamp says the fact a coach needs between classes — the class is on — never our word for our
   // own act ("a leave was undone"). House format (`ob_class_cancelled_title`'s): bilingual, identical in both columns, ‼️.
   // Pinned by FORM until @Porter brings back his words; then the pin flips to bytes (the `ob_deduct_title` path).
+  // ✅ TASK-529 — **APPROVED by the owner** (09-27, via Porter): a MOVED class, in the house pattern. The block is the NEW slot
+  // (what a coach acts on); the OLD one is ONE appended line, `Was : <date> <time>`, where cancel appends Reason / Note. The
+  // bilingual stamp, identical in both columns, ‼️; English labels in both languages; nothing about why. 🚫 Byte-frozen from here.
+  ob_class_moved_title: { TH: "CLASS MOVED / ย้ายคาบ ‼️", EN: "CLASS MOVED / ย้ายคาบ ‼️" },
+  ob_f_was: { TH: "Was", EN: "Was" }, // BOTH audiences — the coach's and the family's copy share this English label
   ob_class_on_again_title: { TH: "CLASS ON AGAIN / มีคาบตามเดิม ‼️", EN: "CLASS ON AGAIN / มีคาบตามเดิม ‼️" },
   // ✅ TASK-375 / TASK-376 (`REQ-091` Deploy B) — **APPROVED by the owner as drafted** — the stamp of the same-day
   // rental notice, in `leave_notice`'s shape. 🚫 Byte-frozen from here (the `ob_deduct_title` convention: the owner
@@ -644,6 +649,10 @@ const TABLE: Record<string, Entry> = {
   cl_title: { TH: "❌ ยกเลิกคาบเรียน:", EN: "❌ CLASS CANCELLED:" },
   cl_reason: { TH: "เหตุผล", EN: "Reason" },
   cl_note: { TH: "Note", EN: "Note" },
+  // ✅ TASK-529 — **APPROVED by the owner** (09-27): a MOVED class, to the FAMILY. 🔑 Deliberately mixed: the TITLE follows the
+  // chat's language, the LABELS stay English (`ob_f_*` + `ob_f_was`) — both halves pinned, so neither gets "fixed". No Coach, no
+  // reason. 🚫 Byte-frozen from here.
+  mv_title: { TH: "📅 ย้ายคาบเรียน:", EN: "📅 CLASS MOVED:" },
   cl_note_makeup: { TH: "ระบบเพิ่มคาบชดเชยให้แล้ว", EN: "A make-up session has been added to the schedule." },
   cl_note_hour: { TH: "คืนชั่วโมงเข้ายอดคงเหลือแล้ว", EN: "The hour has been returned to your balance." },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },

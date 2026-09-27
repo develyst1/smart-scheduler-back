@@ -25,7 +25,7 @@ const D1 = "33333333-3333-4333-8333-333333333333";
 const D2 = "44444444-4444-4444-8444-444444444444";
 const W1 = "55555555-5555-4555-8555-555555555555";
 const TOKEN = "camp-token-502";
-const KEYS = ["date", "dayId", "half", "status", "undoReason", "units", "weekId", "weekName"]; // sorted
+const KEYS = ["date", "dayId", "half", "status", "studentName", "undoReason", "units", "weekId", "weekName"]; // sorted — 🔻 TASK-515: + studentName (9)
 
 // The STORED rows — deliberately carrying what must never reach a family: a coach rate and a staff marker.
 const row = (status: string) => ({
@@ -34,6 +34,7 @@ const row = (status: string) => ({
   markedBy: "staff", markChannel: "admin", markActor: "u-staff-1", markedAt: new Date(),
   teacherRates: { t1: 50000 }, rateMinor: 50000,
   week: { id: W1, name: "Week 1" },
+  package: { studentId: S1, student: { nickname: "Ploy", name: "Ploy Wongsa" } }, // TASK-515 — the scan's read now brings the child's two name fields
 });
 const PKG = { id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, saleId: null, note: null, discountKind: null, createdBy: "u-staff-1", createdAt: new Date("2026-09-01T03:00:00Z") };
 
@@ -63,22 +64,22 @@ const keysDeep = (v: unknown, out: string[] = []): string[] => {
 };
 
 describe("🔴 TASK-502 — the public camp scan answers ONE allow-listed shape, on both paths", () => {
-  test("🔑 FRESH scan: the day is exactly the 8 keys (by key set), from the real admin DTO, nulls included", async () => {
+  test("🔑 FRESH scan: the day is exactly the 9 keys (by key set; TASK-515 added studentName), from the real admin DTO, nulls included", async () => {
     world("PLANNED");
     const r = await camp.checkinCampByToken(TOKEN);
     expect(Object.keys(r.day).sort()).toEqual(KEYS);
     expect(r).toEqual({
       already: false,
-      day: { dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null },
+      day: { dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null, studentName: "Ploy" },
       credit: { remainingDays: 3.5, totalDays: 5 },
     });
   });
 
-  test("🔑 ALREADY scanned: the SAME 8 keys — it now carries `weekName` (the page renders it; it used to be an empty line)", async () => {
+  test("🔑 ALREADY scanned: the SAME 9 keys — it now carries `weekName` (the page renders it; it used to be an empty line)", async () => {
     world("ATTENDED");
     const r = await camp.checkinCampByToken(TOKEN);
     expect(Object.keys(r.day).sort()).toEqual(KEYS);
-    expect(r.day).toEqual({ dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null });
+    expect(r.day).toEqual({ dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null, studentName: "Ploy" });
     expect(r.already).toBe(true);
   });
 
@@ -90,7 +91,8 @@ describe("🔴 TASK-502 — the public camp scan answers ONE allow-listed shape,
     for (const a of answers) {
       const keys = keysDeep(a);
       for (const k of COACH_RATE_FIELDS) expect(keys).not.toContain(k);
-      for (const k of ["markedBy", "markChannel", "markActor", "markedAt", "checkinToken", "studentName"]) expect(keys).not.toContain(k);
+      // 🔻 TASK-515 — `studentName` left this list: RULED IN (the counter phone is a nanny with several children). Nothing else joins.
+      for (const k of ["markedBy", "markChannel", "markActor", "markedAt", "checkinToken", "studentId", "nickname", "name"]) expect(keys).not.toContain(k);
     }
     expect(COACH_RATE_FIELDS.length).toBeGreaterThan(0); // the walk has something to walk
   });
@@ -115,5 +117,32 @@ describe("🔴 TASK-502 — the public camp scan answers ONE allow-listed shape,
     expect({ ...plain, credit: undefined }).toEqual({ ...base, credit: undefined, days: [day, other] });
     const full = (await camp.listPackages(S1, { provenance: "raw" })).packages[0] as any;
     expect(full.days[0]).toEqual({ ...day, markedBy: "staff", markChannel: "admin", markActor: "u-staff-1" }); // the admin still sees who marked it
+  });
+});
+
+// ───────────────────────── TASK-515 — the child's name: the ONE rule, both paths, read with `columns` ─────────────────────────
+describe("🔴 TASK-515 — the camp scan names the child, through THE name rule, from a read that fetches only the two name fields", () => {
+  for (const status of ["PLANNED", "ATTENDED"] as const) {
+    test(`${status === "PLANNED" ? "FRESH" : "ALREADY"}: studentName is the NICKNAME when there is one (studentNamesOf), and the key set is 9`, async () => {
+      world(status);
+      const r = await camp.checkinCampByToken(TOKEN);
+      expect([r.day.studentName, Object.keys(r.day).length]).toEqual(["Ploy", 9]);
+    });
+  }
+  test("the rule's order, by value: nickname ⇒ else name ⇒ else null (never a second spelling — it is `studentNamesOf`)", async () => {
+    for (const [student, expected] of [[{ nickname: null, name: "Ploy Wongsa" }, "Ploy Wongsa"], [null, null]] as const) {
+      for (const s of spies.splice(0)) s.mockRestore();
+      world("PLANNED");
+      const d = await (db.query.campDays.findFirst as any)();
+      d.package = { studentId: S1, student };
+      expect((await camp.checkinCampByToken(TOKEN)).day.studentName).toBe(expected);
+    }
+  });
+  test("📌 by source: the public read asks for ONLY `nickname` + `name` (the allow-list starts at the READ); the answer uses `studentNamesOf`; the staff QR shares the rule and keeps its load-bearing `?? \"\"`", () => {
+    const src = readSrc(readFileSync(resolve(import.meta.dir, "camp.service.ts"), "utf8"));
+    expect(src).toContain("with: { package: { with: { student: { columns: { nickname: true, name: true } } } } }");
+    expect(src).toContain("studentName: studentNamesOf({ student: d.package?.student ?? null }) },");
+    expect(src).toContain("studentName: studentNamesOf({ student: (d as any).package?.student ?? null }) ?? \"\",");
+    expect(src).not.toMatch(/student\??\.nickname \?\? [^\n]*student\??\.name/); // NO spelled-out copy of the child-name rule remains in this file (there were four)
   });
 });

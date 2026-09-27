@@ -280,10 +280,11 @@ describe("✅ Face 2 — the bot is silent, but a PERSON is reachable", () => {
     expect([...CMD_MENU]).toContain("help");
     // TASK-246 joined `เปิดเมนู` to the same branch — one list, one `doMenu`, so the word the mute message
     // advertises cannot become an unknown word an hour later.
-    expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang)");
+    expect(CODE).toContain("if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang, \"customer\")"); // 🔻 TASK-521 — the role named
     // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
     // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
-    expect(fn("function doMenu")).toContain('tb("menu_body")');
+    expect(fn("function doMenu")).toContain('tb(commandListKey(role))'); // 🔻 TASK-521 — one string per role, one branch
+    expect(CODE).toContain('role === "teacher" ? "teacher_menu_body" : role === "customer" ? "menu_body" : role === "admin" ? "admin_linked_menu" : "welcome"'); // 🔻 TASK-523 — every role
   });
 
   test("🚫 SCOPE — TASK-245 added no rich-menu cell; this needed no new image", () => {

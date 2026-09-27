@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { appSettings } from "../db/schema";
 import type { Lang } from "./line-i18n";
-import { menuIdFor } from "./line-relink-plan"; // TASK-452 — the ONE rule; `line-relink-plan` imports only a TYPE back, so there is no runtime cycle
+import { menuIdFor, type MenuRole } from "./line-relink-plan"; // TASK-452 — the ONE rule; `line-relink-plan` imports only a TYPE back, so there is no runtime cycle
 import { countMenuUsers } from "./line-menu-users";
 
 export interface RichMenuArea {
@@ -24,6 +24,19 @@ export interface RichMenuDef {
   chatBarText: string;
   areas: RichMenuArea[];
 }
+/**
+ * 🔴 TASK-530 — the ONE area that opens a link instead of sending a postback: the admin menu's single cell. Its own type, on
+ * purpose — `RichMenuArea` above stays postback-only, so no other menu can grow a link by accident (the compiler refuses it).
+ */
+export interface UriMenuArea {
+  bounds: { x: number; y: number; width: number; height: number };
+  action: { type: "uri"; uri: string; label?: string };
+}
+export interface AdminMenuDef extends Omit<RichMenuDef, "areas"> {
+  areas: [UriMenuArea];
+}
+/** Anything this module can hand to LINE. */
+export type AnyMenuDef = RichMenuDef | AdminMenuDef;
 
 const cell = (x: number, y: number, w: number, h: number, data: string): RichMenuArea => ({
   bounds: { x, y, width: w, height: h },
@@ -136,6 +149,52 @@ export const CUSTOMER_MENU: RichMenuDef = { ...KNOWN_RICH_MENU, name: "smart-sch
 /** Teacher: the EXISTING artwork and cells, re-published so its id is live again (the old ids are dead on the real OA). */
 export const TEACHER_MENU: RichMenuDef = { ...TEACHER_RICH_MENU, name: "smart-scheduler-teacher", chatBarText: "เมนู | Menu", selected: false };
 
+// ─────────── TASK-530 (owner ruling (a), 09-27) — the ADMIN's one-cell menu ───────────
+//
+// LINE has no per-user "no menu": an admin with no per-user link falls back to the account default, which is the UNKNOWN menu
+// (Sign Up + Chat with Admin — both wrong for staff). So an admin gets ONE cell that is right for them: it opens the web app.
+// 🔑 ONE cell ⇒ the WHOLE image is the tap target (pinned): a one-cell menu with a half-width hit-box looks right and taps wrong.
+// 🚫 No `คุยกับแอดมิน` here, deliberately — the TASK-234 invariant is the promise that a PERSON is reachable, and an admin is
+// that person; `menuHasAdminButton` is asserted for the family/visitor menus, not this one (pinned both ways).
+// ⚠️ The account default stays the UNKNOWN menu — that is what keeps sign-up alive for new visitors.
+
+/** The env key the admin cell's link is read from at PUBLISH (never at import). */
+export const ADMIN_URL_ENV = "PUBLIC_ADMIN_BASE_URL";
+
+/**
+ * The admin cell's link: the web app's root + LINE's `openExternalBrowser=1`.
+ * 📌 `openExternalBrowser`: LINE opens a link in its OWN in-app browser, which cannot see the phone browser's cookies — so an
+ * admin's live session would be useless there. This parameter asks LINE to use the phone's default browser instead.
+ * ⚠️ That is LINE's DOCUMENTED behaviour, not one we have observed on a device (TASK-530 §1b).
+ * 🔴 REFUSES (throws) on a missing, non-https, or query/fragment-carrying base — a menu pointing at `undefined` would publish
+ * silently and be found by an admin. The refusal is the important half (pinned).
+ */
+export function adminMenuUrl(base: string | undefined | null): string {
+  const raw = (base ?? "").trim();
+  if (!raw) throw new Error(`${ADMIN_URL_ENV} is not set — the admin menu's link would be empty.`);
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error(`${ADMIN_URL_ENV} is not a URL.`);
+  }
+  if (u.protocol !== "https:") throw new Error(`${ADMIN_URL_ENV} must be https.`);
+  if (u.search || u.hash) throw new Error(`${ADMIN_URL_ENV} must be the app's base address, without ? or #.`);
+  return `${u.origin}${u.pathname.replace(/\/+$/, "")}/?openExternalBrowser=1`;
+}
+
+/** The admin menu for a given link. ONE area, and it IS the whole picture. */
+export const adminMenuFor = (uri: string): AdminMenuDef => ({
+  size: { width: W, height: 843 },
+  selected: false,
+  name: "smart-scheduler-admin",
+  chatBarText: "เมนู | Menu",
+  areas: [{ bounds: { x: 0, y: 0, width: W, height: 843 }, action: { type: "uri", uri } }],
+});
+/** The definition as data (for the registry and the tests). Its link is EMPTY on purpose: `createRichMenu` refuses a uri area
+ *  that is not https, so this constant can never be published as it stands — only `adminMenuFor(adminMenuUrl(...))` can. */
+export const ADMIN_MENU: AdminMenuDef = adminMenuFor("");
+
 export const menuHasAdminButton = (m: RichMenuDef): boolean =>
   m.areas.some((a) => a.action.data === "action=admin");
 
@@ -164,7 +223,11 @@ function token(): string {
 }
 
 /** Create a rich menu → returns its richMenuId. */
-export async function createRichMenu(menu: RichMenuDef): Promise<string> {
+export async function createRichMenu(menu: AnyMenuDef): Promise<string> {
+  // 🔴 TASK-530 — a link area must carry a real https link BEFORE anything reaches LINE (the unset `ADMIN_MENU` cannot).
+  for (const a of menu.areas) {
+    if (a.action.type === "uri" && !/^https:\/\/\S+$/.test(a.action.uri)) throw new Error(`createRichMenu: ${menu.name} has a link area with no https link — refused.`);
+  }
   const res = await fetch(`${API}/richmenu`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
@@ -280,6 +343,7 @@ export type MenuIds = {
   unknown?: string;
   customer?: string;
   teacher?: string;
+  admin?: string; // 🔴 TASK-530 — the admin's one-cell menu
   // ⚠️ LEGACY — the per-language keys of the families above. Nothing CHOOSES them any more except the pinned fallback
   // in `menuIdFor` (a box that has deployed this code but not yet re-published). They stay in the type because
   // `mergeMenuIds` must keep them (TASK-247 — a publish never erases an id it did not create), and because the relink
@@ -311,12 +375,13 @@ export type MenuIds = {
  * ⚠️ **Derived from the defs, never retyped** — a ninth menu joins this list by existing, and the test asserts
  * that from the module's own exports rather than from a second list someone has to remember to update.
  */
-export const ALL_MENU_DEFS: readonly RichMenuDef[] = [
+export const ALL_MENU_DEFS: readonly AnyMenuDef[] = [
   // TASK-468 — the three per-role menus. The eight below stay: this list answers "did WE name this?", and the old
   // menus stay on channels until the owner removes them AFTER the relink sweep.
   UNKNOWN_MENU,
   CUSTOMER_MENU,
   TEACHER_MENU,
+  ADMIN_MENU, // 🔴 TASK-530
   PARENT_RICH_MENU,
   PARENT_RICH_MENU_EN,
   TEACHER_RICH_MENU,
@@ -351,6 +416,7 @@ export const NAME_TO_KEY: Record<string, keyof MenuIds> = {
   [UNKNOWN_MENU.name]: "unknown",
   [CUSTOMER_MENU.name]: "customer",
   [TEACHER_MENU.name]: "teacher",
+  [ADMIN_MENU.name]: "admin", // 🔴 TASK-530 — publish creates it, so a complete map needs it
 };
 
 /** One row of `GET /v2/bot/richmenu/list`, reduced to what an ownership decision needs. */
@@ -495,7 +561,13 @@ export async function publishRichMenus(opts: {
   unknownImage: string;
   customerImage: string;
   teacherImage: string;
+  adminImage: string;
+  /** Defaults to `process.env.PUBLIC_ADMIN_BASE_URL`. */
+  adminBaseUrl?: string;
 }): Promise<MenuIds> {
+  // 🔴 TASK-530 — the admin link is resolved FIRST: a missing/bad base refuses the whole publish before ANY LINE call, so a
+  // menu pointing nowhere can never be half-published.
+  const adminUri = adminMenuUrl(opts.adminBaseUrl ?? process.env[ADMIN_URL_ENV]);
   // 🔴 TASK-468 — THREE menus, one per role, each image bilingual. The per-language pairs are gone: the only thing that
   // ever differed within a pair was the picture.
   const unknown = await createRichMenu(UNKNOWN_MENU);
@@ -504,7 +576,9 @@ export async function publishRichMenus(opts: {
   await uploadRichMenuImage(customer, opts.customerImage);
   const teacher = await createRichMenu(TEACHER_MENU);
   await uploadRichMenuImage(teacher, opts.teacherImage);
-  const ids: MenuIds = { unknown, customer, teacher };
+  const admin = await createRichMenu(adminMenuFor(adminUri));
+  await uploadRichMenuImage(admin, opts.adminImage);
+  const ids: MenuIds = { unknown, customer, teacher, admin };
   // MERGED (TASK-247): the old per-language ids survive this write — the relink sweep needs them to recognise what
   // existing followers still hold, and the legacy fallback needs them on a box between deploy and publish.
   await storeMenuIds(ids);
@@ -584,7 +658,7 @@ export async function getUserRichMenuId(userId: string): Promise<string | null> 
  */
 // 🔻 TASK-468 — `linkKnownRichMenu` is gone: it was the SECOND call of a two-step rule (role menu, then the known menu
 // on top), and with one menu per role there is one step. `settleLinkedRole` calls the linker below once.
-export async function linkRoleRichMenu(userId: string, role: "customer" | "teacher"): Promise<void> {
+export async function linkRoleRichMenu(userId: string, role: MenuRole): Promise<void> {
   await linkResolvedRichMenu(userId, role);
 }
 
@@ -595,7 +669,7 @@ export async function linkRoleRichMenu(userId: string, role: "customer" | "teach
  * Best-effort as both linkers always were: a menu that has not been published leaves the chat where it is — which,
  * for a chat that has never been linked, is the account default, and that is the correct menu for it.
  */
-async function linkResolvedRichMenu(userId: string, role: "customer" | "teacher"): Promise<void> {
+async function linkResolvedRichMenu(userId: string, role: MenuRole): Promise<void> {
   const target = menuIdFor(role, await getMenuIds()); // 🔻 TASK-468 — no language: one menu per role
   if (target) await linkRichMenuToUser(userId, target);
 }

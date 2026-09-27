@@ -25,7 +25,8 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
     where: (x, { eq }) => eq(x.id, bookingId),
     // 🔴 SPEC-072 / TASK-253 — `additionalTeachers` joins onto the SAME query rather than adding a second
     // round trip: this runs once per outbox row, and REQ-077's `Coach` may name several people (REQ-078).
-    with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } } },
+    // 🔻 TASK-522 — a SEAT's GROUP row (with its coaches) rides the SAME query: a group's extra coaches live on the group row.
+    with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, group: { with: { teacher: true, additionalTeachers: { with: { teacher: true } } } } },
   });
   if (!b) return {};
   return {
@@ -38,7 +39,10 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
     // a second `Coach :` line would read as a second class. Primary first, then the additional teachers in
     // their stored order; duplicates dropped, because a teacher listed twice looks like a data fault to the
     // person reading it.
-    coach: joinCoaches(b.teacher, b.additionalTeachers ?? []),
+    // 🔴 TASK-522 — …of the CLASS: a seat's message names the GROUP's coaches. It named the seat's (the seat carries no extras), so the
+    // group's second coach — whom TASK-522 now tells — read "Coach : Ek" about a class they co-teach: a false line. Every other
+    // row is byte-identical (no group ⇒ its own coaches). The seat's other lines (child, subject, slot) are the seat's and true.
+    coach: (b as any).group ? joinCoaches((b as any).group.teacher, (b as any).group.additionalTeachers ?? []) : joinCoaches(b.teacher, b.additionalTeachers ?? []),
     subject: b.subject?.name,
     // TASK-228 (AC-16) — what names an อื่นๆ booking in every message the teacher reads.
     title: b.otherTitle ?? undefined,

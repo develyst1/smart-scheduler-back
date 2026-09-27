@@ -312,7 +312,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // string appears once (inside the sender); the sender is CONFIRMED-gated and fans out per seat on a GROUP row
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
     expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2);
-    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, current, enumReason ?? null);");
+    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null);"); // 🔻 TASK-516 addendum: the seats as they were BEFORE the cascade
     const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
     expect(FS).toContain('if (current.status !== "CONFIRMED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1
     expect(FS).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });"); // 🔻 TASK-445: ONE household set per row (all the seats), the accounts de-duplicated once

@@ -97,3 +97,63 @@ describe("✅ ruling A — the two words are commands, and therefore reserved", 
     }
   });
 });
+
+// ───────────────────────── TASK-521 — `reopen` (the un-mute) reads the SAME decision: a teacher's list and a teacher's chips ─────────────────────────
+describe("🔴 TASK-521 — the un-mute shows a TEACHER their own list and chips; a parent's is unchanged (one decision, every surface)", () => {
+  const FUTURE = new Date(Date.now() + 30 * 60_000);
+  /** The same chat, but MUTED (a hand-off in progress): the session read answers a live `mutedUntil`. */
+  const mutedChat = (who: "teacher" | "parent", lang: "TH" | "EN") => {
+    const c = chat(who, lang);
+    spies[0]!.mockRestore(); // chat()'s first spy is the session read — replace it with a muted session
+    spies[0] = spyOn(db.query.lineLinkSessions, "findFirst").mockImplementation((async () => ({ lineUserId: U, step: "MUTED", mutedUntil: FUTURE, unexpectedCount: 0, updatedAt: new Date() })) as any);
+    return c;
+  };
+  const chipsOf = (r: any) => r.quickReply.items.map((i: any) => [i.action.label, i.action.data]);
+
+  for (const lang of ["TH", "EN"] as const) {
+    test(`${lang}: a MUTED teacher types reopen ⇒ REQ-109 §6's list (the chat's language) + the teacher's three chips`, async () => {
+      const c = mutedChat("teacher", lang);
+      await handleLineWebhookEvents([typed("reopen")]);
+      expect(c.replies.map((r) => r.text)).toEqual([t("teacher_menu_body", lang)]);
+      expect(chipsOf(c.replies[0])).toEqual([[t("btn_today", lang), "action=schedule"], [t("btn_week", lang), "action=schedule&range=week"], [t("btn_calendar", lang), "action=calendar"]]);
+    });
+  }
+  test("🚫 a MUTED parent types reopen ⇒ the parent list and the parent chips, unchanged", async () => {
+    const c = mutedChat("parent", "EN");
+    await handleLineWebhookEvents([typed("reopen")]);
+    expect(c.replies.map((r) => r.text)).toEqual([t("menu_body", "EN")]);
+    expect(chipsOf(c.replies[0]).map(([, d]: any) => d)).toEqual(["action=register", "action=mycourses", "action=checkin", "action=leave"]);
+  });
+  test("an UNMUTED teacher types reopen (the word the hand-off advertises to everyone) ⇒ their list, not silence", async () => {
+    const c = chat("teacher", "EN");
+    await handleLineWebhookEvents([typed("reopen")]);
+    expect(c.replies.length).toBe(1);
+    expect(c.replies[0].text).toContain(t("teacher_menu_body", "EN"));
+    expect(chipsOf(c.replies[0]).map(([, d]: any) => d)).toEqual(["action=schedule", "action=schedule&range=week", "action=calendar"]);
+  });
+  test("🔑 every word the un-mute reply ADVERTISES routes for a teacher, typed — read out of the reply that was actually SENT", async () => {
+    const m = mutedChat("teacher", "TH");
+    await handleLineWebhookEvents([typed("reopen")]);
+    const words = (m.replies[0].text as string).split("\n").filter((l) => l.startsWith("· ")).map((l) => l.slice(2).split(" — ")[0]!);
+    expect(words).toEqual(["ตารางของฉัน", "ปฏิทิน"]);
+    for (const s of spies.splice(0)) s.mockRestore();
+    for (const word of words) {
+      const c = chat("teacher", "TH");
+      await handleLineWebhookEvents([typed(word)]);
+      expect({ word, reached: c.calls }).toEqual({ word, reached: [word === "ปฏิทิน" ? "calendar" : "schedule"] });
+      for (const s of spies.splice(0)) s.mockRestore();
+    }
+  });
+  test("🔑 …and every CHIP under it, tapped by a teacher, answers (no chip is a parent's action)", async () => {
+    const m = mutedChat("teacher", "EN");
+    await handleLineWebhookEvents([typed("reopen")]);
+    const datas: string[] = m.replies[0].quickReply.items.map((i: any) => i.action.data);
+    for (const s of spies.splice(0)) s.mockRestore();
+    for (const data of datas) {
+      const c = chat("teacher", "EN");
+      await handleLineWebhookEvents([tap(data)]);
+      expect({ data, reached: c.calls }).toEqual({ data, reached: [data === "action=calendar" ? "calendar" : "schedule"] });
+      for (const s of spies.splice(0)) s.mockRestore();
+    }
+  });
+});

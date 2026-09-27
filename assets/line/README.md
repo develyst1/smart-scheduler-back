@@ -1,6 +1,6 @@
 # LINE rich-menu artwork (REQ-107 — one bilingual menu per role)
 
-`bun run line:publish-menus` uploads **three** images, one per role, from **exactly these paths** (the fixed contract in
+`bun run line:publish-menus` uploads **four** images, one per role (🔻 TASK-530: + the admin menu), from **exactly these paths** (the fixed contract in
 `scripts/line-publish-menus.ts` → `IMAGE_PATHS`; a missing file refuses the whole run before any LINE call):
 
 | File | Menu (role) | Size (px) | Cells (tap areas live in `src/lib/line-rich-menu.ts`) | Where it comes from |
@@ -8,6 +8,7 @@
 | `menu-unknown.png` | unlinked chat (the account DEFAULT) | **2500 × 843** | 2 cells: **สมัครสมาชิก / Sign Up** · **คุยกับแอดมิน / Chat with Admin** | the customer's art, stretched (`resize-customer-menus.mjs`) |
 | `menu-customer.png` | linked parent | **2500 × 1686** | 3×2: **แจ้งลา · เช็คอิน · คอร์สของฉัน** / **เพิ่มนักเรียน · ภาษา/ช่วยเหลือ · คุยกับแอดมิน** | the customer's art, stretched (`resize-customer-menus.mjs`) |
 | `menu-teacher.png` | teacher | **2500 × 843** | 2 cells: **ตารางของฉัน / My Schedule** · **ภาษา/ช่วยเหลือ / Language / Help** | the customer's ORANGE art, stretched (`resize-customer-menus.mjs`, 3rd file) — TASK-484 |
+| `menu-admin.png` | admin (TASK-530) | **2500 × 843** | **ONE cell = the whole image**, a LINK (not a postback): **SOM SCHEDULE** · **เปิดระบบ · Open the system** → `PUBLIC_ADMIN_BASE_URL` + `?openExternalBrowser=1` | OURS, drawn by `generate-admin-menu.mjs` (orange house style) |
 
 ## The rules a file must meet
 - **The exact size above.** The tap areas are a grid over the definition's `size`; an image of any other size puts the
@@ -35,6 +36,10 @@ bun ../smart-scheduler-back/assets/line/generate-rich-menus.mjs
   (`customer-2026-09-26-teacher/teacher-menu-orange-2000x672.webp`, **the only original**), stretched 2000×672 → 2500×843
   (1.25×) by the resize script's optional **third** file. 2026-09-26: **612,931 bytes, full colour.** It is NOT generated
   any more — the generator would overwrite it; the old bilingual-blue job is left commented in the generator as the way back.
+- **`menu-admin.png`** — 🔻 TASK-530: drawn by **`generate-admin-menu.mjs`**, the ONLY script that names this file (pinned by
+  `src/lib/rich-menu-admin-task530.test.ts`, which reads every script here) — so no other generator can overwrite it. The words
+  are a constant at its top; if the owner changes them, edit and re-run. 2026-09-27: 57,231 bytes. The publish also needs
+  **`PUBLIC_ADMIN_BASE_URL`** (https, the web app's base) and **refuses the whole run without it**, before any LINE call.
 - **`generate-rich-menus.mjs`** — rewrites the six older files below, byte-identical. (It no longer writes `menu-teacher.png`.)
 
 ## Older files in this folder (not published any more)

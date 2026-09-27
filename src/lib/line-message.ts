@@ -5,6 +5,7 @@
 import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
 import { ddmmyyyy } from "./time";
+import { slotLine, type Slot } from "./class-move"; // TASK-516
 import { isEndReason } from "./course-plan";
 import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
@@ -346,6 +347,32 @@ function buildOutboxMessage(
           },
           { type, audience: recipientType, lang },
         )
+      );
+    }
+    // 🔴 TASK-516 — a MOVED class · ✅ TASK-529 — the owner's words: the house block is the NEW slot, the OLD one ONE appended
+    // `Was :` line (where cancel puts Reason / Note). Both slots come from the PAYLOAD — the snapshot taken when that move was
+    // made — never from the row as it is when the worker runs: two quick moves then read A→B and B→C, each true on its own.
+    // The block's who/what come from the booking as for every coach/family notice. 🚫 Nothing about why.
+    // 📌 The slots arrive already `HH:MM` (`announceMove` formats them — TASK-283: the render site never trims).
+    case "class_moved_teacher":
+    case "class_moved_parent": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      const teacher = payload.kind === "class_moved_teacher";
+      const from = payload.from as Slot | undefined, to = payload.to as Slot | undefined;
+      return (
+        t(teacher ? "ob_class_moved_title" : "mv_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_moved",
+          {
+            student: ctx.studentName ?? undefined,
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: to?.date ? ddmmyyyy(to.date) : undefined,
+            time: to?.startTime ? `${to.startTime}${to.endTime ? `-${to.endTime}` : ""}` : undefined,
+            coach: teacher ? ctx.coach : undefined, // the family's copy never names the coach (as their cancel notice)
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("ob_f_was", lang), slotLine(from)) // one English label for both audiences (owner, TASK-529)
       );
     }
     case "course_dropped_teacher": {
@@ -710,6 +737,8 @@ function buildOutboxMessage(
     // REQ-023: the daily digest travels as its check results, so it renders in each admin's own language.
     case "daily_digest":
       return buildDigestMessage((payload.checks as any[]) ?? [], lang);
+    // 🔻 TASK-525 — the admin-request alert is now FOUR kinds by who asked (`parent_` · `teacher_` · `admin_` · `unlinked_asked_for_admin`);
+    // all four land here, parked together — word them TOGETHER, and never word a teacher's as a parent's.
     // ⛔ TASK-334 Part B — `student_registered` and `parent_asked_for_admin` still land here, and it is
     // **BLOCKED ON COPY, not an oversight.** The facts are on their payloads; the WORDS are the owner's, and
     // an admin alert is read under time pressure — the worst place to ship a string we invented. 🅿️ PARKED by

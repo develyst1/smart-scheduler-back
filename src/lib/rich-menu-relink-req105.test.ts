@@ -108,6 +108,8 @@ describe("🔴 the user census — teachers first, both customer sources, the th
       query: {
         teachers: { findMany: async () => [{ id: "t1", name: "Ekachai", nickname: "Ek", lineUserId: "U-ek", lineLang: "EN", archived: false }, { id: "t2", name: "Gone", nickname: null, lineUserId: "U-gone", lineLang: null, archived: true }, { id: "t3", name: "NoLine", nickname: "N", lineUserId: null, lineLang: null, archived: false }] },
         parents: { findMany: async () => [{ id: "p1", name: "Khwan", phone: "0924912848", lineUserId: "U-khwan", lineLang: null }, { id: "p2", name: null, phone: "0811111111", lineUserId: null, lineLang: "EN" }] },
+        // 🔻 TASK-530 — the admins' list: a pure admin, and a COACH who is also an admin (teacher wins — `detectLinkedRole`'s order)
+        appSettings: { findFirst: async () => ({ key: "line_admin_user_ids", value: ["U-boss9", "U-ek"] }) },
       },
       select: () => ({ from: async () => [{ parentId: "p1", lineUserId: "U-khwan" }, { parentId: "p1", lineUserId: "U-dad" }, { parentId: "p2", lineUserId: "U-p2" }] }),
     };
@@ -116,8 +118,9 @@ describe("🔴 the user census — teachers first, both customer sources, the th
       { lineUserId: "U-khwan", name: "Khwan", role: "customer", lang: "TH", linkedMenuId: null }, // the primary column; null lang ⇒ TH
       { lineUserId: "U-dad", name: "Khwan", role: "customer", lang: "TH", linkedMenuId: null }, // the second phone on the same family
       { lineUserId: "U-p2", name: "0811111111", role: "customer", lang: "EN", linkedMenuId: null }, // no name ⇒ the phone, for the operator's eyes
+      { lineUserId: "U-boss9", name: "(admin …oss9)", role: "admin", lang: "TH", linkedMenuId: null }, // 🔻 TASK-530 — LAST; U-ek stays a teacher
     ]);
-    expect(await countMenuUsers(exec)).toBe(4);
+    expect(await countMenuUsers(exec)).toBe(5);
   });
   test("by source: the unswept tables are named and NOT read — `students`, `line_link_sessions`, `teacher_link_requests`", () => {
     const U = src("src/lib/line-menu-users.ts");

@@ -6,6 +6,7 @@
 // task buys: "how did this account get linked?" has exactly one answer.
 
 import { and, desc, eq } from "drizzle-orm";
+import { endLinkingConversation } from "./line-register.service"; // TASK-520
 import { db } from "../db";
 import { teacherLinkRequests, teachers } from "../db/schema";
 import { badRequest, conflict, notFound } from "../lib/http";
@@ -144,6 +145,9 @@ export async function approveTeacherLinkRequest(
   // One LINE account = one role — the same roster move the immediate-link flow did (TASK-046). It has to
   // happen HERE now, because approval is where the link is actually granted.
   await moveRosterLink(request.lineUserId, "teacher");
+  // 🔴 TASK-520 — the link is settled HERE, outside the chat: end any linking conversation the chat still holds, or the coach's
+  // first message is read as another nickname (handed over + muted). Only a linking step; never the mute.
+  await endLinkingConversation(request.lineUserId);
 
   const lang = resolveLangOf(teacher);
   // Best-effort side effects: the link is already granted and must not be rolled back because LINE is down.

@@ -3,6 +3,7 @@
 // VOUCHER's sale shape (validate the discount against the LINE total BEFORE any write → the rows in one tx →
 // `recordSale` after the tx on an idempotency key). 🚫 No expiry, no per-day revenue, no slot block, no LINE.
 import { and, asc, count, eq, gte, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
+import { studentNamesOf } from "../db/mappers"; // TASK-515 — the ONE name rule
 import { db } from "../db";
 import { bookings, campDays, campPackages, campWeekDayTeachers, campWeekDays, campWeeks } from "../db/schema";
 import { unitsToDays } from "../lib/camp-deduction";
@@ -118,7 +119,7 @@ export async function weekDays(id: string) {
   const dayRows = await db.query.campWeekDays.findMany({ where: (d, { eq: e }) => e(d.campWeekId, id), with: { teachers: true } }); // TASK-418; TASK-454: + the day's coaches (hours + rate)
   const dayByDate = new Map(dayRows.map((d) => [d.date, d]));
   const days = datesOfWeek(w.startDate, w.endDate).map((date) => {
-    const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: r.package.student?.nickname ?? r.package.student?.name ?? null, kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
+    const entries = (byDate.get(date) ?? []).map((r: any) => ({ dayId: r.id, packageId: r.campPackageId, studentId: r.package.studentId, studentName: studentNamesOf({ student: r.package.student ?? null }), /* 🔻 TASK-515 — THE rule (was spelled out) */ kind: r.package.kind, half: r.half, units: r.units, status: r.status, undoReason: r.undoReason ?? null }));
     const d = dayByDate.get(date);
     return { date, entries, count: entries.filter((e: any) => e.status !== "CANCELLED").length, capacity: w.capacity ?? null, ...toDayDTO(d) };
   });
@@ -430,7 +431,7 @@ export async function getDayCheckinQr(dayId: string) {
     expiresAt = campTokenExpiry(d.date);
     await db.update(campDays).set({ checkinToken: token, checkinTokenExpiresAt: expiresAt }).where(eq(campDays.id, dayId));
   }
-  return { dayId: d.id, token, url: checkinUrl(`/checkin/camp?token=${token}`), expiresAt: expiresAt!.toISOString(), studentName: (d as any).package?.student?.nickname ?? (d as any).package?.student?.name ?? "", date: d.date, half: d.half };
+  return { dayId: d.id, token, url: checkinUrl(`/checkin/camp?token=${token}`), expiresAt: expiresAt!.toISOString(), studentName: studentNamesOf({ student: (d as any).package?.student ?? null }) ?? "", /* 🔻 TASK-515 — THE rule (was a second spelling of it); `?? ""` KEPT: the staff QR renders `${studentName} · date` in a template, so null would print "null" */ date: d.date, half: d.half };
 }
 
 /**
@@ -439,7 +440,9 @@ export async function getDayCheckinQr(dayId: string) {
  * points — a camp day has no "on time" (Sober 09-19: on the owner's list, not built).
  */
 export async function checkinCampByToken(token: string, source: "checkin-qr" | "shopfront-qr" = "checkin-qr") { // TASK-475 — `marked_by` says where from
-  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token), with: { package: true } });
+  // 🔴 TASK-515 (a) — the child's NAME rides the SAME read (drizzle nests it in one statement), and `columns` means this public door
+  // reads only the two fields the name rule needs: the allow-list starts at the READ, so no future `students` field can reach it.
+  const d = await db.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.checkinToken, token), with: { package: { with: { student: { columns: { nickname: true, name: true } } } } } });
   if (!d) throw notFound(tb("checkin_bad_link")); // TASK-479 — the parent's words, not "token"
   // 🔴 TASK-476 — camp's token page had the SAME gap: a suspended household is refused, FIRST, as the LINE path refuses it.
   if (await anyHouseholdSuspended((d as any).package?.studentId ? [(d as any).package.studentId] : [])) throw badRequest(tb("suspended_notice"));
@@ -462,7 +465,9 @@ const scanAnswer = (already: boolean, d: any, pkg: Awaited<ReturnType<typeof pac
   const x: any = pkg.days.find((y) => y.dayId === d.id) ?? { ...dayDTO(already ? d : { ...d, status: "ATTENDED" }), weekName: null };
   return {
     already,
-    day: { dayId: x.dayId, weekId: x.weekId, weekName: x.weekName ?? null, date: x.date, half: x.half, units: x.units, status: x.status, undoReason: x.undoReason ?? null },
+    // 🔻 TASK-515 — + `studentName` (9 keys), on BOTH paths from the scan's own row: the counter phone is often a nanny with two or
+    // three children, and the other four lines are identical for siblings on one day. THE name rule (`studentNamesOf`), not a copy.
+    day: { dayId: x.dayId, weekId: x.weekId, weekName: x.weekName ?? null, date: x.date, half: x.half, units: x.units, status: x.status, undoReason: x.undoReason ?? null, studentName: studentNamesOf({ student: d.package?.student ?? null }) },
     credit: creditDTO(pkg),
   };
 };
@@ -486,7 +491,7 @@ export async function campReminderInputs(runDate: string): Promise<{ days: CampD
   const familyAccounts = await familyLineUserIdsBulk(parentIds);
   const days: CampDayInput[] = dayRows.map((d: any) => ({
     dayId: d.id, weekId: d.campWeekId, half: d.half, status: d.status, studentId: d.package?.studentId,
-    studentName: d.package?.student?.nickname ?? d.package?.student?.name ?? "-",
+    studentName: studentNamesOf({ student: d.package?.student ?? null }) ?? "-", // 🔻 TASK-515 — THE rule; its "-" fallback kept (unchanged)
     parentId: d.package?.student?.parentId ?? null,
     parentLineUserIds: d.package?.student?.parentId ? (familyAccounts.get(d.package.student.parentId) ?? []) : [],
   }));
@@ -525,7 +530,7 @@ export async function notifyCampDeductions(tx: any, runDate: string): Promise<nu
     const p = d.package;
     const payload = {
       kind: "camp_deduction",
-      studentName: p?.student?.nickname ?? p?.student?.name ?? "",
+      studentName: studentNamesOf({ student: p?.student ?? null }) ?? "", // 🔻 TASK-515 — THE rule; its "" fallback kept (unchanged)
       date: d.date,
       remainingDays: unitsToDays((p?.totalUnits ?? 0) - (p?.usedUnits ?? 0)),
       totalDays: unitsToDays(p?.totalUnits ?? 0),

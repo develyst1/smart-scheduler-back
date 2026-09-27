@@ -36,6 +36,8 @@ import {
   isSessionExpired,
   muteUntilFrom,
   shouldHandOver,
+  FLOW_CLEARED,
+  MUTED_STEP,
 } from "../lib/line-routing";
 import { moveRosterLink } from "../lib/roster-link";
 import { parentChildrenNames, parentChildrenNote } from "../lib/line-pairing";
@@ -53,12 +55,13 @@ import {
 // 🔻 TASK-347 (`REQ-088`) — the registration DECISIONS live in `line-register.service.ts` now, called by
 // this door AND the page. This file keeps only the REPLIES. `bindFamilyLine` is no longer called from here.
 import {
-  clearLinkSession as clearSession,
+  clearLinkSession as clearSession, endLinkingConversation,
   createStudentFromLine,
   duplicateOutcomeFor,
   linkFamilyByPhone,
   setTwoFaChallenge,
   settleLinkedRole,
+  settleAdminLink,
   twoFaCodeOf,
   twoFaEnabled,
 } from "./line-register.service";
@@ -79,10 +82,10 @@ import {
   isReopenWord,
   isReservedWord,
 } from "../lib/line-commands";
-import { claimReplyKey } from "../lib/teacher-link";
+import { claimQueues, claimReplyKey } from "../lib/teacher-link";
 import { displayNameOf, studentNamesOf } from "../db/mappers";
 import { requestTeacherLink } from "./teacher-link.service";
-import { calendarUrls } from "../lib/calendar-link";
+import { calendarPageUrl } from "../lib/calendar-link"; // TASK-519
 import { isSuspended } from "../lib/suspend";
 import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
@@ -157,6 +160,8 @@ type LinkRole = "customer" | "teacher" | "admin";
 type VerifyResult = {
   ok: boolean;
   message: (lang: Lang) => string;
+  /** 🔻 TASK-520 — a teacher claim that QUEUED a request: not a failure (nothing to retype), not yet a link. */
+  queued?: boolean;
   needs2fa?: boolean;
   code?: string;
 };
@@ -218,12 +223,7 @@ async function setStep(lineUserId: string, step: string, pendingRole: string | n
 // 🔻 TASK-347 — `clearSession` is `clearLinkSession` from `line-register.service.ts` (imported under its old
 // name so the thirteen call sites read as before). Both doors clear the same row on success — Rule 4.
 
-/**
- * The step a row carries when it exists only to hold a mute — no conversation is in progress. `doCallAdmin`
- * already wrote this literal; naming it makes "a muted row with no flow" one concept instead of two spellings.
- * `decideMessageRoute` does not recognise it, so such a row owns nothing once the mute lapses.
- */
-const MUTED_STEP = "MUTED";
+// 🔻 TASK-520 — `MUTED_STEP` and `FLOW_CLEARED` now live in `lib/line-routing.ts` (unchanged), shared with the link-completion helper.
 
 /**
  * 🔴 TASK-251 (REQ-079 §16) — the role question, asked ONE way. **Still one way; no longer a PICKER.**
@@ -252,11 +252,6 @@ async function acceptRole(lineUserId: string, role: LinkRole, replyToken: string
   return reply(replyToken, tb(`code_${role}`));
 }
 
-/**
- * "No conversation is in progress on this row." ONE definition, shared by the two writers below, so *"the flow
- * is over"* cannot come to mean two different sets of columns.
- */
-const FLOW_CLEARED = { step: MUTED_STEP, pendingRole: null, draft: null, unexpectedCount: 0 } as const;
 
 /**
  * 🔴 TASK-246 — **the** un-mute. One function, and every path back in goes through it.
@@ -429,6 +424,10 @@ async function verifyAndLink(
     const expected = process.env.LINE_ADMIN_VERIFY_CODE ?? "229";
     if (code.trim() !== expected) return { ok: false, message: (l) => t("verify_admin_bad", l) };
     await addAdminLineUserId(lineUserId);
+    // 🔴 TASK-530 — an admin gets the ADMIN menu (one cell: the web app), so they no longer sit on the account default (the
+    // unknown menu). Only when ADMIN is this account's role: `detectLinkedRole` reads teacher → parent → admin, and a coach or
+    // parent who is also an admin keeps that role's menu — the same order the relink sweep uses. The LINK is the register door's.
+    if ((await detectLinkedRole(lineUserId)) === "admin") await settleAdminLink(lineUserId);
     return { ok: true, message: (l) => t("verify_admin_ok", l) };
   }
 
@@ -444,7 +443,7 @@ async function verifyAndLink(
     const message = (l: Lang) => t(claimReplyKey(outcome), l, { nick });
     // They stay UNLINKED until approved — no teacher menu, no schedule pushes. `ok:false` keeps the session
     // at AWAIT_CODE so a typo can be retyped, exactly as the ambiguous case already did.
-    return { ok: false, message };
+    return { ok: false, message, queued: claimQueues(outcome) };
   }
 
   // customer / parent — keyed by phone. One phone = one parent (many children).
@@ -844,11 +843,44 @@ function parentActionItems(lang: Lang) {
   return PARENT_CHIPS.map(([labelKey, action]) => mk(labelKey, action));
 }
 
-function doMenu(replyToken: string, lang: Lang, body: string = tb("menu_body")) {
-  // 🔴 TASK-276 — the BODY is bilingual; `parentActionItems(lang)` builds the quick-reply LABELS and stays
-  // single-language, under LINE's 20-character cap. Same split as everywhere else, at the one site where
-  // both halves of it are visible on one line. (TASK-477: the un-mute passes its own, single-language body.)
-  return send(replyToken, [{ type: "text", text: body, quickReply: { items: parentActionItems(lang) } }]);
+/**
+ * TASK-486 / TASK-521 — a teacher's three chips (REQ-109 §6): today · this week · my calendar. The SAME objects under the
+ * schedule reply and under the command list, so a coach meets one vocabulary wherever the bot offers it.
+ */
+function teacherChips(lang: Lang) {
+  const chip = (labelKey: string, data: string) => ({
+    type: "action" as const,
+    action: { type: "postback" as const, label: t(labelKey, lang), data, displayText: t(labelKey, lang) },
+  });
+  return [chip("btn_today", "action=schedule"), chip("btn_week", "action=schedule&range=week"), chip("btn_calendar", "action=calendar")];
+}
+
+/**
+ * 🔴 TASK-521 — the ONE place that decides WHICH command list a person is shown, and its chips. TASK-485 put a role check at
+ * the Language/Help reply only, so the un-mute (`reopen`), which shares the list since TASK-477, kept showing a TEACHER the
+ * parent's four commands. A vocabulary decided at each call site is the bug; every surface now reads these two.
+ * A linked teacher ⇒ REQ-109 §6's list + their chips. Everyone else (a parent, an admin, an unlinked chat) ⇒ the parent list,
+ * unchanged.
+ */
+// 🔻 TASK-523 — EVERY role, not just teacher-vs-rest. A list is a promise about typing, so each role is shown only words that
+// route for it, from copy that already exists (none invented):
+//  · teacher  ⇒ REQ-109 §6's list + their three chips (TASK-485/521);
+//  · customer ⇒ TASK-477's list + the four chips (unchanged);
+//  · admin    ⇒ `admin_linked_menu` ("admin account linked ✅ — you'll be notified of leave") and NO chips: an admin has no
+//               commands in this chat, and the parent's four would be four lies (an admin tapping one is told to register);
+//  · unlinked ⇒ `welcome` ("type สมัคร to register") and NO chips: the one word that works before you are linked.
+export const commandListKey = (role: string | null | undefined): "teacher_menu_body" | "menu_body" | "admin_linked_menu" | "welcome" =>
+  role === "teacher" ? "teacher_menu_body" : role === "customer" ? "menu_body" : role === "admin" ? "admin_linked_menu" : "welcome";
+function commandChips(role: string | null | undefined, lang: Lang) {
+  return role === "teacher" ? teacherChips(lang) : role === "customer" ? parentActionItems(lang) : [];
+}
+
+function doMenu(replyToken: string, lang: Lang, role: string | null | undefined, body: string = tb(commandListKey(role))) {
+  // 🔴 TASK-276 — the BODY is bilingual; the chips build the quick-reply LABELS and stay single-language, under LINE's
+  // 20-character cap. (TASK-477: the un-mute passes its own, single-language body.) 🔻 TASK-521: list AND chips by role.
+  // 🔻 TASK-523 — a role with no commands gets NO quick-reply at all (LINE refuses an empty `items`).
+  const items = commandChips(role, lang);
+  return send(replyToken, [items.length ? { type: "text", text: body, quickReply: { items } } : { type: "text", text: body }]);
 }
 
 /** TASK-145 (AC-3): the check-in picker names the SESSION, like the leave one. Button labels are clamped to
@@ -1087,8 +1119,21 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
  *
  * It works whether or not the chat is bound — someone who cannot get in is exactly who needs it most.
  */
-async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang) {
-  await notifyAdmins({ kind: "parent_asked_for_admin", lineUserId });
+/**
+ * 🔴 TASK-525 — the admin alert's KIND names WHO asked. It was `parent_asked_for_admin` for EVERY caller (a coach too); invisible only
+ * because that copy is parked (TASK-334) and renders the default — the day the copy lands, a coach's request would arrive labelled a
+ * parent's. From the role the caller's dispatcher ALREADY resolved (never a second lookup). A parent's kind is unchanged.
+ * 🚫 No copy: all four render the parked default until the owner words them.
+ */
+const ADMIN_ASK_KIND = { customer: "parent_asked_for_admin", teacher: "teacher_asked_for_admin", admin: "admin_asked_for_admin" } as const;
+const adminAskKind = (role: LinkRole | null) => (role ? ADMIN_ASK_KIND[role as keyof typeof ADMIN_ASK_KIND] : undefined) ?? "unlinked_asked_for_admin";
+
+async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang, role?: LinkRole | null) {
+  // The typed twin passes the role its handler already knows (a linked parent). The POSTBACK handles `คุยกับแอดมิน` BEFORE any role
+  // check, on purpose (TASK-234: the one button that must never fail) — so it has no resolved role, and this is that path's ONLY
+  // lookup: it gates nothing (everyone still reaches a person) and nothing after it asks again (the path returns below).
+  const who = role === undefined ? await detectLinkedRole(lineUserId) : role;
+  await notifyAdmins({ kind: adminAskKind(who), lineUserId });
   // Mute with the SAME helper the handover uses — one definition of "how long the bot stays out of a chat".
   await db
     .insert(lineLinkSessions)
@@ -1124,21 +1169,10 @@ async function doTeacherSchedule(
   }));
   // 🔴 TASK-486 (REQ-109 §6) — the pair `วันนี้` / `สัปดาห์นี้` on EVERY schedule reply; it REPLACES the old single toggle
   // (`btn_week` on today / `btn_today` on the week) — one way to ask for each view, not two.
-  const chip = (labelKey: string, data: string) => ({
-    type: "action" as const,
-    action: { type: "postback" as const, label: t(labelKey, lang), data, displayText: t(labelKey, lang) },
-  });
-  const toggle = [chip("btn_today", "action=schedule"), chip("btn_week", "action=schedule&range=week")];
   // REQ-017: offer the phone-calendar subscription right where the teacher is reading their schedule.
-  const calendarBtn = {
-    type: "action" as const,
-    action: {
-      type: "postback" as const,
-      label: t("btn_calendar", lang),
-      data: "action=calendar",
-      displayText: t("btn_calendar", lang),
-    },
-  };
+  // 🔻 TASK-521 — the three chips moved into `teacherChips` (byte-identical), so the command list's chips are the SAME ones.
+  const [today, week, calendarBtn] = teacherChips(lang);
+  const toggle = [today, week];
   // 🔴 TASK-276 §2 — shape (a): the WHOLE LIST twice, Thai block then English block. 🚫 Not row-per-language:
   // a coach scanning eight classes needs one scannable column, and per-row doubling destroys the alignment
   // the layout exists for. 📌 The owner's original length objection survives here even though it lost for
@@ -1166,8 +1200,10 @@ async function doTeacherSchedule(
 async function doTeacherCalendar(lineUserId: string, replyToken: string, lang: Lang) {
   const token = await getCalendarTokenForLineUser(lineUserId);
   if (!token) return send(replyToken, [textReply(tb("cal_not_teacher"), lang)]);
-  const { webcal } = calendarUrls(token);
-  return send(replyToken, [textReply(tb("cal_link", { url: webcal }), lang)]);
+  // 🔴 TASK-519 — an `https` link to OUR landing page, never `webcal://`: LINE's linkifier does not know `webcal` and linkified the
+  // bare root domain — a stranger's site, carrying the token. The subscribing tap now happens ON the page (its button is the
+  // `webcal://` URL), inside a browser. The copy is unchanged ("tap the link and choose Add/Subscribe").
+  return send(replyToken, [textReply(tb("cal_link", { url: calendarPageUrl(token) }), lang)]);
 }
 
 async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {
@@ -1178,7 +1214,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
   // `เปิดเมนู` answers here too, not only in a muted chat: it is the word the mute message told them, and a
   // word the bot advertises must mean the same thing everywhere (TASK-245's rule). Un-muting an unmuted chat is
   // a no-op, so this is the same list with no second behaviour.
-  if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang);
+  if (inList(CMD_MENU, cmd) || inList(CMD_REOPEN, cmd)) return doMenu(replyToken, lang, "customer"); // a linked parent's door
 
   // Add a student — inline ("เพิ่มนักเรียน น้องเอ") or start a name prompt.
   // 🔴 TASK-312 §1 — parsed by `parseAddCommand`, where the rule and its reasons live. The bare `add` prefix
@@ -1208,7 +1244,7 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
     return doMyCourses(lineUserId, replyToken, lang);
   }
   if (inList(CMD_ADMIN, cmd)) {
-    return doCallAdmin(lineUserId, replyToken, lang);
+    return doCallAdmin(lineUserId, replyToken, lang, "customer"); // this handler is reached only by a linked parent
   }
   if (inList(CMD_CHILDREN, cmd)) {
     return doChildren(lineUserId, replyToken, lang);
@@ -1296,7 +1332,7 @@ async function handleMessage(ev: LineWebhookEvent) {
     if (isReopenWord(lower)) {
       await unmute(lineUserId);
       // 🔴 TASK-477 — the CHAT's language (not both at once), the list's own blank line after the heading — K1's shape.
-      return doMenu(replyToken, lang, t("menu_body", lang));
+      return doMenu(replyToken, lang, linked, t(commandListKey(linked), lang)); // 🔻 TASK-521 — by role (was the parent list for all)
     }
     // AC-25 — `เมนู`, `เพิ่มนักเรียน`, free text: still silent, and the session is NOT touched. The parent may
     // be mid-flow, and clearing their step would lose it while a person is helping them.
@@ -1362,12 +1398,16 @@ async function handleMessage(ev: LineWebhookEvent) {
       // commands the teacher deliberately typed, and REQ-015/REQ-017 keep them as the keyboard route to the
       // rich menu. What stops is the catch-all `teacher_linked` reply to anything else — which is the
       // `yo` → *"ไม่พบครูชื่อเล่น yo"* class of noise from §16's screenshot.
-      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, tb("teacher_linked_menu"));
+      // 🔻 TASK-521 / TASK-523 — the menu words and `reopen` mean what they mean for a parent: "show me what I can do" ⇒ the
+      // teacher's list. `เมนู` answered `teacher_linked_menu` ("account linked ✅…"): written 07-29, when a teacher HAD no list —
+      // the only thing there was to say, not a decision against one. REQ-109 §6 gave them a list (09-26); this is where it goes.
+      if (inList(CMD_MENU, lower) || inList(CMD_REOPEN, lower)) return doMenu(replyToken, lang, "teacher");
       return;
     }
     if (linked === "admin") {
       // 🔴 AC-16 — SILENCED FALLBACK #3 (admin). Same rule: `เมนู` is a command, everything else is stray.
-      if (["เมนู", "menu"].includes(lower)) return reply(replyToken, tb("admin_linked_menu"));
+      // 🔻 TASK-523 — the same words through the ONE decision (admin ⇒ `admin_linked_menu`, unchanged text); `reopen` too — it was silence.
+      if (inList(CMD_MENU, lower) || inList(CMD_REOPEN, lower)) return doMenu(replyToken, lang, "admin");
       return;
     }
   }
@@ -1429,6 +1469,14 @@ async function handleMessage(ev: LineWebhookEvent) {
     const res = await verifyAndLink(lineUserId, role, text, lang);
     // AC-18 — this is the exact branch §16's screenshot came from (`yo` → *"ไม่พบครูชื่อเล่น yo"*): it kept the
     // session and re-prompted forever. Second failure now hands over to a human instead.
+    // 🔴 TASK-520 — a QUEUED teacher claim is not a failed attempt: it was counted as strike 1 and LEFT the chat at AWAIT_CODE, so the
+    // coach's next message (while waiting, or their first command after approval) was read as another NICKNAME ⇒ strike 2 ⇒ handed
+    // over and muted. The request is in; the linking conversation is over. The reply is unchanged, so `pending` and
+    // `pending-ambiguous` stay indistinguishable (the no-oracle rule). `not-found` / `already-linked` stay failures (retype).
+    if (!res.ok && res.queued) {
+      await endLinkingConversation(lineUserId);
+      return reply(replyToken, both(res.message));
+    }
     if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, both(res.message), lang);
     await resetStrikes(lineUserId);
     // 🔻 TASK-347 — seed the language, then link the role's rich menu (and TASK-234's รู้จักแล้ว menu for a
@@ -1543,7 +1591,7 @@ async function handlePostback(ev: LineWebhookEvent) {
     // TASK-473 K1 — a BLANK LINE after the confirmation (REQ-107 §7). One path for both directions: TH→EN and EN→TH are
     // the same line with a different `next` (pinned by value through the real dispatcher, both ways).
     // 🔴 TASK-485 — the ONE role check (Sober: no restructuring): a linked TEACHER gets their own list (REQ-109 §6), not the parent's.
-    const listKey = (await detectLinkedRole(lineUserId)) === "teacher" ? "teacher_menu_body" : "menu_body";
+    const listKey = commandListKey(await detectLinkedRole(lineUserId)); // 🔻 TASK-521 — the ONE decision (was decided here alone)
     return send(replyToken, [textReply(`${t("lang_switched", next)}\n\n${t(listKey, next)}`, next)]);
   }
 
@@ -1565,7 +1613,10 @@ async function handlePostback(ev: LineWebhookEvent) {
   // SOLICITED — the parent TAPPED. `§17g` ruled *never unsolicited*, not *never*: 🔑 *"it remains the correct
   // reply when a parent DOES need the hint."* 🚫 The `follow` push stays gone.
   // 📌 ***A line that does two jobs cannot be commented out to remove one of them.***
-  if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);
+  // 🔻 TASK-524 — every non-parent is answered through the ONE decision (TASK-523): an UNLINKED person still gets `welcome` (the
+  // reason the string exists — byte-identical, same `textReply`), and an ADMIN gets their own line instead of being told to register.
+  // (A teacher never reaches here: their branch above has returned.)
+  if (linked !== "customer") return send(replyToken, [textReply(tb(commandListKey(linked)), lang)]);
   // Suspended household → refuse every postback too, not just typed commands (TASK-048).
   if (await isSuspendedLineParent(lineUserId)) {
     return send(replyToken, [textReply(tb("suspended_notice"), lang)]);
@@ -1595,8 +1646,8 @@ async function handlePostback(ev: LineWebhookEvent) {
       await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
       return send(replyToken, [textReply(withExit(t("add_student_name_prompt", lang), lang), lang)]);
     }
-    default: // menu / help / unknown → the menu
-      return doMenu(replyToken, lang);
+    default: // menu / help / unknown → the menu (a parent's switch: the teacher branch above has already returned)
+      return doMenu(replyToken, lang, "customer");
   }
 }
 

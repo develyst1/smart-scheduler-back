@@ -72,6 +72,7 @@ const EVIDENCE: Record<string, { how: "exercised" | "literal"; why: string }> = 
   "POST /api/checkin/shopfront": { how: "exercised", why: "relays the token page's allow-listed answer — walked below" },
   "POST /api/checkin/shopfront/batch": { how: "exercised", why: "one row per item, each the single answer — walked below" },
   "GET /api/calendar/:file": { how: "literal", why: "an ICS TEXT feed, each line written field by field in `lib/ics.ts`" },
+  "GET /api/calendar/subscribe/:token": { how: "literal", why: "🔴 TASK-519 — the coach calendar LANDING PAGE the LINE reply links to (the token in the path is the credential, as for the feed). HTML by ALLOW-LIST: `renderCalendarSubscribePage` takes ONLY the two URLs (webcal + https .ics) and prints fixed words — no coach name, no class, no count. no-store · no-referrer · X-Robots-Tag noindex · CSP default-src none. Unknown token ⇒ the feed plain 404. Pinned by value in calendar-subscribe-task519.test.ts" },
   "POST /api/register/status": { how: "literal", why: "`{ ok, linked, phone (masked), childCount }`" },
   "POST /api/register/unlink": { how: "literal", why: "`{ ok, unlinked, cleared }`" },
   "POST /api/register/lookup": { how: "literal", why: "`{ ok, outcome, phone (masked), children: childView }` — childView = { id, name, nickname }" },

@@ -101,6 +101,15 @@ const TIME_OWNER: Record<TemplateKey, { kind: string; file: string; start: strin
   },
   // 🔑 TASK-508 — the NINTH, refused by the Record again: the leave Undo's "class on again" to the coaches reads the same
   // enrichment as the single cancel it mirrors.
+  // 🔑 TASK-516 — the TENTH: a MOVED class. Its two slots ride the PAYLOAD, formatted where the payload is built (`announceMove`).
+  // ✅ TASK-529 — the owner's shape puts the NEW slot in the block, so it now PRINTS a `Time`: both ends of THAT one (`after`) are
+  // formatted there; the old slot (`before`) is the appended `Was :` line, formatted in the same place.
+  class_moved: {
+    kind: "class_moved_teacher",
+    file: "src/services/scheduler.service.ts",
+    start: "startTime: hhmm(after.startTime)",
+    end: "endTime: hhmm(after.endTime)",
+  },
   class_on_again: {
     kind: "class_on_again_teacher",
     file: "src/services/outbox.service.ts",
@@ -143,6 +152,7 @@ describe("🔑 TASK-283 — every message that prints a `Time`, from ONE list", 
       { key: "course_dropped", printsTime: false, declared: true },
       { key: "rental_added", printsTime: true, declared: true, start: true, end: true }, // TASK-375 — the eighth
       { key: "class_on_again", printsTime: true, declared: true, start: true, end: true }, // TASK-508 — the ninth
+      { key: "class_moved", printsTime: true, declared: true, start: true, end: true }, // TASK-516 — the tenth · TASK-529: the NEW slot is the block's Time
     ]);
   });
 

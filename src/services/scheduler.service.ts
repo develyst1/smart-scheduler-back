@@ -2,6 +2,7 @@
 // these; all domain rules (quota/extension/idempotency) live here.
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { isRealMove } from "../lib/class-move"; // TASK-516
 import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
@@ -3136,15 +3137,62 @@ export async function classCancelledFamilyAccounts(
   cancelReason: string | null,
 ): Promise<string[] | null> {
   if (current.status !== "CONFIRMED") return null;
+  const accounts = await familyAccountsOfRow(tx, current);
+  if (accounts === null) return null;
   const payload = { kind: "class_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, cancelReason };
+  await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });
+  return accounts;
+}
+
+/**
+ * 🔻 TASK-516 — THE FAMILY OF A ROW, one rule (moved out of the cancel notice unchanged, so the move notice cannot grow a second):
+ * a Private/DUO row's two children, or ALL of a GROUP row's seats — ONE de-duplicated account set, so siblings on one row reach
+ * their family once (TASK-445). `null` when the row has no student at all; `[]` when the household has no linked account.
+ */
+async function familyAccountsOfRow(
+  tx: any,
+  current: { id: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; seats?: { studentId?: string | null }[] | null },
+): Promise<string[] | null> {
+  // 🔴 TASK-516 addendum — a CANCELLED seat's family is NOT the class's family: its child no longer has a place in it, and telling
+  // them "your class moved / was cancelled" implies they still do. ⚠️ STATUS AS OF BEFORE THE ACT: a caller whose act cancels the
+  // seats (the admin's group cancel cascades through them first) must pass the seats it read BEFORE — re-read afterwards, every
+  // seat would be CANCELLED and no family would be told the class was cancelled. (Pinned by source at that caller.)
   const seats = current.bookingType === "GROUP"
-    ? (current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) })))
+    ? (current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }))).filter((st: any) => st.status !== "CANCELLED")
     : null;
   const ids: Array<string | null> = seats ? seats.map((s: any) => s.studentId ?? null) : [current.studentId ?? null, current.coStudentId ?? null];
   if (!ids.some(Boolean)) return null;
-  const accounts = await householdLineUserIds(tx, ids);
-  await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });
-  return accounts;
+  return householdLineUserIds(tx, ids);
+}
+
+/**
+ * 🔴 TASK-516 (owner ruling: "ย้ายคาบแจ้งทั้งคู่") — a MOVED class is announced to EVERY coach of the class (`teachersOfBooking`,
+ * THE predicate) and to THE FAMILY (`familyAccountsOfRow`, the cancel notice's rule). Until now a move reached nobody.
+ * 🔑 Only a REAL move (`isRealMove`: the date or the start time changed) — a note / rate / subject / teacher change alone sends
+ * nothing new. Only a class the people were holding (CONFIRMED, or an EXTENDED make-up — on their schedule): a PENDING one was
+ * never announced. INSIDE the caller's transaction: the notices exist iff the move committed (a refused move, a plan editor
+ * DRY-RUN, rolls them back with it). FROM / TO are snapshotted HERE, so several quick moves send a CHAIN (A→B, B→C), each true.
+ * ⚠️ LIMIT (named, accepted): the worker sends oldest-first, but a send that FAILS and is retried can land AFTER a later one — two
+ * true messages in the wrong order. Not coalesced: merging unsent rows would race the worker (Sober 09-27: two true messages in the
+ * wrong order beat one that might be wrong).
+ * 💰 It only announces: it writes nothing but outbox rows. Unlinked coach / family ⇒ a SKIPPED row (`enqueueLine`'s contract).
+ */
+async function announceMove(tx: any, bookingId: string, before: { status: string; date: string; startTime: string; endTime: string }) {
+  if (before.status !== "CONFIRMED" && before.status !== "EXTENDED") return;
+  const after = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, bookingId), with: { course: true, voucher: true } });
+  if (!after || !isRealMove(before, after)) return;
+  const common = {
+    bookingId,
+    bookingType: after.bookingType ?? null,
+    size: after.course?.size ?? after.voucher?.totalHours ?? null,
+    from: { date: before.date, startTime: hhmm(before.startTime), endTime: hhmm(before.endTime) },
+    to: { date: after.date, startTime: hhmm(after.startTime), endTime: hhmm(after.endTime) },
+  };
+  for (const coach of await teachersOfBooking(tx, bookingId)) {
+    await enqueueLine({ recipientType: "teacher", recipientLineUserId: coach.lineUserId ?? null, bookingId, payload: { kind: "class_moved_teacher", ...common } }, tx);
+  }
+  const accounts = await familyAccountsOfRow(tx, after);
+  if (accounts !== null) await enqueueParentCopies(tx, accounts, { bookingId, payload: { kind: "class_moved_parent", ...common } });
 }
 
 /**
@@ -3438,6 +3486,7 @@ export async function applyPlanChange(
       await reconcileBookingHolds(tx, b.id, newTeacherId, b.status, change.override ?? false);
       // Notify BOTH sides of the swap: the old teacher (off your schedule) + the new teacher (now yours).
       if (teacherChanged) await sendTeacherReassigned(tx, b.id, b.teacherId, newTeacherId); // the ONE pair (TASK-436)
+      await announceMove(tx, b.id, b); // 🔴 TASK-516 — the plan editor's move, the SAME sender (a dry-run rolls it back with the tx)
       return await finalize({ change: "move" as const, bookingId: b.id });
     });
   } catch (e: any) {
@@ -3649,6 +3698,9 @@ export async function updateBookingStatus(
 
       // 🔴 TASK-397 — cancelling a GROUP DATE: every live seat goes the teacher-cancel path first (its status, its
       // course's make-up via the reconcile — SPEC-028 §11.3 — in THIS transaction), then the group row itself below.
+      // 🔴 TASK-516 addendum — the seats AS THEY WERE, read BEFORE the cascade cancels them: the family notice below tells the families
+      // of the seats that were live (the one household rule drops CANCELLED seats — re-read after this line, it would drop them all).
+      const seatsBefore = current.bookingType === "GROUP" ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }) : undefined;
       if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null);
       await tx
         .update(bookings)
@@ -3667,7 +3719,7 @@ export async function updateBookingStatus(
       });
       // TASK-410 (REQ-097 §3.7 — the owner's YES): the shop's cancel tells the FAMILY too, through the ONE sender the
       // teacher's leave uses. CONFIRMED-only (the sender's gate), every seat's family on a GROUP row.
-      await sendClassCancelledToFamilies(tx, current, enumReason ?? null);
+      await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null);
       // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
       // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs
       // in the same transaction as the status change and the freelance reconcile, so the correction is atomic.
@@ -3950,6 +4002,7 @@ export async function moveBooking(
       // TASK-436 — a TEACHER change through this door tells both coaches (the pair the plan edit always sent); a
       // date / time / note / rate-only move stays silent.
       if (patch.teacherId && patch.teacherId !== current.teacherId) await sendTeacherReassigned(tx, id, current.teacherId, patch.teacherId);
+      await announceMove(tx, id, current); // 🔴 TASK-516 — a date/time move is announced (was "stays silent", TASK-436)
     });
   } catch (e: any) {
     const code = pgErrorCode(e);

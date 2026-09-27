@@ -265,7 +265,8 @@ describe("🔴 AC-19 — every choice takes a typed answer too (LINE on PC canno
   test("…and they call the SAME handlers the postbacks call", () => {
     // Asserted rather than built: postbacks and keywords have shared handlers since TASK-038.
     expect(code(SVC).match(/doMyCourses\(lineUserId, replyToken, lang\)/g)!.length).toBeGreaterThanOrEqual(2);
-    expect(code(SVC).match(/doCallAdmin\(lineUserId, replyToken, lang\)/g)!.length).toBeGreaterThanOrEqual(2);
+    // 🔻 TASK-525 — the typed twin now also passes the role its handler already knows (`"customer"`); still the SAME handler.
+    expect(code(SVC).match(/doCallAdmin\(lineUserId, replyToken, lang[,)]/g)!.length).toBeGreaterThanOrEqual(2);
   });
 
   test("the role picker still accepts a typed 1 / 2 / 3", () => {

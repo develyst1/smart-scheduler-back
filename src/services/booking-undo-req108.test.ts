@@ -416,7 +416,8 @@ describe("🔔 TASK-508 — a LEAVE Undo tells EVERY coach of the class that it 
 
   test("🔑 WHO is a coach of the row: THE predicate (TASK-487), by its rendered SQL — the primary OR an additional teacher", async () => {
     let join: any = null;
-    const exec = { select: (_f: any) => ({ from: (_t: any) => ({ innerJoin: async (_t2: any, cond: any) => { join = dialect.sqlToQuery(cond); return []; } }) }) };
+    // 🔻 TASK-522 — the class is resolved first (a seat → its group); b1 is not a seat (no `group_id`), so the class is b1 itself.
+    const exec = { select: (_f: any) => ({ from: (_t: any) => ({ where: () => ({ limit: async () => [{ groupId: null }] }), innerJoin: async (_t2: any, cond: any) => { join = dialect.sqlToQuery(cond); return []; } }) }) };
     for (const s of spies.splice(0)) s.mockRestore(); // the REAL teachersOfBooking
     await ownScope.teachersOfBooking(exec, "b1");
     expect(join.sql).toBe('("bookings"."id" = $1 and ("bookings"."teacher_id" = "teachers"."id" or exists (select 1 from "booking_teachers" where ("booking_teachers"."booking_id" = "bookings"."id" and "booking_teachers"."teacher_id" = "teachers"."id"))))');

@@ -58,15 +58,15 @@ describe("TASK-252 — the registry is DERIVED, never retyped", () => {
     expect(registry).toContain("ALL_MENU_DEFS.map((m) => m.name)");
   });
 
-  test("🔑 NAME_TO_KEY is THREE and OUR_MENU_NAMES is ELEVEN — two questions, two answers", () => {
+  test("🔑 NAME_TO_KEY is FOUR and OUR_MENU_NAMES is TWELVE — two questions, two answers (🔻 TASK-530: + the admin menu, in both)", () => {
     // The task's Question. `adopt` asks "which names must be PRESENT for a complete map?" and `selectMenuIds`
     // aborts on any gap, so a name we define but never publish must stay OUT of it. Ownership asks "did WE name
     // this?" — and a menu called `smart-scheduler-unknown-en` on a channel is unambiguously ours whether or not
     // we ever published one.
     // 🔻 TASK-468 — what publish CREATES is three per-role menus; what we have EVER named is those three plus the eight
     // per-language ones, which stay on channels until the owner removes them after the relink sweep — ours all the same.
-    expect(Object.keys(NAME_TO_KEY)).toHaveLength(3);
-    expect(OUR_MENU_NAMES.size).toBe(11);
+    expect(Object.keys(NAME_TO_KEY)).toHaveLength(4);
+    expect(OUR_MENU_NAMES.size).toBe(12);
     for (const name of Object.keys(NAME_TO_KEY)) expect(OUR_MENU_NAMES.has(name)).toBe(true);
     // The two that differ, named so the difference is deliberate rather than an oversight someone "fixes".
     expect(OUR_MENU_NAMES.has("smart-scheduler-unknown-en")).toBe(true);

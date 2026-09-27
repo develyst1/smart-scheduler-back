@@ -44,7 +44,10 @@ const S = "src/services/scheduler.service.ts";
 /** A class stops / starts / is cancelled ⇒ EVERY coach, through THE predicate. */
 const VIA_PREDICATE = [`${S}#sendLeaveNotice`, `${S}#sendClassCancelledToCoaches`, `${S}#sendClassCancelledToOtherTeachers`, `${S}#sendCourseDroppedToTeachers`, "src/services/undo.service.ts#undoBooking",
   // TASK-513 — the three the inventory found, converged
-  `${S}#pauseBooking`, `${S}#resumeBooking`, "src/services/rental.service.ts#notifyRentalAddedSameDay"];
+  `${S}#pauseBooking`, `${S}#resumeBooking`, "src/services/rental.service.ts#notifyRentalAddedSameDay",
+  // TASK-516 — a MOVED class. ⚠️ It tells the FAMILY too, BY RULING ("ย้ายคาบแจ้งทั้งคู่") — through `enqueueParentCopies` and the ONE
+  // family rule (`familyAccountsOfRow`), never a hand-written parent recipient (the check below looks for exactly that).
+  `${S}#announceMove`];
 /** The recipient is a NAMED person, not "the coaches of a class" — correct by design. */
 const NAMED_BY_DESIGN: Record<string, string> = {
   [`${S}#sendTeacherReassigned`]: "the coach taken off and the coach put on — two named people",

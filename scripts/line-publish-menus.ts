@@ -5,6 +5,8 @@
 // Re-run to republish after artwork changes. Fails clearly BEFORE any LINE API call if the token or any image
 // is missing (never half-publishes). Do NOT run against the real OA from a dev box.
 import {
+  adminMenuUrl,
+  ADMIN_URL_ENV,
   getMenuIds,
   listRichMenus,
   publishRichMenus,
@@ -21,14 +23,28 @@ export const IMAGE_PATHS = {
   unknownImage: "assets/line/menu-unknown.png",
   customerImage: "assets/line/menu-customer.png",
   teacherImage: "assets/line/menu-teacher.png",
+  adminImage: "assets/line/menu-admin.png", // 🔴 TASK-530 — the admin's one-cell menu (`generate-admin-menu.mjs`)
 } as const;
 
 /** Pure precondition check — returns a list of blocking errors (empty = ready to publish). */
-export function preflightErrors(hasToken: boolean, missingImages: string[]): string[] {
+export function preflightErrors(hasToken: boolean, missingImages: string[], adminUrlError: string | null = null): string[] {
   const errors: string[] = [];
   if (!hasToken) errors.push("LINE_CHANNEL_ACCESS_TOKEN is not set (needed to call the Messaging API).");
   for (const p of missingImages) errors.push(`missing rich-menu image: ${p}`);
+  // 🔴 TASK-530 — the admin cell's link: a missing/bad base refuses the run BEFORE any LINE call (a menu pointing nowhere
+  // would otherwise publish silently and be found by an admin).
+  if (adminUrlError) errors.push(`admin menu link: ${adminUrlError}`);
   return errors;
+}
+
+/** The admin-link check as a preflight line: null when the base is usable. Pure over the value it is given. */
+export function adminUrlProblem(base: string | undefined): string | null {
+  try {
+    adminMenuUrl(base);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 /**
@@ -72,7 +88,7 @@ export function formatPublishFootprint(
  * lacks it), then every legacy id still kept — by what was stored, never by what we assume was stored.
  * Pure: the IO shell hands it the read-back and the created ids.
  */
-export const ROLE_KEYS = ["unknown", "customer", "teacher"] as const;
+export const ROLE_KEYS = ["unknown", "customer", "teacher", "admin"] as const; // 🔻 TASK-530 — + admin
 export function formatStoredIds(stored: MenuIds, created: MenuIds): string[] {
   const out = ["✓ Published rich menus — ids STORED in app_settings.line_rich_menu_ids (read back after the merge):"];
   for (const k of ROLE_KEYS) {
@@ -93,12 +109,12 @@ async function main() {
   for (const p of Object.values(IMAGE_PATHS)) {
     if (!(await Bun.file(p).exists())) missing.push(p);
   }
-  const errors = preflightErrors(!!process.env.LINE_CHANNEL_ACCESS_TOKEN, missing);
+  const errors = preflightErrors(!!process.env.LINE_CHANNEL_ACCESS_TOKEN, missing, adminUrlProblem(process.env[ADMIN_URL_ENV]));
   if (errors.length) {
     console.error("✗ line:publish-menus — cannot publish:");
     for (const e of errors) console.error(`  - ${e}`);
     console.error(
-      "\nProvide the 3 bilingual images (TASK-468) under smart-scheduler-back/assets/line/ and set LINE_CHANNEL_ACCESS_TOKEN, then re-run.",
+      "\nProvide the 4 images (TASK-468 + TASK-530's admin menu) under smart-scheduler-back/assets/line/, set LINE_CHANNEL_ACCESS_TOKEN and PUBLIC_ADMIN_BASE_URL, then re-run.",
     );
     process.exit(1);
   }

@@ -159,6 +159,7 @@ describe("🔑 the handlers compose exactly these pieces (by source)", () => {
   test("the language toggle answers with the confirmation AND the list, in the NEW language", () => {
     // 🔻 TASK-485 — the list is chosen by ROLE (a linked teacher gets theirs, REQ-109 §6); a parent still gets `menu_body`.
     expect(SVC).toContain('textReply(`${t("lang_switched", next)}\\n\\n${t(listKey, next)}`, next)'); // TASK-473 K1 — the blank line
-    expect(SVC).toContain('const listKey = (await detectLinkedRole(lineUserId)) === "teacher" ? "teacher_menu_body" : "menu_body";');
+    expect(SVC).toContain("const listKey = commandListKey(await detectLinkedRole(lineUserId));"); // 🔻 TASK-521 — the ONE decision, read here
+    expect(SVC).toContain('role === "teacher" ? "teacher_menu_body" : role === "customer" ? "menu_body" : role === "admin" ? "admin_linked_menu" : "welcome";'); // 🔻 TASK-523 — every role
   });
 });

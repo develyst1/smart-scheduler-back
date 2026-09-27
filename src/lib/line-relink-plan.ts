@@ -11,7 +11,9 @@
 //   of the code would make the sweep "fix" every EN customer onto an id that does not exist.
 import type { MenuIds } from "./line-rich-menu";
 
-export type MenuRole = "customer" | "teacher";
+// 🔴 TASK-530 — `admin`: an admin is now a menu role. Before, the sweep never listed one, so an admin was neither repaired nor
+// protected — and "unlinked" for an admin means the account default, which is the UNKNOWN menu the owner ruled out.
+export type MenuRole = "customer" | "teacher" | "admin";
 export type MenuLang = "TH" | "EN";
 
 export interface MenuUser {
@@ -59,9 +61,12 @@ export interface RelinkPlan {
 const LEGACY_FALLBACK: Record<MenuRole, ReadonlyArray<keyof MenuIds>> = {
   customer: ["knownTH", "parentTH"],
   teacher: ["teacherTH"],
+  // 🔴 TASK-530 — NONE. With no admin menu published an admin reads `no-menu-published` (BLOCKED, left alone) — never a
+  // fallback, and above all never `unknown`: that is how the owner's ruling would be undone on a publish, silently (pinned).
+  admin: [],
 };
 export function expectedMenuKey(role: MenuRole, ids: MenuIds): keyof MenuIds | null {
-  const roleKey: keyof MenuIds = role === "teacher" ? "teacher" : "customer";
+  const roleKey: keyof MenuIds = role; // the role names ARE the per-role keys (`customer` · `teacher` · `admin`)
   if (ids[roleKey]) return roleKey;
   return LEGACY_FALLBACK[role].find((k) => !!ids[k]) ?? null;
 }

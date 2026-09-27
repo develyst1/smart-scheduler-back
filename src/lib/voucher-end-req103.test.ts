@@ -68,7 +68,8 @@ const fakeTx = (v: any, rows: any[]) => {
     update: (table: any) => ({ set: (patch: any) => ({ where: async (w: any) => { writes.push({ op: "update", table: table === bookings ? "bookings" : table === vouchers ? "vouchers" : "other", patch, where: String(w) }); } }) }),
     // TASK-512 — the bulk coach notice asks `teachersOfBooking` (`select … from teachers inner join bookings on id = $1 and <THE predicate>`):
     // answered from these rows — their primary coach (none of these draws has an additional teacher).
-    select: () => ({ from: () => ({ where: async () => [], innerJoin: async (_t: any, cond: any) => {
+    select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => [] }), innerJoin: async ( // 🔻 TASK-522: + the class resolution read (none of these draws is a seat)
+_t: any, cond: any) => {
       const id = new PgDialect().sqlToQuery(cond).params[0];
       const r = rows.find((x) => x.id === id);
       return r?.teacherId ? [{ id: r.teacherId, lineUserId: r.teacherId === T1 ? "U1" : r.teacherId === T2 ? "U2" : null }] : [];

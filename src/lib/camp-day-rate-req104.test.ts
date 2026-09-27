@@ -163,7 +163,7 @@ describe("🔴 the two scans carry what is left — camp `credit` in DAYS (half-
     spies.push(spyOn(db.query.campPackages, "findFirst").mockImplementation((async () => ({ id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, createdAt: new Date() })) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
     // TASK-502 — both scan paths answer ONE 8-key shape (Sober's ruling): "already" now carries `weekName` too — null here, the fake package has no days
-    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { dayId: "d1", weekId: W1, weekName: null, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
+    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { studentName: null /* 🔻 TASK-515: the 9th key — this fixture's day carries no package student */, dayId: "d1", weekId: W1, weekName: null, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
     expect(unitsToDays(8)).toBe(4);
     expect(region(SVC, "export async function checkinCampByToken(", "const dayDTO")).toContain("credit: creditDTO(pkg)"); // the attend path too
   });

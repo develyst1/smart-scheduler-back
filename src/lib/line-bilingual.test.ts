@@ -184,7 +184,7 @@ describe("TASK-275 — what LANDED, by name", () => {
     // when the guard was commented out — the body was bilingual and nobody was sent it. It is asserted here
     // against the LIVE site, and the dead one is named as dead so its presence is not mistaken for a send.
     for (const site of [
-      'textReply(tb("welcome"), lang)', // the postback guard — LIVE
+      'textReply(tb(commandListKey(linked)), lang)', // the postback guard — LIVE (🔻 TASK-524: `welcome` for the unlinked, through the ONE decision)
       'reply(replyToken, tb("welcome"))', // `handleFollow` — DEAD by §17g, kept on purpose
       't("role_prompt", lang)',
       "reply(replyToken, tb(`code_${role}`))",

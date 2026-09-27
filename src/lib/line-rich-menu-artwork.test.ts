@@ -148,11 +148,11 @@ describe("🔴 `คุยกับแอดมิน` is on both menus — the i
 describe("🔴 the publish path — the reason the menus never reached a phone", () => {
   const PUB = fn(SRC, "export async function publishRichMenus");
 
-  test("it creates and uploads all THREE per-role menus (TASK-468 — one bilingual menu per role)", () => {
-    for (const def of ["UNKNOWN_MENU)", "CUSTOMER_MENU)", "TEACHER_MENU)"]) {
+  test("it creates and uploads all FOUR per-role menus (TASK-468 — one bilingual menu per role · 🔻 TASK-530 + the admin's)", () => {
+    for (const def of ["UNKNOWN_MENU)", "CUSTOMER_MENU)", "TEACHER_MENU)", "adminMenuFor(adminUri))"]) {
       expect(code(PUB)).toContain(`createRichMenu(${def}`);
     }
-    expect(code(PUB).match(/uploadRichMenuImage\(/g)).toHaveLength(3);
+    expect(code(PUB).match(/uploadRichMenuImage\(/g)).toHaveLength(4);
     // 🚫 no per-language menu is created any more — the pairs differed only in the picture
     expect(code(PUB)).not.toMatch(/createRichMenu\((PARENT|KNOWN|UNKNOWN_RICH|TEACHER_RICH)/);
   });
@@ -161,9 +161,10 @@ describe("🔴 the publish path — the reason the menus never reached a phone",
     // The TASK-247 lesson this test was written for: `linkKnownRichMenu` read `ids.knownTH` for months and nothing
     // wrote it. 🔻 TASK-468 — the keys are now `unknown · customer · teacher`; publish writes exactly those, and the ONE
     // rule (`expectedMenuKey`) reads exactly those first.
-    expect(code(PUB)).toContain("const ids: MenuIds = { unknown, customer, teacher };");
+    expect(code(PUB)).toContain("const ids: MenuIds = { unknown, customer, teacher, admin };"); // 🔻 TASK-530 — + admin
     const PLAN = readSrc(await Bun.file(new URL("./line-relink-plan.ts", import.meta.url)).text());
-    expect(code(PLAN)).toContain('const roleKey: keyof MenuIds = role === "teacher" ? "teacher" : "customer";');
+    // 🔻 TASK-530 — the role names ARE the keys now (three roles, three keys); read by value in the admin test file too.
+    expect(code(PLAN)).toContain("const roleKey: keyof MenuIds = role;");
     expect(code(SRC)).toContain("const target = menuIdFor(role, await getMenuIds());");
   });
 

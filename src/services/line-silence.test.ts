@@ -66,7 +66,7 @@ describe("🔴 what must KEEP answering — the branch this could silence by mis
   test("every recognised PARENT command still replies — `ลา` and `เช็คอิน` above all", () => {
     // A parent reporting sick leave by typing `ลา` is a shipped, load-bearing flow (REQ-046/049). Silencing it
     // would be the exact failure this task warns about, on the two things a family uses most.
-    for (const kept of ["doLeave(", "doCheckin(", "doQr(", "doChildren(", "doMenu(replyToken, lang)"]) {
+    for (const kept of ["doLeave(", "doCheckin(", "doQr(", "doChildren(", "doMenu(replyToken, lang, \"customer\")"]) {
       expect(PARENT_CMD).toContain(kept);
     }
     // …including the numbered forms, which are how the pickers are answered.
@@ -79,7 +79,7 @@ describe("🔴 what must KEEP answering — the branch this could silence by mis
     expect(HANDLE).toContain("doTeacherCalendar(");
     // TASK-276 (REQ-079 §18): this flow's BODY is bilingual now (`tb`/`both`). The property this line
     // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
-    expect(HANDLE).toContain('tb("teacher_linked_menu")');
+    expect(HANDLE).toContain('if (inList(CMD_MENU, lower) || inList(CMD_REOPEN, lower)) return doMenu(replyToken, lang, "teacher");'); // 🔻 TASK-523 — the teacher's menu words still REPLY (now with their list)
   });
 
   test("`สมัคร` still works from ANY state — it is the only way in", () => {

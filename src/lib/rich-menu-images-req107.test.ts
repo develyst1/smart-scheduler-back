@@ -8,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { CUSTOMER_MENU, TEACHER_MENU, UNKNOWN_MENU, type RichMenuDef } from "./line-rich-menu";
+import { ADMIN_MENU, CUSTOMER_MENU, TEACHER_MENU, UNKNOWN_MENU, type AnyMenuDef } from "./line-rich-menu";
 import { IMAGE_PATHS } from "../../scripts/line-publish-menus";
 
 const root = resolve(import.meta.dir, "..", "..");
@@ -22,11 +22,13 @@ const pngSize = (buf: Buffer): { width: number; height: number } => {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 };
 
-const PAIRS: Array<[string, string, RichMenuDef]> = [
+const PAIRS: Array<[string, string, AnyMenuDef]> = [
   ["unknown", IMAGE_PATHS.unknownImage, UNKNOWN_MENU],
   ["customer", IMAGE_PATHS.customerImage, CUSTOMER_MENU],
   ["teacher", IMAGE_PATHS.teacherImage, TEACHER_MENU],
+  ["admin", IMAGE_PATHS.adminImage, ADMIN_MENU], // 🔻 TASK-530
 ];
+const areaName = (a: AnyMenuDef["areas"][number]) => (a.action.type === "uri" ? "uri" : a.action.data);
 
 describe("🔴 each published image is exactly its menu's size — the buttons line up with the taps", () => {
   test("the pairing covers every image the publish uploads (no fourth image slips past the check)", () => {
@@ -43,11 +45,11 @@ describe("🔴 each published image is exactly its menu's size — the buttons l
       for (const a of def.areas) {
         const b = a.bounds;
         const inside = b.x >= 0 && b.y >= 0 && b.x + b.width <= def.size.width && b.y + b.height <= def.size.height;
-        expect({ role, area: a.action.data, inside }).toEqual({ role, area: a.action.data, inside: true });
+        expect({ role, area: areaName(a), inside }).toEqual({ role, area: areaName(a), inside: true });
       }
     });
   }
-  test("LINE's accepted sizes: the three definitions are ones LINE takes", () => {
+  test("LINE's accepted sizes: the four definitions are ones LINE takes", () => {
     const ok = ["2500x1686", "2500x843", "1200x810", "1200x405", "800x540", "800x270"];
     for (const [role, , def] of PAIRS) expect({ role, ok: ok.includes(`${def.size.width}x${def.size.height}`) }).toEqual({ role, ok: true });
   });

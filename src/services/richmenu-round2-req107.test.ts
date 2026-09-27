@@ -69,7 +69,7 @@ describe("✅ K0a — Sign Up has its own words (the link unchanged, TASK-469)",
 });
 
 describe("🔴 K0b — the publish prints the ids it STORED (read back after the merge), never `undefined`", () => {
-  const created = { unknown: "richmenu-U2", customer: "richmenu-C2", teacher: "richmenu-T2" };
+  const created = { unknown: "richmenu-U2", customer: "richmenu-C2", teacher: "richmenu-T2", admin: "richmenu-A2" }; // 🔻 TASK-530 — + admin
   test("by value: the three role ids marked NEW, the default named, every legacy id still stored listed", () => {
     const stored = { ...created, knownTH: "richmenu-K1", parentTH: "richmenu-P1", unknownTH: "richmenu-X1", knownEN: "" };
     expect(formatStoredIds(stored, created)).toEqual([
@@ -77,6 +77,7 @@ describe("🔴 K0b — the publish prints the ids it STORED (read back after the
       "  unknown  : richmenu-U2   ← NEW · account DEFAULT",
       "  customer : richmenu-C2   ← NEW",
       "  teacher  : richmenu-T2   ← NEW",
+      "  admin    : richmenu-A2   ← NEW",
       "  legacy ids still stored (the relink sweep reads them to recognise old followers; removed only with the old menus):",
       "    knownTH   : richmenu-K1",
       "    parentTH  : richmenu-P1",
@@ -87,7 +88,7 @@ describe("🔴 K0b — the publish prints the ids it STORED (read back after the
     const out = formatStoredIds({ unknown: "richmenu-U2" }, created);
     expect(out[2]).toBe("  customer : -   ← ⚠️ NOT STORED");
     expect(out.join("\n")).not.toContain("undefined");
-    expect(formatStoredIds({ unknown: "old", customer: "richmenu-C2", teacher: "richmenu-T2" }, created)[1]).toBe(
+    expect(formatStoredIds({ unknown: "old", customer: "richmenu-C2", teacher: "richmenu-T2", admin: "richmenu-A2" }, created)[1]).toBe(
       "  unknown  : old   ← kept from an earlier publish · account DEFAULT",
     );
   });

@@ -128,8 +128,10 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
   });
   test("by source: the Private/DUO set is `[studentId, coStudentId]` as before; a GROUP row's set is ALL its seats; ONE `class_cancelled_parent` producer; the two single-row callers unchanged", () => {
     const C = region(SCHED, "export async function classCancelledFamilyAccounts(", "\n}\n");
-    expect(C).toContain("const ids: Array<string | null> = seats ? seats.map((s: any) => s.studentId ?? null) : [current.studentId ?? null, current.coStudentId ?? null];");
-    expect(C).toContain("const accounts = await householdLineUserIds(tx, ids);");
+    // 🔻 TASK-516 — the set now lives in `familyAccountsOfRow` (the cancel AND the move read it); the cancel asks it.
+    expect(C).toContain("const accounts = await familyAccountsOfRow(tx, current);");
+    expect(SCHED).toContain("const ids: Array<string | null> = seats ? seats.map((s: any) => s.studentId ?? null) : [current.studentId ?? null, current.coStudentId ?? null];");
+    expect(SCHED).toContain("  return householdLineUserIds(tx, ids);\n}"); // 🔻 TASK-516 — ONE set, in `familyAccountsOfRow`
     expect(C).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });");
     expect(C).not.toContain("for (const"); // ONE set, ONE call — no per-seat loop
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);

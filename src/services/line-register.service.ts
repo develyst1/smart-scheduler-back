@@ -11,7 +11,8 @@
 //
 // 🚫 Nothing here renders a word. Outcomes are discriminated unions; the chat maps them to `t()` keys and the
 // page maps them to CODES. **The server owns decisions; the surfaces own words.**
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { FLOW_CLEARED, LINKING_STEPS } from "../lib/line-routing"; // TASK-520
 import { db } from "../db";
 import { ApiException } from "../lib/http";
 import { lineLinkSessions, parents, teachers } from "../db/schema";
@@ -52,6 +53,21 @@ export async function twoFaEnabled(): Promise<boolean> {
 /** Drop the chat wizard's row. A parent may have half-started `สมัคร` before an admin sent the link. */
 export async function clearLinkSession(lineUserId: string) {
   await db.delete(lineLinkSessions).where(eq(lineLinkSessions.lineUserId, lineUserId));
+}
+
+/**
+ * 🔴 TASK-520 — a LINKING conversation ends when the link is settled — including when it is settled SOMEWHERE ELSE (a staff
+ * approval of a teacher's claim; a queued claim). Otherwise the chat keeps its linking step, the router gives that step priority
+ * over the now-linked role, and the person's next message is read as another nickname ⇒ handed over and muted.
+ * 🔑 It ends ONLY a linking step (`LINKING_STEPS`): a chat in the add-student wizard or holding only a mute is untouched.
+ * 🔑 It writes `FLOW_CLEARED`, which has NO `mutedUntil` — so it CANNOT end a mute. A chat genuinely under a hand-off stays
+ * silenced (TASK-477 §3), by construction rather than by care.
+ */
+export async function endLinkingConversation(lineUserId: string, exec: any = db): Promise<void> {
+  await exec
+    .update(lineLinkSessions)
+    .set({ ...FLOW_CLEARED, updatedAt: new Date() })
+    .where(and(eq(lineLinkSessions.lineUserId, lineUserId), inArray(lineLinkSessions.step, [...LINKING_STEPS])));
 }
 
 // ── the 2FA challenge, parked on the chat's session row — ONE writer and ONE reader of `draft.twoFaCode` ──
@@ -184,6 +200,20 @@ export async function settleLinkedRole(lineUserId: string, role: "customer" | "t
     console.error("[line-register] linkRoleRichMenu failed:", e);
   }
   return seed;
+}
+
+/**
+ * 🔴 TASK-530 — an ADMIN's end state: the admin menu (one cell: the web app), so they no longer sit on the account default (the
+ * UNKNOWN menu). Here, beside `settleLinkedRole`, because the menu link is the register door's decision, never the chat's
+ * (RULE 1). No language seed: an admin has no language row, and the menu is bilingual. Best-effort, as every link is — an admin
+ * menu that has not been published leaves the chat where it is.
+ */
+export async function settleAdminLink(lineUserId: string): Promise<void> {
+  try {
+    await linkRoleRichMenu(lineUserId, "admin");
+  } catch (e) {
+    console.error("[line-register] admin menu link failed:", e);
+  }
 }
 
 // ── §10.3 — a linked account is TOLD, and can UNLINK through the ONE writer ─────────────────────────────────

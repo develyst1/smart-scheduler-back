@@ -24,6 +24,25 @@ import { isAddStudentStep } from "./line-add-student";
 
 export type MessageRoute = "muted" | "add-student" | "linking" | "linked" | "silence";
 
+/** 🔻 TASK-520 — the LINKING steps, ONE list: the router's "an in-progress link owns this message" and the helper that ends a link
+ *  completed elsewhere (`endLinkingConversation`) must never disagree about which steps those are. */
+export const LINKING_STEPS = ["CHOOSE_ROLE", "AWAIT_CODE", "AWAIT_2FA"] as const;
+
+/**
+ * The step a row carries when it exists only to hold a mute — no conversation is in progress. `doCallAdmin`
+ * already wrote this literal; naming it makes "a muted row with no flow" one concept instead of two spellings.
+ * `decideMessageRoute` does not recognise it, so such a row owns nothing once the mute lapses.
+ * 🔻 TASK-520 — moved here from `line-webhook.service.ts` (unchanged) so the link-completion helper writes the SAME columns.
+ */
+export const MUTED_STEP = "MUTED";
+
+/**
+ * "No conversation is in progress on this row." ONE definition, shared by every writer that ends a flow, so *"the flow
+ * is over"* cannot come to mean two different sets of columns. 🔑 It has NO `mutedUntil`: ending a flow never ends a mute.
+ * 🔻 TASK-520 — moved here from `line-webhook.service.ts` (unchanged).
+ */
+export const FLOW_CLEARED = { step: MUTED_STEP, pendingRole: null, draft: null, unexpectedCount: 0 } as const;
+
 export function decideMessageRoute(
   sessionStep: string | null | undefined,
   linkedRole: string | null | undefined,
@@ -38,13 +57,7 @@ export function decideMessageRoute(
   // TASK-232: `AWAIT_2FA` is the verification step between the phone and the children. It is a linking step
   // like the two beside it — listed here rather than defaulting to silence, because a parent who is mid-
   // verification is the clearest case of "an in-progress conversation owns this message".
-  if (
-    sessionStep === "CHOOSE_ROLE" ||
-    sessionStep === "AWAIT_CODE" ||
-    sessionStep === "AWAIT_2FA"
-  ) {
-    return "linking";
-  }
+  if ((LINKING_STEPS as readonly string[]).includes(sessionStep ?? "")) return "linking"; // 🔻 TASK-520 — the ONE list
   if (linkedRole) return "linked";
   // AC-16 — this was `"welcome"`, which replied to any stray text from an unlinked chat.
   return "silence";

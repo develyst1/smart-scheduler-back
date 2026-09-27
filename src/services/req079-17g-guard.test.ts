@@ -24,7 +24,8 @@ const POSTBACK = fn("async function handlePostback");
 // 🔻 TASK-460 — the per-event body moved into `handleOneEvent` (the outer function is now the per-chat queue).
 // The §17g claim is unchanged; only the region that holds it moved.
 const DISPATCH = fn("async function handleOneEvent");
-const GUARD = 'if (linked !== "customer") return send(replyToken, [textReply(tb("welcome"), lang)]);';
+// 🔻 TASK-524 — the guard now answers through the ONE decision (`commandListKey`): `welcome` for the UNLINKED (unchanged), the admin's own line for an admin.
+const GUARD = 'if (linked !== "customer") return send(replyToken, [textReply(tb(commandListKey(linked)), lang)]);';
 
 describe("🔴 TASK-346 — JOB ONE: the guard GATES. An unlinked tap never reaches the customer switch.", () => {
   test("🔑 the guard is PRESENT, LIVE (not a comment), and sits BETWEEN the teacher branch and the switch", () => {
@@ -55,7 +56,8 @@ describe("✅ TASK-346 — JOB TWO: the guard REPLIES, and the reply is SOLICITE
   test("🔑 it answers with `§17c` screen 1's text — the `welcome` body — in REPLY to the tap", () => {
     // 🔑 `§17g`: *"screen 1's TEXT is unchanged — it remains the correct reply when a parent DOES need the
     // hint."* A tap the bot cannot serve is that case. **The ruling was *never UNSOLICITED*, not *never*.**
-    expect(GUARD).toContain('tb("welcome")');
+    expect(GUARD).toContain('tb(commandListKey(linked))'); // 🔻 TASK-524 — …and for the UNLINKED that decision IS `welcome`:
+    expect(SVC).toContain('role === "admin" ? "admin_linked_menu" : "welcome";');
     expect(t("welcome", "TH")).toContain("สมัคร");
     expect(t("welcome", "TH")).toContain("register"); // bilingual in the STRING, so `tb` sends it once
   });
@@ -91,7 +93,7 @@ describe("✅ TASK-346 — JOB TWO: the guard REPLIES, and the reply is SOLICITE
 describe("📌 TASK-346 — the record is IN THE CODE, because a diff against the owner's commit must show a task", () => {
   test("the comment at the guard names `baa6015`, both jobs, and what this task restored", () => {
     const at = SVC.indexOf(GUARD);
-    const above = SVC.slice(at - 1400, at);
+    const above = SVC.slice(at - 1900, at); // 🔻 TASK-524 — its own 3-line note now sits between the record and the guard
     expect(above).toContain("baa6015");
     expect(above).toContain("did TWO jobs");
     expect(above).toContain("RESTORED. Both jobs.");

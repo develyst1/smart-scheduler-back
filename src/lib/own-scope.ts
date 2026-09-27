@@ -35,10 +35,16 @@ export const ownScopeWhere = (me: string | typeof teachers.id) => // TASK-508 �
  * of a fixed id — so it can never know fewer people than a coach's own calendar does (TASK-487's lesson).
  */
 export async function teachersOfBooking(exec: any, bookingId: string): Promise<Array<{ id: string; lineUserId: string | null }>> {
+  // 🔴 TASK-522 (owner ruling: "a seat's coaches are the group's coaches") — a group's extra coaches are recorded on the GROUP row,
+  // never on each child's SEAT, so asking about the seat itself told only the seat's own coach (Ploy's seat cancelled: Ek told,
+  // Nok — standing in that class — not). ⇒ resolve the CLASS first: a seat means its group row (`group_id`); every other row is
+  // itself. Then THE predicate, unchanged, on that row. One answer to "whose class is this?", now knowing what a seat is.
+  const [row] = await exec.select({ groupId: bookings.groupId }).from(bookings).where(eq(bookings.id, bookingId)).limit(1);
+  const classId: string = row?.groupId ?? bookingId;
   return exec
     .select({ id: teachers.id, lineUserId: teachers.lineUserId })
     .from(teachers)
-    .innerJoin(bookings, and(eq(bookings.id, bookingId), ownScopeWhere(teachers.id)));
+    .innerJoin(bookings, and(eq(bookings.id, classId), ownScopeWhere(teachers.id)));
 }
 
 /** Is this booking mine? The same predicate + the id — the by-id reads and the scoped write share it. */

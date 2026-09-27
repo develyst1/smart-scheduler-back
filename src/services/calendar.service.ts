@@ -41,6 +41,12 @@ export async function getCalendarTokenForLineUser(lineUserId: string): Promise<s
   return token;
 }
 
+/** 🔴 TASK-519 — does this calendar token belong to anyone? (the landing page's only read: an id, nothing about the coach) */
+export async function calendarTokenExists(token: string): Promise<boolean> {
+  const t = await db.query.teachers.findFirst({ columns: { id: true }, where: (x, { eq: e }) => e(x.calendarToken, token) });
+  return !!t;
+}
+
 /**
  * Token → that teacher's bookings inside the feed window. Returns null for an unknown/rotated token so the
  * route can 404 without distinguishing "expired" from "never existed".
