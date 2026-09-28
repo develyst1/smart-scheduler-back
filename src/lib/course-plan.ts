@@ -224,7 +224,7 @@ export const plannedRowExists = (w: number, size: number, absent: ReadonlySet<nu
  *   attended/delivered or a hand-placed (non-`EXTENDED`) session.
  * - at target: no moves (idempotent — a date/teacher-only edit yields zero moves).
  */
-export function planCourseMoves(allSessions: PlanSession[], size: number): CoursePlan {
+export function planCourseMoves(allSessions: PlanSession[], size: number, reowedFor: readonly string[] = []): CoursePlan {
   // SPEC-033 seam-keeper: the engine only ever moves COURSE_PACKAGE rows — a soft-linked extra is invisible here.
   const sessions = allSessions.filter(isCoursePlanRow);
   const current = courseCurrent(sessions);
@@ -240,8 +240,17 @@ export function planCourseMoves(allSessions: PlanSession[], size: number): Cours
     const unmatchedLeaves = sessions
       .filter((s) => s.status === "SICK_LEAVE" && !matched.has(s.id))
       .sort((a, b) => a.date.localeCompare(b.date)); // oldest gap first
+    // 🔴 TASK-552 (B) — a gap opened by CANCELLING a make-up is re-owed, FIRST, to that make-up's OWN leave: the caller passes the
+    // cancelled row's written `extendedFromId` (never a guess). Taken only if it is still a leave with no LIVE make-up of its own, so a
+    // leave is never answered twice. ⚠️ `matched` above is deliberately UNCHANGED (a cancelled row still "matches"): pause → resume and a
+    // gap-filling insert answer leaves WITHOUT a link, and that rule is what covers them until TASK-553 writes those links. Empty
+    // `reowedFor` ⇒ exactly the old answer.
+    const preferred = reowedFor.filter(
+      (id, i, all) => all.indexOf(id) === i && sessions.some((s) => s.id === id && s.status === "SICK_LEAVE") && !sessions.some((s) => s.extendedFromId === id && s.status !== "CANCELLED"),
+    );
+    const order = [...preferred, ...unmatchedLeaves.map((s) => s.id).filter((id) => !preferred.includes(id))];
     const append = Array.from({ length: need }, (_, i) => ({
-      extendedFromId: unmatchedLeaves[i]?.id ?? null,
+      extendedFromId: order[i] ?? null,
     }));
     return { append, cancelIds: [] };
   }
@@ -372,9 +381,9 @@ export const canInsertIntoCourse = (c: EndableCourse, sessions: PlanSession[]): 
  * already did that in its own transaction, and having the reconciler cancel things afterwards would let a
  * later leave or edit reach back into a finished course.
  */
-export function planCourseMovesForCourse(c: EndableCourse, sessions: PlanSession[]): CoursePlan {
+export function planCourseMovesForCourse(c: EndableCourse, sessions: PlanSession[], reowedFor: readonly string[] = []): CoursePlan {
   if (isCourseEnded(c)) return { append: [], cancelIds: [] };
-  return planCourseMoves(sessions, coursePlanSize(c));
+  return planCourseMoves(sessions, coursePlanSize(c), reowedFor); // 🔻 TASK-552 (B) — the cancelled make-up's own leave, if any
 }
 
 /** SPEC-064 / TASK-181 — the closed set of reasons a course may be ended early. Closed so an `ADMIN_ERROR`

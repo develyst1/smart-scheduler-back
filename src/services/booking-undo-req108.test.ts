@@ -664,3 +664,31 @@ describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the 
     expect(plan).not.toMatch(/\.update\(|\.insert\(|\.delete\(|enqueueLine|recordUndo/); // the planner itself only READS
   });
 });
+
+// ───────────────────────── TASK-552 (B) — end to end: the re-added make-up carries the leave's link, so the Undo sees it ─────────────────────────
+describe("🔴 TASK-552 (B) — end to end: a leave whose make-up was cancelled and RE-ADDED (now linked) — the Undo proceeds and cancels the surplus", () => {
+  // D7's course, as (B) now writes it: M1 (the first make-up) CANCELLED by an admin, M2 the re-plan's replacement linked to the SAME leave.
+  const d7 = () => leaveWorld({ bookings: [
+    B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true }), B("b2", "2026-10-09", "CONFIRMED"), B("b3", "2026-10-16", "CONFIRMED"), B("b4", "2026-10-23", "CONFIRMED"),
+    B("m1", "2026-10-30", "CANCELLED", { extendedFromId: "b1" }),
+    B("m2", "2026-11-06", "EXTENDED", { extendedFromId: "b1" }),
+  ] });
+  test("🔑 the FORECAST names the replacement (it said \"no make-up\" before) — and the ACT agrees: it proceeds and cancels M2, not the dead M1", async () => {
+    run(d7());
+    const p: any = await undo.previewUndo("b1", await db.transaction(async (t: any) => t));
+    expect(p).toMatchObject({ ok: true, kind: "leave", leaveRefunded: true, makeupCancelled: { id: "m2", date: "2026-11-06" } });
+    for (const sp of spies.splice(0)) sp.mockRestore();
+    const w = d7();
+    run(w);
+    const out: any = await undoBooking("b1", { actor: "admin-dong", reason: null });
+    expect([out.kind, out.leaveRefunded, out.makeupCancelledId]).toEqual(["leave", true, "m2"]);
+    expect([row(w, "b1").status, row(w, "m1").status, row(w, "m2").status]).toEqual(["CONFIRMED", "CANCELLED", "CANCELLED"]);
+  });
+  test("⚠️ the OLD data shape (the replacement UNLINKED — sid's row until the owner's repair) still reads \"no make-up\": (B) fixes new rows, not existing ones", async () => {
+    const w = d7();
+    (w.bookings.find((b: any) => b.id === "m2") as any).extendedFromId = null;
+    run(w);
+    const p: any = await undo.previewUndo("b1", await db.transaction(async (t: any) => t));
+    expect(p).toMatchObject({ ok: true, makeupCancelled: null });
+  });
+});

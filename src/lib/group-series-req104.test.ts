@@ -85,7 +85,7 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
     expect(C).toContain('await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));');
-    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId);");
+    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) });");
     expect(C).not.toContain("enqueueLine"); // a seat sends no teacher notice of its own
     const X = region(SVC, "export async function cancelAllOtherSeries(", "\n}\n");
     expect(X).toContain("seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null);");

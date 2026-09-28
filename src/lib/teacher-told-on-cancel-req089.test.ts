@@ -133,7 +133,7 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
   test("single: gated on the PRE-write status being CONFIRMED; a PENDING one earns nothing", () => {
     expect(SINGLE).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;'); // 🔻 TASK-537: a make-up is on the coach's week too
     expect(SINGLE).toContain('kind: "class_cancelled_teacher"');
-    expect(CANCEL).toContain("notification = await sendClassCancelledToTeacher(tx, current, {");
+    expect(CANCEL).toContain("notification = slot.coach ? null : await sendClassCancelledToTeacher(tx, current, {"); // 🔻 TASK-551: silent ONLY on an exact same-slot, same-coach re-add
     // …and it is the ONLY send on the cancel branch: the parent was not told before and is not told now.
     expect((CANCEL.match(/enqueueLine\(/g) ?? []).length).toBe(0);
     expect((CANCEL.match(/sendClassCancelledToTeacher\(/g) ?? []).length).toBe(1);

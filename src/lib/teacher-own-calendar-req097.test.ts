@@ -327,7 +327,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect((L.match(/db\.transaction\(/g) ?? []).length).toBe(1);
     expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);');
     expect(L).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
-    expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId) : null;");
+    expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null;");
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
     expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);'); // 🔻 TASK-410: the ONE family sender · 🔻 TASK-548: + the re-plan's own append result
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off

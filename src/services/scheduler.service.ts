@@ -19,6 +19,7 @@ import { displayNameOf, duoCourseFacts, studentNamesOf, toBookingDTO, toCourseWi
 import { alias } from "drizzle-orm/pg-core";
 import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { leaveNoteWrite } from "../lib/leave-note"; // TASK-540
+import { NOT_SAME_SLOT, sameSlotReplacement, type SameSlot } from "../lib/same-slot"; // TASK-551 §2
 // TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
 // 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
 // gate are both gone — a re-plan DERIVES the expiry from the sessions it lays out, so there is nothing to warn
@@ -1826,7 +1827,7 @@ export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string 
   });
   for (const s of seats) {
     await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));
-    if (s.courseId) await reconcileCoursePlan(tx, s.courseId);
+    if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }); // 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
   }
   return seats.length;
 }
@@ -2797,7 +2798,18 @@ async function findFreeExtensionDate(
  * bringing the course back to its `size`-target. Returns the moves for the caller to log. The applier mirrors
  * TASK-091's `reconcileBookingHolds` (pure planner + tx applier); TASK-093's `applyPlanChange` gates the rules.
  */
-export async function reconcileCoursePlan(tx: any, courseId: string) {
+/**
+ * 🔴 TASK-552 (B) — the leave a CANCELLED row re-owes to: the row's OWN written link, and nothing else. A make-up (EXTENDED) with no
+ * link inherits NOTHING and says so — the pause case, where the link was never written (TASK-553's job); a guess here would hide it.
+ * An ordinary session (no link, not a make-up) re-owes to no one in particular, as before.
+ */
+export function reowedForOf(row: { id: string; status: string; extendedFromId?: string | null }): string[] {
+  if (row.extendedFromId) return [row.extendedFromId];
+  if (row.status === "EXTENDED") console.info(`[TASK-552] cancelled make-up ${row.id} carries no link — its re-owe inherits NO leave (TASK-553)`);
+  return [];
+}
+
+export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[] } = {}) {
   const course = await tx.query.coursePackages.findFirst({
     where: (c: any, { eq }: any) => eq(c.id, courseId),
   });
@@ -2824,6 +2836,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string) {
         bookingType: r.bookingType,
       }),
     ),
+    opts.reowedFor ?? [], // 🔻 TASK-552 (B) — a cancelled make-up's own leave, first
   );
 
   // SPEC-060 §6 — an already-affected import now reads as "too long"; those sessions are reported to the owner
@@ -3166,6 +3179,20 @@ export async function classCancelledFamilyAccounts(
 }
 
 /**
+ * 🔴 TASK-551 §2 — the facts `sameSlotReplacement` compares, read from the rows the re-plan RETURNED (by id) and each row's coaches
+ * through THE predicate (`teachersOfBooking`: primary + additional). No append ⇒ not the same slot (nothing to compare).
+ */
+async function sameSlotOfReplan(tx: any, cancelled: { id: string; date: string; startTime: string; endTime: string | null }, appended: readonly string[]): Promise<SameSlot> {
+  if (!appended.length) return NOT_SAME_SLOT;
+  const rows = await tx.query.bookings.findMany({ columns: { id: true, date: true, startTime: true, endTime: true }, where: (b: any, { inArray: inA }: any) => inA(b.id, [...appended]) });
+  const coachIds = async (id: string) => (await teachersOfBooking(tx, id)).map((c: any) => c.id as string);
+  return sameSlotReplacement(
+    { date: cancelled.date, startTime: cancelled.startTime, endTime: cancelled.endTime, coachIds: await coachIds(cancelled.id) },
+    await Promise.all(rows.map(async (r: any) => ({ date: r.date, startTime: r.startTime, endTime: r.endTime, coachIds: await coachIds(r.id) }))),
+  );
+}
+
+/**
  * 🔻 TASK-516 — THE FAMILY OF A ROW, one rule (moved out of the cancel notice unchanged, so the move notice cannot grow a second):
  * a Private/DUO row's two children, or ALL of a GROUP row's seats — ONE de-duplicated account set, so siblings on one row reach
  * their family once (TASK-445). `null` when the row has no student at all; `[]` when the household has no linked account.
@@ -3290,7 +3317,7 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
     for (const b of live) {
       if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
-      const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId) : null; // 🔻 TASK-548 — its result is the notice's evidence
+      const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null; // 🔻 TASK-548 — its result is the notice's evidence · 🔻 TASK-552 (B)
       await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);
       familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);
     }
@@ -3733,11 +3760,6 @@ export async function updateBookingStatus(
           ...(enumReason ? { cancelReason: enumReason } : {}),
         })
         .where(eq(bookings.id, id));
-      // TASK-370: the coach held this class only if it WAS confirmed — `current` is the pre-write row.
-      notification = await sendClassCancelledToTeacher(tx, current, {
-        cancelReason: enumReason ?? null,
-        note: cancelReason ?? current.note ?? null,
-      });
       // SPEC-043 / TASK-144 (REQ-050 Gap-C) — correcting a mis-marked check-in must RETURN the unit it consumed.
       // `attend` is the only writer that increments these counters; this is the only one that gives back. It runs
       // in the same transaction as the status change and the freelance reconcile, so the correction is atomic.
@@ -3769,13 +3791,23 @@ export async function updateBookingStatus(
         // can test* — the same reason `EXPIRY_REQUIRED` went in TASK-287.
         // ✅ The reconcile still runs, and still re-owes the make-up: **every course-session cancel is a
         // reschedule, not a forfeit** (SPEC-028 §11.3). Only the refusal it could raise is gone.
-        replanned = await reconcileCoursePlan(tx, current.courseId); // 🔻 TASK-548 — kept: the family notice below reads its append result
+        replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
       }
+      // 🔴 TASK-551 §2 (owner ruling) — a cancelled MAKE-UP that the re-plan put back in the SAME slot changed nothing: ONE decider
+      // (`sameSlotReplacement`) answers for both audiences — the family by date + time, the coach by date + time + the SAME coach set.
+      const slot = current.status === "EXTENDED" ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT;
+      // TASK-370: the coach held this class only if it WAS confirmed — `current` is the pre-write row.
+      // 🔻 TASK-551 — MOVED below the re-plan with the family notice (same transaction; its inputs are the pre-write snapshot — TASK-548's
+      // accepted move), so the same-slot answer exists when it is built. Suppressed ONLY on an exact same-slot, same-coach re-add.
+      notification = slot.coach ? null : await sendClassCancelledToTeacher(tx, current, {
+        cancelReason: enumReason ?? null,
+        note: cancelReason ?? current.note ?? null,
+      });
       // TASK-410 (REQ-097 §3.7 — the owner's YES): the shop's cancel tells the FAMILY too, through the ONE sender the
       // teacher's leave uses. CONFIRMED-only (the sender's gate), every seat's family on a GROUP row.
       // 🔻 TASK-548 — MOVED below the re-plan (same transaction, nothing else reordered): a cancelled make-up's notice may name the
       // class the re-plan ACTUALLY appended, and that result exists only after the re-plan ran.
-      await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);
+      if (!slot.family) await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);
     } else if (action === "sick-leave" && current.status === "ATTENDED") {
       // ═══ SPEC-073 / TASK-258 (REQ-083) — UNDO an attendance. It sits here, beside the `attend` branch it
       // reverses, so the undo behaves identically however it is reached (§6). 🔻 TASK-497: it now ends CONFIRMED (below).

@@ -217,7 +217,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     const C = region(SCHED, "async function cancelSeatsOfGroup(", "\n}\n");
     expect(C).toContain("a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES]))");
     expect(C).toContain('await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));');
-    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId);");
+    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) });");
     expect(C).not.toMatch(/enqueueLine|sendClassCancelledToTeacher/); // the coach is told ONCE, by the group row's own cancel
   });
   test("🔴 a SEAT draws no freelance hour — `reconcileBookingHolds` returns before the ledger read when the row has a `groupId` (the group row holds the hour)", () => {
