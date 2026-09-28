@@ -158,6 +158,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
   });
 });

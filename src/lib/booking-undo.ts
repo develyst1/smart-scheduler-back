@@ -79,14 +79,27 @@ export type ExpiryDecision = { action: "keep" } | { action: "restore"; from: str
  *  · another live row of the course sits on/after it ⇒ still needed ⇒ keep;
  *  · else restore to the latest change's `from` — only if that change is the SYSTEM's stretch (actor null) TO this date and
  *    every remaining row fits under its `from`. Anything else ⇒ refused, naming why.
+ *  · 🔑 TASK-556 (1b): NO change record ⇒ keep, but ONLY for a course born after this box began recording (`recordingSince`,
+ *    the 0061 marker). Then "no record" is evidence of "never moved" — the commonest case: the last in-quota leave's make-up lands
+ *    ON the born ceiling. Born before (or no marker) ⇒ a stretch may have gone unrecorded, and `keep` would leave it silently
+ *    LATE ⇒ refused, telling the admin what to check.
  */
-export function expiryDecision(input: { expiry: string; makeupDate: string; otherDates: string[]; latest: ExpiryChangeRow | null }): ExpiryDecision {
-  const { expiry, makeupDate, otherDates, latest } = input;
+export function expiryDecision(input: {
+  expiry: string; makeupDate: string; otherDates: string[]; latest: ExpiryChangeRow | null;
+  courseCreatedAt: Date; recordingSince: Date | null;
+}): ExpiryDecision {
+  const { expiry, makeupDate, otherDates, latest, courseCreatedAt, recordingSince } = input;
   if (makeupDate !== expiry) return { action: "keep" };
   if (otherDates.some((d) => d >= makeupDate)) return { action: "keep" };
-  const why = !latest
-    ? "กำหนดตั้งแต่เปิดคอร์ส (ไม่มีบันทึกการเลื่อน)"
-    : latest.toDate !== expiry
+  if (!latest) {
+    if (recordingSince && courseCreatedAt > recordingSince) return { action: "keep" };
+    // 📋 DRAFT wording (owner approves with the next copy batch) — pinned by SHAPE, not by value.
+    const since = recordingSince ? new Date(recordingSince.getTime() + 7 * 3600_000).toISOString().slice(0, 10) : "ยังไม่เริ่ม";
+    throw conflict("UNDO_EXPIRY_UNRECOVERABLE",
+      `ย้อนกลับการลานี้อัตโนมัติไม่ได้: คอร์สนี้เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ (เริ่มบันทึก ${since}) จึงบอกไม่ได้ว่าวันหมดอายุ ${expiry} ` +
+      `ถูกเลื่อนเพราะคาบขยาย ${makeupDate} หรือไม่ — กรุณาเปิดหน้าคอร์ส ตรวจวันหมดอายุกับประวัติการลา แล้วแก้การลาและวันหมดอายุด้วยตนเอง`);
+  }
+  const why = latest.toDate !== expiry
       ? `บันทึกการเลื่อนล่าสุดไม่ใช่ของคาบขยายนี้ (${latest.fromDate} → ${latest.toDate})`
       : latest.actor != null
         ? `เลื่อนโดย ${latest.actor}`

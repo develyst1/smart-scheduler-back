@@ -1036,6 +1036,12 @@ export const courseExpiryChanges = pgTable(
   },
   (t) => [index("course_expiry_changes_course_idx").on(t.courseId, t.changedAt)],
 );
+// TASK-556 (1b) — ONE row: since when THIS box records every expiry move (migration 0061). A course created after it has every
+// move in `course_expiry_changes`, so its "no record" means "never moved". Written once by the migration, never by the app.
+export const expiryRecordingMarker = pgTable("expiry_recording_marker", {
+  id: smallint("id").primaryKey().default(1),
+  recordingSince: timestamp("recording_since", { withTimezone: true }).notNull(),
+});
 export const coursePackagesRelations = relations(coursePackages, ({ one, many }) => ({
   student: one(students, {
     fields: [coursePackages.studentId],

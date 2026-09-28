@@ -216,10 +216,10 @@ describe("🔴 the source — actor = username everywhere, the env login retired
   });
   test("🔴 56 = 56 (0037 … 0055 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(j.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");

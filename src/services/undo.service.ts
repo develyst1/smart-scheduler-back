@@ -97,11 +97,14 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
           where: (c: any, { eq: e }: any) => e(c.courseId, row.courseId),
           orderBy: (c: any) => [desc(c.changedAt)],
         });
+        const marker = await tx.query.expiryRecordingMarker.findFirst(); // TASK-556 (1b): since when this box records expiry moves
         expiry = expiryDecision({
           expiry: row.course.expiryDate,
           makeupDate: makeup.date,
           otherDates: rows.filter((r: any) => r.id !== makeup!.id).map((r: any) => r.date),
           latest: latest ? { fromDate: latest.fromDate, toDate: latest.toDate, actor: latest.actor ?? null } : null,
+          courseCreatedAt: row.course.createdAt,
+          recordingSince: marker?.recordingSince ?? null,
         });
       }
 

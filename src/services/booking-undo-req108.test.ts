@@ -59,11 +59,12 @@ describe("✅ the rules, by value (`lib/booking-undo.ts`)", () => {
   });
   test("🔑 the expiry: keep when the make-up does not hold it; restore ONLY the system's stretch; otherwise STOP and say why", () => {
     const sys = { fromDate: "2026-10-30", toDate: "2026-11-06", actor: null };
-    expect(expiryDecision({ expiry: "2026-11-20", makeupDate: "2026-11-06", otherDates: [], latest: sys })).toEqual({ action: "keep" });
-    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-11-06"], latest: null })).toEqual({ action: "keep" }); // still needed
-    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-10-23"], latest: sys })).toEqual({ action: "restore", from: "2026-11-06", to: "2026-10-30" });
-    const stop = (latest: any, other = ["2026-10-23"]) => () => expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: other, latest });
-    expect(stop(null)).toThrow("กำหนดตั้งแต่เปิดคอร์ส");
+    const PRE = { courseCreatedAt: new Date("2026-08-01T00:00:00Z"), recordingSince: new Date("2026-09-05T20:00:00Z") }; // TASK-556: born before recording
+    expect(expiryDecision({ expiry: "2026-11-20", makeupDate: "2026-11-06", otherDates: [], latest: sys, ...PRE })).toEqual({ action: "keep" });
+    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-11-06"], latest: null, ...PRE })).toEqual({ action: "keep" }); // still needed
+    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-10-23"], latest: sys, ...PRE })).toEqual({ action: "restore", from: "2026-11-06", to: "2026-10-30" });
+    const stop = (latest: any, other = ["2026-10-23"]) => () => expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: other, latest, ...PRE });
+    expect(stop(null)).toThrow("เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ");
     expect(stop({ ...sys, actor: "admin-dong" })).toThrow("เลื่อนโดย admin-dong");
     expect(stop({ ...sys, toDate: "2026-11-13" })).toThrow("ไม่ใช่ของคาบขยายนี้");
     expect(stop(sys, ["2026-11-02"])).toThrow("มีคาบหลังวันที่ 2026-10-30");
@@ -82,12 +83,12 @@ const cols = new Proxy({}, { get: (_t, k) => String(k) }) as any;
 const matches = (row: any, where?: any) => !where || [where(cols, ops)].flat(5).every((w: any) =>
   w.op === "eq" ? row[w.c] === w.v : w.op === "ne" ? row[w.c] !== w.v : w.op === "notIn" ? !w.v.includes(row[w.c]) : w.op === "isNull" ? row[w.c] == null : true);
 
-type World = { bookings: any[]; coursePackages: any[]; vouchers: any[]; jobRuns: any[]; changes: any[]; students: any[]; undos: any[]; writes: string[]; teachers: Array<{ id: string; lineUserId: string | null }>; coTeachers: Record<string, string[]>; outbox: any[] };
+type World = { bookings: any[]; coursePackages: any[]; vouchers: any[]; jobRuns: any[]; changes: any[]; students: any[]; undos: any[]; writes: string[]; marker: { id: number; recordingSince: Date } | null; teachers: Array<{ id: string; lineUserId: string | null }>; coTeachers: Record<string, string[]>; outbox: any[] };
 const TODAY = "2026-09-26";
 const world = (over: Partial<World> = {}): World => ({
-  bookings: [], coursePackages: [{ id: "c1", size: 4, leaveUsed: 2, usedSessions: 1, expiryDate: "2026-11-06", endedAt: null, droppedAt: null }],
+  bookings: [], coursePackages: [{ id: "c1", size: 4, leaveUsed: 2, usedSessions: 1, expiryDate: "2026-11-06", endedAt: null, droppedAt: null, createdAt: new Date("2026-08-01T00:00:00Z") }],
   vouchers: [{ id: "v1", usedHours: 3 }], jobRuns: [], changes: [], students: [{ id: "s1", name: "Feen Full", nickname: "Feen" }, { id: "s2", name: "Mew Full", nickname: "Mew" }],
-  undos: [], writes: [], teachers: [{ id: "t1", lineUserId: "U-coach-t1" }], coTeachers: {}, outbox: [], ...over, // TASK-508: the coaches (t1 primary) + the outbox
+  undos: [], writes: [], marker: { id: 1, recordingSince: new Date("2026-09-05T20:00:00Z") }, teachers: [{ id: "t1", lineUserId: "U-coach-t1" }], coTeachers: {}, outbox: [], ...over, // TASK-508: the coaches (t1 primary) + the outbox
 });
 const B = (id: string, date: string, status: string, extra: Record<string, unknown> = {}) => ({
   id, date, status, startTime: "10:00:00", teacherId: "t1", studentId: "s1", coStudentId: null, courseId: "c1", voucherId: null, bookingType: "COURSE_PACKAGE",
@@ -124,6 +125,7 @@ const run = (w: World, opts: { plan?: { appended: string[]; cancelled: string[] 
       bookings: table(() => w.bookings, withRels),
       coursePackages: table(() => w.coursePackages),
       jobRuns: table(() => w.jobRuns),
+      expiryRecordingMarker: { findFirst: async () => w.marker ?? undefined }, // TASK-556 (1b)
       courseExpiryChanges: { findFirst: async (q: any) => [...w.changes].filter((r) => matches(r, q?.where)).sort((a, b) => +b.changedAt - +a.changedAt)[0] },
     },
     update: (t: any) => ({ set: (set: Record<string, unknown>) => ({ where: (cond: any) => {
@@ -690,5 +692,80 @@ describe("🔴 TASK-552 (B) — end to end: a leave whose make-up was cancelled 
     run(w);
     const p: any = await undo.previewUndo("b1", await db.transaction(async (t: any) => t));
     expect(p).toMatchObject({ ok: true, makeupCancelled: null });
+  });
+});
+
+// ───────────────────────── TASK-556 (1b) — "no change record" is evidence ONLY for a course born after recording began ─────────────────────────
+describe("🔴 TASK-556 (1b) — no change record ⇒ keep ONLY for a course born after this box began recording; otherwise refused, telling the admin what to do", () => {
+  const SINCE = new Date("2026-09-05T20:00:00Z"); // = 2026-09-06 03:00 Bangkok — the message must say 09-06, not the UTC date
+  const AFTER = "2026-09-20T00:00:00Z", BEFORE = "2026-08-01T00:00:00Z";
+  const sys = { fromDate: "2026-10-30", toDate: "2026-11-06", actor: null };
+  const decide = (created: string, latest: any = null, since: Date | null = SINCE, other = ["2026-10-23"]) => () =>
+    expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: other, latest, courseCreatedAt: new Date(created), recordingSince: since });
+  const refusal = (f: () => unknown) => { try { f(); } catch (e: any) { return { code: e.code, message: e.message as string }; } return null; };
+
+  test("both directions: born AFTER ⇒ keep · born BEFORE, at the SAME instant, or NO marker ⇒ refused", () => {
+    expect(decide(AFTER)()).toEqual({ action: "keep" });
+    expect(refusal(decide(BEFORE))?.code).toBe("UNDO_EXPIRY_UNRECOVERABLE");
+    expect(refusal(decide(SINCE.toISOString()))?.code).toBe("UNDO_EXPIRY_UNRECOVERABLE"); // not provably after ⇒ not evidence
+    expect(refusal(decide(AFTER, null, null))?.message).toContain("ยังไม่เริ่ม"); // no marker row (only out-of-band) ⇒ safe
+  });
+  test("📋 DRAFT wording, pinned by SHAPE: what happened, since when (Bangkok date), both dates, and what the admin should DO", () => {
+    const m = refusal(decide(BEFORE))!.message;
+    expect(m).toContain("เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ");
+    expect(m).toContain("2026-09-06"); // Bangkok, not UTC's 09-05
+    expect(m).not.toContain("2026-09-05");
+    expect(m.split("2026-11-06").length - 1).toBe(2); // the expiry AND the make-up it may have been stretched for
+    expect(m).toContain("หน้าคอร์ส"); // where to look …
+    expect(m).toContain("แก้การลาและวันหมดอายุด้วยตนเอง"); // … and what to do — not merely "cannot be computed"
+    expect(m).not.toContain("คำนวณวันหมดอายุเดิมกลับไม่ได้");
+  });
+  test("🔑 born after recording does NOT soften any other refusal — a real unrecoverable case is never kept", () => {
+    expect(refusal(decide(AFTER, { ...sys, actor: "admin-dong" }))?.message).toContain("เลื่อนโดย admin-dong");
+    expect(refusal(decide(AFTER, { ...sys, toDate: "2026-11-13" }))?.message).toContain("ไม่ใช่ของคาบขยายนี้");
+    expect(refusal(decide(AFTER, sys, SINCE, ["2026-11-02"]))?.message).toContain("มีคาบหลังวันที่ 2026-10-30");
+    expect(decide(AFTER, sys)()).toEqual({ action: "restore", from: "2026-11-06", to: "2026-10-30" }); // and the system's stretch still RESTORES, never keeps
+  });
+
+  /** Tanya's shape (item 6): a size-4 course's only leave; its make-up lands ON the born expiry — no stretch, no record. */
+  const bornCeilingWorld = (createdAt: string) => world({
+    bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true }), B("b2", "2026-10-09", "CONFIRMED"), B("b3", "2026-10-16", "CONFIRMED"),
+      B("b4", "2026-10-23", "CONFIRMED"), B("m1", "2026-10-30", "EXTENDED", { extendedFromId: "b1" })],
+    coursePackages: [{ id: "c1", size: 4, leaveUsed: 1, usedSessions: 0, expiryDate: "2026-10-30", endedAt: null, droppedAt: null, createdAt: new Date(createdAt) }],
+    changes: [],
+  });
+  test("end to end (the REAL undoBooking + previewUndo): born AFTER ⇒ proceeds, m1 cancelled, the expiry UNTOUCHED and nothing recorded; preview agrees", async () => {
+    const h = run(bornCeilingWorld(AFTER));
+    const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
+    expect([p.ok, p.makeupCancelled?.id, p.expiry]).toEqual([true, "m1", null]);
+    for (const x of spies.splice(0)) x.mockRestore();
+    const h2 = run(bornCeilingWorld(AFTER));
+    const out = await undoBooking("b1", { actor: "admin-dong", reason: null });
+    expect([out.makeupCancelledId, out.expiry, row(h2.w, "b1").status, row(h2.w, "m1").status]).toEqual(["m1", null, "CONFIRMED", "CANCELLED"]);
+    expect([h2.w.coursePackages[0].expiryDate, h2.expiry]).toEqual(["2026-10-30", []]); // kept — and no invented change record
+    expect(h.w.writes).toEqual([]); // the preview wrote nothing
+  });
+  test("end to end: born BEFORE ⇒ the act REFUSES and writes NOTHING; the preview refuses with the SAME words", async () => {
+    const h = run(bornCeilingWorld(BEFORE));
+    const e = await errOf(undoBooking("b1", { actor: "admin-dong", reason: null }));
+    expect([e?.code, h.w.writes, row(h.w, "b1").status, row(h.w, "m1").status]).toEqual(["UNDO_EXPIRY_UNRECOVERABLE", [], "SICK_LEAVE", "EXTENDED"]);
+    for (const x of spies.splice(0)) x.mockRestore();
+    run(bornCeilingWorld(BEFORE));
+    const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
+    expect({ ok: p.ok, code: p.code, message: p.message }).toEqual({ ok: false, code: "UNDO_EXPIRY_UNRECOVERABLE", message: e!.message });
+  });
+  test("the marker migration: written ONCE (never moves on a re-run), seeded from this box's first record, else now(); witnessed; one row", () => {
+    const SQL = readFileSync(resolve(root, "drizzle/0061_expiry_recording_marker.sql"), "utf8");
+    expect(SQL).toContain('COALESCE((SELECT min("changed_at") FROM "course_expiry_changes"), now())');
+    expect(SQL).toContain('ON CONFLICT ("id") DO NOTHING');
+    expect(SQL).toContain('CHECK ("id" = 1)');
+    expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0061_expiry_recording_marker")).toMatchObject({ probe: { kind: "table", table: "expiry_recording_marker" }, rerunnable: true });
+    expect(src("src/services/undo.service.ts")).toContain("recordingSince: marker?.recordingSince ?? null");
+  });
+  test("🚫 the FIX-007 repair script is RETIRED: a refusing stub that writes nothing, and says why", () => {
+    const S = readFileSync(resolve(root, "scripts/repair-course-expiry.ts"), "utf8");
+    expect(S).toContain("process.exit(1)");
+    expect(S).not.toMatch(/from "\.\.\/src\/db"|\.update\(|\.transaction\(/); // cannot touch a database
+    expect(S).toContain("ปลดระวาง");
   });
 });

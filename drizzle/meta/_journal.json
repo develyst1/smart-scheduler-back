@@ -428,6 +428,13 @@
       "when": 1783000000056,
       "tag": "0060_leave_note_undo",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1783000000057,
+      "tag": "0061_expiry_recording_marker",
+      "breakpoints": true
     }
   ]
 }

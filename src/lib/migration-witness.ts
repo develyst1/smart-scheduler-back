@@ -623,6 +623,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "backfill (a pre-0060 leave keeps `false`: what it overwrote is unknowable). Rerunnable: IF NOT EXISTS on both.",
     rerunnable: true,
   },
+  {
+    tag: "0061_expiry_recording_marker",
+    probe: { kind: "table", table: "expiry_recording_marker" },
+    why:
+      "TASK-556 (1b). One row: since when this box records every expiry move, so the Undo can read a course's \"no change record\" " +
+      "as \"never moved\" only for a course born after it. The table is the file's only object (its row follows). A table without " +
+      "its row reads as \"no marker\" ⇒ the Undo refuses (safe). Rerunnable: IF NOT EXISTS + ON CONFLICT DO NOTHING (never moves).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";
