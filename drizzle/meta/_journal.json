@@ -421,6 +421,13 @@
       "when": 1783000000055,
       "tag": "0059_attendance_undo_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1783000000056,
+      "tag": "0060_leave_note_undo",
+      "breakpoints": true
     }
   ]
 }

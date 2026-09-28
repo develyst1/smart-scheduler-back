@@ -12,6 +12,7 @@ import { db } from "../db";
 import * as sched from "./scheduler.service";
 import * as salePost from "../lib/sale-post";
 import { undoBooking } from "./undo.service";
+import * as undo from "./undo.service"; // TASK-546 — previewUndo
 import { UNDO_CHECKIN_CHANNELS, expiryDecision, leaveChargeOf, makeupDecision, notUndoneAttendance, undoKindOf } from "../lib/booking-undo"; // TASK-497: renamed + widened
 import { ACTION_KEYS } from "../lib/permissions";
 import { SCHEDULING_WITNESSES } from "../lib/migration-witness";
@@ -302,9 +303,10 @@ describe("🔴 a FALSE CHECK-IN — back to CONFIRMED, the unit returned, SILENT
 describe("🔑 by source — the leave doors RECORD the charge; every counter moves by `sql`; the guard comes first", () => {
   const S = src("src/services/scheduler.service.ts");
   test("Door 1 · Door 2 · TASK-258 · the creation flip each write `leaveCharged`, and both increments are `sql` (no read-modify-write)", () => {
-    expect(S).toContain('.set({ status: "SICK_LEAVE", note: change.reason ?? b.note, leaveCharged: !b.plannedAtCreation })');
+    // 🔻 TASK-540 — the note half moved into `leaveNoteWrite` (same `reason ?? note`, plus the record of what it replaced); the charge is unchanged
+    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), leaveCharged: !b.plannedAtCreation })');
     expect(S).toContain("const charges = !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
-    expect(S).toContain('.set({ status: "SICK_LEAVE", note: reason ?? current.note, leaveCharged: charges })');
+    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges })');
     // 🔻 TASK-497 — TASK-258's door no longer writes SICK_LEAVE (owner: CONFIRMED); it writes no `leaveCharged` because it writes no leave.
     expect(S).toContain("await revertAttendance(tx, current, { note: reason ?? current.note });");
     expect(S).not.toContain('.set({ status: "SICK_LEAVE", note: reason ?? current.note, leaveCharged: false })');
@@ -355,7 +357,7 @@ describe("✅ the migration, the key, the route", () => {
     expect(SQL).not.toMatch(/^\s*(UPDATE|INSERT|DELETE)/m); // no backfill
     // the witness: a NAME probe would pass on 0058's old constraint — only the DEFINITION proves this file ran
     expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0059_attendance_undo_kind")?.probe).toEqual({ kind: "constraint-def", constraint: "booking_undos_kind_chk", contains: "attendance" });
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.at(-1)).toEqual({ idx: 59, version: "7", when: 1783000000055, tag: "0059_attendance_undo_kind", breakpoints: true });
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries[59]).toEqual({ idx: 59, version: "7", when: 1783000000055, tag: "0059_attendance_undo_kind", breakpoints: true }); // 🔻 TASK-540: no longer the LAST (0060 follows) — pinned by its index
     // the schema agrees with the file (the CHECK and the column's type)
     const SCH = src("src/db/schema.ts");
     expect(SCH).toContain("check(\"booking_undos_kind_chk\", sql`${t.kind} IN ('leave', 'checkin', 'attendance')`),");
@@ -364,11 +366,21 @@ describe("✅ the migration, the key, the route", () => {
   test("the 60th key, its own; the route gated by it; a linked account refused before the service", () => {
     expect(ACTION_KEYS).toContain("action:calendar.undo");
     expect(ACTION_KEYS.length).toBe(60);
-    expect(src("src/lib/route-access.ts")).toContain('"POST /bookings/:id/undo": act(CAL_BOOK, "action:calendar.undo"),');
+    // 🔻 TASK-546 — the gate is ONE value and ONE guard, shared by the act and its preview (derived, never retyped)
+    const RA = src("src/lib/route-access.ts");
+    expect(RA).toContain('const UNDO_ACCESS = act(CAL_BOOK, "action:calendar.undo");');
+    expect(RA).toContain('"POST /bookings/:id/undo": UNDO_ACCESS,');
+    expect(RA).toContain('"GET /bookings/:id/undo-preview": UNDO_ACCESS,');
     const API = src("src/routes/api.ts");
-    const route = API.slice(API.indexOf('.post("/bookings/:id/undo"'), API.indexOf('.patch("/bookings/:id", zValidator'));
-    expect(route.indexOf("if (isScoped(c.get(\"user\"))) throw SCOPE_TEACHER();")).toBeLessThan(route.indexOf("undo.undoBooking("));
+    const guard = API.slice(API.indexOf("const assertMayUndo = (c: any) => {"), API.indexOf("};", API.indexOf("const assertMayUndo = (c: any) => {")));
+    expect(guard).toContain('if (isScoped(c.get("user"))) throw SCOPE_TEACHER();');
+    const route = API.slice(API.indexOf('.post("/bookings/:id/undo"'), API.indexOf('.get("/bookings/:id/undo-preview"'));
+    expect(route.indexOf("assertMayUndo(c);")).toBeGreaterThan(-1);
+    expect(route.indexOf("assertMayUndo(c);")).toBeLessThan(route.indexOf("undo.undoBooking("));
     expect(route).toContain("actor: actorOf(c)");
+    const preview = API.slice(API.indexOf('.get("/bookings/:id/undo-preview"'), API.indexOf('.patch("/bookings/:id", zValidator'));
+    expect(preview.indexOf("assertMayUndo(c);")).toBeGreaterThan(-1);
+    expect(preview.indexOf("assertMayUndo(c);")).toBeLessThan(preview.indexOf("undo.previewUndo("));
   });
 });
 
@@ -542,5 +554,113 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
       expect(R).not.toMatch(/tx\.query\.teachers\.find(First|Many)/);
       expect(R).not.toContain('recipientType: "parent"');
     }
+  });
+});
+
+// ───────────────────────── TASK-540 — an undone leave takes back the NOTE it wrote (and only that) ─────────────────────────
+describe("🔴 TASK-540 — the leave's note is UNDONE, not cleared: the note it replaced comes back; a note it did not write survives", () => {
+  const undone = async (b1: Record<string, unknown>) => {
+    const w = leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true, ...b1 }), B("b2", "2026-10-09", "CONFIRMED"), B("b3", "2026-10-16", "CONFIRMED"), B("b4", "2026-10-23", "CONFIRMED"), B("m1", "2026-11-06", "EXTENDED", { extendedFromId: "b1" })] });
+    run(w);
+    await undoBooking("b1", { actor: "admin-dong", reason: null });
+    const r: any = row(w, "b1");
+    return { status: r.status, note: r.note ?? null, leaveNoteReplaced: r.leaveNoteReplaced, noteBeforeLeave: r.noteBeforeLeave ?? null };
+  };
+  test("🔑 a leave WITH a reason over an admin's note, undone ⇒ the ADMIN's note is back (and the record cleared)", async () => {
+    expect(await undone({ note: "ไม่สบาย", leaveNoteReplaced: true, noteBeforeLeave: "admin: bring skates" }))
+      .toEqual({ status: "CONFIRMED", note: "admin: bring skates", leaveNoteReplaced: false, noteBeforeLeave: null });
+  });
+  test("a leave WITH a reason over NO note, undone ⇒ the note is empty again", async () => {
+    expect(await undone({ note: "ไม่สบาย", leaveNoteReplaced: true, noteBeforeLeave: null }))
+      .toEqual({ status: "CONFIRMED", note: null, leaveNoteReplaced: false, noteBeforeLeave: null });
+  });
+  test("🔑 a reason-LESS leave on a booking with the admin's own note, undone ⇒ that note SURVIVES (it was never the leave's)", async () => {
+    expect(await undone({ note: "admin: bring skates", leaveNoteReplaced: false, noteBeforeLeave: null }))
+      .toEqual({ status: "CONFIRMED", note: "admin: bring skates", leaveNoteReplaced: false, noteBeforeLeave: null });
+  });
+  test("⚠️ a PRE-0060 leave (nothing recorded) ⇒ the note is left EXACTLY as it is — what it overwrote is unknowable (Tanya's TEST-075 row)", async () => {
+    expect((await undone({ note: "ไม่สบาย" })).note).toBe("ไม่สบาย");
+  });
+  test("🚫 the check-in Undo path never touches the note (it never wrote one) — even a stale record on the row is ignored", async () => {
+    const w = world({ bookings: [B("b1", TODAY, "ATTENDED", { checkinChannel: "line", checkinSource: "line", note: "admin: bring skates", leaveNoteReplaced: true, noteBeforeLeave: "old" })] });
+    run(w);
+    expect((await undoBooking("b1", { actor: "a", reason: null })).kind).toBe("checkin");
+    expect((row(w, "b1") as any).note).toBe("admin: bring skates");
+  });
+  test("the two pure halves by value: a non-null reason (even \"\") replaces and records; none leaves the note and records nothing; the Undo is empty unless recorded", async () => {
+    const { leaveNoteWrite, leaveNoteUndo } = await import("../lib/leave-note");
+    expect(leaveNoteWrite("ป่วย", "A")).toEqual({ note: "ป่วย", leaveNoteReplaced: true, noteBeforeLeave: "A" });
+    expect(leaveNoteWrite("", "A")).toEqual({ note: "", leaveNoteReplaced: true, noteBeforeLeave: "A" }); // `??` semantics, as before
+    expect(leaveNoteWrite(null, "A")).toEqual({ note: "A", leaveNoteReplaced: false, noteBeforeLeave: null });
+    expect(leaveNoteWrite(undefined, null)).toEqual({ note: null, leaveNoteReplaced: false, noteBeforeLeave: null });
+    expect(leaveNoteUndo({ leaveNoteReplaced: false, noteBeforeLeave: "x" })).toEqual({});
+    expect(leaveNoteUndo({ leaveNoteReplaced: true, noteBeforeLeave: null })).toEqual({ note: null, leaveNoteReplaced: false, noteBeforeLeave: null });
+  });
+  test("by source: BOTH leave writers record through the ONE helper; a staff note edit resets the record; the Undo restores through the other half", () => {
+    const S = src("src/services/scheduler.service.ts");
+    expect(S.match(/\.\.\.leaveNoteWrite\(/g)).toHaveLength(2);
+    expect(S).not.toMatch(/status: "SICK_LEAVE", note: /); // no leave writes the note by hand any more
+    expect(S).toContain("    patch.note = input.note;\n    patch.leaveNoteReplaced = false;");
+    expect(src("src/services/undo.service.ts")).toContain('.set({ status: "CONFIRMED", leaveCharged: null, ...leaveNoteUndo(row) })');
+  });
+});
+
+// ───────────────────────── TASK-546 — the preview IS the act's decision (`planUndo`), and writes nothing ─────────────────────────
+describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the act, so they cannot disagree; nothing written", () => {
+  /** The harness's transaction, taken the same way the act gets it — the preview reads through it WITHOUT any write call. */
+  const txOf = async () => db.transaction(async (t: any) => t) as Promise<any>;
+  /** The act's outcome in the preview's shape — or its refusal, word for word. */
+  const actOn = async (w: World, id: string, plan?: { appended: string[]; cancelled: string[] }) => {
+    run(w, plan ? { plan } : {});
+    try {
+      const r: any = await undoBooking(id, { actor: "admin-dong", reason: null });
+      return { ok: true, kind: r.kind, leaveRefunded: r.leaveRefunded, makeupCancelled: r.makeupCancelledId, expiry: r.expiry };
+    } catch (e: any) { return { ok: false, code: e.code, message: e.message }; }
+  };
+  const previewOn = async (w: World, id: string) => {
+    run(w);
+    const p: any = await undo.previewUndo(id, await txOf());
+    return { preview: p, writes: [...w.writes] };
+  };
+  const same = (p: any) => (p.ok ? { ok: true, kind: p.kind, leaveRefunded: p.leaveRefunded, makeupCancelled: p.makeupCancelled?.id ?? null, expiry: p.expiry } : { ok: false, code: p.code, message: p.message });
+  const cases: Array<[string, () => World, string]> = [
+    ["a CHARGED leave with its make-up (the expiry restored)", () => leaveWorld(), "b1"],
+    ["a leave declared at CREATION — free, and no make-up of its own", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: false, plannedAtCreation: true }), B("b2", "2026-10-09", "CONFIRMED")] }), "b1"],
+    ["a 1-HOUR leave — no course, no quota, no make-up", () => world({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { courseId: null, bookingType: "SINGLE_SESSION", leaveCharged: false })] }), "b1"],
+    ["REFUSED: the make-up was already TAUGHT", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true }), B("m1", "2026-11-06", "ATTENDED", { extendedFromId: "b1" })] }), "b1"],
+    ["REFUSED: a legacy leave whose charge is UNKNOWN", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: null })] }), "b1"],
+    ["REFUSED: a SETTLED day", () => world({ bookings: [B("b1", "2026-09-20", "SICK_LEAVE", { leaveCharged: true })] }), "b1"],
+    ["a parent's CHECK-IN", () => world({ bookings: [B("b1", TODAY, "ATTENDED", { checkinChannel: "line", checkinSource: "line" })] }), "b1"],
+  ];
+  for (const [what, make, id] of cases) {
+    test(`🔑 the preview and the act AGREE — ${what}`, async () => {
+      const { preview, writes } = await previewOn(make(), id);
+      for (const s of spies.splice(0)) s.mockRestore();
+      expect(writes).toEqual([]); // the preview wrote NOTHING
+      const act = await actOn(make(), id);
+      expect(same(preview)).toEqual(act);
+      if (preview.ok && preview.makeupCancelled) expect(preview.makeupCancelled.date).toBe(make().bookings.find((b: any) => b.id === preview.makeupCancelled.id)!.date);
+    });
+  }
+  test("an unknown booking ⇒ the act's 404, not an `ok: false` body", async () => {
+    run(world({ bookings: [] }));
+    await expect(undo.previewUndo("nope", await txOf())).rejects.toMatchObject({ status: 404 });
+  });
+  test("⚠️ the ONE known gap, pinned so it stays visible: the plan-balance refusal is decided AFTER the act's writes, so the preview says ok where the act refuses", async () => {
+    const { preview } = await previewOn(leaveWorld(), "b1");
+    for (const s of spies.splice(0)) s.mockRestore();
+    expect(preview.ok).toBe(true);
+    expect(await actOn(leaveWorld(), "b1", { appended: [], cancelled: ["m-other"] })).toMatchObject({ ok: false, code: "UNDO_PLAN_WOULD_CHANGE" });
+  });
+  test("by source: the act CALLS the planner (one decider); the preview's path has no write, no transaction, no send", () => {
+    const U = src("src/services/undo.service.ts");
+    const act = U.slice(U.indexOf("export async function undoBooking("));
+    expect(act).toContain("const { row, kind, leaveRefunded, makeup, expiry } = await planUndo(tx, bookingId, today);");
+    expect(act).not.toContain("makeupDecision("); // the decision is not re-made in the act
+    const prev = U.slice(U.indexOf("export async function previewUndo("), U.indexOf("export async function undoBooking("));
+    expect(prev).toContain("await planUndo(exec, bookingId, bangkokNow().date)");
+    expect(prev).not.toMatch(/\.update\(|\.insert\(|\.delete\(|transaction\(|enqueueLine|recordUndo|reverseBookingSale/);
+    const plan = U.slice(U.indexOf("export async function planUndo("), U.indexOf("export async function previewUndo("));
+    expect(plan).not.toMatch(/\.update\(|\.insert\(|\.delete\(|enqueueLine|recordUndo/); // the planner itself only READS
   });
 });

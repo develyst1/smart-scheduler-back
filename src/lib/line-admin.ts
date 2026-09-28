@@ -29,6 +29,18 @@ export async function addAdminLineUserId(lineUserId: string, exec: any = db): Pr
     });
 }
 
+/** 🔴 TASK-538 — take ONE id off the admin list (the only thing `notifyAdmins` and `detectLinkedRole` read). The mirror of the add. */
+export async function removeAdminLineUserId(lineUserId: string, exec: any = db): Promise<void> {
+  const next = (await getAdminLineUserIds(exec)).filter((x) => x !== lineUserId);
+  await exec
+    .insert(appSettings)
+    .values({ key: ADMIN_KEY, value: next })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: { value: next, updatedAt: sql`now()` },
+    });
+}
+
 /** Enqueue LINE to every linked admin (C.5). `bookingId` (TASK-136) links the outbox row to its booking so the
  *  worker can enrich the message with date/teacher/program — without it those fields render empty. */
 export async function notifyAdmins(payload: unknown, exec: any = db, bookingId?: string): Promise<void> {

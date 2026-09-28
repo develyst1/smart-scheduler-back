@@ -4,12 +4,17 @@ import * as v from "../validation";
 import { requireSuperAdmin } from "../middleware/auth";
 import * as usersSvc from "../services/user.service";
 import { actorOf } from "../services/user.service";
+import { listLineAdmins, removeLineAdmin } from "../services/line-admin-links.service";
 
 // TASK-377 (REQ-092 Stage 1) — user management, SUPER ADMIN ONLY. Mounted under the `/api/*` guard, then this
 // group's own `requireSuperAdmin`. No delete: disable is the off switch (the row is an audit name).
 export const userRoutes = new Hono()
   .use("*", requireSuperAdmin)
   .get("/", async (c) => c.json({ users: await usersSvc.listUsers() }))
+  // 🔴 TASK-538 — the LINE accounts linked as ADMIN, and removing one. In THIS group on purpose: super admin only by
+  // `requireSuperAdmin`, like every power over who-can-do-what (users · roles · grants) — never a grantable action key.
+  .get("/line-admins", async (c) => c.json(await listLineAdmins()))
+  .delete("/line-admins/:ref", async (c) => c.json(await removeLineAdmin(c.req.param("ref"), actorOf(c))))
   .post("/", zValidator("json", v.createUser), async (c) =>
     c.json({ user: await usersSvc.createUser(c.req.valid("json"), actorOf(c)) }, 201),
   )

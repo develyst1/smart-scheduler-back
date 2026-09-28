@@ -59,7 +59,9 @@ describe("🔑 the key (57) — registered, labelled, granted to nobody by defau
     for (const r of ["PUT /teachers/:id/budget", "POST /teachers/:id/budget/topup"]) expect(ROUTE_ACCESS[r]!.action).toEqual(["action:teachers.budget", "action:teachers.budget-view"]);
     const lists = Object.entries(ROUTE_ACCESS).filter(([, a]) => Array.isArray(a.action)).map(([k]) => k);
     expect(lists.sort()).toEqual(["POST /teachers/:id/budget/topup", "PUT /teachers/:id/budget"]);
-    expect(Object.entries(ROUTE_ACCESS).filter(([k, a]) => k.startsWith("GET ") && a.action)).toEqual([]);
+    // 🔻 TASK-546 — the one privileged read (the Undo's preview) carries the UNDO key, never the budget-view key; named, not hidden
+    expect(Object.entries(ROUTE_ACCESS).filter(([k, a]) => k.startsWith("GET ") && a.action && k !== "GET /bookings/:id/undo-preview")).toEqual([]);
+    expect(ROUTE_ACCESS["GET /bookings/:id/undo-preview"]!.action).toBe("action:calendar.undo");
     const G = region(code(src("src/middleware/auth.ts")), "export async function accessGuard(", "\n}\n");
     expect(G).toContain("if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN();");
   });
@@ -198,6 +200,6 @@ describe("🔴 the attention line — the dashboard drops the number without the
     expect(M).not.toMatch(/classRateMinor|teacherRates|priceMinor|listPrice|recordSale|rate:/);
     expect(M).toContain('export const BUDGET_FIGURE_FIELDS = ["hourlyRate", "budgetMinor", "remainingMinor", "reorderMinor"] as const;');
     for (const f of ["src/db/mappers.ts", "src/lib/coach-rate.ts", "src/lib/sale-items.ts", "src/services/som-report.service.ts"]) expect(code(src(f))).not.toMatch(/maskBudget|budget-visibility/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
   });
 });

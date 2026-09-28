@@ -136,7 +136,7 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     expect(C).not.toContain("for (const"); // ONE set, ONE call — no per-seat loop
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
     expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2); // the leave + the admin's cancel, byte-identical callers
-    expect(region(SCHED, "export async function sendClassCancelledToFamilies(", "\n}\n")).toContain("return (await classCancelledFamilyAccounts(tx, current, cancelReason)) === null ? 0 : 1;");
+    expect(region(SCHED, "export async function sendClassCancelledToFamilies(", "\n}\n")).toContain("return (await classCancelledFamilyAccounts(tx, current, cancelReason, appended)) === null ? 0 : 1;");
   });
   test("🔴 cancel-all by value: one child on SIX rows ⇒ six notices (each its own dated class), `householdsTold: 1`; two rows with different families ⇒ the union", async () => {
     const rows = [1, 2, 3, 4, 5, 6].map((i) => ({ id: `g-${i}`, date: `2026-10-0${i}`, startTime: "15:00:00", endTime: "16:00:00", status: "CONFIRMED", bookingType: "GROUP", teacherId: T1, otherTitle: "Skate Kids", otherKind: "GROUP", headCount: 4, note: null, teacherRateMinor: null, additionalTeachers: [], teacher: { id: T1, nickname: "Ek", name: "Ek", lineUserId: "U-ek" }, seats: [{ id: `s-${i}`, studentId: "A", status: "CONFIRMED", courseId: "c1" }] }));
@@ -158,6 +158,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
   });
 });

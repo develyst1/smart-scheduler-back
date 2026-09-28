@@ -131,7 +131,7 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
   const END = region(SVC, "export async function endCourse(", "\n}\n");
 
   test("single: gated on the PRE-write status being CONFIRMED; a PENDING one earns nothing", () => {
-    expect(SINGLE).toContain('if (current.status !== "CONFIRMED") return null;');
+    expect(SINGLE).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;'); // 🔻 TASK-537: a make-up is on the coach's week too
     expect(SINGLE).toContain('kind: "class_cancelled_teacher"');
     expect(CANCEL).toContain("notification = await sendClassCancelledToTeacher(tx, current, {");
     // …and it is the ONLY send on the cancel branch: the parent was not told before and is not told now.

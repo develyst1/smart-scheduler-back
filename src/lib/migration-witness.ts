@@ -614,6 +614,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "ran. Rerunnable: DROP IF EXISTS before the ADD; NOT VALID + VALIDATE.",
     rerunnable: true,
   },
+  {
+    tag: "0060_leave_note_undo",
+    probe: { kind: "column", table: "bookings", column: "note_before_leave" },
+    why:
+      "TASK-540. `bookings.leave_note_replaced` + `note_before_leave`: a leave RECORDS the note it replaced, so its Undo restores " +
+      "that note instead of leaving the absence's reason on a CONFIRMED session. The probe is the LAST column the file adds. No " +
+      "backfill (a pre-0060 leave keeps `false`: what it overwrote is unknowable). Rerunnable: IF NOT EXISTS on both.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

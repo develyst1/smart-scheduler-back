@@ -53,8 +53,8 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
   test("56 = 56: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(60); // TASK-497: +0059
-    expect(journal.entries.length).toBe(60); // TASK-497: +0059
+    expect(files.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(journal.entries.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");

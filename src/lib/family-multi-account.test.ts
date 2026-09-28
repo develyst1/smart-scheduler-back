@@ -143,7 +143,7 @@ describe("🔴 the three outbound senders all ask the ONE accessor", () => {
   test("both scheduler senders go through `enqueueParentCopies`", () => {
     expect(code(SCHED)).not.toContain("parentLineUserIds("); // 🔻 TASK-420: the private copy is gone — every sender asks householdLineUserIds
     expect(code(SCHED)).toContain('import { householdLineUserIds } from "../lib/family-link";');
-    expect(code(SCHED).match(/enqueueParentCopies\(/g)).toHaveLength(5); // the definition + three call sites (🔻 TASK-406: the leave's family notice) · 🔻 TASK-516: + the move notice (through the SAME family rule)
+    expect(code(SCHED).match(/enqueueParentCopies\(/g)).toHaveLength(6); // the definition + three call sites (🔻 TASK-406: the leave's family notice) · 🔻 TASK-516: + the move notice (through the SAME family rule) · 🔻 TASK-537: + the make-up's branch inside the ONE cancel sender
     expect(code(SCHED)).not.toContain("parent?.lineUserId ?? null");
   });
 

@@ -212,7 +212,9 @@ const TABLE: Record<string, Entry> = {
     EN: "Sorry about that — I am passing this to an admin to help you. 🙏\n(To use the bot again, type: reopen)",
   },
   code_teacher: { TH: "กรุณาพิมพ์ชื่อเล่นครูตามที่ลงทะเบียนในระบบ", EN: "Please type the teacher nickname as registered" },
-  code_admin: { TH: "กรุณาพิมพ์รหัสแอดมิน (เช่น 229)", EN: "Please type the admin code (e.g. 229)" },
+  // 🔴🔴 TASK-534 (SEC-1) — the example is GONE: it printed the real code (`(เช่น 229)`) to anyone who asked. 🚫 A prompt for a secret
+  // never shows an example value — pinned as a rule over every string (`sec1-admin-code-task534.test.ts`).
+  code_admin: { TH: "กรุณาพิมพ์รหัสแอดมิน", EN: "Please type the admin code" },
 
 
   menu_title: { TH: "เมนูหลัก — แตะเพื่อใช้งาน", EN: "Main menu — tap to use" },
@@ -442,10 +444,11 @@ const TABLE: Record<string, Entry> = {
 
   teacher_linked: { TH: "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ", EN: "Teacher account linked — you'll get schedule notifications" },
   // 🔴 TASK-485 (REQ-109 §6, owner-approved 09-26 — BYTE FOR BYTE, do not improve) — a linked TEACHER's Language/Help list:
+  // 🔻 TASK-548 — the `ปฏิทิน` line re-approved by the owner (09-28) for what the command now sends (the web app, TASK-536): FINAL, by value.
   // their two commands, not the parent's. ⚠️ No blank line after the heading: the approved copy has none (the parent list does).
   teacher_menu_body: {
-    TH: "คำสั่งที่ใช้ได้:\n· ตารางของฉัน — ตารางสอนวันนี้ / สัปดาห์นี้\n· ปฏิทิน — ลิงก์ปฏิทินสอนทั้งหมด",
-    EN: "Available Commands:\n· My Schedule — Today's / This week's schedule\n· Calendar — Link to your full teaching calendar",
+    TH: "คำสั่งที่ใช้ได้:\n· ตารางของฉัน — ตารางสอนวันนี้ / สัปดาห์นี้\n· ปฏิทิน — ลิงก์เข้าเว็บ ดูตารางสอนบนมือถือ",
+    EN: "Available Commands:\n· My Schedule — Today's / This week's schedule\n· Calendar — Link to the web app: your schedule on your phone",
   },
   teacher_linked_menu: { TH: "บัญชีครูผูกแล้ว ✅ จะได้รับแจ้งเตือนเมื่อมีการยืนยันตาราง", EN: "Teacher account linked ✅ You'll be notified when a schedule is confirmed" },
   // Teacher "my schedule" (REQ-016 / TASK-043).
@@ -479,13 +482,16 @@ const TABLE: Record<string, Entry> = {
   tsched_more: { TH: "…และอีก {count} คาบ", EN: "…and {count} more" },
   btn_week: { TH: "สัปดาห์นี้", EN: "This week" },
   btn_today: { TH: "วันนี้", EN: "Today" },
-  // Teacher calendar subscription (REQ-017 / TASK-044).
+  // Teacher calendar subscription (REQ-017 / TASK-044). 🔻 TASK-536 — the chip's label is unchanged; what it sends is the web app.
   btn_calendar: { TH: "ปฏิทินของฉัน", EN: "My calendar" },
-  cal_link: {
-    TH: "📅 สมัครรับตารางสอนเข้าปฏิทินในมือถือ (อัปเดตอัตโนมัติ):\n{url}\n\nแตะลิงก์แล้วเลือก \"เพิ่ม/ติดตามปฏิทิน\" — ลิงก์นี้เป็นของคุณคนเดียว อย่าส่งต่อ",
-    EN: "📅 Subscribe to your teaching schedule in your phone calendar (updates automatically):\n{url}\n\nTap the link and choose \"Add/Subscribe\" — this link is private to you, don't share it.",
+  // ✅ TASK-550 — **APPROVED by the owner, FINAL** (COPY-REVIEW-2026-09-28 §E2). The calendar command's reply: the web app's link
+  // ALONE on its line (TASK-519's linkifier lesson), and the one thing a coach must know before tapping — a LOGIN, with an account
+  // the admin gives them. 🚫 Byte-frozen: pinned BY VALUE as a TEMPLATE (`{url}` stays a placeholder), the shape pins kept.
+  // 🔻 The subscribe reply (`cal_link`) and its "not a teacher" line are gone from the copy: nothing sends them any more.
+  cal_web_link: {
+    TH: "📅 ตารางสอนของคุณอยู่ในระบบ SOM SCHEDULE:\n{url}\n\nแตะลิงก์ แล้วเข้าสู่ระบบด้วยบัญชีที่แอดมินให้ไว้",
+    EN: "📅 Your teaching schedule is in SOM SCHEDULE:\n{url}\n\nTap the link and log in with the account your admin gave you.",
   },
-  cal_not_teacher: { TH: "ฟีเจอร์นี้สำหรับครูที่ผูกบัญชีแล้วเท่านั้น", EN: "This feature is for linked teachers only" },
   // Daily admin digest (REQ-023 / TASK-053) — check titles + message frame.
   // 🔴 TASK-273 — the ten card headings moved into `ATTENTION_LABELS` below, a `Record<AttentionKey, Entry>`.
   // The TEXT is unchanged; what changed is that the compiler now refuses an eleventh card without a heading.
@@ -653,6 +659,16 @@ const TABLE: Record<string, Entry> = {
   // chat's language, the LABELS stay English (`ob_f_*` + `ob_f_was`) — both halves pinned, so neither gets "fixed". No Coach, no
   // reason. 🚫 Byte-frozen from here.
   mv_title: { TH: "📅 ย้ายคาบเรียน:", EN: "📅 CLASS MOVED:" },
+  // 📖 **DRAFT — MINE, proposed to the owner via Sober (TASK-537 §2); NOT approved.** A cancelled MAKE-UP, to the FAMILY: the
+  // title in the chat's language (the move notice's pattern, TASK-529), then the four English-labelled lines — which class is off,
+  // nothing about why. 🔑 Deliberately the SAME words as the approved cancel title: naming it "make-up" invites "so is another one
+  // coming?", which the message cannot answer truthfully (see TASK-537 §3). Its own key, so the owner can make it differ. Pinned by FORM.
+  mc_title: { TH: "❌ ยกเลิกคาบเรียน:", EN: "❌ CLASS CANCELLED:" },
+  // ✅ TASK-550 — **APPROVED by the owner, FINAL** (COPY-REVIEW-2026-09-28 §E3). The ONE line a cancelled make-up's notice may carry,
+  // and ONLY when the re-plan actually appended a class — naming its date. 🚫 Never "make-up" / "ชดเชย" (it names what EXISTS, a new
+  // class on a date, not a promise). Byte-frozen BY VALUE as a TEMPLATE (`{date}` stays a placeholder); 🔑 the shape pins (only on a
+  // real append · never the word) stay — the promise outranks the letters.
+  mc_new_class: { TH: "ระบบเพิ่มคาบใหม่ให้แล้ว วันที่ {date}", EN: "A new class has been added on {date}." },
   cl_note_makeup: { TH: "ระบบเพิ่มคาบชดเชยให้แล้ว", EN: "A make-up session has been added to the schedule." },
   cl_note_hour: { TH: "คืนชั่วโมงเข้ายอดคงเหลือแล้ว", EN: "The hour has been returned to your balance." },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
@@ -708,6 +724,12 @@ const TABLE: Record<string, Entry> = {
   cp_half_pm: { TH: "ช่วงบ่าย", EN: "Afternoon (PM)" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };
+
+/** 🔴 TASK-534 — every chat string, READ-ONLY, as `[key, TH, EN]`: so a rule over ALL prompts is a scan, not a list someone keeps. */
+export const allChatStrings = (): ReadonlyArray<readonly [string, string, string]> => [
+  ...Object.entries(TABLE).map(([k, e]) => [k, e.TH, e.EN ?? ""] as const),
+  ...Object.entries(REGISTRATION_COPY).map(([k, v]) => [k, String(v), ""] as const),
+];
 
 export function t(key: string, lang: Lang = "TH", vars?: Record<string, string | number>): string {
   const e = TABLE[key];

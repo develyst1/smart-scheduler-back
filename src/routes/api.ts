@@ -22,6 +22,11 @@ import { badRequest } from "../lib/http";
 import { actorOf } from "../services/user.service";
 import { SCOPE_TEACHER, assertLinked, assertOwnBooking, assertScopedStatusAction, isScoped, scopeOf } from "../lib/own-scope";
 import * as undo from "../services/undo.service";
+
+/** 🔻 TASK-546 — the Undo's in-handler guard, ONE function for the act and its preview: a linked account never. */
+const assertMayUndo = (c: any) => {
+  if (isScoped(c.get("user"))) throw SCOPE_TEACHER();
+};
 import { viewerOf } from "../lib/budget-visibility";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
@@ -284,8 +289,14 @@ export const api = new Hono()
   // 🔴 TASK-492 (SPEC-094) — the admin UNDO of a mistaken leave or a false check-in. Silent (owner ruling 2). Its own key
   // (`action:calendar.undo`, route-access); 🚫 a linked account never — it moves money on rows that are not theirs to judge.
   .post("/bookings/:id/undo", zValidator("json", v.undoBooking), async (c) => {
-    if (isScoped(c.get("user"))) throw SCOPE_TEACHER();
+    assertMayUndo(c);
     return c.json(await undo.undoBooking(c.req.param("id"), { actor: actorOf(c), reason: c.req.valid("json").reason ?? null }));
+  })
+  // 🔴 TASK-546 — the Undo dialog's DRY RUN: the act's own `planUndo`, nothing written. The SAME gate as the Undo (the same
+  // route-access value, the same in-handler guard) — a preview of a privileged act is a privileged read, and a new route is a new door.
+  .get("/bookings/:id/undo-preview", async (c) => {
+    assertMayUndo(c);
+    return c.json(await undo.previewUndo(c.req.param("id")));
   })
   .patch("/bookings/:id", zValidator("json", v.moveBooking), async (c) => {
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-431 — the session's rate override ⇒ key 59; a body without it passes

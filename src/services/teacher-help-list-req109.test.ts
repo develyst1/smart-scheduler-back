@@ -6,7 +6,7 @@ import { db } from "../db";
 import { fakeDispatchBoundary } from "../test-support/line-dispatch-fakes"; // TASK-504 — the dispatcher's own un-mute write + family read, faked at the boundary
 import { handleLineWebhookEvents } from "./line-webhook.service";
 import * as checkinSvc from "./checkin.service";
-import * as calendarSvc from "./calendar.service";
+import * as webApp from "../lib/web-app-link";
 import * as lineClient from "../lib/line-client";
 import { t } from "../lib/line-i18n";
 import { CMD_SCHEDULE, RESERVED_WORDS } from "../lib/line-commands";
@@ -19,8 +19,8 @@ afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); });
 
 /** The approved copy (REQ-109 §6), whole — the reply a teacher reads after tapping ภาษา/ช่วยเหลือ. No blank line after the heading. */
 const APPROVED = {
-  TH: "เปลี่ยนเป็นภาษาไทยแล้ว ✅\n\nคำสั่งที่ใช้ได้:\n· ตารางของฉัน — ตารางสอนวันนี้ / สัปดาห์นี้\n· ปฏิทิน — ลิงก์ปฏิทินสอนทั้งหมด",
-  EN: "Switched to English ✅\n\nAvailable Commands:\n· My Schedule — Today's / This week's schedule\n· Calendar — Link to your full teaching calendar",
+  TH: "เปลี่ยนเป็นภาษาไทยแล้ว ✅\n\nคำสั่งที่ใช้ได้:\n· ตารางของฉัน — ตารางสอนวันนี้ / สัปดาห์นี้\n· ปฏิทิน — ลิงก์เข้าเว็บ ดูตารางสอนบนมือถือ",
+  EN: "Switched to English ✅\n\nAvailable Commands:\n· My Schedule — Today's / This week's schedule\n· Calendar — Link to the web app: your schedule on your phone",
 };
 
 /** A chat whose LINE user is a linked TEACHER (or a parent), in `lang`. Every read/write faked; the two teacher answers spied. */
@@ -36,7 +36,8 @@ const chat = (who: "teacher" | "parent", lang: "TH" | "EN") => {
   spies.push(spyOn(db, "update").mockImplementation((() => ({ set: () => ({ where: async () => {} }) })) as any));
   spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: () => ({ onConflictDoUpdate: async () => {}, onConflictDoNothing: async () => {} }) })) as any));
   spies.push(spyOn(checkinSvc, "findBookingsForTeacher").mockImplementation((async () => { calls.push("schedule"); return []; }) as any));
-  spies.push(spyOn(calendarSvc, "getCalendarTokenForLineUser").mockImplementation((async () => { calls.push("calendar"); return "cal-token"; }) as any));
+  // 🔻 TASK-536 — the calendar command now sends the WEB APP link; "reached" is observed at its one builder (it mints no token any more).
+  spies.push(spyOn(webApp, "webAppLink").mockImplementation((() => { calls.push("calendar"); return "https://app.example.test/?openExternalBrowser=1"; }) as any));
   spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { replies.push(...m); }) as any));
   return { replies, calls };
 };

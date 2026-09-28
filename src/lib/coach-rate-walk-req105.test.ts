@@ -164,6 +164,6 @@ describe("🔴 TASK-463 — DEF-2 by value, through the ROOT app: a malformed se
     expect(badUuidParams("/api/settings/:key", "/api/settings/checkin_early_minutes")).toEqual([]);
     expect(badUuidParams("/api/other-series/:key", "/api/other-series/checkin_early_minutes")).toEqual(["key"]);
     expect(badUuidParams("/api/some-new-route/:slug", "/api/some-new-route/hello")).toEqual(["slug"]); // undeclared ⇒ refused
-    expect(Object.keys(FREE_FORM_PARAMS).sort()).toEqual(["/api/calendar/:file", "/api/camp/weeks/:id/days/:date", "/api/settings/:key"]);
+    expect(Object.keys(FREE_FORM_PARAMS).sort()).toEqual(["/api/calendar/:file", "/api/camp/weeks/:id/days/:date", "/api/settings/:key", "/api/users/line-admins/:ref"]); // 🔻 TASK-538: + the admin link's opaque ref
   });
 });

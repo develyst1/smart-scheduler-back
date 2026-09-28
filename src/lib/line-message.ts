@@ -311,6 +311,30 @@ function buildOutboxMessage(
         extra(t("cl_note", lang), t(noteKey, lang))
       );
     }
+    // 🔴 TASK-537 — a cancelled MAKE-UP, to the FAMILY (📖 the words are a DRAFT). The house pattern the owner approved for the move
+    // (TASK-529): the title in the CHAT's language, English labels, Date and Time on their own lines. 🚫 Nothing about why, and no
+    // `Note` — the cancel notice's Note is chosen by SHAPE ("a make-up has been added"), which for a make-up is a promise we cannot
+    // know is true (an ended course, the extension ceiling or a locked leave add nothing).
+    case "makeup_cancelled_parent": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      // 🔻 TASK-548 — the class the re-plan ACTUALLY appended (its dates, from the payload the sender read off those rows). None ⇒ no line.
+      const newDates = Array.isArray(payload.newClassDates) ? (payload.newClassDates as string[]).filter(Boolean) : [];
+      return (
+        t("mc_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_cancelled",
+          {
+            student: ctx.studentName,
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: undefined, // the family's copy never names the coach (as their cancel and move notices)
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("cl_note", lang), newDates.length ? t("mc_new_class", lang, { date: newDates.map((d) => ddmmyyyy(d)).join(", ") }) : undefined)
+      );
+    }
     case "class_cancelled_teacher": {
       const type = notifyTypeOf(payload.bookingType as string);
       return (

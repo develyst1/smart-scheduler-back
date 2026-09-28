@@ -198,7 +198,7 @@ describe("🔴 TASK-516 addendum — the household rule drops CANCELLED seats; w
     const S = readFileSync(resolve(import.meta.dir, "scheduler.service.ts"), "utf8").replace(/\r\n/g, "\n");
     const c = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
     expect(c.indexOf("const seatsBefore =")).toBeLessThan(c.indexOf("await cancelSeatsOfGroup(tx, current.id"));
-    expect(c).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null);");
+    expect(c).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);");
     // …and the other two cancel callers already read their seats BEFORE cancelling (the series `seriesRows` loads them; the own-leave `mine`)
     const O = readFileSync(resolve(import.meta.dir, "other-series.service.ts"), "utf8").replace(/\r\n/g, "\n");
     expect(O.indexOf("const rows = await seriesRows(tx, key);")).toBeLessThan(O.indexOf("seatsCancelled += await cancelSeatsOfGroup("));

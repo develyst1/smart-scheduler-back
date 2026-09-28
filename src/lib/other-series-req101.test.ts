@@ -78,8 +78,8 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(60); // TASK-497: +0059
-    expect(journal.entries.length).toBe(60); // TASK-497: +0059
+    expect(files.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(journal.entries.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");
@@ -205,7 +205,7 @@ describe("🔴 the doors by VALUE through a fake tx — one tx; the first clash 
     expect(region(SVC, "export async function cancelAllOtherSeries(", "\n}\n")).toContain('await notifySeriesTeachers(tx, "other_series_cancelled", t, live, { reason: input.reasonCode, actor });');
     // the per-row cancel's CONFIRMED-only rule is untouched (by source): a PENDING row's cancel tells no coach
     const SCHED = code(src("src/services/scheduler.service.ts"));
-    expect(region(SCHED, "async function sendClassCancelledToTeacher(", "\n}\n")).toContain('if (current.status !== "CONFIRMED") return');
+    expect(region(SCHED, "async function sendClassCancelledToTeacher(", "\n}\n")).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return'); // 🔻 TASK-537: a make-up is on the coach's week too — a PENDING row still tells no coach
   });
   test("add teacher: from today (the ATTENDED row skipped, the two future rows joined), ONE `other_teacher_added`; the primary / an existing extra ⇒ 409 ALREADY_ON_ROW; a clash ⇒ 409 SLOT_TAKEN naming the date, nothing kept", async () => {
     const { tx, writes } = fakeTx(rows());

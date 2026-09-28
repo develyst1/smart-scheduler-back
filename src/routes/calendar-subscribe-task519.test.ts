@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 /** A linked teacher taps "My calendar" — the REAL dispatcher; the token lookup and the LINE send are the only fakes that matter. */
-async function tapMyCalendar(lang: "TH" | "EN") {
+async function tapMyCalendar(lang: "TH" | "EN", onMint: () => void = () => {}) {
   const replies: any[] = [];
   spies.push(spyOn(db.query.lineLinkSessions, "findFirst").mockImplementation((async () => undefined) as any));
   fakeDispatchBoundary(spies);
@@ -42,26 +42,31 @@ async function tapMyCalendar(lang: "TH" | "EN") {
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: () => ({ onConflictDoUpdate: async () => {}, onConflictDoNothing: async () => {} }) })) as any));
-  spies.push(spyOn(calendarSvc, "getCalendarTokenForLineUser").mockImplementation((async () => TOKEN) as any));
+  spies.push(spyOn(calendarSvc, "getCalendarTokenForLineUser").mockImplementation((async () => { onMint(); return TOKEN; }) as any)); // 🔻 TASK-536: counted — asking must not mint
   spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { replies.push(...m); }) as any));
   await handleLineWebhookEvents([{ type: "postback", replyToken: "rt", source: { userId: U }, postback: { data: "action=calendar" } } as any]);
   return replies;
 }
 
-describe("🔴 TASK-519 — the LINE reply: an https link to OUR landing page, never webcal://", () => {
+// 🔻 TASK-536 (owner ruling 09-28) — the LINE reply no longer carries THIS page: the calendar command sends the web app's link
+// (pinned by value in `calendar-web-link-task536.test.ts`). What stays from TASK-519's reply lesson, asserted here: the reply
+// carries NO subscribe link, NO webcal, and NO token — and asking no longer MINTS one. The page and the feed below are unchanged
+// and still answer, for anyone already subscribed.
+describe("🔴 TASK-519 — the page stays; 🔻 TASK-536 — the LINE reply no longer advertises it", () => {
   for (const lang of ["TH", "EN"] as const) {
-    test(`${lang}: the REAL rendered text carries ONE link — https, our host, the token in the PATH — alone on its line; no webcal anywhere`, async () => {
-      const [msg] = await tapMyCalendar(lang);
-      const text: string = msg.text;
-      expect(text).not.toContain("webcal");
-      const links = text.match(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi) ?? [];
-      expect(links.length).toBeGreaterThan(0); // the reply is bilingual (`tb`), so the one link appears once per language
-      expect([...new Set(links)]).toEqual([`${HOST}/api/calendar/subscribe/${TOKEN}`]);
-      for (const line of text.split("\n").filter((l) => l.includes(TOKEN))) {
-        expect(line).toBe(`${HOST}/api/calendar/subscribe/${TOKEN}`); // alone on its line: nothing beside it for a linkifier to swallow
+    test(`${lang}: the REAL rendered reply carries no subscribe page, no webcal, no token — and no token was minted to send it`, async () => {
+      const savedWeb = process.env.PUBLIC_ADMIN_BASE_URL;
+      process.env.PUBLIC_ADMIN_BASE_URL = "https://app.example.test";
+      let minted = 0;
+      try {
+        const [msg] = await tapMyCalendar(lang, () => minted++);
+        const text: string = msg.text;
+        expect(text).not.toMatch(/webcal|calendar\/subscribe|\.ics/);
+        expect(text).not.toContain(TOKEN);
+        expect(minted).toBe(0);
+      } finally {
+        if (savedWeb === undefined) delete process.env.PUBLIC_ADMIN_BASE_URL; else process.env.PUBLIC_ADMIN_BASE_URL = savedWeb;
       }
-      expect(links.every((l) => !l.includes("?"))).toBe(true); // the credential never rides a query string
-      expect(new URL(links[0]!).host).toBe("som.develyst.online"); // the box's own check-in host, from its env — no host change
     });
   }
   test("the page URL is derived from the SAME base as the feed (one host decision): same origin, `/subscribe/<token>` in place of `<token>.ics`", () => {

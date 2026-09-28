@@ -218,6 +218,10 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?
   endTime: hhmm(b.endTime),
   bookingType: b.bookingType,
   status: b.status,
+  // 🔴 TASK-542 — was this leave DECLARED AT COURSE CREATION? Such a leave appends the make-up and charges NO quota (the owner's
+  // decision B), so a screen that says "uses one of the course's leaves" must be able to tell. RAW (the words are the screen's,
+  // as TASK-481 settled). 🔑 Admin DTO only: the public check-in answers are an ALLOW-LIST (`toPublicCheckinBooking`) and never see it.
+  plannedAtCreation: b.plannedAtCreation === true,
   note: b.note ?? null,
   // TASK-368 (REQ-089 §5) — the closed cancel code (`note` above holds the human sentence). Rides for every
   // reader, `null` on a live row: the calendar shows cancelled sessions on request and must say why.

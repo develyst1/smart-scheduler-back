@@ -22,11 +22,16 @@ const MAX_TRACKED = 5000;
 
 type Counts = { misses: number[]; all: number[] };
 
+/** 🔻 TASK-534 — the limits are parameters (defaulting to the shop-front's, byte-for-byte), so the admin-code gate reuses this
+ *  class rather than growing a second limiter. The key is any string: an IP here, a LINE user id there. */
+export type RateLimitOpts = { windowMs: number; missLimit: number; totalLimit: number };
+
 export class ShopfrontRateLimit {
   private byIp = new Map<string, Counts>();
+  constructor(private readonly opts: RateLimitOpts = { windowMs: SHOPFRONT_WINDOW_MS, missLimit: SHOPFRONT_MISS_LIMIT, totalLimit: SHOPFRONT_TOTAL_LIMIT }) {}
 
   private counts(ip: string, now: number): Counts {
-    const since = now - SHOPFRONT_WINDOW_MS;
+    const since = now - this.opts.windowMs;
     let c = this.byIp.get(ip);
     if (!c) {
       if (this.byIp.size >= MAX_TRACKED) this.sweep(now);
@@ -39,14 +44,14 @@ export class ShopfrontRateLimit {
   }
 
   private sweep(now: number): void {
-    const since = now - SHOPFRONT_WINDOW_MS;
+    const since = now - this.opts.windowMs;
     for (const [ip, c] of this.byIp) if (!c.misses.some((t) => t > since) && !c.all.some((t) => t > since)) this.byIp.delete(ip);
   }
 
   /** True when this IP may not look up (or check in) right now. Asked BEFORE the work, so a refused call costs no query. */
   blocked(ip: string, now: number): boolean {
     const c = this.counts(ip, now);
-    return c.misses.length >= SHOPFRONT_MISS_LIMIT || c.all.length >= SHOPFRONT_TOTAL_LIMIT;
+    return c.misses.length >= this.opts.missLimit || c.all.length >= this.opts.totalLimit;
   }
 
   /** Record one lookup; `miss` = it found nothing check-in-able (or the act was refused as not in the list). */

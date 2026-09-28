@@ -11,7 +11,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, SLOT_INACTIVE_STATUSES } from "../db/schema"; // TASK-497: `bookingUndos` / `vouchers` now written by the shared `attendance-revert.service`
-import { notFound } from "../lib/http";
+import { ApiException, notFound } from "../lib/http";
 import { bangkokNow } from "../lib/bangkok-time";
 import { reverseBookingSale } from "../lib/sale-post";
 import { hhmm } from "../lib/time";
@@ -23,6 +23,7 @@ import {
 } from "../lib/booking-undo";
 import { displayNameOf } from "../db/mappers";
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared writes
+import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
@@ -48,9 +49,21 @@ export type UndoResult = {
   expiry: { from: string; to: string } | null;
 };
 
-export async function undoBooking(bookingId: string, opts: { actor: string | null; reason: string | null }) {
-  const today = bangkokNow().date;
-  const result: UndoResult = await db.transaction(async (tx: any) => {
+export type UndoPlan = {
+  row: any;
+  kind: UndoKind;
+  leaveRefunded: boolean;
+  makeup: { id: string; status: string; date: string; teacherId: string } | null;
+  expiry: ExpiryDecision;
+};
+
+/**
+ * 🔴 TASK-546 — THE Undo's decision: every read and every refusal, and NO write. Lifted VERBATIM from `undoBooking` (which now
+ * calls it and then writes) so the dialog's preview and the act are the SAME reads — they cannot disagree, because they are one
+ * function. ⚠️ ONE refusal is not here, and cannot be without changing the act: `UNDO_PLAN_WOULD_CHANGE` is decided AFTER the
+ * writes (the reconcile is asked whether the plan balances). A preview can say "ok" where the act then refuses on that check.
+ */
+export async function planUndo(tx: any, bookingId: string, today: string): Promise<UndoPlan> {
     const row = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, bookingId), with: { course: true, voucher: true } });
     if (!row) throw notFound("ไม่พบคาบเรียน");
     assertNotCampRow(row); // a camp hour: camp has its own day undo
@@ -104,12 +117,41 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
         if (holder) throw UNDO_SLOT_TAKEN(`${row.date} ${hhmm(row.startTime)}`, displayNameOf(holder) || "คาบอื่น"); // the ONE name rule
       }
     }
+    return { row, kind, leaveRefunded, makeup, expiry };
+}
+
+/**
+ * 🔴 TASK-546 — the Undo dialog's DRY RUN: `planUndo` over the live rows, NOTHING written (no transaction, no write call on
+ * this path). A SNAPSHOT — the act stays authoritative and re-plans on the click; it never trusts a preview. A refusal comes back
+ * in the act's own words (`ok: false`), except "not found", which stays the 404 it is.
+ */
+export async function previewUndo(bookingId: string, exec: any = db) {
+  try {
+    const p = await planUndo(exec, bookingId, bangkokNow().date);
+    return {
+      ok: true as const,
+      kind: p.kind,
+      leaveRefunded: p.leaveRefunded,
+      makeupCancelled: p.makeup ? { id: p.makeup.id, date: p.makeup.date } : null,
+      expiry: p.expiry.action === "restore" ? { from: p.expiry.from, to: p.expiry.to } : null,
+    };
+  } catch (e) {
+    if (e instanceof ApiException && e.status !== 404) return { ok: false as const, code: e.code, message: e.message };
+    throw e;
+  }
+}
+
+export async function undoBooking(bookingId: string, opts: { actor: string | null; reason: string | null }) {
+  const today = bangkokNow().date;
+  const result: UndoResult = await db.transaction(async (tx: any) => {
+    // 🔻 TASK-546 — the READS that decide everything, lifted VERBATIM into `planUndo` (the preview runs the same function).
+    const { row, kind, leaveRefunded, makeup, expiry } = await planUndo(tx, bookingId, today);
 
     // ── 🔑 THE GUARD: one conditional update on the status the row was read with (a check-in's is the shared `revertAttendance`) ──
     if (kind === "leave") {
       const flipped = await tx
         .update(bookings)
-        .set({ status: "CONFIRMED", leaveCharged: null })
+        .set({ status: "CONFIRMED", leaveCharged: null, ...leaveNoteUndo(row) }) // 🔻 TASK-540 — the note the leave replaced comes back (only if it recorded one)
         .where(and(eq(bookings.id, row.id), eq(bookings.status, row.status)))
         .returning({ id: bookings.id });
       if (!flipped.length) throw UNDO_ALREADY_CHANGED();

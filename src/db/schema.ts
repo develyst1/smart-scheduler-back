@@ -539,6 +539,11 @@ export const bookings = pgTable(
     // (false); NULL = a leave from before 0058. The Undo refunds ONLY a recorded true (legacy: inferred where certain, else
     // refused). "Took quota" is not `!plannedAtCreation` — an over-quota leave and an undone attendance took none either.
     leaveCharged: boolean("leave_charged"),
+    // 🔴 TASK-540 (0060) — what a LEAVE did to `note`, recorded AT the leave (the only moment the old note exists): true only
+    // when the leave wrote a reason over it, with the note it replaced (NULL = none). The Undo restores only when true; a staff
+    // edit of the note resets it. Pre-0060 leaves stay false (unknowable). See `lib/leave-note.ts`.
+    leaveNoteReplaced: boolean("leave_note_replaced").notNull().default(false),
+    noteBeforeLeave: text("note_before_leave"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

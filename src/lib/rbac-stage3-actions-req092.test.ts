@@ -75,8 +75,13 @@ describe("🔴 the enumeration — every mutate route carries an action, no read
     const keysOf = (a: any): string[] => (a === undefined ? [] : Array.isArray(a) ? a : [a]); // 🔻 TASK-426: a two-key act
     const missing = mutate.filter((r) => !keysOf(ROUTE_ACCESS[r]?.action).length || !keysOf(ROUTE_ACCESS[r]?.action).every(isActionKey));
     expect(missing).toEqual([]);
-    const readsWithAction = declared.filter((r) => r.startsWith("GET ") && ROUTE_ACCESS[r]?.action);
+    // 🔻 TASK-546 — ONE named exception, with its reason (a scan that cannot express a legitimate exception gets deleted — TASK-512):
+    // the Undo's PREVIEW is a read OF a privileged act, so it carries the act's own gate (Sober's ruling: "a preview of a privileged
+    // act is a privileged read"). Every other read still carries none.
+    const PRIVILEGED_READS: Record<string, string> = { "GET /bookings/:id/undo-preview": "the dry run of POST /bookings/:id/undo — the same UNDO_ACCESS value" };
+    const readsWithAction = declared.filter((r) => r.startsWith("GET ") && ROUTE_ACCESS[r]?.action && !PRIVILEGED_READS[r]);
     expect(readsWithAction).toEqual([]);
+    for (const r of Object.keys(PRIVILEGED_READS)) expect(ROUTE_ACCESS[r]).toBe(ROUTE_ACCESS["POST /bookings/:id/undo"]); // the SAME object, not a lookalike
   });
   test("every route key is used by ≥ 1 route; the two body-level keys are used by NONE (they are checked at the body)", () => {
     const used = new Set(Object.values(ROUTE_ACCESS).flatMap((a) => (a.action === undefined ? [] : Array.isArray(a.action) ? a.action : [a.action]))); // 🔻 TASK-426: a two-key act
@@ -259,6 +264,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(G.indexOf("if (!hasMenu(user, ...access.menus)) throw MENU_FORBIDDEN();")).toBeLessThan(G.indexOf("if (!needed.every((a) => hasAction(user, a))) throw ACTION_FORBIDDEN();")); // 🔻 TASK-426: EVERY listed key
   });
   test("56 = 56 — Stage 3 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(60); // TASK-497: +0059
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
   });
 });

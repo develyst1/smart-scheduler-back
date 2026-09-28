@@ -18,6 +18,7 @@ import {
   type LineWebhookEvent,
 } from "../lib/line-webhook";
 import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
+import { ADMIN_CODE_ENV, checkAdminCode } from "../lib/line-admin-code";
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, sessionPick, needsChildStep } from "../lib/line-leave";
 import { hasEnoughLeaveNotice, leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
@@ -85,9 +86,8 @@ import {
 import { claimQueues, claimReplyKey } from "../lib/teacher-link";
 import { displayNameOf, studentNamesOf } from "../db/mappers";
 import { requestTeacherLink } from "./teacher-link.service";
-import { calendarPageUrl } from "../lib/calendar-link"; // TASK-519
+import { webAppLink } from "../lib/web-app-link"; // TASK-536 — the calendar command sends the web app (TASK-519's page link retired from the reply)
 import { isSuspended } from "../lib/suspend";
-import { getCalendarTokenForLineUser } from "./calendar.service";
 import {
   MAX_STUDENTS_PER_PARENT,
   assertCanAddStudent,
@@ -421,8 +421,9 @@ async function verifyAndLink(
   lang: Lang,
 ): Promise<VerifyResult> {
   if (role === "admin") {
-    const expected = process.env.LINE_ADMIN_VERIFY_CODE ?? "229";
-    if (code.trim() !== expected) return { ok: false, message: (l) => t("verify_admin_bad", l) };
+    // 🔴🔴 TASK-534 (SEC-1) — no default, a minimum strength, a per-user miss limit; every refusal is the SAME reply (the person
+    // typing may be the attacker) and the reason goes to the log only. The gate is `checkAdminCode`; nothing here reads the code.
+    if (!checkAdminCode(lineUserId, code, process.env[ADMIN_CODE_ENV])) return { ok: false, message: (l) => t("verify_admin_bad", l) };
     await addAdminLineUserId(lineUserId);
     // 🔴 TASK-530 — an admin gets the ADMIN menu (one cell: the web app), so they no longer sit on the account default (the
     // unknown menu). Only when ADMIN is this account's role: `detectLinkedRole` reads teacher → parent → admin, and a coach or
@@ -1195,15 +1196,22 @@ async function doTeacherSchedule(
   ]);
 }
 
-/** Reply with the teacher's private `.ics` subscription link (REQ-017 / TASK-044). Token is resolved from the
- *  caller's own `lineUserId` — never from the payload — and created on first ask. */
-async function doTeacherCalendar(lineUserId: string, replyToken: string, lang: Lang) {
-  const token = await getCalendarTokenForLineUser(lineUserId);
-  if (!token) return send(replyToken, [textReply(tb("cal_not_teacher"), lang)]);
-  // 🔴 TASK-519 — an `https` link to OUR landing page, never `webcal://`: LINE's linkifier does not know `webcal` and linkified the
-  // bare root domain — a stranger's site, carrying the token. The subscribing tap now happens ON the page (its button is the
-  // `webcal://` URL), inside a browser. The copy is unchanged ("tap the link and choose Add/Subscribe").
-  return send(replyToken, [textReply(tb("cal_link", { url: calendarPageUrl(token) }), lang)]);
+/**
+ * 🔴 TASK-536 (owner ruling 09-28: *"ส่งลิ้งไป ให้ครูล็อกอินเอง แล้วเข้าไปใช้เว็บ แบบบนมือถือ แค่นั้น"*) — `ปฏิทิน` / `calendar` / the
+ * `ปฏิทินของฉัน` chip send the WEB APP's link; the coach logs in and sees their own classes there (the scope is the web app's
+ * `ownScopeWhere`, untouched here). It replaced the subscribe link (REQ-017 / TASK-519): on the Android phones the coaches use, the
+ * subscription never worked (Tanya's device check). 🚫 The subscribe page and the `.ics` feed are NOT removed — they stay for anyone
+ * already subscribed; the command just stops advertising them, and stops minting a token by being asked.
+ * Both callers are inside a `linked === "teacher"` branch, so no second role lookup here.
+ * The key unset or bad ⇒ the generic error sentence + a loud log: never a broken link.
+ */
+async function doTeacherCalendar(_lineUserId: string, replyToken: string, lang: Lang) {
+  const url = webAppLink();
+  if (!url) {
+    console.error("🔴 [TASK-536] PUBLIC_ADMIN_BASE_URL is unset or invalid — the calendar command cannot send the web app's link.");
+    return send(replyToken, [textReply(tb("generic_error"), lang)]);
+  }
+  return send(replyToken, [textReply(tb("cal_web_link", { url }), lang)]);
 }
 
 async function handleParentCommand(lineUserId: string, text: string, replyToken: string, lang: Lang) {

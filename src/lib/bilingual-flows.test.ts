@@ -56,7 +56,7 @@ describe("TASK-276 — all five flows, asserted by enumerating their bodies", ()
       // 🔻 TASK-470 (f) — My Course is bilingual INSIDE the renderer now (heading via `tb`, lines once — Sober's
       // ruling for data-only lines); pinned by value in `line-v2-messages-req107.test.ts`.
       "textReply(renderMyCourses(view), lang)",
-      'textReply(tb("cal_not_teacher"), lang)',
+      'textReply(tb("cal_web_link", { url }), lang)', // 🔻 TASK-536 — the calendar reply (the web app link); still bilingual (`tb`)
     ],
     "handover + mute": [
       'reply(replyToken, tb("handover_to_admin"))',

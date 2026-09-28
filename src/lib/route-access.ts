@@ -34,6 +34,8 @@ const BADGES: MenuKey[] = ["menu:badges"];
 const SETTINGS: MenuKey[] = ["menu:settings"];
 const read = (menus: readonly MenuKey[]): RouteAccess => ({ menus });
 const act = (menus: readonly MenuKey[], action: ActionKey): RouteAccess => ({ menus, action });
+/** 🔻 TASK-546 — the Undo's access, ONE value for the act and its preview: the preview's gate is DERIVED, never retyped. */
+const UNDO_ACCESS = act(CAL_BOOK, "action:calendar.undo");
 const acts = (menus: readonly MenuKey[], action: readonly ActionKey[]): RouteAccess => ({ menus, action }); // TASK-426
 
 /**
@@ -104,7 +106,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /bookings/:id/rental/paid": act(CAL_BOOK, "action:calendar.rental"),
   "POST /bookings/:id/resume": act(CAL_BOOK, "action:calendar.pause"),
   "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
-  "POST /bookings/:id/undo": act(CAL_BOOK, "action:calendar.undo"), // TASK-492 — a linked account never (the route asserts)
+  "POST /bookings/:id/undo": UNDO_ACCESS, // TASK-492 — a linked account never (the route asserts)
+  "GET /bookings/:id/undo-preview": UNDO_ACCESS, // 🔻 TASK-546 — the dry run of the Undo: THE SAME entry (a preview of a privileged act is a privileged read)
   "PATCH /bookings/:id/status": act(CAL_BOOK, "action:calendar.status"), // + `action:calendar.leave-override` on its `override` flag (route)
   "POST /bookings/bulk-confirm": act(BOOKINGS, "action:bookings.bulk-confirm"),
   // ── the booking FORM's reads (opened from both pages) ──

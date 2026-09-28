@@ -2,7 +2,7 @@
 // calendar/bookings read, 404 outside by id), the fail-closed `TEACHER_ALLOWED` route set for a linked account,
 // `attend`-only status, the users page's link (409 TEACHER_LINKED), `/me.teacherId`, the OWN LEAVE (`TEACHER_LEAVE`,
 // the 4th reason; the FAMILY's NEW notice as a placeholder kind; the other teachers' coach notice). 56 = 56.
-import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { Hono } from "hono";
@@ -48,8 +48,8 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("56 = 56: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(60); // TASK-497: +0059
-    expect(journal.entries.length).toBe(60); // TASK-497: +0059
+    expect(files.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(journal.entries.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -128,6 +128,29 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
     [U1]: { id: U1, username: "coach", displayName: "Coach", isSuperAdmin: false, disabledAt: null, teacherId: ME },
     [U2]: { id: U2, username: "admin2", displayName: "Admin", isSuperAdmin: false, disabledAt: null, teacherId: null },
   };
+  // 🔴 TASK-535 — THE SWEEP'S WORLD, installed ONCE for this describe and restored only in `afterAll`.
+  // What went wrong (reproduced deterministically with `--timeout 100`): the sweep is ~0.2 s, but under machine load it passed
+  // bun's DEFAULT 5 s per-test limit. A timed-out test is not stopped — its loop ran on under the NEXT test's fakes (no grants ⇒
+  // `FORBIDDEN` on a route it expected `SCOPE_TEACHER` for), and its `finally` then RESTORED the real `findUserById` in the middle
+  // of the next test (⇒ a real query ⇒ `500` / `ECONNRESET`). It looked like "the sweep reaches a database"; it was a timeout
+  // leaking. The fixes: (1) the fakes live here, so no test can pull them out from under another; (2) a TRIPWIRE — any database
+  // access inside the sweep throws, naming what was reached, instead of failing later as a connection error; (3) the sweep is
+  // built once and each token signed once, and carries an explicit time budget.
+  // 🔑 A NEW ROUTE IS SAFE BY CONSTRUCTION: every route is mounted as a STUB (`c.json({ ok })`), so the only code a route
+  // reaches here is the two guards — and the guards' reads are pinned below (a new read in the guard fails there, by name).
+  const world = { rows: rows as Record<string, any>, grants: [...MENU_KEYS, ...ACTION_KEYS] as string[] };
+  const worldSpies: Array<{ mockRestore: () => void }> = [];
+  beforeAll(() => {
+    worldSpies.push(spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => world.rows[id] ?? null) as any));
+    worldSpies.push(spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => world.grants) as any));
+    const trip = (what: string) => () => { throw new Error(`TASK-535 tripwire: the route sweep reached the database (${what}) — fake it in the sweep's world`); };
+    for (const m of ["select", "execute", "insert", "update", "delete", "transaction"] as const) worldSpies.push(spyOn(db as any, m).mockImplementation(trip(`db.${m}`) as any));
+    for (const [table, q] of Object.entries(db.query as Record<string, any>)) {
+      for (const m of ["findFirst", "findMany"]) if (typeof q?.[m] === "function") worldSpies.push(spyOn(q, m).mockImplementation(trip(`db.query.${table}.${m}`) as any));
+    }
+  });
+  afterAll(() => { for (const s of worldSpies.splice(0)) s.mockRestore(); });
+  const SWEEP_BUDGET_MS = 60_000; // ~0.2 s measured; the budget is for a loaded machine, not for a slow test
   const app = () => {
     process.env.SKIP_AUTH = "false";
     const a = new Hono();
@@ -137,13 +160,19 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
       const [m, p] = key.split(" ") as [string, string];
       (a as any)[m.toLowerCase()]("/api" + p, (c: any) => c.json({ ok: key }));
     }
-    a.onError((err, c) => (err instanceof ApiException ? c.json({ error: { code: err.code, message: err.message } }, err.status as any) : c.json({ error: "INTERNAL" }, 500)));
+    a.onError((err, c) => (err instanceof ApiException ? c.json({ error: { code: err.code, message: err.message } }, err.status as any) : c.json({ error: { code: `INTERNAL: ${(err as Error)?.message ?? err}` } }, 500))); // TASK-535 — an unexpected error NAMES itself (the tripwire included)
     return a;
   };
-  const as = async (id: string) => ({ headers: { authorization: `Bearer ${await signToken({ sub: id, username: rows[id].username, role: "admin", isSuperAdmin: false })}` } });
+  const tokens = new Map<string, string>(); // one signature per user — the sweep asserts the guard, not the signer
+  const as = async (id: string) => {
+    if (!tokens.has(id)) tokens.set(id, await signToken({ sub: id, username: rows[id].username, role: "admin", isSuperAdmin: false }));
+    return { headers: { authorization: `Bearer ${tokens.get(id)}` } };
+  };
+  let built: ReturnType<typeof app> | null = null; // the SAME routes, mounted once rather than once per request
   const hit = async (id: string, key: string) => {
     const [m, p] = key.split(" ") as [string, string];
-    const res = await app().request("/api" + p.replace(/:id/g, B1), { method: m, ...(await as(id)), ...(m !== "GET" && m !== "DELETE" ? { headers: { ...(await as(id)).headers, "content-type": "application/json" }, body: "{}" } : {}) });
+    built ??= app();
+    const res = await built.request("/api" + p.replace(/:id/g, B1), { method: m, ...(await as(id)), ...(m !== "GET" && m !== "DELETE" ? { headers: { ...(await as(id)).headers, "content-type": "application/json" }, body: "{}" } : {}) });
     return { status: res.status, body: (await res.json()) as any };
   };
   test("the set is exactly the calendar page's calls; every member is in the access table", () => {
@@ -153,16 +182,14 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
     for (const k of TEACHER_ALLOWED) expect(k).not.toMatch(/students|parents|courses|attention|reports/);
   });
   test("with ALL 55 keys the linked user gets 200 on the eight and 403 SCOPE_TEACHER on every other table route; the unlinked user with the same keys reaches all", async () => {
-    const spies = [
-      spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => rows[id] ?? null) as any),
-      spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => [...MENU_KEYS, ...ACTION_KEYS]) as any),
-    ];
-    try {
+    world.rows = rows;
+    world.grants = [...MENU_KEYS, ...ACTION_KEYS];
+    {
       const keys = Object.keys(ROUTE_ACCESS);
       let allowed = 0, refused = 0;
       for (const key of keys) {
         const r = await hit(U1, key);
-        if (TEACHER_ALLOWED.has(key)) { expect({ key, status: r.status }).toEqual({ key, status: 200 }); allowed++; }
+        if (TEACHER_ALLOWED.has(key)) { expect({ key, status: r.status, code: r.body?.error?.code }).toEqual({ key, status: 200, code: undefined }); allowed++; } // TASK-535: the code too, so an unexpected error names itself
         else { expect({ key, status: r.status, code: r.body?.error?.code }).toEqual({ key, status: 403, code: "SCOPE_TEACHER" }); refused++; }
       }
       expect(allowed).toBe(8);
@@ -170,7 +197,14 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
       expect(refused).toBeGreaterThan(90); // the whole table minus the eight (95 today) — a floor, so a shrunken table cannot pass quietly
       for (const key of ["POST /bookings", "PATCH /bookings/:id", "POST /bookings/:id/pause", "GET /students", "GET /attention"]) expect((await hit(U2, key)).status).toBe(200); // unlinked: untouched
       expect((await hit(U1, "POST /bookings")).body).toEqual({ error: { code: "SCOPE_TEACHER", message: "บัญชีครูทำได้เฉพาะดูตารางตัวเอง เช็คอิน และแจ้งลา" } });
-    } finally { spies.forEach((s) => s.mockRestore()); }
+    }
+  }, SWEEP_BUDGET_MS);
+  test("🔑 TASK-535 — the next route is SAFE here: routes are STUBS, so the only reads are the guards' own — and those are exactly the two the sweep's world fakes", () => {
+    const G = code(src("src/middleware/auth.ts"));
+    const guards = region(G, "export async function authMiddleware(", "export const MENU_FORBIDDEN") + region(G, "export async function accessGuard(", "export async function requireSuperAdmin(");
+    // Every awaited call in the two guards, by name. A NEW read added to a guard fails HERE, naming it — fake it in the world above.
+    expect([...new Set([...guards.matchAll(/await ([A-Za-z_$][\w$.]*)\(/g)].map((m) => m[1]))].sort()).toEqual(["effectiveGrantKeys", "findUserById", "verifyToken"]);
+    expect(code(src("src/lib/teacher-own-calendar-req097.test.ts"))).toContain('(a as any)[m.toLowerCase()]("/api" + p, (c: any) => c.json({ ok: key }));'); // every route a stub
   });
   test("the guard's order by source: menu → action → scope; the scope line names the set", () => {
     const G = code(src("src/middleware/auth.ts"));
@@ -187,10 +221,8 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
       [SA_FREE]: { id: SA_FREE, username: "boss", displayName: "Boss", isSuperAdmin: true, disabledAt: null, teacherId: null },
       [U1]: rows[U1],
     };
-    const spies = [
-      spyOn(usersSvc, "findUserById").mockImplementation((async (id: string) => rows2[id] ?? null) as any),
-      spyOn(usersSvc, "effectiveGrantKeys").mockImplementation((async () => []) as any),
-    ];
+    world.rows = rows2;
+    world.grants = [];
     try {
       process.env.SKIP_AUTH = "false";
       const a = new Hono();
@@ -198,9 +230,9 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
       a.use("/api/*", accessGuard);
       for (const p of ["/api/users", "/api/roles", "/api/me", "/api/permissions", "/api/auth/logout"]) { a.get(p, (c) => c.json({ ok: p })); a.post(p, (c) => c.json({ ok: p })); }
       a.get("/api/users/:id", (c) => c.json({ ok: "user" }));
-      a.onError((err, c) => (err instanceof ApiException ? c.json({ error: { code: err.code, message: err.message } }, err.status as any) : c.json({ error: "INTERNAL" }, 500)));
+      a.onError((err, c) => (err instanceof ApiException ? c.json({ error: { code: err.code, message: err.message } }, err.status as any) : c.json({ error: { code: `INTERNAL: ${(err as Error)?.message ?? err}` } }, 500))); // TASK-535 — an unexpected error NAMES itself (the tripwire included)
       const tok = async (id: string) => ({ headers: { authorization: `Bearer ${await signToken({ sub: id, username: rows2[id].username, role: "admin", isSuperAdmin: rows2[id].isSuperAdmin })}` } });
-      const st = async (id: string, path: string, method = "GET") => (await a.request(path, { method, ...(await tok(id)) })).status;
+      const st = async (id: string, path: string, method = "GET") => { const r = await a.request(path, { method, ...(await tok(id)) }); return r.status === 500 ? ((await r.json()) as any).error?.code : r.status; }; // TASK-535: a 500 shows WHY
       for (const [path, method] of [["/api/users", "GET"], ["/api/users", "POST"], ["/api/users/" + B1, "GET"], ["/api/roles", "GET"], ["/api/roles", "POST"]] as const) {
         expect({ path, method, linked: await st(SA_LINKED, path, method) }).toEqual({ path, method, linked: 403 });
         expect({ path, method, free: await st(SA_FREE, path, method) }).toEqual({ path, method, free: 200 });
@@ -208,8 +240,8 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
       const res = await a.request("/api/users", await tok(SA_LINKED));
       expect(await res.json()).toEqual({ error: { code: "SCOPE_TEACHER", message: "บัญชีครูทำได้เฉพาะดูตารางตัวเอง เช็คอิน และแจ้งลา" } });
       for (const id of [SA_LINKED, U1]) for (const path of ["/api/me", "/api/permissions", "/api/auth/logout"]) expect({ id, path, status: await st(id, path) }).toEqual({ id, path, status: 200 });
-    } finally { spies.forEach((s) => s.mockRestore()); }
-  });
+    } finally { world.rows = rows; world.grants = [...MENU_KEYS, ...ACTION_KEYS]; }
+  }, SWEEP_BUDGET_MS);
   test("🔴 TASK-408 — the LOGIN body carries `teacherId` (and `teacherName`) beside menus/actions — the FE's first paint knows the scope", async () => {
     const s1 = spyOn(usersSvc, "authenticate").mockImplementation((async () => ({ id: U1, username: "coach", displayName: "Coach", isSuperAdmin: false, disabledAt: null, createdAt: new Date("2026-09-17T00:00:00.000Z"), roleId: null, teacherId: ME })) as any);
     const s2 = spyOn(usersSvc, "userDTO").mockImplementation((async (row: any) => usersSvc.toUserDTO({ ...row, teacher: { nickname: "ครูเอก" } }, [], null)) as any);
@@ -295,9 +327,9 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect((L.match(/db\.transaction\(/g) ?? []).length).toBe(1);
     expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);');
     expect(L).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
-    expect(L).toContain("if (b.courseId) await reconcileCoursePlan(tx, b.courseId);");
+    expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId) : null;");
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
-    expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE");'); // 🔻 TASK-410: the ONE family sender
+    expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);'); // 🔻 TASK-410: the ONE family sender · 🔻 TASK-548: + the re-plan's own append result
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off
     expect(L).toContain("return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };");
     // the other teachers: minus me, CONFIRMED only
@@ -312,9 +344,9 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // string appears once (inside the sender); the sender is CONFIRMED-gated and fans out per seat on a GROUP row
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
     expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2);
-    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null);"); // 🔻 TASK-516 addendum: the seats as they were BEFORE the cascade
+    expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);"); // 🔻 TASK-516 addendum: the seats as they were BEFORE the cascade
     const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
-    expect(FS).toContain('if (current.status !== "CONFIRMED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1
+    expect(FS).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1 · 🔻 TASK-537: a MAKE-UP is held by the family too (its own kind)
     expect(FS).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });"); // 🔻 TASK-445: ONE household set per row (all the seats), the accounts de-duplicated once
     expect(FS).toContain('current.bookingType === "GROUP"');
   });
@@ -378,7 +410,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(stmts[2]).toBe('ALTER TABLE "bookings" VALIDATE CONSTRAINT "bookings_cancel_reason_chk"');
     expect(last).toContain("SHARE UPDATE EXCLUSIVE");
     expect(last).toContain("`db:verify` expects 46");
-    expect(files.length).toBe(60); // TASK-497: +0059
+    expect(files.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");

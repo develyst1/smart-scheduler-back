@@ -57,8 +57,8 @@ describe("🔴 the ONE rule — `effectiveRateMinor` / `rateFacts` by value; no 
     expect(others).toEqual([]);
   });
   test("no migration: 49 = 49; the column is the reused `teacher_rate_minor`", () => {
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(60); // TASK-497: +0059
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(60); // TASK-497: +0059
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(61); // TASK-497: +0059 · 🔻 TASK-540: +0060
     expect(code(src("src/db/schema.ts"))).not.toMatch(/rate_override|override_minor/);
   });
 });
