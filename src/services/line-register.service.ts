@@ -227,14 +227,28 @@ export function maskPhone(phone: string): string {
   return `${phone.slice(0, 2)}x-xxx-xxxx`;
 }
 
-export type LinkStatus = { linked: false } | { linked: true; parentId: string; phone: string; childCount: number };
+/**
+ * 🔴 TASK-565 (REQ-110 item 10) — "has this household ALREADY given its address?" — the ONE definition the form is told.
+ * 🔑 Given = `parents.province` is set. It is written ONLY by the LIFF form's PICKED province (through `householdPatch`, a
+ * real one of the 77), together with the parent's address line — and it is something we can SHOW BACK. 🚫 The address line
+ * in `parents.note` does NOT count: it is appended into free text beside staff notes, so we cannot tell it apart or show it
+ * back — "if we cannot display it, we did not really collect it". A household whose address came only through the CHAT
+ * (typed, note only) therefore reads as NOT given, and the form asks once more.
+ */
+export type HouseholdAddress = { addressOnFile: true; province: string } | { addressOnFile: false; province: null };
+export const householdAddressOf = (parent: { province?: string | null } | null | undefined): HouseholdAddress => {
+  const province = parent?.province?.trim() || null;
+  return province ? { addressOnFile: true, province } : { addressOnFile: false, province: null };
+};
+
+export type LinkStatus = { linked: false } | ({ linked: true; parentId: string; phone: string; childCount: number } & HouseholdAddress);
 
 /** READ-ONLY. Is this account already someone's? `phone` comes back MASKED; no names (TASK-047). */
 export async function linkStatus(lineUserId: string): Promise<LinkStatus> {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return { linked: false };
   const children = await listStudentsOfParent(parent.id);
-  return { linked: true, parentId: parent.id, phone: maskPhone(parent.phone), childCount: children.length };
+  return { linked: true, parentId: parent.id, phone: maskPhone(parent.phone), childCount: children.length, ...householdAddressOf(parent) }; // TASK-565
 }
 
 /**
@@ -313,13 +327,15 @@ export async function createStudentFromLine(
 }
 
 export type AddChild =
-  | { outcome: "created"; student: { id: string; name: string }; birthDate: string | null; count: number; atMax: boolean }
+  | ({ outcome: "created"; student: { id: string; name: string }; birthDate: string | null; count: number; atMax: boolean } & HouseholdAddress)
   | { outcome: "not-linked" }
   | { outcome: "name-required" }
   | { outcome: "name-reserved"; word: string }
   | { outcome: "family-full"; max: number }
   | { outcome: "name-duplicate-needs-detail"; name: string }
   | { outcome: "birthdate-invalid" }
+  | { outcome: "birthdate-required" } // TASK-565
+  | { outcome: "address-required" } // TASK-565
   | { outcome: "province-unknown"; province: string };
 
 /**
@@ -348,14 +364,20 @@ export async function addChildForLineParent(
   if (!input.detailProvided && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
     return { outcome: "name-duplicate-needs-detail", name };
   }
-  // 🔑 ข้าม on this door is an ABSENT field (contract §C3), not the word: an empty value is the skip. Any value
-  // that IS provided goes through the chat's parser unchanged — same day-first rule, same refusal of ISO.
-  // ⚠️ Caught by the test before it shipped: `parseBirthDate("")` is a REFUSAL, not a skip — only the word is.
+  // 🔻 TASK-565 (REQ-110 item 10, the owner: "ข้าม" is removed) — the birthday is REQUIRED for every child on this door. An
+  // absent or empty value used to be the skip (contract §C3); it is now refused with its own code. Any value that IS given
+  // goes through the chat's parser unchanged — same day-first rule, same refusal of ISO.
   const given = (input.birthDate ?? "").trim();
-  const parsed = given ? parseBirthDate(given) : ({ ok: true, value: null } as const);
+  if (!given) return { outcome: "birthdate-required" };
+  const parsed = parseBirthDate(given);
   if (!parsed.ok) return { outcome: "birthdate-invalid" };
-  const province = (input.province ?? "").trim() || null;
-  const address = (input.address ?? "").trim() || null;
+  if (parsed.value == null) return { outcome: "birthdate-required" }; // the typed word ข้าม is a skip too — refused the same way
+  // 🔻 TASK-565 — the address is REQUIRED ONCE per household: asked (province PICKED + the address line) only while none is on
+  // file (`householdAddressOf`); once it is, it is NOT asked again, and one sent anyway is NOT written (never a second line).
+  const onFile = householdAddressOf(parent);
+  const province = onFile.addressOnFile ? null : (input.province ?? "").trim() || null;
+  const address = onFile.addressOnFile ? null : (input.address ?? "").trim() || null;
+  if (!onFile.addressOnFile && (!province || !address)) return { outcome: "address-required" };
   // 🔴 TASK-352 — the PICKED province must be a REAL one, refused with a NAMED code before the write. The writer
   // refuses it too (the same `isThaiProvince`) — this is the check that gives the page a code, that is the one
   // that holds for every caller.
@@ -367,6 +389,7 @@ export async function addChildForLineParent(
     birthDate: parsed.value,
     count,
     atMax: count >= MAX_STUDENTS_PER_PARENT,
+    ...(onFile.addressOnFile ? onFile : householdAddressOf({ province })), // TASK-565 — the next child's form knows
   };
 }
 

@@ -15,6 +15,7 @@ import { bookingTeachers, bookings } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES, isEndReason } from "../lib/course-plan";
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { enqueueLine } from "../lib/line";
 import { assertRatesOnBooking } from "../lib/other-kind";
 
@@ -240,20 +241,30 @@ export async function removeTeacherFromOtherSeries(key: SeriesKey, teacherId: st
   });
 }
 
-/** Swap the PRIMARY from `fromDate` on (the group swap's shape by key): `from` must be the primary; `to` not on the row. */
-export async function swapOtherSeriesTeacher(key: string, input: { from: string; to: string; fromDate?: string }) {
+/**
+ * Swap the PRIMARY from `fromDate` on (the group swap's shape by key): `from` must be the primary; `to` not on the row.
+ * 🔴 TASK-562 (REQ-110 item 5) — or on ONE session (`onDate`): "ครั้งที่ 3 ครู A ไปแทนครู B". A COVER: `to` REPLACES `from` on
+ * that row (not a co-teacher — "A covers for B", and only A is paid), at A's rate through the row's own override — the
+ * given `rateMinor`, else the rate A already has in this series, else REFUSED (never B's rate by default). The rows after it
+ * are untouched. The from-date swap is unchanged (§3: not this task).
+ */
+export async function swapOtherSeriesTeacher(key: string, input: { from: string; to: string; fromDate?: string; onDate?: string; rateMinor?: number }) {
   if (isGroupKey(key)) throw badRequest("การสลับครูของกลุ่มใช้ swapGroupTeacher"); // TASK-441 — the OTHER swap never moves seats
   return db.transaction(async (tx) => {
     const rows = await seriesRows(tx, key);
     if (!rows.length) throw NOT_FOUND();
-    const targets = seriesRowsFrom(rows, input.fromDate ?? today());
+    // 📌 The SAME live filter as `addTeacherToOtherSeries`'s `onDate` (TASK-453) — "this date only", never a second idea.
+    const targets = input.onDate ? rows.filter((r) => isLive(r) && r.date === input.onDate) : seriesRowsFrom(rows, input.fromDate ?? today());
+    if (input.onDate && !targets.length) throw NOT_FOUND();
+    const coverRate = input.onDate ? (input.rateMinor ?? seriesRateOf(rows, input.to)) : undefined;
+    if (input.onDate && coverRate == null) throw RATE_REQUIRED(input.onDate);
     let moved = 0;
     for (const r of targets) {
       if (r.teacherId !== input.from) throw badRequest(`วันที่ ${r.date} ครูคนแรกไม่ใช่คนที่ระบุ`);
       if (extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);
-      await assertTeacherBookable(tx, input.to, r.date);
+      await assertTeacherBookable(tx, input.to, r.date); // ✅ TASK-561's leave block applies to a cover too
       try {
-        await tx.update(bookings).set({ teacherId: input.to }).where(eq(bookings.id, r.id));
+        await tx.update(bookings).set(input.onDate ? { teacherId: input.to, teacherRateMinor: coverRate } : { teacherId: input.to }).where(eq(bookings.id, r.id));
       } catch (e: any) {
         if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${r.date} ${hhmm(r.startTime)} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
         throw e;

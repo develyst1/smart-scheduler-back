@@ -43,6 +43,8 @@ export const courseLeaveQuota = (c: { size: number; leaveQuota?: number | null }
 
 export interface CourseLike {
   id: string;
+  /** TASK-573 §3 — the course's start (`course_packages.start_date`, NOT NULL), which TASK-570's start-date move writes. */
+  startDate: string;
   size: number;
   usedSessions: number;
   leaveUsed: number;
@@ -61,6 +63,8 @@ export interface CourseLike {
 
 export interface CourseSummary {
   id: string;
+  /** TASK-573 §3 — the real column (TASK-545 removed an INVENTED one; the real reader arrived as a compile error, as designed). */
+  startDate: string;
   size: PackageSize;
   usedSessions: number;
   leaveUsed: number;
@@ -95,6 +99,7 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
   const leaveLocked = c.leaveUsed >= quota && !c.adminUnlocked;
   return {
     id: c.id,
+    startDate: c.startDate,
     size: c.size as PackageSize,
     usedSessions: c.usedSessions,
     leaveUsed: c.leaveUsed,

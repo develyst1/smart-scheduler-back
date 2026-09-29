@@ -37,6 +37,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /courses/:id/cancel": "guarded", // its own ALREADY_ENDED (the double-cancel case, a different message)
   "POST /courses/:id/confirm": "guarded", // TASK-201: confirming is a reviving write — same chokepoint
   "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
+  "POST /courses/:id/start-date/preview": "guarded", // TASK-573 — the act's own plan: `assertCourseWritable` first, writes nothing
+  "POST /courses/:id/start-date": "guarded", // TASK-570 — `assertCourseWritable` first: an ENDED or PAUSED course refuses
   "POST /courses/:id/resume": "guarded", // …and refuses NOT_DROPPED / an ended course. Exempt from the drop guard
                                           // by construction: it is the one write whose whole job is clearing it.
 
@@ -98,6 +100,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /vouchers": "unrelated",
   "POST /vouchers/:id/cancel": "unrelated", // TASK-439: a VOUCHER end — its own ALREADY_ENDED on the voucher, no course
   "POST /vouchers/:id/cancel/preview": "unrelated",
+  "PATCH /vouchers/:id/expiry": "unrelated", // TASK-568 — a VOUCHER's expiry: no course, no session (its own ENDED refusal)
+  "POST /vouchers/:id/expiry/preview": "unrelated",
   "POST /badges/types": "unrelated",
   "PATCH /badges/types/:id": "unrelated",
   "POST /badges/values": "unrelated",

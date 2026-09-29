@@ -150,6 +150,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses/:id/confirm": act(BOOKINGS, "action:bookings.course-confirm"),
   "POST /courses/:id/drop": act(BOOKINGS, "action:bookings.course-drop"),
   "POST /courses/:id/resume": act(BOOKINGS, "action:bookings.course-drop"),
+  "POST /courses/:id/start-date": act(BOOKINGS, "action:bookings.course-plan"), // TASK-570 — a re-dating of the plan: the plan editor's key
+  "POST /courses/:id/start-date/preview": act(BOOKINGS, "action:bookings.course-plan"), // TASK-573 §2 — the SAME gate as the act (pinned equal)
   "POST /courses/:id/cancel": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/import": act(BOOKINGS, "action:bookings.course-import"),
@@ -160,6 +162,9 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /vouchers/import": act(BOOKINGS, "action:bookings.voucher-import"),
   "POST /vouchers/:id/cancel": act(BOOKINGS, "action:bookings.course-cancel"), // TASK-439 — the course-cancel key, reused (the owner's)
   "POST /vouchers/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),
+  "PATCH /vouchers/:id/expiry": act(BOOKINGS, "action:bookings.course-expiry"), // TASK-568 — the course-expiry key, reused (as voucher cancel reused course-cancel)
+  "POST /vouchers/:id/expiry/preview": act(BOOKINGS, "action:bookings.course-expiry"),
+  "GET /vouchers/:id/expiry-history": read(BOOKINGS),
   // ── teachers (the list is read by FIVE pages) ──
   "GET /teachers": read(["menu:calendar", "menu:bookings", "menu:link-requests", "menu:reports", "menu:teachers"]),
   "POST /teachers": act(TEACHERS, "action:teachers.create"),
@@ -193,6 +198,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /camp/weeks": read(["menu:camp"]),
   "POST /camp/weeks": act(["menu:camp"], "action:camp.week-open"),
   "PATCH /camp/weeks/:id": act(["menu:camp"], "action:camp.week-open"),
+  "DELETE /camp/weeks/:id": act(["menu:camp"], "action:camp.week-open"), // TASK-560 — the same act as open / close
   "PATCH /camp/weeks/:id/days/:date": act(["menu:camp"], "action:camp.week-open"), // TASK-418 — the per-day swap
   "GET /camp/weeks/:id/days": read(["menu:camp"]),
   "GET /camp/packages": read(["menu:camp", "menu:people"]), // the student's Camp card reads it from the People page too

@@ -110,7 +110,7 @@ describe("🔴 the WRITE half on every rate-carrying writer — 403 with a rate 
       ["PATCH", `/bookings/${uuidFor("b-1")}/other`, { teacherRates: { [T1]: 50000 } }, { headCount: 10 }],
       ["POST", "/bookings/other-series", { ...seriesBody, teacherRates: { [T1]: 50000 } }, seriesBody],
       ["POST", "/bookings/group-series", { ...group, teacherRates: { [T1]: 50000 } }, group],
-      ["POST", `/other-series/${K}/teachers`, { teacherId: T2, rateMinor: 40000 }, { teacherId: T2 }],
+      ["POST", `/other-series/${K}/teachers`, { teacherId: T2, rateMinor: 40000, fromDate: "2026-10-12" }, { teacherId: T2, fromDate: "2026-10-12" }], // 🔻 TASK-562: a scope
       ["PATCH", `/other-series/${K}`, { teacherRates: { [T1]: 1 } }, { title: "Chess" }],
       ["PATCH", `/bookings/${uuidFor("b-1")}`, { classRateMinor: 300 }, { date: "2026-10-12" }],
       ["PATCH", `/courses/${uuidFor("c-1")}`, { classRateMinor: 700 }, { adminUnlocked: true }],

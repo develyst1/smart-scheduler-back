@@ -8,6 +8,18 @@
 // (`course_expiry_changes` would not know). Its old header said "idempotent"; that stopped being true when the rule changed.
 //
 // Need to correct one course's expiry? Use the admin's expiry edit (it records who and why). Anything wider is a new TASK.
+//
+// 📌 HOW THE REPAIR REASONED — kept here because its library (`lib/expiry-repair-plan.ts`, deleted in TASK-556) was the only
+// written record. Any future bulk expiry correction must answer the same four questions:
+//  1. IMPORTED courses were excluded ENTIRELY (TASK-200, owner: "ข้ามการแก้วันexpire คอร์สนำเข้าไปก่อน"): an imported expiry is
+//     a date a human typed, and may encode an agreement with that family no rule can see. The exclusion sat BEFORE the change
+//     list, so an import could not reach the changes, the counts or the flip list; the console printed how many it skipped.
+//  2. A course whose last LIVE session sat after its corrected expiry was FLAGGED, never moved (FIX-007 AC-4): that session was
+//     almost certainly placed there by hand for a reason the tool cannot know.
+//  3. "Newly expired" meant the STATUS flips (read ACTIVE today, EXPIRED after), not merely "the date moved earlier"; the owner
+//     read that list of names BEFORE committing — dry run by default, the plan computed in a transaction and rolled back.
+//  4. The console showed COUNTS only (changed · earlier · later · newly expired · live past expiry); names went to a gitignored
+//     report under `project-docs/`, per the PII rule.
 console.error(
   "course:repair-expiry ถูกปลดระวางแล้ว (TASK-556) — ไม่เขียนอะไร\n" +
     "  สคริปต์นี้จะรีเซ็ตวันหมดอายุคอร์สให้เร็วขึ้น และลบการเลื่อนที่บันทึกไว้ทั้งหมดโดยไม่มีบันทึก จึงห้ามรันอีก\n" +

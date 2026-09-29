@@ -46,7 +46,7 @@ const campTx = (o: { week: any; day: any; existing?: any[]; clashAt?: string }) 
   const guard = <T,>(fn: () => T): T => { if (aborted) throw Object.assign(new Error("current transaction is aborted, commands ignored until end of transaction block"), { code: "25P02" }); return fn(); };
   const tx: any = {
     log,
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       campWeekDays: { findFirst: async () => guard(() => ({ ...o.day, week: o.week })) },
       campWeekDayTeachers: { findMany: async () => guard(() => (o.day.teacherIds ?? []).map((teacherId: string) => ({ campWeekDayId: o.day.id, teacherId, startTime: null, endTime: null, rateMinor: 0 }))) }, // 🔻 TASK-454
       teachers: { findFirst: async () => guard(() => ({ id: T1, nickname: "เอก" })), findMany: async () => guard(() => [{ id: T1, nickname: "เอก" }, { id: T2, nickname: "บี" }]) },
@@ -81,9 +81,9 @@ describe("🔴 §1 the 500 — the clash's 23505 aborts the tx; the catch no lon
   });
   test("a PAST date: nothing derived, nothing deleted, no read beyond the day — a week created mid-week cannot clash on yesterday", async () => {
     const f = campTx({ week: { ...week, startDate: addDays(TODAY, -2) }, day: { id: D1, date: addDays(TODAY, -1), teacherIds: [T1], startTime: "10:00:00", endTime: "12:00:00" }, existing: [{ id: "old", teacherId: T1, startTime: "10:00:00" }], clashAt: "10:00" });
-    expect(await camp.syncCampDayRows(f.tx, D1)).toEqual({ inserted: 0, deleted: 0 });
+    expect(await camp.syncCampDayRows(f.tx, D1)).toEqual({ inserted: 0, deleted: 0, onLeave: [] });
     expect(f.log).toEqual([]);
-    expect(CAMP).toContain("if (d.date < bangkokNow().date) return { inserted: 0, deleted: 0 };");
+    expect(CAMP).toContain("if (d.date < bangkokNow().date) return { inserted: 0, deleted: 0, onLeave: [] };"); // 🔻 TASK-561: + onLeave
   });
   test("🔴 through the ROOT app: `POST /camp/weeks` for a week INCLUDING today over a coach who has a session in the window ⇒ 409 SLOT_TAKEN envelope naming the clash; the tx callback rejected (nothing committed)", async () => {
     process.env.SKIP_AUTH = "true";
@@ -100,7 +100,7 @@ describe("🔴 §1 the 500 — the clash's 23505 aborts the tx; the catch no lon
 
 describe("🔴 §2 the family notices — ONE household set per row; siblings once; the counts honest; Private/DUO byte-identical", () => {
   const famTx = (o: { seats?: { studentId: string }[]; student: Record<string, string | null>; parents: Record<string, { lineUserId: string | null; links: string[] }> }, inserted: any[]) => ({
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       students: { findMany: async () => Object.entries(o.student).map(([id, parentId]) => ({ id, parentId })) },
       parents: { findMany: async () => Object.entries(o.parents).map(([id, p]) => ({ id, lineUserId: p.lineUserId })) },
       bookings: { findMany: async () => o.seats ?? [] },
@@ -141,7 +141,7 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
   test("🔴 cancel-all by value: one child on SIX rows ⇒ six notices (each its own dated class), `householdsTold: 1`; two rows with different families ⇒ the union", async () => {
     const rows = [1, 2, 3, 4, 5, 6].map((i) => ({ id: `g-${i}`, date: `2026-10-0${i}`, startTime: "15:00:00", endTime: "16:00:00", status: "CONFIRMED", bookingType: "GROUP", teacherId: T1, otherTitle: "Skate Kids", otherKind: "GROUP", headCount: 4, note: null, teacherRateMinor: null, additionalTeachers: [], teacher: { id: T1, nickname: "Ek", name: "Ek", lineUserId: "U-ek" }, seats: [{ id: `s-${i}`, studentId: "A", status: "CONFIRMED", courseId: "c1" }] }));
     const tx: any = {
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         bookings: { findMany: async () => rows, findFirst: async () => null },
         teachers: { findMany: async () => [{ id: T1, lineUserId: "U-ek" }], findFirst: async () => null },
         boMovement: { findMany: async () => [] }, boItem: { findMany: async () => [], findFirst: async () => null }, appSettings: { findMany: async () => [], findFirst: async () => null },
@@ -158,6 +158,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
   });
 });

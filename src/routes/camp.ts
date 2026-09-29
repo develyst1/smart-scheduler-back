@@ -17,6 +17,8 @@ export const campRoutes = new Hono()
   .get("/weeks", zValidator("query", v.campWeeksQuery), async (c) => c.json(await camp.listWeeks(c.req.valid("query"))))
   .post("/weeks", zValidator("json", v.createCampWeek), async (c) => c.json(await camp.createWeek(c.req.valid("json"), actorOf(c)), 201))
   .patch("/weeks/:id", zValidator("json", v.updateCampWeek), async (c) => c.json(await camp.updateWeek(c.req.param("id"), c.req.valid("json"))))
+  // TASK-560 — delete a week created by mistake. NO body: "is it empty?" is the SERVER's question, asked at the act.
+  .delete("/weeks/:id", async (c) => c.json(await camp.deleteWeek(c.req.param("id"))))
   // TASK-418 (REQ-095 §11) — the per-day SWAP: the day's teachers / window; the ONE sync re-derives the grid rows.
   .patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => {
     assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-443 — `teacherRates` ⇒ key 59; teachers / window alone pass

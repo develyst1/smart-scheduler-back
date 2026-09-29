@@ -101,6 +101,11 @@ const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
     TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
     EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
   },
+  // 📋 DRAFT (TASK-573 §1, the owner's copy batch) — a course whose start was moved and not yet re-confirmed.
+  courses_awaiting_reconfirm: {
+    TH: "คอร์สที่เลื่อนวันเริ่มแล้ว รอยืนยันใหม่",
+    EN: "Courses with a moved start date, awaiting re-confirmation",
+  },
 };
 
 /** `sales_not_posted` → `att_sales_not_posted`, so the existing `t(`att_${…}`)` call site is unchanged. */

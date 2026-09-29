@@ -648,11 +648,19 @@ export const updateUser = z.object({
 export const otherSeriesQuery = z.object({ from: DATE, to: DATE }).refine((d) => d.from <= d.to, { message: "ช่วงวันที่กลับด้าน" });
 export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(END_REASONS), note: z.string().trim().max(500).optional() });
 // TASK-453 — `onDate` = ONE session (a cover coach for one week); mutually exclusive with `fromDate`, refused rather than ranked.
+// 🔴 TASK-562 (REQ-110 item 5) — the door must ASK: THIS session (`onDate`) or THIS AND THE REST (`fromDate`), exactly one.
+// 🚫 Neither = the old silent "every remaining session" — Khwan's complaint — refused, not defaulted.
+const ONE_SCOPE = { message: "เลือกอย่างใดอย่างหนึ่ง: เฉพาะครั้งนี้ (onDate) หรือ ตั้งแต่ครั้งนี้เป็นต้นไป (fromDate)", path: ["onDate"] };
+const oneScope = (d: { fromDate?: string; onDate?: string }) => !!d.fromDate !== !!d.onDate;
 export const otherSeriesAddTeacher = z
   .object({ teacherId: ID, rateMinor: z.number().int().min(0).optional(), fromDate: DATE.optional(), onDate: DATE.optional() })
-  .refine((d) => !(d.fromDate && d.onDate), { message: "ระบุ fromDate หรือ onDate อย่างใดอย่างหนึ่ง", path: ["onDate"] });
+  .refine(oneScope, ONE_SCOPE);
 export const otherSeriesFromQuery = z.object({ fromDate: DATE.optional() });
-export const otherSeriesSwap = z.object({ from: ID, to: ID, fromDate: DATE.optional() }).refine((d) => d.from !== d.to, { message: "ครูคนเดิม" });
+export const otherSeriesSwap = z
+  .object({ from: ID, to: ID, fromDate: DATE.optional(), onDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() })
+  .refine((d) => d.from !== d.to, { message: "ครูคนเดิม" })
+  .refine(oneScope, ONE_SCOPE)
+  .refine((d) => d.rateMinor === undefined || !!d.onDate, { message: "ค่าสอนของครูที่สอนแทนใช้กับ 'เฉพาะครั้งนี้' เท่านั้น", path: ["rateMinor"] }); // TASK-562
 export const otherSeriesDates = z.object({ dates: z.array(DATE).min(1).max(60) }).refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
 export const otherSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), otherKind: z.enum(HUMAN_OTHER_KINDS).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
@@ -936,6 +944,8 @@ export const resumeBooking = z.object({
  * 🚫 **And no `weekday`** — `weekdayOf(startDate)` is what course creation derives
  * (`createCoursePackage` has no such field either). Two fields cannot contradict each other; three can.
  */
+/** TASK-570 — the new start date only: the weekday is DERIVED from it (as creation and resume do), the time and teacher kept. */
+export const changeCourseStart = z.object({ startDate: DATE });
 export const resumeCourse = z.object({
   startDate: DATE,
   startTime: TIME,

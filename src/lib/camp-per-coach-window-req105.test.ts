@@ -42,8 +42,8 @@ describe("🔴 the migration — 0053, counted; the merge, the backfill and BOTH
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0053_camp_day_teachers.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0053_camp_day_teachers` is the 54th file, idx 53, the last; 'expects 54'; the four statements in THIS order", () => {
-    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(journal.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(files[53]).toBe("0053_camp_day_teachers.sql");
     expect(journal.entries[53]).toMatchObject({ idx: 53, tag: "0053_camp_day_teachers" });
     expect(sql).toContain("`db:verify` expects 54");
@@ -107,7 +107,7 @@ describe("🔴 each coach's OWN window — by value", () => {
     const writes: any[] = [];
     const inserts: any[] = [];
     const tx: any = {
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         campWeekDays: { findFirst: async () => ({ ...day(), week: { id: W1, name: "Camp A", status: "OPEN" } }) },
         campWeekDayTeachers: { findMany: async () => [coach(A, { startTime: "10:00:00", endTime: "12:00:00", rateMinor: 50000 }), coach(B, { startTime: "13:00:00", endTime: "15:00:00", rateMinor: 30000 })] },
         teachers: { findFirst: async () => null, findMany: async () => [] },
@@ -125,13 +125,13 @@ describe("🔴 each coach's OWN window — by value", () => {
       [B, "13:00", { [B]: 30000 }],
       [B, "14:00", { [B]: 30000 }],
     ]);
-    expect(out).toEqual({ inserted: 3, deleted: 0 });
+    expect(out).toEqual({ inserted: 3, deleted: 0, onLeave: [] });
     expect(writes.filter((w) => w[0] === "bookings" && "teacherRateMinor" in w[1]).map((w) => w[1])).toEqual([{ teacherRateMinor: 50000 }, { teacherRateMinor: 30000 }]);
   });
   test("`setDayTeachers` by value: upsert each, delete whoever left; a half-given window ⇒ 400; a window OUTSIDE the day's default is allowed", async () => {
     const writes: any[] = [];
     const tx: any = {
-      query: { campWeekDays: { findFirst: async () => ({ ...day(), week: { status: "CLOSED" } }) }, campWeekDayTeachers: { findMany: async () => [] }, teachers: { findMany: async () => [] } },
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ campWeekDays: { findFirst: async () => ({ ...day(), week: { status: "CLOSED" } }) }, campWeekDayTeachers: { findMany: async () => [] }, teachers: { findMany: async () => [] } },
       insert: (table: any) => ({ values: (val: any) => ({ onConflictDoUpdate: async (o: any) => { writes.push(["upsert", table === campWeekDayTeachers ? "teachers" : "other", val, Object.keys(o.set)]); } }) }),
       delete: (table: any) => ({ where: async () => { writes.push(["delete", table === campWeekDayTeachers ? "teachers" : "other"]); } }),
       update: () => ({ set: () => ({ where: async () => {} }) }),

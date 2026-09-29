@@ -24,6 +24,7 @@ import {
 import { displayNameOf } from "../db/mappers";
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared writes
 import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
+import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
@@ -76,6 +77,7 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
     let makeup: { id: string; status: string; date: string; teacherId: string } | null = null;
     let expiry: ExpiryDecision = { action: "keep" };
     if (kind === "leave") {
+      await assertNoCoachOnLeave(tx, row); // TASK-561 — the class does not come back onto its coach's advance-leave day
       const linkedAll = row.courseId
         ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.extendedFromId, row.id) })
         : [];

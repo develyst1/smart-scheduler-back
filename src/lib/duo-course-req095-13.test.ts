@@ -53,8 +53,8 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
   test("56 = 56: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(journal.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -128,7 +128,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     const tx: any = {
       insert: (table: any) => ({ values: (val: any) => ({ returning: async () => { const id = table === coursePackages ? "course-1" : `b-${++n}`; inserted.push({ table: table === coursePackages ? "coursePackages" : table === bookings ? "bookings" : "other", v: val }); return [{ id }]; } }) }),
       update: () => ({ set: () => ({ where: async () => {} }) }),
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         students: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, x: string) => { probe.push(x); return null; } }); const id = probe[0]!; return { id, parentId: null, archivedAt: opts.archived?.has(id) ? new Date() : null, name: id === A ? "Ploy" : "Pun", nickname: id === A ? "Ploy" : "Pun" }; } },
         teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) },
         // 🔻 TASK-453 — the Private's insert now asks "is an EMPTY group row holding this hour?" before it writes.
@@ -231,9 +231,9 @@ describe("🔴 the validators — `duo`, `duo` + `groupKey` ⇒ 400, the rate ed
     expect(GROUP_KIND_PRICE_GROUP).toEqual({ DUO: "balance-duo", GROUP: "balance-group" });
   });
   test("an EXISTING DUO series is still read as DUO — `groupKindOf` by value; the seat-cap rule of the sweep untouched", async () => {
-    const exec = { query: { bookings: { findFirst: async () => ({ bookingType: "GROUP", otherKind: "DUO" }) } } };
+    const exec = { query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ bookings: { findFirst: async () => ({ bookingType: "GROUP", otherKind: "DUO" }) } } };
     expect(await sched.groupKindOf(exec, GK)).toBe("DUO");
-    expect(await sched.resolvePriceGroup(SUBJ, "DUO", { query: { subjects: { findFirst: async () => { throw new Error("must not read"); } } } })).toBe("balance-duo");
+    expect(await sched.resolvePriceGroup(SUBJ, "DUO", { query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ subjects: { findFirst: async () => { throw new Error("must not read"); } } } })).toBe("balance-duo");
     expect(courseItemRef("balance-duo", 4)).toBe("course-balance-duo-4");
   });
 });
@@ -270,7 +270,7 @@ describe("🔑 the routes through the ROOT app (service spied): POST /courses { 
 // default on the course, any course. Pinned by value in `coach-rate-req095-13-3.test.ts`; TASK-420's DUO-only block retired.
 describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, primary-first, nulls skipped) and by SOURCE (no private read remains)", () => {
   const exec = (o: { student: Record<string, string | null>; parents: Record<string, { lineUserId: string | null; links: string[] }> }) => ({
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       students: { findMany: async () => Object.entries(o.student).map(([id, parentId]) => ({ id, parentId })) },
       parents: { findMany: async () => Object.entries(o.parents).map(([id, p]) => ({ id, lineUserId: p.lineUserId })) },
     },

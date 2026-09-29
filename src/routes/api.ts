@@ -139,6 +139,15 @@ export const api = new Hono()
   .post("/vouchers/:id/cancel", zValidator("json", v.endCourse), async (c) =>
     c.json(await svc.endVoucher(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
+  // 🔴 TASK-568 (REQ-110 item 3) — a voucher's expiry, the course's shape: preview (writes nothing) · PATCH (records who, from the
+  // TOKEN) · the record. The course's own body schema, reused — one field, one question.
+  .post("/vouchers/:id/expiry/preview", zValidator("json", v.updateCourseExpiry), async (c) =>
+    c.json(await svc.previewVoucherExpiry(c.req.param("id"), c.req.valid("json"))),
+  )
+  .patch("/vouchers/:id/expiry", zValidator("json", v.updateCourseExpiry), async (c) =>
+    c.json(await svc.updateVoucherExpiry(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
+  .get("/vouchers/:id/expiry-history", async (c) => c.json(await svc.getVoucherExpiryHistory(c.req.param("id"))))
   // SPEC-066 / TASK-201 (REQ-072) — confirm every PENDING session of a course in one action, with exactly ONE
   // teacher LINE. Distinct from `/bookings/bulk-confirm`, which is per-session and sends one message each.
   .post("/courses/:id/confirm", async (c) => c.json(await svc.confirmCourse(c.req.param("id"))))
@@ -149,6 +158,14 @@ export const api = new Hono()
   )
   .post("/courses/:id/resume", zValidator("json", v.resumeCourse), async (c) =>
     c.json(await svc.resumeCourse(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
+  // 🔴 TASK-570 (REQ-110 item 6) — move a not-yet-started course's start date; the sessions MOVED, the expiry recomputed and recorded.
+  // 🔴 TASK-573 §2 — the SAME plan, read-only: what the move WOULD do (a forecast — the act re-checks clashes and each date's gate).
+  .post("/courses/:id/start-date/preview", zValidator("json", v.changeCourseStart), async (c) =>
+    c.json(await svc.previewCourseStart(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/courses/:id/start-date", zValidator("json", v.changeCourseStart), async (c) =>
+    c.json(await svc.changeCourseStart(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
   // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
   // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and

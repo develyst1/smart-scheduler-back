@@ -75,7 +75,7 @@ describe("🔴 the dropped COURSE — absent ⇒ the LAST session's teacher (TAS
     // handed BACK to its original teacher). One line; the absent path moved on purpose.
     expect(RESUME_COURSE).toContain("const teacherId = input.teacherId ?? rows.at(-1)?.teacherId ?? null;");
     expect(RESUME_COURSE).not.toContain("rows[0]?.teacherId");
-    const loop = RESUME_COURSE.slice(RESUME_COURSE.indexOf("for (const date of dates) {"));
+    const loop = RESUME_COURSE.slice(RESUME_COURSE.indexOf("for (const [i, date] of dates.entries()) {")); // 🔻 TASK-553: the loop also knows its index (the link rides the insert)
     expect(loop).toContain("await insertBooking(tx, studentId, {\n          teacherId,");
     expect((loop.match(/teacherId/g) ?? []).length).toBe(1); // no per-session override, no second source
   });

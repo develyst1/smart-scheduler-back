@@ -121,7 +121,7 @@ const run = (w: World, opts: { plan?: { appended: string[]; cancelled: string[] 
     }
   };
   const tx = {
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => (w as any).leaveDay }, /* TASK-561: a fixture may put its coach on an advance leave */ teachers: table(() => w.teachers.map((t) => ({ nickname: `Coach-${t.id}`, ...t }))),
       bookings: table(() => w.bookings, withRels),
       coursePackages: table(() => w.coursePackages),
       jobRuns: table(() => w.jobRuns),
@@ -401,7 +401,7 @@ describe("🔔 TASK-508 — a LEAVE Undo tells EVERY coach of the class that it 
   test("🔑 by value: the PRIMARY and the ADDITIONAL teacher each get one row — nobody else, and no parent", async () => {
     const h = run(coTaught());
     await undoBooking("b1", { actor: "admin-dong", reason: null });
-    expect(h.coachesAsked).toEqual(["m1", "b1"]); // the make-up's coaches (TASK-510), then THIS class's — once each
+    expect(h.coachesAsked).toEqual(["b1", "m1", "b1"]); // 🔻 TASK-561: first THIS class's coaches for the leave-day gate (asked, nobody told) · then the make-up's coaches (TASK-510), then THIS class's — told once each (the outbox pins who is told)
     expect(h.w.outbox.filter((m) => m.payload.kind === "class_on_again_teacher")).toEqual([onAgain("U-coach-t1"), onAgain("U-coach-t2")]);
     expect(h.w.outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]); // 🚫 never the family
   });
@@ -497,7 +497,7 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     const h = run(w);
     await undoBooking("b1", { actor: "a", reason: null });
     expect(h.w.outbox.map((m) => m.payload.kind)).toEqual(["class_on_again_teacher"]);
-    expect(h.coachesAsked).toEqual(["b1"]);
+    expect(h.coachesAsked).toEqual(["b1", "b1"]); // 🔻 TASK-561: the leave-day gate asks first (nobody told), then the notice
   });
 
   test("the words a DIFFERENT coach reads for the cancelled make-up — the existing cancel notice, unchanged; Reason = the note written on the row", () => {
@@ -515,7 +515,7 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
 
   // The two notices themselves, over a small fake transaction: WHO receives them.
   const fakeTx = (outbox: any[]) => ({
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       students: { findFirst: async () => ({ id: "s1", name: "Feen Full", nickname: "Feen" }) },
       appSettings: { findFirst: async () => ({ value: ["U-admin"] }) },
     },
@@ -767,5 +767,30 @@ describe("🔴 TASK-556 (1b) — no change record ⇒ keep ONLY for a course bor
     expect(S).toContain("process.exit(1)");
     expect(S).not.toMatch(/from "\.\.\/src\/db"|\.update\(|\.transaction\(/); // cannot touch a database
     expect(S).toContain("ปลดระวาง");
+  });
+});
+
+// ───────────────────────── TASK-561 — a leave's Undo does not put the class back onto its coach's ADVANCE-leave day ─────────────────────────
+describe("🔴 TASK-561 — the leave-Undo onto a coach's advance-leave day is REFUSED, in words; the preview says the same", () => {
+  const onLeave = () => Object.assign(leaveWorld(), { leaveDay: { teacherId: "t1", date: "2026-10-02", reason: "ลากิจ" } });
+  test("the act: 409 TEACHER_ON_LEAVE naming the coach and the day, NOTHING written", async () => {
+    const h = run(onLeave());
+    const e = await errOf(undoBooking("b1", { actor: "admin-dong", reason: null }));
+    expect([e?.status, e?.code]).toEqual([409, "TEACHER_ON_LEAVE"]);
+    expect(e!.message).toContain("ครูCoach-t1 ลาวันที่ 2026-10-02");
+    expect(e!.message).toContain("เลือกครูอื่นหรือวันอื่น"); // what to do instead
+    expect([h.w.writes, row(h.w, "b1").status]).toEqual([[], "SICK_LEAVE"]);
+  });
+  test("the preview (the SAME planUndo) refuses with the same words", async () => {
+    run(onLeave());
+    const e = await errOf(undoBooking("b1", { actor: "a", reason: null }));
+    for (const x of spies.splice(0)) x.mockRestore();
+    run(onLeave());
+    const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
+    expect({ ok: p.ok, code: p.code, message: p.message }).toEqual({ ok: false, code: "TEACHER_ON_LEAVE", message: e!.message });
+  });
+  test("no leave recorded ⇒ the Undo proceeds exactly as before", async () => {
+    run(leaveWorld());
+    expect((await undoBooking("b1", { actor: "a", reason: null })).kind).toBe("leave");
   });
 });

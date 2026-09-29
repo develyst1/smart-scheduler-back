@@ -52,8 +52,8 @@ describe("🔴 the migration — 0052, counted; the stamp column then the rates 
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(journal.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");
@@ -106,7 +106,7 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
     const writes: any[] = [];
     const upserted: any[] = [];
     const tx: any = {
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         campWeekDays: { findFirst: async () => ({ ...day, week }) },
         campWeekDayTeachers: { findMany: async () => upserted.map((u) => ({ campWeekDayId: D1, teacherId: u.teacherId, startTime: u.startTime ?? null, endTime: u.endTime ?? null, rateMinor: u.rateMinor })) },
         teachers: { findFirst: async () => null, findMany: async () => [] },
@@ -194,7 +194,7 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     const probes: any[] = [];
     const writes: any[] = [];
     const tx: any = {
-      query: { campDays: { findMany: async ({ where, with: w }: any) => { const p: any[] = []; try { where({ status: "status", date: "date", deductionNotifiedAt: "stamp" }, { and: (...a: any[]) => a, inArray: (c: any, val: any) => { p.push(["in", c, val]); return val; }, lte: (c: any, val: any) => { p.push(["lte", c, val]); return val; }, isNull: (c: any) => { p.push(["isNull", c]); return c; } }); } catch {} probes.push({ p, w }); return [
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ campDays: { findMany: async ({ where, with: w }: any) => { const p: any[] = []; try { where({ status: "status", date: "date", deductionNotifiedAt: "stamp" }, { and: (...a: any[]) => a, inArray: (c: any, val: any) => { p.push(["in", c, val]); return val; }, lte: (c: any, val: any) => { p.push(["lte", c, val]); return val; }, isNull: (c: any) => { p.push(["isNull", c]); return c; } }); } catch {} probes.push({ p, w }); return [
         { id: "d1", campPackageId: P1, date: "2026-10-05", status: "ATTENDED", package: pkg },
         { id: "d2", campPackageId: P1, date: "2026-10-04", status: "ABSENT", package: { ...pkg, studentId: "s-none", student: { name: "Bam", nickname: null } } },
       ]; } } },
@@ -231,17 +231,17 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     expect(SVC).not.toMatch(/camp_deduction_enabled|getSetting\("camp_deduction/);
   });
   test("🔴 the bytes — REQ-104 §3, ENGLISH ONLY: identical under TH and EN, no Thai code point, DD-MM-YYYY, `3.5` and `4` (never `4.0`); an empty payload renders; the branch has no `t()`/`lang`", () => {
-    const expected = "🏕️ CAMP CREDIT USED\nStudent : Aiwa\nDate : 05-10-2026\nRemaining : 3.5/5 days";
+    const expected = "🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: 05-10-2026\nRemaining: 3.5 / 5 days"; // 🔻 TASK-558: Khwan's format (REQ-110 item 12)
     expect(renderCampDeduction({ studentName: "Aiwa", date: "2026-10-05", remainingDays: 3.5, totalDays: 5 })).toBe(expected);
-    expect(renderCampDeduction({ studentName: "Aiwa", date: "2026-10-05", remainingDays: 4, totalDays: 5 })).toBe("🏕️ CAMP CREDIT USED\nStudent : Aiwa\nDate : 05-10-2026\nRemaining : 4/5 days");
-    expect(CAMP_DEDUCTION_TITLE).toBe("🏕️ CAMP CREDIT USED");
+    expect(renderCampDeduction({ studentName: "Aiwa", date: "2026-10-05", remainingDays: 4, totalDays: 5 })).toBe("🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: 05-10-2026\nRemaining: 4 / 5 days");
+    expect(CAMP_DEDUCTION_TITLE).toBe("🏕️ BALANCE CAMP");
     for (const lang of ["TH", "EN"] as const) {
       const out = formatOutboxMessage({ kind: "camp_deduction", studentName: "Aiwa", date: "2026-10-05", remainingDays: 3.5, totalDays: 5 } as any, { studentName: "น้องเอ" } as any, lang, "parent");
       expect(out).toBe(expected);
       expect(out).not.toMatch(/[฀-๿]/);
       expect(out).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     }
-    expect(formatOutboxMessage({ kind: "camp_deduction" } as any, {}, "TH", "parent")).toBe("🏕️ CAMP CREDIT USED\nStudent : \nDate : \nRemaining : / days");
+    expect(formatOutboxMessage({ kind: "camp_deduction" } as any, {}, "TH", "parent")).toBe("🏕️ BALANCE CAMP\nStudent: \nDate: \nRemaining:  /  days");
     const branch = region(code(src("src/lib/line-message.ts")), 'case "camp_deduction":', "case ");
     expect(branch).not.toMatch(/\bt\(|lang/);
     expect(code(src("src/lib/camp-deduction.ts"))).not.toMatch(/line-i18n|\bt\(/);

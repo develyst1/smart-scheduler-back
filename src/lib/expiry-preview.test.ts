@@ -65,7 +65,7 @@ describe("🚫 TASK-298 — it WRITES NOTHING. The property that matters most.",
     // is nothing to keep in step. Three copies of one answer is this project's most frequent defect.
     expect(preview).toContain("await expiryDecision(id, input.expiryDate)");
     expect(SVC).toContain("const { course, impact } = await expiryDecision(id, input.expiryDate);");
-    expect(SVC.match(/expiryImpact\(/g)).toHaveLength(1); // the one inside the shared answer
+    expect(SVC.match(/expiryImpact\(/g)).toHaveLength(2); // the one inside the course's shared answer · 🔻 TASK-568: + the voucher's own shared answer
   });
 
   test("🚫 the PATCH's response is byte-identical", () => {

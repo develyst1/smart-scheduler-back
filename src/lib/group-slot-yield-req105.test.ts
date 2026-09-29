@@ -102,8 +102,8 @@ describe("🔴 §1 the mirror, by value — and what it is NOT", () => {
 describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PREDICATE is the witness", () => {
   test("56 = 56: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(journal.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(journal.entries[54]).toMatchObject({ idx: 54, tag: "0054_group_slot_yield" });
     expect(MIG).toContain("db:verify` expects 55");
     const stmts = MIG.split("--> statement-breakpoint").map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);
@@ -144,7 +144,7 @@ const fakeTx = (o: { group?: any; liveSeats?: number } = {}) => {
   return {
     ops,
     tx: {
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         teachers: { findFirst: async () => teacher },
         bookings: { findFirst: async () => o.group ?? null },
         freelanceCeilings: { findFirst: async () => null },

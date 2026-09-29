@@ -146,6 +146,15 @@ export const isOrphanedSession = (
 
 // ── Registry ─────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 🔴 TASK-573 §1 — a course whose START was moved after it was confirmed: its sessions went back to PENDING and the family and
+ * coach hold the OLD schedule until an admin re-confirms. Fires FROM THE MOMENT OF THE MOVE (the recorded
+ * `reconfirmNeededSince`), not from a date near the first session. Clears itself when nothing is pending any more (a course
+ * confirm clears the mark; confirming each session one by one empties the count) and when the course ends or is paused.
+ */
+export const isAwaitingReconfirm = (c: { reconfirmNeededSince?: Date | string | null; endedAt?: Date | string | null; droppedAt?: Date | string | null }, pendingCount: number): boolean =>
+  c.reconfirmNeededSince != null && !c.endedAt && !c.droppedAt && pendingCount > 0;
+
 export interface AttentionItem {
   id: string;
   label: string;
@@ -179,6 +188,8 @@ export interface AttentionCtx {
      * decides which of them are a CLASH, through `isGroupSlotClash` — the loader never judges.
      */
     yieldedGroupDates: () => Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>>;
+    /** TASK-573 — courses carrying `reconfirm_needed_since`, each with its student and its count of PENDING sessions. */
+    reconfirmCandidates: () => Promise<Array<{ course: any; pendingCount: number }>>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
     /**
      * TASK-163 — the two extra facts the dropped-discount check needs, from the same load: the in-window
@@ -382,6 +393,27 @@ const CHECKS = [
           // TASK-423's ONE name rule, not a hand-copied `otherTitle ?? …` chain (the sweep in
           // `coach-rate-req095-13-3` is what says so, and it was right).
           label: `${booking.date} ${hhmm(booking.startTime)} · ${displayNameOf(booking) || "-"} · ${teacher?.nickname ?? teacher?.name ?? "-"} · ${liveSeats}${mark(privateLive)}`,
+        })),
+      };
+    },
+  },
+  {
+    /**
+     * 🔴 TASK-573 §1 (REQ-110 item 6) — the 12th check, NOT a wider `unconfirmed_bookings`: widening that one's today/tomorrow
+     * window would put every unconfirmed session of the coming weeks on the panel (a different question, and noise). This one
+     * asks exactly "an admin MOVED a confirmed course and has not re-confirmed it" — from the moment of the move.
+     * 🔐 The PANEL names the child (nickname) so the admin knows which course to confirm; the LINE DIGEST carries the COUNT
+     * only — `namesPeopleInDigest` stays off: which checks may name people there is an owner-approved list (REQ-020).
+     */
+    key: "courses_awaiting_reconfirm",
+    titleKey: "att_courses_awaiting_reconfirm",
+    run: async (ctx) => {
+      const rows = (await ctx.load.reconfirmCandidates()).filter(({ course, pendingCount }) => isAwaitingReconfirm(course, pendingCount));
+      return {
+        count: rows.length,
+        items: rows.map(({ course, pendingCount }) => ({
+          id: course.id,
+          label: `${course.startDate} · ${course.student?.nickname ?? course.student?.name ?? "-"} · ${pendingCount}`,
         })),
       };
     },

@@ -57,8 +57,8 @@ describe("🔴 the ONE rule — `effectiveRateMinor` / `rateFacts` by value; no 
     expect(others).toEqual([]);
   });
   test("no migration: 49 = 49; the column is the reused `teacher_rate_minor`", () => {
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(code(src("src/db/schema.ts"))).not.toMatch(/rate_override|override_minor/);
   });
 });
@@ -96,7 +96,7 @@ describe("🔴 the two writes by VALUE — the session ⇒ the ROW's override on
     spies.push(spyOn(db.query.coursePackages, "findFirst").mockImplementation((async () => ({ id: "c-1", endedAt: null, droppedAt: null })) as any));
     const tx: any = {
       update: (table: any) => ({ set: (p: any) => ({ where: async () => { updates.push([table === bookings ? "bookings" : table === coursePackages ? "coursePackages" : "other", p]); } }) }),
-      query: {
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) },
         bookings: { findFirst: async () => ({ ...row, teacher: { id: T1 }, student: null, subject: null, course: null, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null, coStudent: null }), findMany: async () => [] },
         bookingTeachers: { findMany: async () => [] },
@@ -132,7 +132,7 @@ describe("🔴 the two writes by VALUE — the session ⇒ the ROW's override on
   });
   test("by source: the session write is `patch.teacherRateMinor`, refused without a `courseId` BEFORE the tx; no course write in `moveBooking`; `updateCourse` has no `NOT_DUO`; `NOT_DUO` is gone from src", () => {
     const M = region(SCHED, "export async function moveBooking(", "\n}\n");
-    expect(M).toContain("if (!current.courseId) throw NOT_A_COURSE_SESSION();\n    patch.teacherRateMinor = input.classRateMinor;");
+    expect(M).toContain("if (!current.courseId && !seriesCover) throw NOT_A_COURSE_SESSION();\n    patch.teacherRateMinor = input.classRateMinor;"); // 🔻 TASK-562: + a series COVER
     expect(M.indexOf("NOT_A_COURSE_SESSION()")).toBeLessThan(M.indexOf("db.transaction("));
     expect(M).not.toMatch(/update\(coursePackages\)|classRateMinor: input/);
     const U = region(SCHED, "export async function updateCourse(", "\n}\n");

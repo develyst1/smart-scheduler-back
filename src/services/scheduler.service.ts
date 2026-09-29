@@ -6,10 +6,13 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
+import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561
+import { isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570
+import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
 import { db } from "../db";
-import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, voucherExpiryChanges, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -90,7 +93,7 @@ import {
   shouldCloseCeiling,
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
-import {
+import { leavesAwaitingReanswer,
   COURSE_LIVE,
   COURSE_LIVE_STATUSES,
   canInsert,
@@ -1015,6 +1018,9 @@ export async function assertTeacherBookable(exec: any, teacherId: string, date: 
   if (!teacherWorksOnDay(teacher.workDays, weekdayOf(date))) {
     throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
   }
+  // 🔴 TASK-561 (REQ-110 item 2) — an ADVANCE leave blocks the whole day for new work with this teacher (THE reader; only
+  // today or later — a back-dated write passes). Seam A: every `insertBooking` caller + every move / swap / co-teacher door.
+  if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);
   // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't be
   // booked (FT/PT are not gated — salary deferred).
   if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
@@ -1305,6 +1311,7 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
         status: input.status ?? "PENDING",
         plannedAtCreation: input.plannedAtCreation ?? false,
         courseId: input.courseId ?? null,
+        extendedFromId: input.extendedFromId ?? null, // 🔻 TASK-553 — a row that ANSWERS a leave is born carrying its link
         voucherId: input.voucherId ?? null,
         note: input.note ?? null,
         // TASK-178 (REQ-068) — the attendee note travels with the session it describes, and never touches
@@ -1350,7 +1357,7 @@ async function courseCoStudentId(exec: any, courseId: string): Promise<string | 
   return c?.coStudentId ?? null;
 }
 
-async function prepareVoucherBooking(exec: any, voucherId: string, date: string, studentId: string) {
+export async function prepareVoucherBooking(exec: any, voucherId: string, date: string, studentId: string) { // TASK-569: exported — both directions pinned by value
   const v = await exec.query.vouchers.findFirst({
     where: (x: any, { eq }: any) => eq(x.id, voucherId),
   });
@@ -1366,8 +1373,22 @@ async function prepareVoucherBooking(exec: any, voucherId: string, date: string,
   });
   let expiryDate = v.expiryDate;
   if (!prior) {
-    expiryDate = voucherExpiry(v.totalHours, date); // count validity from the first booking
-    await exec.update(vouchers).set({ expiryDate }).where(eq(vouchers.id, voucherId));
+    // 🔴 TASK-569 (Sober's ruling) — the re-count YIELDS to a PERSON: when the voucher's record holds a change with an ACTOR, a
+    // person set this expiry, and a cancel-everything-then-rebook must not silently undo it. Decided from the RECORD (the actor),
+    // not a flag, a timestamp or a heuristic. 🔑 And the yield is itself RECORDED (`recordRecountYield`), so a later reader can
+    // tell "the re-count ran and kept the person's date" from "the re-count never ran" — the ambiguity D8 and TASK-553 had.
+    const personSetIt = await exec.query.voucherExpiryChanges.findFirst({
+      where: (c: any, { and: a, eq: e, isNotNull: nn }: any) => a(e(c.voucherId, voucherId), nn(c.actor)),
+    });
+    if (personSetIt) {
+      await recordRecountYield(exec, voucherId, v.expiryDate);
+    } else {
+      expiryDate = voucherExpiry(v.totalHours, date); // count validity from the first booking
+      await exec.update(vouchers).set({ expiryDate }).where(eq(vouchers.id, voucherId));
+      // 🔴 TASK-568 — this re-count MOVES the expiry, so it is RECORDED (actor null = the system). Its value is unchanged; D8
+      // came from exactly this: a writer nobody recorded, whose moves a later reader could not tell from "never moved".
+      await recordVoucherExpiryChange(exec, { voucherId, from: v.expiryDate, to: expiryDate, actor: null });
+    }
   }
   const check = voucherUsable({ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date);
   if (!check.ok) throw badRequest(check.reason!);
@@ -1647,6 +1668,7 @@ async function seatOnGroup(tx: any, groupKey: string, date: string): Promise<str
     return id;
   }
   await assertSeatFree(tx, row.id, date);
+  await assertNoCoachOnLeave(tx, { id: row.id, date }); // TASK-561 — joining a class whose coach is away that day is a new booking with them
   return row.id;
 }
 
@@ -2763,7 +2785,7 @@ export async function createVoucher(input: any) {
 // slot index excludes SICK_LEAVE, so a plain `createBooking` inserts the replacement
 // into the freed slot; overbooking an *active* slot still 409s (SLOT_TAKEN).
 
-async function findFreeExtensionDate(
+export async function findFreeExtensionDate( // TASK-561: exported — Seam B is pinned by value
   exec: any,
   teacherId: string,
   startTime: string,
@@ -2775,6 +2797,10 @@ async function findFreeExtensionDate(
 ) {
   return firstFreeWeeklySlot(fromDate, async (d) => {
     if (alreadyTaken.has(d)) return true;
+    // 🔴 TASK-561 — Seam B: the teacher's ADVANCE leave day reads as NOT FREE, so the automatic make-up SKIPS to the next free
+    // week — exactly as it skips a taken slot. Refusing is forbidden (§12: an earned make-up is never refused); both make-up
+    // writers (the re-plan append, the sick-leave append) and the preview search here, so preview = act.
+    if (await teacherLeaveOn(exec, teacherId, d)) return true;
     return !!(await exec.query.bookings.findFirst({
       // 🔴 TASK-260 — "is this weekly slot taken?" is an AVAILABILITY question (REQ-076 AC-17), so it reads the
       // same `SLOT_INACTIVE_STATUSES` the unique index is built from. It used to hand-write `ne(CANCELLED)`,
@@ -3493,6 +3519,15 @@ export async function applyPlanChange(
           courseId,
         });
         const moves = await reconcileCoursePlan(tx, courseId);
+        // 🔴 TASK-553 — the insert ANSWERS the leave whose make-up the reconcile just trimmed for it: the new row carries that
+        // leave's link. Asked AFTER the trim (`leavesAwaitingReanswer` over the course as it now is), and only for a leave a
+        // trimmed row pointed at — an unlinked trimmed row yields NOTHING and says so (never a guess, TASK-552's rule).
+        const after = await tx.query.bookings.findMany({ where: (x: any, { eq }: any) => eq(x.courseId, courseId) });
+        const awaiting = new Set(leavesAwaitingReanswer(after.map((r: any) => ({ id: r.id, status: r.status, date: r.date, extendedFromId: r.extendedFromId, bookingType: r.bookingType }))));
+        const trimmed = after.filter((r: any) => (moves.cancelled ?? []).includes(r.id));
+        const answers = trimmed.map((r: any) => r.extendedFromId).find((l: string | null) => l && awaiting.has(l)) ?? null;
+        if (answers) await tx.update(bookings).set({ extendedFromId: answers }).where(eq(bookings.id, newId));
+        else if (trimmed.length) console.info(`[TASK-553] insert ${newId}: the trimmed make-up carries no link — the insert answers NO leave by link`);
         return await finalize({ change: "insert" as const, bookingId: newId, ...moves });
       }
 
@@ -3586,6 +3621,7 @@ export async function updateBookingStatus(
     // covered by construction rather than by my remembering it.
     const REVIVING = new Set(["confirm", "attend"]);
     if (REVIVING.has(action)) await assertCourseWritable(tx, current.courseId);
+    if (REVIVING.has(action)) await assertNoCoachOnLeave(tx, current); // TASK-561 — not back onto a coach's advance-leave day
 
     if (action === "confirm") {
       if (current.confirmedAt) {
@@ -4036,9 +4072,19 @@ export async function moveBooking(
   // TASK-420 — the per-class rate is the DUO COURSE's fact, edited from the session: written on the course, never the row.
   // TASK-423 (REQ-095 §13.3) — the coach rate for THIS session only: the row's override (`teacher_rate_minor`; null =
   // back to the course default). A row outside a course has no default to override.
+  // 🔴 TASK-562 (REQ-110 item 5) — "Move session" to another teacher on an ECA/Free/KOL SERIES row is a COVER: A REPLACES B on
+  // THIS row only (`moveBooking` never touches another row) and is paid A's rate (the owner) through the row's own override —
+  // the given `classRateMinor`, else the rate A already has in this series, else REFUSED. Before this, the row kept B's rate.
+  const seriesCover = !!(patch.teacherId && patch.teacherId !== current.teacherId && current.bookingType === "OTHER" && current.otherSeriesKey);
   if (input.classRateMinor !== undefined) {
-    if (!current.courseId) throw NOT_A_COURSE_SESSION();
+    if (!current.courseId && !seriesCover) throw NOT_A_COURSE_SESSION();
     patch.teacherRateMinor = input.classRateMinor;
+  }
+  if (seriesCover && input.classRateMinor == null) {
+    const seriesRows = await db.query.bookings.findMany({ where: (b, { eq }) => eq(b.otherSeriesKey, current.otherSeriesKey!), with: { additionalTeachers: true } });
+    const rate = seriesRateOf(seriesRows as any, patch.teacherId);
+    if (rate == null) throw RATE_REQUIRED(current.date);
+    patch.teacherRateMinor = rate;
   }
 
   try {
@@ -4598,6 +4644,9 @@ export async function confirmCourse(id: string) {
 
     // Already-CONFIRMED sessions are the idempotent case: a second click confirms 0 and says so.
     const already = rows.filter((r: any) => r.status === "CONFIRMED" && !pending.includes(r)).length;
+    // 🔻 TASK-573 §1 — nothing left PENDING ⇒ a moved course has been re-confirmed: the attention mark is cleared. A session the
+    // confirm SKIPPED (a budget refusal) is still pending, so the mark stays and the panel keeps asking.
+    if (pending.length === confirmed) await tx.update(coursePackages).set({ reconfirmNeededSince: null }).where(eq(coursePackages.id, id));
 
     // 🔴 EXACTLY ONE outbox row PER PERSON for the whole course — one teacher, one parent. Never per booking:
     // a 10-session course would otherwise be ten messages each for one decision (TASK-207).
@@ -4975,6 +5024,76 @@ export async function getCourseExpiryHistory(id: string) {
     orderBy: (r, { desc }) => [desc(r.changedAt)],
   });
 }
+
+/**
+ * 🔴 TASK-568 (REQ-110 item 3) — the ONE writer of a VOUCHER's expiry record: `recordExpiryChange`'s rule on the voucher's own
+ * table (a no-op is not a change). Called by BOTH writers of a voucher's expiry — an admin's edit and the first booking's re-count.
+ */
+export async function recordVoucherExpiryChange(exec: any, row: { voucherId: string; from: string; to: string; actor: string | null }) {
+  if (row.from === row.to) return; // not a change
+  await exec.insert(voucherExpiryChanges).values({ voucherId: row.voucherId, fromDate: row.from, toDate: row.to, actor: row.actor });
+}
+
+/**
+ * 🔴 TASK-569 — the ONE row that records a NON-change on purpose: the first-booking re-count found a person's date on record
+ * and KEPT it. `from === to`, actor NULL (the system). Written only on that event (a full cancel-then-rebook of an extended
+ * voucher — rare), because without it "it yielded" and "it never ran" read the same. Every other no-op writes nothing
+ * (`recordVoucherExpiryChange`'s rule stands).
+ */
+export async function recordRecountYield(exec: any, voucherId: string, kept: string) {
+  await exec.insert(voucherExpiryChanges).values({ voucherId, fromDate: kept, toDate: kept, actor: null });
+}
+
+/**
+ * TASK-568 — ONE answer to "may this voucher's expiry move, and what would it cost?", for the preview and the PATCH (TASK-298's
+ * rule: two derivations of one question disagree). REUSED from the course path: the warn-and-save shape, `expiryImpact` over
+ * the voucher's own sessions, the same-transaction record. Its OWN refusals (both deliberate, both overturnable by the owner):
+ *  · ENDED ⇒ refused: an ended voucher draws nothing (`voucherUsable`), so a later date would change only what the screen says;
+ *  · NOT STARTED (no live booking yet) ⇒ refused. 🔻 TASK-569: its first reason ("the re-count would overwrite it") is GONE — the
+ *    re-count now yields to a person. It stays for the reason that remains: before the first booking the expiry is a SALE-DAY
+ *    placeholder the system recomputes from the first booking's date, so a person's date typed now would FREEZE a placeholder
+ *    and can end EARLIER than the normal count — an "extension" that shortens. There is nothing to extend until validity starts.
+ * An already-EXPIRED voucher IS extendable — that is what the feature is for.
+ */
+async function voucherExpiryDecision(id: string, expiryDate: string) {
+  const voucher = await db.query.vouchers.findFirst({ where: (x, { eq: e }) => e(x.id, id) });
+  if (!voucher) throw notFound("ไม่พบวอยเชอร์");
+  if (isVoucherEnded(voucher)) throw conflict("VOUCHER_ENDED", `${VOUCHER_ENDED_MESSAGE} — ต่ออายุไม่ได้`);
+  const rows = await db.query.bookings.findMany({ where: (b, { eq: e }) => e(b.voucherId, id), orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)] });
+  if (!rows.some((r) => r.status !== "CANCELLED")) {
+    throw conflict("VOUCHER_NOT_STARTED", "วอยเชอร์นี้ยังไม่เริ่มนับอายุ — อายุนับจากการจองครั้งแรก จึงยังต่ออายุไม่ได้");
+  }
+  return { voucher, impact: expiryImpact(expiryDate, rows.map((r) => ({ id: r.id, date: r.date, status: r.status, startTime: r.startTime }))) };
+}
+
+/** TASK-568 — what a voucher expiry WOULD cost, asked before it is chosen. 🚫 Writes nothing. */
+export async function previewVoucherExpiry(id: string, input: { expiryDate: string }) {
+  const { impact } = await voucherExpiryDecision(id, input.expiryDate);
+  return { expiryWarning: impact };
+}
+
+/**
+ * 🔴 TASK-568 (REQ-110 item 3) — change ONE voucher's expiry, recorded in the SAME transaction (from · to · actor · when).
+ * A voucher edit is always a PERSON's: no actor ⇒ refused, never recorded as the system (TASK-556 reads that difference).
+ * Moves nothing else: no booking, no hours, no money. 🔕 Nobody is told — deliberately, as the course's own expiry edit tells
+ * nobody; the family sees the new date on their next deduction notice and reminder, which read it.
+ */
+export async function updateVoucherExpiry(id: string, input: { expiryDate: string }, actor: string | null) {
+  if (!actor) throw new ApiException(401, "ACTOR_REQUIRED", "ต้องเข้าสู่ระบบก่อนแก้วันหมดอายุ");
+  const { voucher, impact } = await voucherExpiryDecision(id, input.expiryDate);
+  const from = voucher.expiryDate;
+  await db.transaction(async (tx: any) => {
+    await tx.update(vouchers).set({ expiryDate: input.expiryDate }).where(eq(vouchers.id, id));
+    await recordVoucherExpiryChange(tx, { voucherId: id, from, to: input.expiryDate, actor });
+  });
+  const updated = await db.query.vouchers.findFirst({ where: (x, { eq: e }) => e(x.id, id), with: { student: true } }); // the DTO names the child
+  return { voucher: toVoucherDTO(updated), expiryWarning: impact, previousExpiryDate: from };
+}
+
+/** TASK-568 — the voucher's record, newest first. Read-only. */
+export async function getVoucherExpiryHistory(id: string) {
+  return db.query.voucherExpiryChanges.findMany({ where: (r, { eq: e }) => e(r.voucherId, id), orderBy: (r, { desc }) => [desc(r.changedAt)] });
+}
 export async function dropCourse(id: string, input: { reason?: string | null }, actor?: string | null) {
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
@@ -5008,6 +5127,85 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
   });
 }
 
+/**
+ * 🔴 TASK-570 (REQ-110 item 6) — move a NOT-YET-STARTED course's start date; the expiry recomputed the normal way. The plan is
+ * `planCourseStartChange` (pure; "not started" defined and pinned there); this APPLIES it, in ONE transaction:
+ *  · the course's own sessions are MOVED (re-dated in place) — nothing is cancelled, nothing created, so no link is lost and no
+ *    family gets a "cancelled" message; a CONFIRMED session returns to PENDING (its confirmation was of the OLD schedule) and
+ *    `needsReconfirm` tells the admin — the existing Confirm-course then sends ONE schedule message per person;
+ *  · every new date passes the create path's own gate (`assertTeacherBookable`); a week on a teacher's ADVANCE leave was
+ *    already skipped by the plan (TASK-561's make-up rule); a clash with ANOTHER booking refuses the whole move, naming the date;
+ *  · the expiry recompute is RECORDED — with the ADMIN as the actor, as `resumeCourse`'s recompute is: a person asked for it,
+ *    and TASK-556's Undo must not read it as a make-up's system stretch;
+ *  · 🚫 money: no sale, no refund, no deduction, no counter (`usedSessions`, `leaveUsed`) — the rows' holds are reconciled to
+ *    their new status exactly as a single move does. The sale made when the course was bought is untouched.
+ */
+/**
+ * 🔴 TASK-573 §2 — THE start-date decision, every read and every refusal, and NO write: lifted VERBATIM from `changeCourseStart`
+ * (which now calls it, then writes) so the PREVIEW and the ACT are the same reads — TASK-546's `planUndo` shape.
+ */
+async function planStartChange(tx: any, id: string, input: { startDate: string }) {
+    const { course, rows } = await loadCourseForEnd(tx, id);
+    await assertCourseWritable(tx, id); // an ENDED or PAUSED course refuses with its own words, as every re-plan door does
+    const plan = await planCourseStartChange(
+      course,
+      rows.map((r: any) => ({ id: r.id, date: r.date, status: r.status, teacherId: r.teacherId, extendedFromId: r.extendedFromId ?? null, plannedAtCreation: r.plannedAtCreation, bookingType: r.bookingType })),
+      input.startDate,
+      bangkokNow().date,
+      async (teacherId, date) => !!(await teacherLeaveOn(tx, teacherId, date)), // THE reader (TASK-561), injected — not a second one
+    );
+    if (isStartChangeRefusal(plan)) throw new ApiException(plan.code === "START_IN_PAST" ? 400 : 409, plan.code, plan.message);
+    return { course, plan };
+}
+
+/**
+ * 🔴 TASK-573 §2 — what a start-date change WOULD do, asked before it is chosen: the act's OWN plan (`planStartChange`), and
+ * 🚫 NO write. ⚠️ A FORECAST: the act can still refuse what this showed — a clash with ANOTHER booking (`SLOT_TAKEN`) and the
+ * per-date teacher gate (archived / weekday off / freelance) are checked only as the act moves each session; and time can
+ * change the answer (a session delivered, a leave recorded, the day turning).
+ */
+export async function previewCourseStart(id: string, input: { startDate: string }, exec: any = db) {
+  const { course, plan } = await planStartChange(exec, id, input);
+  return {
+    moves: plan.moves.map((m) => ({ id: m.id, from: m.from, to: m.to, status: m.status, toStatus: m.toStatus })),
+    expiryDate: plan.expiryDate,
+    previousExpiryDate: course.expiryDate,
+    needsReconfirm: plan.needsReconfirm,
+    skippedForLeave: plan.skipped,
+    forecast: true as const, // the page says so: the act re-checks clashes and each date's teacher gate
+  };
+}
+
+export async function changeCourseStart(id: string, input: { startDate: string }, actor?: string | null) {
+  return db.transaction(async (tx: any) => {
+    const { course, plan } = await planStartChange(tx, id, input); // 🔻 TASK-573 §2 — the SAME reads as the preview
+    const byId = new Map(plan.moves.map((m) => [m.id, m]));
+    for (const rowId of plan.order) {
+      const m = byId.get(rowId)!;
+      if (m.from === m.to && m.status === m.toStatus) continue;
+      if (m.from !== m.to) await assertTeacherBookable(tx, m.teacherId, m.to);
+      const reconfirm = m.toStatus !== m.status ? { status: m.toStatus, confirmedAt: null, checkinToken: null, checkinTokenExpiresAt: null } : {};
+      try {
+        await tx.update(bookings).set({ date: m.to, ...reconfirm }).where(eq(bookings.id, m.id));
+      } catch (e: any) {
+        if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${m.to} ครูมีคาบอื่นในเวลานี้แล้ว — ไม่ได้ย้ายคาบใด (เลือกวันเริ่มอื่น หรือแก้คาบที่ชนก่อน)`);
+        throw e;
+      }
+      await reconcileBookingHolds(tx, m.id, m.teacherId, m.toStatus, false);
+    }
+    // 🔻 TASK-573 §1 — a move that un-confirmed sessions is WRITTEN DOWN, so the attention panel shows it from this moment.
+    await tx.update(coursePackages).set({ startDate: input.startDate, weekday: weekdayOf(input.startDate), expiryDate: plan.expiryDate, ...(plan.needsReconfirm ? { reconfirmNeededSince: new Date() } : {}) }).where(eq(coursePackages.id, id));
+    await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: plan.expiryDate, actor: actor ?? null });
+    return {
+      moved: plan.moves.filter((m) => m.from !== m.to).length,
+      startDate: input.startDate,
+      expiryDate: plan.expiryDate,
+      previousExpiryDate: course.expiryDate,
+      needsReconfirm: plan.needsReconfirm,
+      skippedForLeave: plan.skipped,
+    };
+  });
+}
 /**
  * Bring a paused course back — as a **RE-PLAN, not a restoration** (owner, TASK-282 §7:
  * *"ให้ไปเริ่มตามสูตรใหม่ เหมือนวางแผนใหม่ … เอาเหมือนตอนสร้างคอร์สเลย … วันหมดอายุก็งอกไปสิ เรื่องปกติ"*).
@@ -5125,8 +5323,15 @@ export async function resumeCourse(
       throw badRequest("คอร์สนี้ไม่มีข้อมูลครู/วิชา/นักเรียนพอที่จะสร้างคาบใหม่");
     }
 
+    // 🔴 TASK-553 — the re-plan ANSWERS the leaves whose make-up the pause cancelled (`leavesAwaitingReanswer`, read from the rows
+    // as the pause left them), so each answer is BORN carrying its link — before this only the cancelled make-up said "answered".
+    // The LAST re-laid dates answer them (a make-up sits at the end of the plan), the oldest leave on the earliest of those.
+    // 📌 Written AT the insert: the resume still updates no existing row (TASK-282 §7).
+    const awaiting = leavesAwaitingReanswer(rows.map((r: any) => ({ id: r.id, status: r.status, date: r.date, extendedFromId: r.extendedFromId, bookingType: r.bookingType })));
+    const linkCount = Math.min(awaiting.length, dates.length);
     const created: string[] = [];
-    for (const date of dates) {
+    for (const [i, date] of dates.entries()) {
+      const slot = i - (dates.length - linkCount);
       try {
         await insertBooking(tx, studentId, {
           teacherId,
@@ -5135,6 +5340,7 @@ export async function resumeCourse(
           startTime: input.startTime,
           bookingType: "COURSE_PACKAGE",
           courseId: id,
+          extendedFromId: slot >= 0 ? awaiting[slot] : null,
         });
         created.push(date);
       } catch (e: any) {

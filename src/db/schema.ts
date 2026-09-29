@@ -367,6 +367,10 @@ export const coursePackages = pgTable(
     // TASK-390 (REQ-091 §14) `0038` — the rental was REMOVED from the remaining sessions: the DTO says `rental: null`
     // and `inheritCourseRental` copies nothing onto a later make-up (a rule over the rows would guess; this records).
     rentalRemovedAt: timestamp("rental_removed_at", { withTimezone: true }),
+    // 🔴 TASK-573 (`0064`) — a start-date move sent CONFIRMED sessions back to PENDING: the family and coach hold the OLD
+    // schedule until an admin re-confirms. Set by the move, cleared when a course confirm leaves nothing pending. The
+    // attention panel reads it FROM THE MOMENT OF THE MOVE (not "the day before the first session").
+    reconfirmNeededSince: timestamp("reconfirm_needed_since", { withTimezone: true }),
     // TASK-390 `0038` — TRUE paid upfront at creation (one post) · FALSE pay per session (rows born unpaid, each
     // paid press posts one) · NULL not rented at creation. Stored: not derivable from the rows mid-course.
     rentalPaidUpfront: boolean("rental_paid_upfront"),
@@ -1219,6 +1223,38 @@ export const campWeekDayTeachersRelations = relations(campWeekDayTeachers, ({ on
   day: one(campWeekDays, { fields: [campWeekDayTeachers.campWeekDayId], references: [campWeekDays.id] }),
   teacher: one(teachers, { fields: [campWeekDayTeachers.teacherId], references: [teachers.id] }),
 }));
+
+// TASK-568 (REQ-110 item 3, `0063`) — every move of a VOUCHER's expiry, recorded from its first day: from · to · actor · when.
+// The SAME shape as `course_expiry_changes` (0034's own note: "copy this shape into its own table"), a sibling rather than a
+// shared table because that one is keyed to courses. `actor` NULL = the SYSTEM (the first booking's re-count); a person's
+// edit always carries their username.
+export const voucherExpiryChanges = pgTable(
+  "voucher_expiry_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    voucherId: uuid("voucher_id").notNull().references(() => vouchers.id, { onDelete: "cascade" }),
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date").notNull(),
+    actor: text("actor"),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("voucher_expiry_changes_voucher_idx").on(t.voucherId, t.changedAt)],
+);
+// TASK-561 (REQ-110 item 2, `0062`) — a teacher's ADVANCE leave, RECORDED as a fact: "teacher T is away on date D". It blocks
+// NEW bookings with T that day (`lib/teacher-leave.ts`, the ONE reader); it moves and cancels NOTHING. Before this table the
+// fact existed nowhere — `reportOwnLeave` cancels rows and, on an empty day, wrote nothing at all.
+export const teacherLeaveDays = pgTable(
+  "teacher_leave_days",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacherId: uuid("teacher_id").notNull().references(() => teachers.id, { onDelete: "restrict" }),
+    date: date("date").notNull(),
+    reason: text("reason"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("teacher_leave_days_teacher_date_uq").on(t.teacherId, t.date)],
+);
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),

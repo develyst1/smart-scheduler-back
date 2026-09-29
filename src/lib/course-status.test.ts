@@ -85,6 +85,7 @@ describe("🔴 AC-B6 — the counts sum to the total, with nothing in two catego
 describe("the status reaches the DTO from the one builder", () => {
   const base = {
     id: "c1",
+    startDate: "2026-09-01", // TASK-573
     size: 10,
     usedSessions: 3,
     leaveUsed: 0,

@@ -27,6 +27,7 @@ const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
  */
 const baseCourse: CourseLike & { studentId: string } = {
   id: "c-1",
+  startDate: "2026-09-01", // TASK-573
   studentId: "s-1",
   size: 10,
   usedSessions: 3,

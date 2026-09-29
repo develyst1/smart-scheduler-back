@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { canTakeLeave, leaveQuota, toCourseSummary } from "./leave";
 
-const base = { id: "x", usedSessions: 0, adminUnlocked: false, expiryDate: "2026-01-01" };
+const base = { id: "x", startDate: "2025-10-01", usedSessions: 0, adminUnlocked: false, expiryDate: "2026-01-01" };
 
 describe("leave quota rules", () => {
   test("quota by size: 4→1, 6→2, 10→3", () => {

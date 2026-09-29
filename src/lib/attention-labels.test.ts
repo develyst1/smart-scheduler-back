@@ -23,7 +23,7 @@ const code = (p: string) => readSrc(readFileSync(resolve(root, p), "utf8")).repl
 describe("TASK-273 — every card has a heading, and the compiler is what says so", () => {
   test("🔑 every key in ATTENTION_CHECKS renders a real heading, both languages", () => {
     // Enumerated from the array itself — a list typed here would be the same defect one level up.
-    expect(ATTENTION_CHECKS.length).toBe(11); // 🔻 TASK-453 — `group_slot_clashes`
+    expect(ATTENTION_CHECKS.length).toBe(12); // 🔻 TASK-453 — `group_slot_clashes` · 🔻 TASK-573 — `courses_awaiting_reconfirm`
     for (const c of ATTENTION_CHECKS) {
       for (const lang of ["TH", "EN"] as const) {
         const label = t(`att_${c.key}`, lang);
@@ -85,6 +85,11 @@ describe("TASK-273 — the ten headings are BYTE-IDENTICAL to before", () => {
     group_slot_clashes: {
       TH: "กลุ่มที่ชนกับคาบส่วนตัว (รอแอดมินแก้)",
       EN: "Group sessions clashing with a private class (awaiting admin)",
+    },
+    // 🔻 TASK-573 — the twelfth, APPENDED the same way (📋 a DRAFT heading, in the owner's copy batch).
+    courses_awaiting_reconfirm: {
+      TH: "คอร์สที่เลื่อนวันเริ่มแล้ว รอยืนยันใหม่",
+      EN: "Courses with a moved start date, awaiting re-confirmation",
     },
   };
 

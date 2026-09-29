@@ -147,6 +147,7 @@ describe("the course summary shows the ending everywhere it appears", () => {
     // that can carry that fact to every one of them.
     const s = toCourseSummary({
       id: "c1",
+      startDate: "2026-09-01", // TASK-573 — the summary now carries it
       size: 10,
       usedSessions: 3,
       leaveUsed: 0,
@@ -163,6 +164,7 @@ describe("the course summary shows the ending everywhere it appears", () => {
   test("a live course reads null, and the rest of the summary is unchanged (regression)", () => {
     const s = toCourseSummary({
       id: "c1",
+      startDate: "2026-09-01", // TASK-573 — the summary now carries it
       size: 10,
       usedSessions: 3,
       leaveUsed: 1,

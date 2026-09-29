@@ -79,8 +79,8 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
     expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
@@ -240,7 +240,7 @@ describe("🔴 the routes — the OTHER twins' keys one-for-one (confirm-all = c
     expect((await api("GET", `/group-series/${K}`)).status).toBe(200);
     expect((await api("POST", `/group-series/${K}/confirm-all`)).status).toBe(200);
     expect((await api("POST", `/group-series/${K}/cancel-all`, { reasonCode: "ADMIN_ERROR" })).status).toBe(200);
-    expect((await api("POST", `/group-series/${K}/teachers`, { teacherId: T2 })).status).toBe(201);
+    expect((await api("POST", `/group-series/${K}/teachers`, { teacherId: T2, fromDate: "2026-10-06" })).status).toBe(201); // 🔻 TASK-562: the shared validator asks too
     expect((await api("DELETE", `/group-series/${K}/teachers/${T2}?fromDate=2026-10-06`)).status).toBe(200);
     expect((await api("PATCH", `/group-series/${K}/teacher`, { to: T2 })).status).toBe(200);
     expect((await api("POST", `/group-series/${K}/dates`, { dates: ["2026-10-19"] })).status).toBe(201);
@@ -250,7 +250,7 @@ describe("🔴 the routes — the OTHER twins' keys one-for-one (confirm-all = c
       ["getOtherSeries", { groupKey: K }],
       ["confirmAllOtherSeries", { groupKey: K }],
       ["cancelAllOtherSeries", { groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev"],
-      ["addTeacherToOtherSeries", { groupKey: K }, { teacherId: T2 }],
+      ["addTeacherToOtherSeries", { groupKey: K }, { teacherId: T2, fromDate: "2026-10-06" }],
       ["removeTeacherFromOtherSeries", { groupKey: K }, T2, { fromDate: "2026-10-06" }],
       ["swapGroupSeriesTeacher", { groupKey: K }, { to: T2 }],
       ["addDatesToOtherSeries", { groupKey: K }, { dates: ["2026-10-19"] }],

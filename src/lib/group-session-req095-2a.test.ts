@@ -43,10 +43,10 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(j.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -189,7 +189,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(S).toContain('id = await insertBooking(tx, null, { teacherId: t.teacherId, subjectId: null, startTime: hhmm(t.startTime), bookingType: "GROUP", otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates, date });');
     expect(S).toContain('throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ขยายกลุ่มไม่ได้ (${e.message})`);');
     // 🔻 TASK-399: the CAP half lives in `assertSeatFree` (shared with the walk-in seat); `seatOnGroup` calls it before returning the row
-    expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  return row.id;");
+    expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  await assertNoCoachOnLeave(tx, { id: row.id, date }); // TASK-561 — joining a class whose coach is away that day is a new booking with them\n  return row.id;"); // 🔻 TASK-561
     const F = region(SCHED, "async function assertSeatFree(", "\n}\n");
     // 🔻 TASK-453 — the count moved into `liveSeatCount` (shared with the yield, which needs the SAME set), and a
     // NULL `head_count` now means UNCAPPED. The claim is unchanged: the cap counts LIVE seats, by that one set.

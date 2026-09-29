@@ -172,7 +172,10 @@ describe("✅ RULES 3–6, each an assertion", () => {
     expect(parseBirthDate("")).toEqual({ ok: false });
     expect(parseBirthDate("ข้าม")).toEqual({ ok: true, value: null });
     const compose = fnIn(reg, "export async function addChildForLineParent(");
-    expect(compose).toContain("const parsed = given ? parseBirthDate(given) : ({ ok: true, value: null } as const);");
+    // 🔻 TASK-565 (REQ-110 item 10, the owner): ข้าม is REMOVED on this door — the blank, and the typed word, are now REFUSED.
+    expect(compose).not.toContain("const parsed = given ? parseBirthDate(given) : ({ ok: true, value: null } as const);");
+    expect(compose).toContain("if (!given) return { outcome: \"birthdate-required\" };");
+    expect(compose).toContain("if (parsed.value == null) return { outcome: \"birthdate-required\" };");
   });
 
   test("Rule 6 — one stable `/register`, mounted beside `/checkin`; the token IS the credential", () => {

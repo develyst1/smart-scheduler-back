@@ -27,6 +27,20 @@ export interface PlanSession {
 export const isCoursePlanRow = (s: { bookingType?: string }): boolean =>
   s.bookingType === undefined || s.bookingType === "COURSE_PACKAGE";
 
+/**
+ * 🔴 TASK-553 — the leaves whose answer was CANCELLED and not replaced BY LINK: a `SICK_LEAVE` that at least one row once
+ * answered (a row points at it) and NO live row answers now — "a cancelled make-up is not a make-up". Oldest first.
+ * These, and only these, change meaning when a cancelled row stops "matching"; the two writers that answer a leave outside
+ * the planner (resume · the admin insert) read this to know WHICH leave they answer, and the backfill reads it to know which
+ * leaves to look for. 🚫 A leave no row EVER answered (declared at creation, …) is not here — nobody re-answers it.
+ */
+export function leavesAwaitingReanswer(sessions: PlanSession[]): string[] {
+  const rows = sessions.filter(isCoursePlanRow);
+  const everLinked = new Set(rows.filter((s) => s.extendedFromId).map((s) => s.extendedFromId!));
+  const liveLinked = new Set(rows.filter((s) => s.status !== "CANCELLED" && s.extendedFromId).map((s) => s.extendedFromId!));
+  return rows.filter((s) => s.status === "SICK_LEAVE" && everLinked.has(s.id) && !liveLinked.has(s.id)).sort((a, b) => a.date.localeCompare(b.date)).map((s) => s.id);
+}
+
 export interface CoursePlan {
   /** Sessions to add (short course). One per owed slot; carries the absence id that opened the gap. */
   append: Array<{ extendedFromId: string | null }>;

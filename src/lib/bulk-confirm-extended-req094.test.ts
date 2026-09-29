@@ -69,6 +69,6 @@ describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is
     expect(JOB).toContain('eq(bookings.status, "CONFIRMED")');
   });
   test("56 = 56 — REQ-094 added no migration (0038 … 0055 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
   });
 });

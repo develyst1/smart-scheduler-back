@@ -5,7 +5,7 @@
 // primary refused, `ALREADY_ON_ROW` both ways; add dates copies the template; the header PATCH on every live row, no
 // `startTime`), key 58 on cancel-all, the three kinds by value (ADDED/REMOVED = the owner-accepted bytes, `DD-MM-YYYY`;
 // CANCELLED a placeholder), the backfill by value on a fixture, nothing on GROUP/CAMP.
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { ApiException } from "./http";
@@ -16,6 +16,7 @@ import { SCHEDULING_WITNESSES } from "./migration-witness";
 import * as v from "../validation";
 import * as sched from "../services/scheduler.service";
 import * as series from "../services/other-series.service";
+import { seriesRateOf } from "./coach-rate"; // TASK-562
 import * as lineLib from "./line";
 import { groupForBackfill, describeGroup } from "../../scripts/backfill-other-series";
 import { db } from "../db";
@@ -47,7 +48,7 @@ const row = (over: any = {}) => ({ id: `b-${over.date ?? "x"}`, date: "2026-10-0
 const fakeTx = (rows: any[], opts: { clashOn?: string } = {}) => {
   const writes: any[] = [];
   const tx: any = {
-    query: {
+    query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       bookings: {
         findMany: async ({ where }: any) => {
           // both the series read (key) and the clash check (teacherId/date/startTime) come through here
@@ -78,8 +79,8 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
-    expect(journal.entries.length).toBe(62); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061
+    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");
@@ -119,10 +120,15 @@ describe("🔑 key 58, the access rows, the validators, the routes through the R
   test("the validators: cancel-all's closed reason; `fromDate` optional; the swap refuses the same teacher; dates unique; the header PATCH has no `startTime` and needs ≥ 1 field", () => {
     expect(v.otherSeriesCancelAll.safeParse({ reasonCode: "ADMIN_ERROR" }).success).toBe(true);
     expect(v.otherSeriesCancelAll.safeParse({ reasonCode: "WHATEVER" }).success).toBe(false);
-    expect(v.otherSeriesAddTeacher.safeParse({ teacherId: T2 }).success).toBe(true);
+    expect(v.otherSeriesAddTeacher.safeParse({ teacherId: T2 }).success).toBe(false); // 🔻 TASK-562: no scope = the silent "all" ⇒ refused
+    expect(v.otherSeriesAddTeacher.safeParse({ teacherId: T2, onDate: "2026-10-12" }).success).toBe(true); // TASK-562 — this session
+    expect(v.otherSeriesAddTeacher.safeParse({ teacherId: T2, onDate: "2026-10-12", fromDate: "2026-10-12" }).success).toBe(false); // not both
     expect(v.otherSeriesAddTeacher.safeParse({ teacherId: T2, rateMinor: 40000, fromDate: "2026-10-12" }).success).toBe(true);
-    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T1 }).success).toBe(false);
-    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3 }).success).toBe(true);
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T1, fromDate: "2026-10-12" }).success).toBe(false);
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3 }).success).toBe(false); // 🔻 TASK-562: no scope ⇒ refused
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12" }).success).toBe(true);
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 40000 }).success).toBe(true); // TASK-562 — a cover
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 40000 }).success).toBe(false); // the cover's rate is for ONE session
     expect(v.otherSeriesDates.safeParse({ dates: ["2026-10-12", "2026-10-12"] }).success).toBe(false);
     expect(v.otherSeriesPatch.safeParse({}).success).toBe(false);
     expect(v.otherSeriesPatch.safeParse({ startTime: "16:00" } as any).success).toBe(false);
@@ -143,9 +149,9 @@ describe("🔑 key 58, the access rows, the validators, the routes through the R
     expect((await json("GET", `/other-series/${K}`)).status).toBe(200);
     expect((await json("POST", `/other-series/${K}/confirm-all`)).status).toBe(200);
     expect((await json("POST", `/other-series/${K}/cancel-all`, { reasonCode: "ADMIN_ERROR" })).status).toBe(200);
-    expect((await json("POST", `/other-series/${K}/teachers`, { teacherId: T3 })).status).toBe(201);
+    expect((await json("POST", `/other-series/${K}/teachers`, { teacherId: T3, fromDate: "2026-10-12" })).status).toBe(201); // 🔻 TASK-562: a scope is named
     expect((await json("DELETE", `/other-series/${K}/teachers/${T2}?fromDate=2026-10-12`)).status).toBe(200);
-    expect((await json("PATCH", `/other-series/${K}/teacher`, { from: T1, to: T3 })).status).toBe(200);
+    expect((await json("PATCH", `/other-series/${K}/teacher`, { from: T1, to: T3, fromDate: "2026-10-12" })).status).toBe(200); // 🔻 TASK-562
     expect((await json("POST", `/other-series/${K}/dates`, { dates: ["2026-10-19"] })).status).toBe(201);
     expect((await json("PATCH", `/other-series/${K}`, { title: "Chess Club" })).status).toBe(200);
     expect(calls.map((c) => c[0])).toEqual(["listOtherSeries", "getOtherSeries", "confirmAllOtherSeries", "cancelAllOtherSeries", "addTeacherToOtherSeries", "removeTeacherFromOtherSeries", "swapOtherSeriesTeacher", "addDatesToOtherSeries", "updateOtherSeries"]);
@@ -333,5 +339,72 @@ describe("🔴 the backfill by VALUE on a fixture — (title · kind · start ·
     expect(S).toContain("await db.transaction(async (tx) => {");
     expect(S).toContain("isNull(bookings.otherSeriesKey), eq(bookings.bookingType, \"OTHER\")");
     expect(S.replace(/^\s*\/\/.*$/gm, "")).not.toMatch(/CAMP/); // the code never names CAMP — the kind list excludes it
+  });
+});
+
+// ───────────────────────── TASK-562 (REQ-110 item 5) — ONE session covered: "ครั้งที่ 3 ครู A ไปแทนครู B" ─────────────────────────
+describe("🔴 TASK-562 — a COVER on ONE session: A REPLACES B on that row only, at A's rate; the rest untouched; both coaches told", () => {
+  const rows = () => [row({ id: "b1", date: "2026-10-05", status: "ATTENDED" }), row({ id: "b2", date: "2026-10-12", status: "CONFIRMED" }), row({ id: "b3", date: "2026-10-19" })];
+  const arm = (rs: any[]) => {
+    const { tx, writes } = fakeTx(rs);
+    const notices: any[] = [];
+    spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
+    spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any) => { notices.push(o); return { status: "queued" } as any; }) as any));
+    spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async (...a: any[]) => { writes.push({ op: "holds", a: a.slice(1) }); }) as any));
+    return { tx, writes, notices };
+  };
+  test("🔑 by value: ONLY b2 changes — the teacher AND its rate (A's, given); b3 after it is untouched; the losing and the gaining coach told for b2 only", async () => {
+    const { writes, notices } = arm(rows());
+    expect(await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 })).toEqual({ moved: 1 });
+    expect(writes.filter((w) => w.op === "update").map((w) => w.patch)).toEqual([{ teacherId: T3, teacherRateMinor: 45000 }]);
+    expect(writes.filter((w) => w.op === "holds").map((w) => w.a)).toEqual([["b2", T3, "CONFIRMED", false]]);
+    expect(notices.map((n) => [n.payload.kind, n.bookingId, n.recipientLineUserId])).toEqual([["teacher_unassigned", "b2", "U3"], ["teacher_assigned", "b2", "U3"]]); // (the fake answers every teacher read with T3's account)
+    expect(writes.some((w) => w.op === "insert" && w.table === "bookingTeachers")).toBe(false); // REPLACED, not added as a co-teacher
+  });
+  test("no rate given ⇒ the rate A ALREADY has in this series (the latest row they are on) — never B's", async () => {
+    const rs = rows(); rs[2]!.additionalTeachers = [...rs[2]!.additionalTeachers, { teacherId: T3, rateMinor: 42000, teacher: null }];
+    const { writes } = arm(rs);
+    await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12" });
+    expect(writes.filter((w) => w.op === "update").map((w) => w.patch)).toEqual([{ teacherId: T3, teacherRateMinor: 42000 }]);
+  });
+  test("🔴 no rate given and none known for A ⇒ 400 RATE_REQUIRED, NOTHING written (B's 50000 is never paid to A by default)", async () => {
+    const { writes, notices } = arm(rows());
+    await expect(series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12" })).rejects.toMatchObject({ status: 400, code: "RATE_REQUIRED" });
+    expect([writes, notices]).toEqual([[], []]);
+  });
+  test("✅ TASK-561's block applies: covering with a teacher on an ADVANCE leave that day ⇒ 409 TEACHER_ON_LEAVE, nothing written", async () => {
+    setSystemTime(new Date("2026-10-01T10:00:00+07:00"));
+    try {
+      const { tx, writes } = arm(rows());
+      tx.query.teacherLeaveDays = { findFirst: async () => ({ teacherId: T3, date: "2026-10-12" }) };
+      await expect(series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 })).rejects.toMatchObject({ status: 409, code: "TEACHER_ON_LEAVE" });
+      expect(writes).toEqual([]);
+    } finally { setSystemTime(); }
+  });
+  test("a date with no LIVE session of the series ⇒ 404 (b1 was already taught)", async () => {
+    arm(rows());
+    await expect(series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-05", rateMinor: 1 })).rejects.toMatchObject({ status: 404 });
+  });
+  test("Add teacher on ONE session = 'A joins B' (a co-teacher on that row only; both paid); the gaining coach told with that ONE date", async () => {
+    const { notices } = arm(rows());
+    const attached: any[] = [];
+    spies.push(spyOn(sched, "attachAdditionalTeachers").mockImplementation((async (_e: any, id: string, ids: string[], rates: any) => { attached.push([id, ids, rates]); }) as any));
+    expect(await series.addTeacherToOtherSeries(K, { teacherId: T3, rateMinor: 30000, onDate: "2026-10-12" })).toEqual({ added: 1 });
+    expect(attached).toEqual([["b2", [T3], { [T3]: 30000 }]]);
+    expect(notices.map((n) => [n.payload.kind, n.payload.dates])).toEqual([["other_teacher_added", ["2026-10-12"]]]);
+  });
+  test("the rate lookup by value — latest row first, primary or extra; none ⇒ null", () => {
+    const rs = [row({ date: "2026-10-05", teacherId: T3, teacherRateMinor: 10000 }), row({ date: "2026-10-19", additionalTeachers: [{ teacherId: T3, rateMinor: 20000 }] })];
+    expect(seriesRateOf(rs as any, T3)).toBe(20000);
+    expect(seriesRateOf([rs[0]!] as any, T3)).toBe(10000);
+    expect(seriesRateOf(rows() as any, T3)).toBeNull();
+  });
+  test("'Move session' to another teacher on a series row is the SAME cover (by source): A's rate — given, else A's in the series, else refused — on THIS row only", () => {
+    const M = region(code(src("src/services/scheduler.service.ts")), "export async function moveBooking(", "\n}\n");
+    expect(M).toContain('const seriesCover = !!(patch.teacherId && patch.teacherId !== current.teacherId && current.bookingType === "OTHER" && current.otherSeriesKey);');
+    expect(M).toContain("const rate = seriesRateOf(seriesRows as any, patch.teacherId);");
+    expect(M).toContain("if (rate == null) throw RATE_REQUIRED(current.date);");
+    expect(M).toContain("patch.teacherRateMinor = rate;");
+    expect(M.indexOf("RATE_REQUIRED(")).toBeLessThan(M.indexOf("db.transaction(")); // refused before anything is written
   });
 });

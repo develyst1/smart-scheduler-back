@@ -53,6 +53,7 @@ function buildCtx(today: string): AttentionCtx {
   let pendingLinks: Promise<number> | null = null;
   let orphaned: Promise<Array<{ booking: any; teacher: any }>> | null = null;
   let yielded: Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>> | null = null;
+  let reconfirm: Promise<Array<{ course: any; pendingCount: number }>> | null = null;
   const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
@@ -87,6 +88,15 @@ function buildCtx(today: string): AttentionCtx {
           }));
         })()),
       pendingTeacherLinks: () => (pendingLinks ??= countPendingTeacherLinks()),
+      // TASK-573 §1 — only courses carrying the mark; the PENDING sessions counted from the relation (the check judges).
+      reconfirmCandidates: () =>
+        (reconfirm ??= (async () => {
+          const rows = await db.query.coursePackages.findMany({
+            where: (c, { isNotNull: nn }) => nn(c.reconfirmNeededSince),
+            with: { student: true, bookings: { where: (b, { eq: e }) => e(b.status, "PENDING") } },
+          });
+          return rows.map((c: any) => ({ course: c, pendingCount: c.bookings.length }));
+        })()),
       // TASK-096 — future bookings with their teacher joined; the predicate flags archived / off-that-weekday.
       orphanedCandidates: () =>
         (orphaned ??= (async () => {

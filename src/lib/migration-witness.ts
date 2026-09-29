@@ -632,6 +632,30 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "its row reads as \"no marker\" ⇒ the Undo refuses (safe). Rerunnable: IF NOT EXISTS + ON CONFLICT DO NOTHING (never moves).",
     rerunnable: true,
   },
+  {
+    tag: "0062_teacher_leave_days",
+    probe: { kind: "index", index: "teacher_leave_days_teacher_date_uq" },
+    why:
+      "TASK-561. `teacher_leave_days`: a teacher's ADVANCE leave recorded as a fact, so new bookings with them that day are blocked. " +
+      "The probe is the LAST object the file creates (the unique index after the table). Rerunnable: IF NOT EXISTS on both.",
+    rerunnable: true,
+  },
+  {
+    tag: "0063_voucher_expiry_changes",
+    probe: { kind: "index", index: "voucher_expiry_changes_voucher_idx" },
+    why:
+      "TASK-568. `voucher_expiry_changes`: every move of a voucher's expiry recorded (from · to · actor · when), the course " +
+      "record's shape. The probe is the LAST object the file creates (the index after the table). Rerunnable: IF NOT EXISTS on both.",
+    rerunnable: true,
+  },
+  {
+    tag: "0064_course_reconfirm_needed",
+    probe: { kind: "column", table: "course_packages", column: "reconfirm_needed_since" },
+    why:
+      "TASK-573 §1. `course_packages.reconfirm_needed_since`: a start-date move un-confirmed the course's sessions; the attention " +
+      "panel reads it from the moment of the move. The column is the file's ONLY object. Rerunnable: IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

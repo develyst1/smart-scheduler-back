@@ -39,7 +39,10 @@
     "sale:reconcile-prices": "bun run scripts/reconcile-sale-prices.ts",
     "courses:audit-imports": "bun run scripts/audit-imported-courses.ts",
     "course:cleanup": "bun run scripts/cleanup-course.ts",
-    "course:repair-expiry": "bun run scripts/repair-course-expiry.ts"
+    "course:repair-expiry": "bun run scripts/repair-course-expiry.ts",
+    "leave:backfill-links": "bun run scripts/backfill-leave-links.ts",
+    "mutation:run": "bun run scripts/mutation/run.ts",
+    "mutation:prove": "bun run scripts/mutation/prove.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

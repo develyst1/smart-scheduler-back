@@ -20,6 +20,7 @@ import { MAX_STUDENTS_PER_PARENT } from "../services/parent.service";
 import {
   addChildForLineParent,
   clearLinkSession,
+  householdAddressOf,
   linkFamilyByPhone,
   linkStatus,
   lookupFamilyByPhone,
@@ -35,7 +36,7 @@ const lookupBody = withToken.extend({ phone: z.string().trim().min(1) });
 const linkBody = withToken.extend({ phone: z.string().trim().min(1), code: z.string().trim().optional() });
 const createBody = withToken.extend({
   name: z.string().optional(),
-  birthDate: z.string().optional(), // the customer's `DD-MM-YYYY` text, or absent = ข้าม
+  birthDate: z.string().optional(), // the customer's `DD-MM-YYYY` text — 🔻 TASK-565: REQUIRED (absent ⇒ BIRTHDATE_REQUIRED, a code the page can act on)
   province: z.string().optional(), // 🔻 TASK-352 — the PICKED province, full form, one of the 77 → `parents.province`
   address: z.string().optional(), // 🔻 TASK-352 — the joined line, the customer's format → APPENDED to `parents.note`
   detailProvided: z.boolean().optional(),
@@ -65,6 +66,8 @@ const REFUSAL: Record<string, [number, string]> = {
   "family-full": [409, "FAMILY_FULL"],
   "name-duplicate-needs-detail": [409, "NAME_DUPLICATE_NEEDS_DETAIL"],
   "birthdate-invalid": [400, "BIRTHDATE_INVALID"],
+  "birthdate-required": [400, "BIRTHDATE_REQUIRED"], // TASK-565 — ข้าม removed
+  "address-required": [400, "ADDRESS_REQUIRED"], // TASK-565 — once per household, while none is on file
   "province-unknown": [400, "PROVINCE_UNKNOWN"],
 };
 
@@ -78,7 +81,8 @@ export const publicRegister = new Hono()
     if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
     const s = await linkStatus(who.sub);
     // 🚫 `parentId` stays on the server; the page gets a MASKED phone and a COUNT — never names (TASK-047).
-    return s.linked ? c.json({ ok: true, linked: true, phone: s.phone, childCount: s.childCount }) : c.json({ ok: true, linked: false });
+    // 🔻 TASK-565 — + whether the household's address is already on file (and which province, to SHOW it), so the form asks for it only once.
+    return s.linked ? c.json({ ok: true, linked: true, phone: s.phone, childCount: s.childCount, addressOnFile: s.addressOnFile, province: s.province }) : c.json({ ok: true, linked: false });
   })
 
   // ── §10.3 unlink — the SAME writer the admin's `Clear LINE link` runs, from `sub`. ────────────────────────
@@ -137,7 +141,8 @@ export const publicRegister = new Hono()
     // sent the link. (The chat does the same through `afterParentLink`: clear, or advance into the wizard.)
     await clearLinkSession(who.sub);
     const canAddMore = r.children.length < MAX_STUDENTS_PER_PARENT; // the cap, not a copy of it
-    return c.json({ ok: true, outcome: "linked", isNew: r.isNew, children: r.children.map(childView), canAddMore });
+    const addr = householdAddressOf(r.parent); // TASK-565
+    return c.json({ ok: true, outcome: "linked", isNew: r.isNew, children: r.children.map(childView), canAddMore, addressOnFile: addr.addressOnFile, province: addr.province });
   })
 
   // ── §C3 create — add a child to MY family. THE ONE WRITER. ───────────────────────────────────────────────
@@ -166,6 +171,8 @@ export const publicRegister = new Hono()
       count: r.count,
       atMax: r.atMax,
       canAddMore: !r.atMax,
+      addressOnFile: r.addressOnFile, // TASK-565 — the next child's form skips the address
+      province: r.province,
     });
   });
 
