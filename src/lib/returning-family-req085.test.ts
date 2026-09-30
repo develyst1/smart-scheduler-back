@@ -91,7 +91,7 @@ describe("🔴 TASK-315 §3 — TWO DOORS, ONE decision", () => {
     // ⚠️ 2FA is unreachable while `line_parent_2fa` is off, and exists so that switching it on is a setting
     // change and not a rebuild. Fixing only the reachable door would bring this defect back the day someone
     // flips that setting — certain they had changed nothing else.
-    expect(SVC.match(/afterParentLink\(/g)!.length).toBe(3); // the declaration + both doors
+    expect(SVC.match(/afterParentLink\(/g)!.length).toBe(4); // the declaration + both doors + 🔻 TASK-590: the NEW family's phone step (zero children, the same decision)
     const twofa = SVC.slice(SVC.indexOf('if (session.step === "AWAIT_2FA")'), SVC.indexOf('if (session.step === "AWAIT_CODE" && session.pendingRole)'));
     expect(twofa).toContain("const tail = await afterParentLink(lineUserId, lang, kids);");
     expect(twofa).not.toContain('setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer")');

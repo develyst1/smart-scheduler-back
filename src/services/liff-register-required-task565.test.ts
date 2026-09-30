@@ -47,17 +47,24 @@ describe("🔴 TASK-565 — the address is REQUIRED ONCE per household; the serv
   });
   test("no address on file ⇒ BOTH the picked province and the address line required; any missing ⇒ ADDRESS_REQUIRED, nothing created", async () => {
     const { created, parentWrites } = arm({ id: "p1", phone: "0812345678", province: null, note: "แพ้ถั่ว\n12/3 ต.สุเทพ อ.เมือง" }); // a CHAT-typed address in the note
-    for (const extra of [{}, { province: PROVINCE }, { address: "12/3 ต.สุเทพ อ.เมือง" }, { province: "", address: "x" }]) {
-      expect(await add({ birthDate: "02-12-2020", ...extra })).toEqual({ outcome: "address-required" });
-    }
+    // 🔻 TASK-590 (F-C) — the address is THREE parts now: none ⇒ ADDRESS_REQUIRED; some ⇒ ADDRESS_INCOMPLETE naming what is
+    // missing; a pre-joined `address` line is no longer read (it is simply "none").
+    const cases: Array<[object, any]> = [
+      [{}, { outcome: "address-required" }],
+      [{ address: "12/3 ต.สุเทพ อ.เมือง" }, { outcome: "address-required" }],
+      [{ province: PROVINCE }, { outcome: "address-incomplete", missing: ["district", "subDistrict"] }],
+      [{ province: PROVINCE, district: "เมืองเชียงใหม่" }, { outcome: "address-incomplete", missing: ["subDistrict"] }],
+      [{ district: "x", subDistrict: "y" }, { outcome: "address-incomplete", missing: ["province"] }],
+    ];
+    for (const [extra, want] of cases) expect(await add({ birthDate: "02-12-2020", ...extra } as any)).toEqual(want);
     expect([created, parentWrites]).toEqual([[], []]);
   });
   test("the FIRST child with a full address ⇒ created; the province stored and the line APPENDED (the staff note kept); the answer says it is now on file", async () => {
     const { created, parentWrites } = arm({ id: "p1", phone: "0812345678", province: null, note: "แพ้ถั่ว" });
-    const r: any = await add({ birthDate: "02-12-2020", province: PROVINCE, address: "12/3 ต.สุเทพ อ.เมือง เชียงใหม่" });
+    const r: any = await add({ birthDate: "02-12-2020", province: PROVINCE, district: "เมืองเชียงใหม่", subDistrict: "สุเทพ" } as any); // 🔻 TASK-590: three parts
     expect(r).toMatchObject({ outcome: "created", birthDate: "2020-12-02", addressOnFile: true, province: PROVINCE });
     expect(created).toEqual([{ name: "มะลิ", birthDate: "2020-12-02" }]);
-    expect(parentWrites).toEqual([{ province: PROVINCE, note: "แพ้ถั่ว\n12/3 ต.สุเทพ อ.เมือง เชียงใหม่" }]);
+    expect(parentWrites).toEqual([{ province: PROVINCE, note: "แพ้ถั่ว\nสุเทพ เมืองเชียงใหม่ เชียงใหม่" }]); // 🔻 TASK-590: the ONE line, built by the server (the page's order)
   });
   test("🔑 a LATER child of a household with the address on file ⇒ NOT asked; one sent anyway is NOT written (never a second line)", async () => {
     const { created, parentWrites } = arm({ id: "p1", phone: "0812345678", province: PROVINCE, note: "12/3 ต.สุเทพ" });
@@ -75,7 +82,7 @@ describe("🔴 TASK-565 — the contract: the form is TOLD (status · link · cr
     spies.push(spyOn(reg, "linkStatus").mockImplementation((async () => ({ linked: true, parentId: "p1", phone: "08x-xxx-5678", childCount: 1, addressOnFile: true, province: PROVINCE })) as any));
     const app = (await import("../index")).default as { fetch: (r: Request) => Promise<Response> };
     const r = await app.fetch(new Request("http://localhost/api/register/status", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: "t" }) }));
-    expect(await r.json()).toEqual({ ok: true, linked: true, phone: "08x-xxx-5678", childCount: 1, addressOnFile: true, province: PROVINCE });
+    expect(await r.json()).toEqual({ ok: true, linked: true, phone: "08x-xxx-5678", childCount: 1, canAddMore: true, addressOnFile: true, province: PROVINCE }); // 🔻 TASK-578: + canAddMore
     const R = read("src/routes/register.ts");
     expect(R).toContain('"birthdate-required": [400, "BIRTHDATE_REQUIRED"]');
     expect(R).toContain('"address-required": [400, "ADDRESS_REQUIRED"]');

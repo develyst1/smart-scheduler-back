@@ -55,6 +55,8 @@ export const TEACHER_ALLOWED: ReadonlySet<string> = new Set([
   "GET /bookings/:id/posted-sale",
   "PATCH /bookings/:id/status", // `attend` only — the body is checked at the route (`assertScopedStatusAction`)
   "POST /teachers/me/leave",
+  "GET /teachers/me/leave", // TASK-582 — my own recorded days
+  "DELETE /teachers/me/leave/:date", // TASK-582 — lift one of mine
 ]);
 
 export const ROUTE_ACCESS: Record<string, RouteAccess> = {
@@ -106,6 +108,9 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /bookings/:id/rental/paid": act(CAL_BOOK, "action:calendar.rental"),
   "POST /bookings/:id/resume": act(CAL_BOOK, "action:calendar.pause"),
   "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
+  "GET /teachers/me/leave": read(["menu:calendar"]), // TASK-582 — a read of MY OWN recorded days (a GET carries no action; the route asserts the link)
+  "DELETE /teachers/me/leave/:date": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-582 — lifting is the same act undone
+  "GET /teacher-leave-days": read(["menu:calendar"]), // TASK-587 — the admin's list: the calendar's read key (the same rows the grid shows), no new key
   "POST /bookings/:id/undo": UNDO_ACCESS, // TASK-492 — a linked account never (the route asserts)
   "GET /bookings/:id/undo-preview": UNDO_ACCESS, // 🔻 TASK-546 — the dry run of the Undo: THE SAME entry (a preview of a privileged act is a privileged read)
   "PATCH /bookings/:id/status": act(CAL_BOOK, "action:calendar.status"), // + `action:calendar.leave-override` on its `override` flag (route)

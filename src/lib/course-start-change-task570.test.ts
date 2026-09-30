@@ -39,14 +39,14 @@ describe("🔴 the plan — the SAME rows MOVED, weekly from the new start, in t
       ["b1", "2026-10-05", "2026-10-12", "PENDING"], ["b2", "2026-10-12", "2026-10-19", "PENDING"], ["b3", "2026-10-19", "2026-10-26", "PENDING"], ["b4", "2026-10-26", "2026-11-02", "PENDING"],
     ]);
     expect(p.order).toEqual(["b4", "b3", "b2", "b1"]); // later ⇒ the last row leaves its date before b3 needs it
-    expect(p.needsReconfirm).toBe(true);
+    expect(p.needsReconfirm).toBe(4); // 🔻 TASK-578 (D9): the COUNT of sessions to re-confirm, not a flag
   });
   test("earlier ⇒ applied FIRST-FIRST; a PENDING course stays PENDING and needs no re-confirm", async () => {
     const pending = four().map((r) => ({ ...r, status: "PENDING" }));
     const p = await planCourseStartChange(C, pending, "2026-10-01", TODAY, noLeave);
     if (isStartChangeRefusal(p)) throw new Error(p.message);
     expect(p.order).toEqual(["b1", "b2", "b3", "b4"]);
-    expect([p.needsReconfirm, p.moves.every((m) => m.toStatus === "PENDING")]).toEqual([false, true]);
+    expect([p.needsReconfirm, p.moves.every((m) => m.toStatus === "PENDING")]).toEqual([0, true]); // 🔻 TASK-578: 0 = nothing to re-confirm
   });
   test("🔑 BORN LINKED by construction: a declared leave keeps its week, its MAKE-UP keeps its link and stays last — no new row, no lost link", async () => {
     const rows = [R("b1", "2026-10-05"), R("L2", "2026-10-12", "SICK_LEAVE", { plannedAtCreation: true }), R("b3", "2026-10-19"), R("b4", "2026-10-26"), R("m2", "2026-11-02", "EXTENDED", { extendedFromId: "L2" })];

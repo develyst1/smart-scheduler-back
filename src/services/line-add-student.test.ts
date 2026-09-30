@@ -123,11 +123,12 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
     expect(decideDuplicate([], "น้องรดา")).toBe("ok");
   });
 
-  test("🚫 the message asks for a surname/nickname and never says 'rename'", () => {
+  test("🚫 the message asks for the child's REAL (full) name and never says 'rename'", () => {
     // Two real children can share a name. A rename demand is both wrong AND a disclosure — it confirms to
     // whoever typed the phone that such a child exists.
+    // 🔻 TASK-583 (ruling 4: the chat uses the page's wording, COPY §8 DRAFT) — "surname or nickname" ⇒ the REAL name, first + surname
     const th = t("add_dup_detail", "TH");
-    expect(th).toContain("นามสกุลหรือชื่อเล่น");
+    expect(th).toContain("ชื่อจริงของน้อง (ชื่อ-นามสกุล)");
     expect(th).not.toContain("ตั้งใหม่");
     expect(t("add_dup_detail", "EN").toLowerCase()).not.toContain("rename");
   });
@@ -138,7 +139,7 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
   });
 
   test("the duplicate check runs on the NAME step only — the detail step is the answer, not a second question", () => {
-    expect(FLOW).toContain('if (session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {');
+    expect(FLOW).toContain('if (parent && session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {'); // 🔻 TASK-590: a NEW family has no sibling to duplicate
     // 🔻 TASK-314 — the decision is reached through `duplicateOutcomeFor`, the helper both doors call; the pure
     // `decideDuplicate` is called exactly once, inside it.
     expect(FLOW).toContain("duplicateOutcomeFor(parent.id, name)");
@@ -152,7 +153,9 @@ describe("the step machine — one place, so no branch can skip the confirm", ()
   test("the happy path always ends at CONFIRM", () => {
     expect(nextStep("AWAIT_STUDENT_NAME")).toBe("AWAIT_STUDENT_BIRTHDATE");
     expect(nextStep("AWAIT_STUDENT_BIRTHDATE")).toBe("AWAIT_STUDENT_PROVINCE");
-    expect(nextStep("AWAIT_STUDENT_PROVINCE")).toBe("AWAIT_STUDENT_CONFIRM");
+    expect(nextStep("AWAIT_STUDENT_PROVINCE")).toBe("AWAIT_STUDENT_DISTRICT"); // 🔻 TASK-590 (F-C): three address questions
+    expect(nextStep("AWAIT_STUDENT_DISTRICT")).toBe("AWAIT_STUDENT_SUBDISTRICT");
+    expect(nextStep("AWAIT_STUDENT_SUBDISTRICT")).toBe("AWAIT_STUDENT_CONFIRM");
     expect(nextStep("AWAIT_STUDENT_CONFIRM")).toBe("AWAIT_STUDENT_CONFIRM");
   });
 

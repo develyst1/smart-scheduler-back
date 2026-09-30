@@ -19,8 +19,12 @@ export interface StartChangePlan {
   /** Apply in THIS order: a shift later moves the last row first, so no row lands on a sibling's date before it has left. */
   order: string[];
   expiryDate: string;
-  /** A row was CONFIRMED ⇒ it returns to PENDING (its confirmation was of the OLD schedule) ⇒ the admin re-confirms: ONE message. */
-  needsReconfirm: boolean;
+  /**
+   * 🔴 TASK-578 (D9) — HOW MANY sessions were CONFIRMED and return to PENDING (their confirmation was of the OLD schedule) ⇒ the
+   * admin re-confirms: ONE message. A COUNT, not a flag: the page prints it ("4 คาบต้องยืนยันใหม่") — a boolean printed "true".
+   * `0` = nothing to re-confirm.
+   */
+  needsReconfirm: number;
   /** Weeks passed over because the row's teacher is on an advance leave (TASK-561 — the make-up's SKIP rule). */
   skipped: Array<{ teacherId: string; date: string }>;
 }
@@ -73,7 +77,7 @@ export async function planCourseStartChange(
   const declared = plan.filter((r) => r.status === "SICK_LEAVE" && r.plannedAtCreation).length;
   const lastAny = moves.reduce((mx, m) => (m.to > mx ? m.to : mx), newStart);
   const born = courseBornCeiling(courseExpiry(newStart, course.size), lastPlanned, declared);
-  return { moves, order, expiryDate: born > lastAny ? born : lastAny, needsReconfirm: moves.some((m) => m.status === "CONFIRMED"), skipped };
+  return { moves, order, expiryDate: born > lastAny ? born : lastAny, needsReconfirm: moves.filter((m) => m.status === "CONFIRMED").length, skipped };
 }
 
 export const isStartChangeRefusal = (p: StartChangePlan | StartChangeRefusal): p is StartChangeRefusal => "code" in p;

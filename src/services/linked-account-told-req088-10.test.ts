@@ -21,11 +21,15 @@ const fnIn = (S: string, sig: string) => { const i = S.indexOf(sig); if (i < 0) 
 const handler = (path: string) => { const i = ROUTE.indexOf(`"${path}"`); const rest = ROUTE.slice(i); const next = rest.indexOf(".post(", 10); return next > 0 ? rest.slice(0, next) : rest; };
 
 describe("🔴 ITEM 12 — a bound account + a phone that is not its family's is REFUSED, even when the phone is NEW", () => {
-  test("🔑 `linkFamilyByPhone` checks `familyOfLineUser` BEFORE creating any parent row on the new-phone path", () => {
+  test("🔑 `linkFamilyByPhone` checks `familyOfLineUser` on the new-phone path — which (🔻 TASK-590) creates NO parent row at all now", () => {
     const link = fnIn(REG, "export async function linkFamilyByPhone(");
     const newPath = link.slice(link.lastIndexOf("findParentByPhone(phone)"));
     expect(newPath).toContain('if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" };');
-    expect(newPath.indexOf("familyOfLineUser(")).toBeLessThan(newPath.indexOf("findOrCreateParentByPhone("));
+    expect(newPath.indexOf("familyOfLineUser(")).toBeLessThan(newPath.indexOf('return { outcome: "new", phone };'));
+    expect(newPath).not.toContain("findOrCreateParentByPhone("); // 🔻 TASK-590 (D11 a) — the parent is created WITH its first child
+    // …and the one-transaction writer re-checks the SAME refusal before its insert (a lookup is never trusted by the write)
+    const reg = fnIn(REG, "export async function registerFamilyWithFirstChild(");
+    expect(reg.indexOf('if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" };')).toBeLessThan(reg.indexOf("findOrCreateParentByPhone("));
     // 🚫 …and the old NAMED-NOT-FIXED note is gone from the code: the gap is closed, not documented.
     expect(REG_RAW).not.toContain("NAMED, NOT FIXED");
   });
@@ -41,7 +45,7 @@ describe("🔴 ITEM 12 — a bound account + a phone that is not its family's is
     // meant exactly this since SPEC-071: *"this LINE account belongs to another family — contact an admin."*
     const verify = fnIn(CHAT, "async function verifyAndLink(");
     expect(verify).toContain('if (r.outcome === "line-bound-to-other-family") return { ok: false, message: (l) => t("verify_parent_other_family", l) };');
-    expect(verify.indexOf('"line-bound-to-other-family"')).toBeLessThan(verify.indexOf("if (r.isNew)"));
+    expect(verify.indexOf('"line-bound-to-other-family"')).toBeLessThan(verify.indexOf('if (r.outcome === "new")')); // 🔻 TASK-590: `new` replaces `isNew`
     // 🚫 no new key, no new copy: the chat's five verify keys are still five.
     // (`verify_parent_ok_existing` is rendered twice — with and without the 2FA note — so count DISTINCT keys.)
     expect(new Set(verify.match(/t\("verify_parent_[a-z_]+"/g) ?? []).size).toBe(6); // 🔻 TASK-411: + verify_parent_archived (Finding B)

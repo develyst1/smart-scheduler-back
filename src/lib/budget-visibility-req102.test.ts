@@ -140,7 +140,7 @@ describe("🔴 the ONE mask by VALUE — with · without · a linked account wit
       expect(region(SCHED, fn, "\n}\n")).not.toMatch(/budgetMinor|remainingMinor|hourlyRate|attachFreelanceBudgets/);
     }
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/viewerOf\(c\)/g) ?? []).length).toBe(20); // 🔻 TASK-441: + the two rate-carrying GROUP-series writers // 🔻 TASK-434: + six more rate-carrying writers // calendar · teachers · create · update · budget · topup · archive · reactivate · attention // 🔻 TASK-431: + the three coach-rate write checks
+    expect((API.match(/viewerOf\(c\)/g) ?? []).length).toBe(21); // 🔻 TASK-584: + the cover door's rate check // 🔻 TASK-441: + the two rate-carrying GROUP-series writers // 🔻 TASK-434: + six more rate-carrying writers // calendar · teachers · create · update · budget · topup · archive · reactivate · attention // 🔻 TASK-431: + the three coach-rate write checks
     expect(API).not.toMatch(/budgetMinor|remainingMinor|hourlyRate/); // no route hand-builds a figure
   });
   test("the leak by value through the ROOT app: `GET /teachers` for a linked token holding all 57 keys ⇒ nulls; an unlinked super admin ⇒ the figures; a staff without the key ⇒ nulls; `GET /calendar` the same", async () => {

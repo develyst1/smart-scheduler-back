@@ -68,9 +68,11 @@ describe("🔴 RULE 1 — no decision exists in TWO places, by ABSENCE on both d
     expect(chat).toContain("duplicateOutcomeFor(");
     expect(route).toContain("addChildForLineParent(");
     const compose = fnIn(reg, "export async function addChildForLineParent(");
-    for (const s of ["isReservedWord(", "assertCanAddStudent(", "duplicateOutcomeFor(", "parseBirthDate(", "createStudentFromLine("]) {
+    // 🔻 TASK-590 — the birthday is read through `checkNameAndBirthday` (shared with the one-transaction register), which calls the parser
+    for (const s of ["isReservedWord(", "assertCanAddStudent(", "duplicateOutcomeFor(", "checkNameAndBirthday(", "createStudentFromLine("]) {
       expect({ s, inCompose: compose.includes(s) }).toEqual({ s, inCompose: true });
     }
+    expect(fnIn(reg, "function checkNameAndBirthday(")).toContain("parseBirthDate(given)");
   });
 
   test("🔑 the page's guard ORDER is the chat's guard ORDER: reserved → cap → duplicate → birthdate → write", () => {
@@ -78,8 +80,9 @@ describe("🔴 RULE 1 — no decision exists in TWO places, by ABSENCE on both d
     const compose = fnIn(reg, "export async function addChildForLineParent(");
     const wizard = fnIn(chat, "async function handleAddStudentStep(");
     const order = ["isReservedWord(", "assertCanAddStudent(", "duplicateOutcomeFor(", "parseBirthDate(", "createStudentFromLine("];
-    for (const S of [compose, wizard]) {
-      for (let i = 1; i < order.length; i++) expect(S.indexOf(order[i - 1]!)).toBeLessThan(S.indexOf(order[i]!));
+    const pageOrder = order.map((o) => (o === "parseBirthDate(" ? "checkNameAndBirthday(" : o)); // 🔻 TASK-590: the parser, through the shared check
+    for (const [S, O] of [[compose, pageOrder], [wizard, order]] as const) {
+      for (let i = 1; i < O.length; i++) expect(S.indexOf(O[i - 1]!)).toBeLessThan(S.indexOf(O[i]!));
     }
   });
 
@@ -155,8 +158,13 @@ describe("✅ RULES 3–6, each an assertion", () => {
     expect((settle.match(/linkRoleRichMenu\(/g) ?? []).length).toBe(1);
     expect(settle).not.toContain("linkKnownRichMenu(");
     // …and the chat runs the same sequence before it touches its session.
+    // 🔻 TASK-590 (D11 a) — a NEW family returns BEFORE the settle (nothing linked yet; the menus follow the first child's commit)
     const after = chat.slice(chat.indexOf("const res = await verifyAndLink(lineUserId, role, text, lang);"));
-    expect(after.indexOf("settleLinkedRole(")).toBeLessThan(after.indexOf("afterParentLink("));
+    const pending = after.slice(after.indexOf("if (res.pendingPhone) {"), after.indexOf('if (role !== "admin") await settleLinkedRole(lineUserId, role);'));
+    expect(pending).toContain("return reply(");
+    expect(pending).not.toContain("settleLinkedRole(");
+    const linked = after.slice(after.indexOf("if (res.pendingPhone) {") + pending.length);
+    expect(linked.indexOf("settleLinkedRole(")).toBeLessThan(linked.indexOf("afterParentLink("));
   });
 
   test("Rule 5 — `ข้าม` is simply an absent field; there is NO cancel code", () => {
@@ -174,8 +182,10 @@ describe("✅ RULES 3–6, each an assertion", () => {
     const compose = fnIn(reg, "export async function addChildForLineParent(");
     // 🔻 TASK-565 (REQ-110 item 10, the owner): ข้าม is REMOVED on this door — the blank, and the typed word, are now REFUSED.
     expect(compose).not.toContain("const parsed = given ? parseBirthDate(given) : ({ ok: true, value: null } as const);");
-    expect(compose).toContain("if (!given) return { outcome: \"birthdate-required\" };");
-    expect(compose).toContain("if (parsed.value == null) return { outcome: \"birthdate-required\" };");
+    const nb = fnIn(reg, "function checkNameAndBirthday("); // 🔻 TASK-590 — the shared check both page paths call
+    expect(compose).toContain("const nb = checkNameAndBirthday(input);");
+    expect(nb).toContain('if (!given) return { ok: false, refusal: { outcome: "birthdate-required" } };');
+    expect(nb).toContain('if (parsed.value == null) return { ok: false, refusal: { outcome: "birthdate-required" } };');
   });
 
   test("Rule 6 — one stable `/register`, mounted beside `/checkin`; the token IS the credential", () => {
@@ -197,14 +207,17 @@ describe("📜 THE CONTRACT — every code the page may render is named here and
       expect({ c, named: route.includes(`"${c}"`) }).toEqual({ c, named: true });
     }
     // …and every outcome the home can produce has a row in the page's table (the table is the contract).
-    const outcomes = [...reg.matchAll(/outcome: "([a-z-]+)"/g)].map((m) => m[1]!).filter((o) => o !== "found" && o !== "new" && o !== "linked" && o !== "created");
+    const outcomes = [...reg.matchAll(/outcome: "([a-z-]+)"/g)].map((m) => m[1]!).filter((o) => o !== "found" && o !== "new" && o !== "linked" && o !== "created" && o !== "registered"); // 🔻 TASK-590: + the new family's success
     for (const o of new Set(outcomes)) expect({ o, mapped: route.includes(`"${o}": [`) }).toEqual({ o, mapped: true });
   });
 
-  test("🚫 the server returns NO `message` and takes NO `lang` — the page owns words", () => {
-    expect(route).not.toMatch(/\bmessage\s*:/);
+  test("🚫 the server takes NO `lang`, and returns ONE `message` only — the duplicate sentence, both languages, from the chat's own key", () => {
+    // 🔻 TASK-583 (ruling 4: "the same duplicate-name wording") — the ONE deliberate exception to "the page owns words": that
+    // sentence must have ONE source, so it travels with its code from the chat's table. Every other refusal is still a code only.
+    expect(route.match(/\bmessage\s*:/g)).toHaveLength(1);
+    expect(route).toContain('message: { TH: t("add_dup_detail", "TH"), EN: t("add_dup_detail", "EN") }');
     expect(route).not.toMatch(/\blang\b/);
-    expect(route).not.toMatch(/\bt\(/); // no i18n on this door at all
+    expect([...route.matchAll(/\bt\("(\w+)"/g)].map((m) => m[1])).toEqual(["add_dup_detail", "add_dup_detail"]); // no other i18n on this door
   });
 
   test("📌 the two env values are documented where the others are", async () => {

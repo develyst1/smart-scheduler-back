@@ -191,6 +191,15 @@ export const api = new Hono()
   .post("/teachers/me/leave", zValidator("json", v.teacherLeave), async (c) =>
     c.json(await svc.reportOwnLeave(assertLinked(c.get("user")), c.req.valid("json"), actorOf(c))),
   )
+  // TASK-582 — the teacher's OWN recorded advance-leave days, and lifting one (restores nothing, cancels nothing). The SAME key and
+  // the same identity as recording one: the narrowest reading of the owner's ruling (he ruled the act, not a new actor).
+  .get("/teachers/me/leave", async (c) => c.json({ items: await svc.ownLeaveDays(assertLinked(c.get("user"))) }))
+  .delete("/teachers/me/leave/:date", zValidator("param", v.leaveDateParam), async (c) =>
+    c.json(await svc.liftOwnLeave(assertLinked(c.get("user")), c.req.valid("param").date)),
+  )
+  // TASK-587 (a) — the ADMIN's list: recorded leave days and the live classes on each (the owner: "listed for the admin"). The
+  // calendar's own read key — it shows the calendar's own rows; a linked teacher is refused (not in TEACHER_ALLOWED).
+  .get("/teacher-leave-days", zValidator("query", v.leaveDaysQuery), async (c) => c.json({ items: await svc.listRecordedLeaveDays(c.req.valid("query")) }))
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
     c.json(await svc.getTeachers({ archived: c.req.valid("query").archived }, viewerOf(c))), // TASK-426
   )
@@ -345,9 +354,10 @@ export const api = new Hono()
   .delete("/other-series/:key/teachers/:teacherId", zValidator("query", v.otherSeriesFromQuery), async (c) =>
     c.json(await otherSeries.removeTeacherFromOtherSeries(c.req.param("key"), c.req.param("teacherId"), c.req.valid("query"))),
   )
-  .patch("/other-series/:key/teacher", zValidator("json", v.otherSeriesSwap), async (c) =>
-    c.json(await otherSeries.swapOtherSeriesTeacher(c.req.param("key"), c.req.valid("json"))),
-  )
+  .patch("/other-series/:key/teacher", zValidator("json", v.otherSeriesSwap), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // TASK-584 — a cover's `rateMinor` ⇒ key 59; a cover without a rate passes
+    return c.json(await otherSeries.swapOtherSeriesTeacher(c.req.param("key"), c.req.valid("json")));
+  })
   .post("/other-series/:key/dates", zValidator("json", v.otherSeriesDates), async (c) =>
     c.json(await otherSeries.addDatesToOtherSeries(c.req.param("key"), c.req.valid("json")), 201),
   )

@@ -359,13 +359,26 @@ const TABLE: Record<string, Entry> = {
   // no copy work either: turning it on must be a setting, never a rebuild.
   // SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — the registration wizard. The summary step is not decoration:
   // this roster has no delete for anything with history, so the parent reads back what will be written.
+  // 🔴 TASK-583 (ruling 4: "the same duplicate-name wording") — THE ONE SOURCE for both doors: the chat renders it, and the page's
+  // refusal CARRIES it (`/register/create`'s NAME_DUPLICATE_NEEDS_DETAIL, `message`), so the two cannot drift. 📋 DRAFT — the
+  // page's owner-bound wording (COPY-REVIEW §8), which replaces "surname or nickname" with the child's REAL name.
   add_dup_detail: {
-    TH: "มีน้องชื่อนี้อยู่แล้ว รบกวนใส่นามสกุลหรือชื่อเล่นเพิ่ม เพื่อไม่ให้สลับกันนะคะ",
-    EN: "There is already a child with that name. Please add a surname or nickname so they are not mixed up.",
+    TH: "มีน้องชื่อนี้ในครอบครัวแล้ว — กรุณาใส่ชื่อจริงของน้อง (ชื่อ-นามสกุล) เพื่อไม่ให้สับสนกันค่ะ",
+    EN: "There is already a child with this name. Please enter the child's real name (first name and surname) so they are not mixed up.",
   },
+  // 🔴 TASK-590 (F-C, ruling 4) — the chat's address is THREE questions now, meeting the page's one rule. 📋 DRAFT (COPY §18) — they
+  // replace the customer's one-line screen 6 (`add_province_prompt`, kept, unused) because one typed line cannot be three checked parts.
+  add_addr_province_prompt: { TH: "กรุณาระบุจังหวัด เช่น กรุงเทพมหานคร", EN: "Please enter your province, e.g. Bangkok" },
+  add_addr_province_bad: { TH: "ไม่พบจังหวัดนี้ค่ะ กรุณาพิมพ์ชื่อจังหวัดเต็ม เช่น เชียงใหม่ หรือ กรุงเทพมหานคร", EN: "We could not find that province. Please type its full name, e.g. เชียงใหม่ or กรุงเทพมหานคร" },
+  add_addr_district_prompt: { TH: "กรุณาระบุอำเภอ/เขต เช่น วัฒนา", EN: "Please enter your district, e.g. Watthana" },
+  add_addr_subdistrict_prompt: { TH: "กรุณาระบุตำบล/แขวง เช่น พระโขนงเหนือ", EN: "Please enter your sub-district, e.g. Phra Khanong Nuea" },
+  add_addr_on_file: { TH: "ที่อยู่เดิมของครอบครัว", EN: "the address we have on file" },
+  // 🔴 TASK-590 (D11 a) — the phone became a family between the phone step and the confirm (another account, another tab). 📋 DRAFT
+  add_phone_now_registered: { TH: "เบอร์นี้เพิ่งถูกลงทะเบียนไว้แล้วค่ะ ยังไม่ได้บันทึกนักเรียน กรุณาพิมพ์ \"สมัคร\" แล้วใส่เบอร์อีกครั้ง", EN: "This phone number was just registered. The student was not saved — please type \"Register\" and enter the number again." },
   add_birthdate_bad: {
-    TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น วัน-เดือน-ปี เช่น 02-12-2024 หรือพิมพ์ ข้าม",
-    EN: "That date format is not valid. Please use DD-MM-YYYY, e.g. 02-12-2024, or type skip.",
+    // 🔻 TASK-583 (ruling 4: no ข้าม) — the "or type skip" escape removed; the birthday is required. 📋 DRAFT (a deletion only)
+    TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น วัน-เดือน-ปี เช่น 02-12-2024",
+    EN: "That date format is not valid. Please use DD-MM-YYYY, e.g. 02-12-2024.",
   },
   // 🔴 TASK-245 — the exit, appended to EVERY question the wizard asks. One string, one append site, because
   // "the flow has an exit" is only true if it is true at every step: the owner's trap was three questions that
@@ -399,7 +412,7 @@ const TABLE: Record<string, Entry> = {
     EN: "That code is not correct. Please try again.",
   },
 
-  added_more: { TH: 'เพิ่ม "{name}" สำเร็จ ✅ (ตอนนี้มี {count} คน)\nพิมพ์ชื่อคนถัดไป หรือพิมพ์ "ข้าม" เพื่อจบ', EN: 'Added "{name}" ✅ (now {count})\nType the next name, or "skip" to finish' },
+  // 🔻 TASK-583 — `added_more` removed: it advertised ข้าม, and its only sender (the inline door writing a name-only child) is gone.
   added_atmax_note: { TH: " (ครบ {max} คนแล้ว)", EN: " (reached {max})" },
   add_no_parent: { TH: "ไม่พบบัญชีผู้ปกครอง พิมพ์ สมัคร เพื่อเริ่มใหม่", EN: "No parent account found. Type 'register' to start over" },
   add_generic_err: { TH: "ไม่สามารถเพิ่มนักเรียนได้", EN: "Couldn't add the student" },

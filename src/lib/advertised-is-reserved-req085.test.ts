@@ -38,9 +38,10 @@ describe("🔴 TASK-313 §2 — `add เมนู` REFUSES and creates nothing (
     // …and the write is fenced behind the guard: the refusal comes BEFORE `addStudentAndReply` in the block,
     // and it is the SAME guard and the SAME refusal the prompt uses — not a second check.
     expect(INLINE).toContain("if (name && isReservedWord(name)) {");
-    expect(INLINE.indexOf("isReservedWord(name)")).toBeLessThan(INLINE.indexOf("addStudentAndReply("));
+    // 🔻 TASK-583 — the inline door no longer writes at all: after the guard it joins the wizard's name step (which guards again)
+    expect(INLINE.indexOf("isReservedWord(name)")).toBeLessThan(INLINE.indexOf("handleAddStudentStep("));
     expect(INLINE).toContain('strikeOrPrompt(lineUserId, session, replyToken, t("add_name_reserved", lang, { word: name }), lang)');
-    expect(INLINE.match(/addStudentAndReply\(/g)!.length).toBe(1);
+    expect(INLINE).not.toMatch(/addStudentAndReply|createStudentFromLine/);
   });
 
   test("🔑 both doors — the same guard, the same refusal string, the same strike rule", () => {

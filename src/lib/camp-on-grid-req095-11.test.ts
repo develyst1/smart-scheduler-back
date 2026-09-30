@@ -177,9 +177,16 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
       expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: "วันที่ 2026-10-05 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร" });
     } finally { f.restore(); }
   });
-  test("a CLOSED week ⇒ the wanted set is empty ⇒ every existing row deleted, nothing inserted; no teacher ⇒ the same", async () => {
-    const f = fakeTx({ week: { ...week, status: "CLOSED" }, day: { id: D1, date: "2026-10-05", teacherIds: [T1], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
-    try { expect(await camp.syncCampDayRows(f.tx, D1)).toEqual({ inserted: 0, deleted: 1, onLeave: [] }); expect(f.log.filter((l) => l[0] === "insert").length).toBe(0); } finally { f.restore(); }
+  test("🔻 TASK-581: a CLOSED week syncs EXACTLY as an open one (its coaches keep their blocks — Close gates new bookings only); no teacher ⇒ every row deleted", async () => {
+    const at = (status: string) => fakeTx({ week: { ...week, status }, day: { id: D1, date: "2026-10-05", teacherIds: [T1], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
+    const results: any[] = [];
+    for (const status of ["OPEN", "CLOSED"]) {
+      const f = at(status);
+      try { results.push([await camp.syncCampDayRows(f.tx, D1), f.log]); } finally { f.restore(); }
+    }
+    for (const r of results) r[1] = JSON.parse(JSON.stringify(r[1], function (k, v) { return this[k] instanceof Date ? "<now>" : v; })); // a write's `new Date()` differs by ms
+    expect(results[1]).toEqual(results[0]); // by value: the same result and the same writes
+    expect(results[1][0]).toMatchObject({ deleted: 0 }); // the existing block KEPT on a closed week
     const g = fakeTx({ week, day: { id: D1, date: "2026-10-05", teacherIds: [], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
     try { expect(await camp.syncCampDayRows(g.tx, D1)).toEqual({ inserted: 0, deleted: 1, onLeave: [] }); } finally { g.restore(); }
   });
@@ -195,25 +202,26 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
     expect(C).toContain("for (const teacherId of (await syncCampDayRows(tx, d!.id)).onLeave) onLeave.push({ date, teacherId });"); // 🔻 TASK-561: + the on-leave LIST
     expect((C.match(/db\.transaction\(/g) ?? []).length).toBe(1);
   });
-  test("updateWeek: CLOSED ⇒ every day's rows deleted; OPEN again ⇒ every day re-synced; a teacher/window change ⇒ ONLY the days with `edited_at IS NULL` re-derived; no dates edit exists", () => {
-    const U = region(SVC, "export async function updateWeek(", "export async function weekDays(");
-    expect(U).toContain('if (status === "CLOSED") {');
-    expect(U).toContain("for (const d of days) await deleteCampDayRows(tx, d.id);");
-    expect(U).toContain('} else if (input.status === "OPEN" && w.status !== "OPEN") {');
+  test("updateWeek: 🔻 TASK-581 — CLOSE / OPEN cascade NOTHING (no delete, no re-sync); a teacher/window change ⇒ ONLY the days with `edited_at IS NULL` re-derived; no dates edit exists", () => {
+    const U = region(code(SVC), "export async function updateWeek(", "export async function weekDays(");
+    const TX = region(U, "const [updated] = await db.transaction(", "return [u];");
+    expect(TX).not.toMatch(/"CLOSED"|"OPEN"|status|deleteCampDayRows|\.delete\(/); // inside the tx the status is read by NOTHING
+    expect(U).toContain('if (input.status !== undefined) { patch.status = input.status; patch.closedAt = input.status === "CLOSED" ? new Date() : null; }'); // the flip: the week row only
+    expect(U).toContain("if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {");
     expect(U).toContain("a(e(d.campWeekId, id), nul(d.editedAt))");
     expect(U).toContain("for (const teacherId of (await syncCampDayRows(tx, d.id)).onLeave) onLeave.push({ date: d.date, teacherId });"); // 🔻 TASK-561
     expect(v.updateCampWeek.safeParse({ startDate: "2026-10-05" }).success).toBe(false); // Finding B — no dates edit
     expect(v.updateCampWeek.safeParse({ windowStart: "09:00", windowEnd: "16:00" }).success).toBe(true);
     expect(v.createCampWeek.safeParse({ name: "A", startDate: "2026-10-05", endDate: "2026-10-09", windowStart: "9:00" }).success).toBe(false); // HH:MM
   });
-  test("the per-day swap: a CLOSED week 409, a date outside 404, the window validated, `edited_at` stamped, the ONE sync; the route + its access row; not in TEACHER_ALLOWED", () => {
+  test("the per-day swap: 🔻 TASK-581 a CLOSED week is swapped like an open one (no 409), a date outside 404, the window validated, `edited_at` stamped, the ONE sync; the route + its access row; not in TEACHER_ALLOWED", () => {
     const P = region(SVC, "export async function updateWeekDay(", "export async function listPackages(");
-    expect(P).toContain('if (w.status !== "OPEN") throw conflict("CAMP_WEEK_CLOSED", `สัปดาห์ ${w.name} ปิดรับแล้ว`);');
+    expect(code(P)).not.toMatch(/CAMP_WEEK_CLOSED|w\.status/);
     expect(P).toContain('if (!d) throw notFound("ไม่พบวันแคมป์");');
     expect(P).toContain("assertCampWindow(start, end);");
     expect(P).toContain("editedAt: new Date()");
     expect(P).toContain("return syncCampDayRows(tx, d.id);");
-    expect((SVC.match(/syncCampDayRows\(tx, /g) ?? []).length).toBe(4); // createWeek · updateWeek ×2 (reopen, re-derive) · the per-day swap
+    expect((SVC.match(/syncCampDayRows\(tx, /g) ?? []).length).toBe(3); // createWeek · updateWeek (re-derive) · the per-day swap — 🔻 TASK-581: the reopen re-sync is gone
     expect(code(src("src/routes/camp.ts"))).toContain('.patch("/weeks/:id/days/:date", zValidator("json", v.updateCampWeekDay), async (c) => {'); // 🔻 TASK-443: + `assertMayEditCoachRate` before the service
     expect(code(src("src/routes/camp.ts"))).toContain('return c.json(await camp.updateWeekDay(c.req.param("id"), c.req.param("date"), c.req.valid("json")));');
     expect((ROUTE_ACCESS as any)["PATCH /camp/weeks/:id/days/:date"]).toEqual({ menus: ["menu:camp"], action: "action:camp.week-open" });
@@ -238,7 +246,7 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
     expect(J).toContain("campWeekDayId: r.campWeekDayId ?? null,");
     expect(J).toContain("otherKind: r.otherKind ?? null,");
     // no price, no rate, no head count on the derived row ⇒ the day-end's OTHER post returns false (`otherPriceMinor == null && otherPriceItemId == null`)
-    const S = region(SVC, "export async function syncCampDayRows(", "async function deleteCampDayRows(");
+    const S = region(SVC, "export async function syncCampDayRows(", "export async function updateWeekDay("); // 🔻 TASK-581: `deleteCampDayRows` removed (its only caller was the close)
     expect(S).not.toMatch(/otherPriceMinor|otherPriceItemId|headCount|recordSale|recordRevenue/); // 🔻 TASK-443: `teacherRates` now rides the row (a RATE, not a PRICE — the OTHER post still answers false)
     expect(J).toContain("if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;");
     // the freelance hold: OTHER rows return early

@@ -60,39 +60,40 @@ describe("🔴 §9 — the rule, with values", () => {
 describe("🔴 §9 — the one writer applies the rule, and the CHAT changed by construction", () => {
   test("🔑 `createStudentFromLine` reads the row's CURRENT note and writes `householdPatch(...)`", () => {
     const w = fnIn(REG, "export async function createStudentFromLine(");
-    expect(w).toContain("db.select({ note: parents.note }).from(parents)");
-    expect(w).toContain("householdPatch(row?.note ?? null, { province, address })");
+    // 🔻 TASK-590 — the writer runs on the caller's `exec` (a new family's ONE transaction), and the three parts arrive CHECKED
+    expect(w).toContain("exec.select({ note: parents.note }).from(parents)");
+    expect(w).toContain("householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })");
     // …and the read is of the ROW, not the `parent` argument — a note written since the chat loaded it survives.
-    expect(w.indexOf("db.select({ note: parents.note })")).toBeLessThan(w.indexOf("householdPatch("));
+    expect(w.indexOf("exec.select({ note: parents.note })")).toBeLessThan(w.indexOf("householdPatch("));
     // 🚫 the old direct `province` write is GONE — one rule, one place.
     expect(REG).not.toContain("set({ province: input.province })");
   });
 
-  test("🔑 the CHAT's call site passes `address` and NEVER `province`", () => {
+  test("🔻 TASK-590 (F-C) — the CHAT's call site passes the THREE parts; its province is RESOLVED to one of the 77, so it may fill the column", () => {
+    // TASK-352's "the chat never writes `province`" rested on "a typed line cannot pick one". The chat now asks the province ALONE and
+    // resolves it to one of the 77 (`provinceFromTyped`) — the same list the page picks from — so it is not a guess any more.
     const confirm = fnIn(CHAT, "async function handleAddStudentStep(");
-    expect(confirm).toContain("address: draft.province ?? null,");
-    expect(confirm).not.toContain("province: draft.province");
-    // 📌 the draft KEY is still `province` — a session key from the wizard, not a column — so the assertion is on
-    // the writer's INPUT name, which is what decides where it lands.
-    const call = confirm.slice(confirm.indexOf("await createStudentFromLine(parent, {"), confirm.indexOf("});", confirm.indexOf("await createStudentFromLine(parent, {")));
-    expect(call).not.toMatch(/^\s*province:/m);
+    expect(confirm).toContain("const address = addressOnFile ? null : { province: draft.province, district: draft.district, subDistrict: draft.subDistrict };");
+    expect(confirm).toContain("const province = provinceFromTyped(text);");
+    expect(confirm).toContain("await createStudentFromLine(parent!, { name: draft.name!, birthDate: draft.birthDate ?? null, address })");
   });
 
   test("🔑 an unknown province is refused in the WRITER (for every caller) and as a NAMED CODE (for the page)", () => {
     const w = fnIn(REG, "export async function createStudentFromLine(");
-    expect(w).toContain('if (province && !isThaiProvince(province)) throw badRequest("จังหวัดไม่ถูกต้อง");');
+    // 🔻 TASK-590 — through THE rule (`checkFullAddress`, which calls `isThaiProvince`): in the writer, and as a code for the page
+    expect(w).toContain("const checked = given ? checkFullAddress(given) : null;");
+    expect(w).toContain("if (checked && !checked.ok) throw badRequest(");
     const compose = fnIn(REG, "export async function addChildForLineParent(");
-    expect(compose).toContain('if (province && !isThaiProvince(province)) return { outcome: "province-unknown", province };');
-    expect(compose.indexOf("isThaiProvince(")).toBeLessThan(compose.indexOf("createStudentFromLine("));
+    expect(compose.indexOf("checkAddress(input)")).toBeLessThan(compose.indexOf("createStudentFromLine("));
+    expect(REG).toContain('return { ok: false, refusal: { outcome: "province-unknown", province: c.province } };');
     expect(ROUTE).toContain('"province-unknown": [400, "PROVINCE_UNKNOWN"]');
     expect(ROUTE).toContain('r.outcome === "province-unknown" ? { province: r.province }');
   });
 
-  test("the route accepts the two fields with the agreed names — `province` (picked) and `address` (the line)", () => {
+  test("🔻 TASK-590 (F-C) — the route accepts the THREE picked parts; a pre-joined `address` line is no longer read", () => {
     const body = ROUTE.slice(ROUTE.indexOf("const createBody"), ROUTE.indexOf("const refuse"));
-    expect(body).toContain("province: z.string().optional()");
-    expect(body).toContain("address: z.string().optional()");
-    expect(ROUTE).toContain("address: address ?? null");
+    for (const f of ["province: z.string().optional()", "district: z.string().optional()", "subDistrict: z.string().optional()"]) expect(body).toContain(f);
+    expect(body).not.toContain("address: z.string()");
   });
 });
 

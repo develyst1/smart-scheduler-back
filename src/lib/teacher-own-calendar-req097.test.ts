@@ -176,7 +176,7 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
     return { status: res.status, body: (await res.json()) as any };
   };
   test("the set is exactly the calendar page's calls; every member is in the access table", () => {
-    expect([...TEACHER_ALLOWED].sort()).toEqual(["GET /badges", "GET /bookings", "GET /bookings/:id/checkin", "GET /bookings/:id/posted-sale", "GET /calendar", "GET /teachers", "PATCH /bookings/:id/status", "POST /teachers/me/leave"]);
+    expect([...TEACHER_ALLOWED].sort()).toEqual(["GET /badges", "GET /bookings", "GET /bookings/:id/checkin", "GET /bookings/:id/posted-sale", "GET /calendar", "GET /teachers", "PATCH /bookings/:id/status", "POST /teachers/me/leave", "DELETE /teachers/me/leave/:date", "GET /teachers/me/leave"].sort()); // 🔻 TASK-582: + my recorded advance-leave days, and lifting one
     for (const k of TEACHER_ALLOWED) expect(ROUTE_ACCESS[k]).toBeDefined();
     expect(ROUTE_ACCESS["POST /teachers/me/leave"]).toEqual({ menus: ["menu:calendar"], action: "action:calendar.teacher-leave" });
     for (const k of TEACHER_ALLOWED) expect(k).not.toMatch(/students|parents|courses|attention|reports/);
@@ -192,8 +192,8 @@ describe("🔴 the fail-closed route set — a LINKED account with EVERY key rea
         if (TEACHER_ALLOWED.has(key)) { expect({ key, status: r.status, code: r.body?.error?.code }).toEqual({ key, status: 200, code: undefined }); allowed++; } // TASK-535: the code too, so an unexpected error names itself
         else { expect({ key, status: r.status, code: r.body?.error?.code }).toEqual({ key, status: 403, code: "SCOPE_TEACHER" }); refused++; }
       }
-      expect(allowed).toBe(8);
-      expect(refused).toBe(keys.length - 8);
+      expect(allowed).toBe(10); // 🔻 TASK-582: 8 + GET / DELETE /teachers/me/leave
+      expect(refused).toBe(keys.length - 10);
       expect(refused).toBeGreaterThan(90); // the whole table minus the eight (95 today) — a floor, so a shrunken table cannot pass quietly
       for (const key of ["POST /bookings", "PATCH /bookings/:id", "POST /bookings/:id/pause", "GET /students", "GET /attention"]) expect((await hit(U2, key)).status).toBe(200); // unlinked: untouched
       expect((await hit(U1, "POST /bookings")).body).toEqual({ error: { code: "SCOPE_TEACHER", message: "บัญชีครูทำได้เฉพาะดูตารางตัวเอง เช็คอิน และแจ้งลา" } });

@@ -36,7 +36,11 @@ const fn = (sig: string) => {
   return SVC.slice(i, SVC.indexOf("\n}\n", i));
 };
 const WIZARD = fn("async function handleAddStudentStep(");
-const INLINE = fn("async function addStudentAndReply(");
+// 🔻 TASK-583 (ruling 4) — `addStudentAndReply` is GONE: it wrote a child from the name alone. The inline door is now the router's
+// `addMatch` branch, which WRITES NOTHING and hands the name to the wizard's name step — so every rule below reaches it through the
+// wizard, by construction, instead of by a second copy.
+const INLINE = SVC.slice(SVC.indexOf("const addMatch = parseAddCommand(raw);"), SVC.indexOf("if (inList(CMD_COURSES, cmd))"));
+const INLINE_ENTERS_WIZARD = "return handleAddStudentStep(lineUserId, session as any, name, replyToken, lang);";
 const CREATOR = fnIn(REG, "export async function createStudentFromLine(");
 const DUP = fnIn(REG, "export async function duplicateOutcomeFor(");
 const ASK = fn("async function askMoreDetail(");
@@ -44,7 +48,7 @@ const ASK = fn("async function askMoreDetail(");
 describe("🔴 TASK-314 §2.1 — `add น้องเอ` twice behaves as the WIZARD does (AC-9)", () => {
   test("🔑 both doors ask the ONE helper, and the helper asks the ONE pure decision", () => {
     expect(WIZARD).toContain('(await duplicateOutcomeFor(parent.id, name)) === "more-detail"');
-    expect(INLINE).toContain('(await duplicateOutcomeFor(parent.id, name)) === "more-detail"');
+    expect(INLINE).toContain(INLINE_ENTERS_WIZARD); // 🔻 TASK-583 — the inline door asks it THROUGH the wizard
     expect(DUP).toContain("decideDuplicate(siblings.map((s: any) => s.name), name)");
     // …and nowhere else: the decision has exactly one caller, and 🔻 TASK-347 moved that caller to the ONE home
     // of the registration decisions. The webhook no longer calls the pure decision at all.
@@ -52,12 +56,13 @@ describe("🔴 TASK-314 §2.1 — `add น้องเอ` twice behaves as the 
     expect(SVC).not.toContain("decideDuplicate(");
   });
 
-  test("🔑 the inline door ASKS before it writes — and the question puts the parent into the wizard's detail step", () => {
-    expect(INLINE.indexOf("duplicateOutcomeFor(")).toBeLessThan(INLINE.indexOf("createStudentFromLine("));
-    // ⚠️ The EXACT guard line, because a first mutation (`if (false && …)`) passed the two looser pins above:
-    // the text of a disabled condition still "contains" the helper call. A green mutation proves nothing.
-    expect(INLINE).toContain('\n  if ((await duplicateOutcomeFor(parent.id, name)) === "more-detail") {\n');
-    expect(INLINE).toContain("return askMoreDetail(lineUserId, {}, name, replyToken, lang);");
+  test("🔑 the inline door NEVER writes (🔻 TASK-583) — it enters the wizard's NAME step, which asks the duplicate question and every required one", () => {
+    expect(INLINE).not.toMatch(/createStudentFromLine|addStudentAndReply|createStudentForParent/);
+    expect(INLINE).toContain('await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");');
+    expect(INLINE.indexOf('setStep(lineUserId, "AWAIT_STUDENT_NAME"')).toBeLessThan(INLINE.lastIndexOf(INLINE_ENTERS_WIZARD));
+    // the name step's EXACT duplicate guard — a disabled condition still "contains" the call, so the line itself is pinned
+    expect(WIZARD).toContain('if (parent && session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {'); // 🔻 TASK-590: a NEW family has no sibling
+    expect(WIZARD).toContain("return askMoreDetail(lineUserId, draft, name, replyToken, lang);");
     expect(ASK).toContain('await setDraft(lineUserId, "AWAIT_STUDENT_DETAIL", { ...draft, name });');
     expect(ASK).toContain('withExit(t("add_dup_detail", lang), lang)');
   });
@@ -72,9 +77,10 @@ describe("🔴 TASK-314 §2.1 — `add น้องเอ` twice behaves as the 
 
 describe("🔴 TASK-314 §2.2 — a child added INLINE notifies the admin (AC-11)", () => {
   test("🔑 ONE LINE-side creator, both doors call it, and the notification lives inside it", () => {
-    expect(WIZARD).toContain("await createStudentFromLine(parent, {");
-    expect(INLINE).toContain("await createStudentFromLine(parent, { name });");
-    expect(CREATOR).toContain('await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone });');
+    expect(WIZARD).toContain("await createStudentFromLine(parent!, {"); // 🔻 TASK-590 — an EXISTING family; a new one goes through `registerFamilyWithFirstChild`, which calls the same creator
+    expect(fnIn(REG, "export async function registerFamilyWithFirstChild(")).toContain("await createStudentFromLine(parent, {");
+    expect(INLINE).toContain(INLINE_ENTERS_WIZARD); // 🔻 TASK-583 — the inline door reaches the creator only via the wizard's CONFIRM
+    expect(CREATOR).toContain('await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone }, exec);'); // 🔻 TASK-590: on the caller's tx (a new family's notice rolls back with it)
     // The row first, then the message — the order AC-11 always had.
     expect(CREATOR.indexOf("createStudentForParent(")).toBeLessThan(CREATOR.indexOf("notifyAdmins("));
     // …and no door calls the service write directly any more: the notification cannot be skipped by construction.
@@ -105,7 +111,7 @@ describe("🔴 TASK-314 §2.2 — a child added INLINE notifies the admin (AC-11
 });
 
 describe("🚫 TASK-314 §3 — the cap's courtesy check is LEFT ALONE, with the reason", () => {
-  test("the wizard asks it at the first step; the inline door relies on the write's own precondition", () => {
+  test("the wizard asks it at the first step; the inline door has no copy of it — 🔻 TASK-583: it now ENTERS that step, so it gets the courtesy check too", () => {
     // Correctly harmless: `createStudentForParent` calls `assertCanAddStudent` itself, which is exactly why it
     // was extracted. The difference is a worse MESSAGE on the inline door, not a missing rule.
     expect(WIZARD).toContain("await assertCanAddStudent(parent.id);");
@@ -123,9 +129,17 @@ describe("✅ TASK-314 — the wizard's BEHAVIOUR is byte-identical: a move, not
     // same: write (student + province), notify, clear, reply screen 8.
     // 🔻 TASK-352 (`REQ-088 §9`) — the screen-6 string is an ADDRESS now, appended to `parents.note`; the chat never
     // writes `province`. The sequence is the same: write (student + note), notify, clear, reply screen 8.
-    const order = ["isConfirm(text)", "createStudentFromLine(parent, {", "address: draft.province ?? null", "clearSession(lineUserId)", 't("added_done", lang'];
-    for (let i = 1; i < order.length; i++) expect(confirm.indexOf(order[i - 1])).toBeLessThan(confirm.indexOf(order[i]));
-    expect(confirm).toContain("birthDate: draft.birthDate ?? null,");
+    // 🔻 TASK-590 — the address is THREE parts (F-C) and a NEW family is created WITH this child in one transaction (D11 a); the
+    // sequence is the same: write (student + household), notify (inside the writer), clear, reply screen 8.
+    // (the SUCCESS path's clear: the first one AFTER the write — the new-family refusal and the catch each have their own)
+    const successClear = confirm.indexOf("clearSession(lineUserId)", confirm.indexOf("createStudentFromLine(parent!, {"));
+    expect(successClear).toBeGreaterThan(-1);
+    expect(successClear).toBeLessThan(confirm.indexOf('t("added_done", lang'));
+    const order = ["isConfirm(text)", "const address = addressOnFile ? null :", "registerFamilyWithFirstChild(", "createStudentFromLine(parent!, {", "const atMax = count >= MAX_STUDENTS_PER_PARENT;", 't("added_done", lang'];
+    const at = order.map((o) => confirm.indexOf(o));
+    expect({ missing: order.filter((_, i) => at[i]! < 0) }).toEqual({ missing: [] });
+    for (let i = 1; i < order.length; i++) expect(at[i - 1]!).toBeLessThan(at[i]!);
+    expect(confirm).toContain("birthDate: draft.birthDate ?? null, address })");
   });
 
   test("the name step still: refuses a reserved word (strike), checks the cap, asks the duplicate question, then moves on", () => {

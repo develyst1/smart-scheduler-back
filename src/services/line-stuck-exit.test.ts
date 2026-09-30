@@ -111,7 +111,8 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
       }
     }
     // 🚫 And the two exceptions are asserted as exceptions — so "the hint is gone" cannot quietly spread.
-    for (const key of ["add_birthdate_prompt", "add_province_prompt"]) {
+    // 🔻 TASK-590 (F-C) — the customer's ADDRESS screen is three questions now; §16.2's "no hint" goes with it to all three.
+    for (const key of ["add_birthdate_prompt", "add_addr_province_prompt", "add_addr_district_prompt", "add_addr_subdistrict_prompt"]) {
       const uses = [...CODE.matchAll(new RegExp('\\btb?\\("' + key + '"', "g"))];
       expect(uses.length).toBeGreaterThan(0);
       for (const m of uses) expect(CODE.slice(m.index! - 9, m.index!)).not.toBe("withExit(");

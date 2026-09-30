@@ -73,7 +73,7 @@ describe("🔴 §1 the 500 — the clash's 23505 aborts the tx; the catch no lon
     expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${TODAY} 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` });
   });
   test("by source: the names are read BEFORE the insert loop, from the wanted set; the catch touches nothing on the tx", () => {
-    const S = region(CAMP, "export async function syncCampDayRows(", "async function deleteCampDayRows(");
+    const S = region(CAMP, "export async function syncCampDayRows(", "export async function updateWeekDay("); // 🔻 TASK-581: `deleteCampDayRows` removed
     expect(S.indexOf("tx.query.teachers.findMany(")).toBeLessThan(S.indexOf("for (const key of insert) {"));
     const CATCH = region(S, 'if (e instanceof ApiException && e.code === "SLOT_TAKEN") {', "\n      }");
     expect(CATCH).not.toContain("await ");

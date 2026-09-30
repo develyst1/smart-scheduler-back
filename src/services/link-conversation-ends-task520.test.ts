@@ -116,6 +116,6 @@ describe("📌 by source — where a link is settled outside the chat, the conve
   });
   test("the registration PAGE already did (TASK-347 Rule 4, `clearLinkSession` on all three of its doors) — which is why a parent is NOT affected", () => {
     const R = src("../routes/register.ts");
-    expect((R.match(/await clearLinkSession\(who\.sub\)/g) ?? []).length).toBe(3);
+    expect((R.match(/await clearLinkSession\(who\.sub\)/g) ?? []).length).toBe(4); // 🔻 TASK-590: + the NEW family's create (the link is settled there now)
   });
 });

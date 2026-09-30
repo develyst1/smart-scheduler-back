@@ -24,7 +24,7 @@ import type { Lang } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { isReservedWord } from "../lib/line-commands";
 import { decideDuplicate, parseBirthDate } from "../lib/line-add-student";
-import { isThaiProvince } from "../lib/thai-provinces";
+import { type AddressParts, checkFullAddress } from "../lib/full-address"; // TASK-590 (F-C) — THE one address rule
 import { badRequest } from "../lib/http";
 import { moveRosterLink } from "../lib/roster-link";
 import { getSetting } from "./settings.service";
@@ -132,7 +132,9 @@ export async function lookupFamilyByPhone(lineUserId: string, code: string): Pro
 }
 
 export type FamilyLink =
-  | { outcome: "linked"; parent: ParentRow; children: unknown[]; isNew: boolean }
+  | { outcome: "linked"; parent: ParentRow; children: unknown[] }
+  /** 🔴 TASK-590 (D11 a) — a NEW phone: NOTHING written. The family is created WITH its first child (`registerFamilyWithFirstChild`). */
+  | { outcome: "new"; phone: string }
   | Exclude<PhoneLookup, { outcome: "found" } | { outcome: "new" }>;
 
 /**
@@ -165,7 +167,7 @@ export async function linkFamilyByPhone(lineUserId: string, code: string): Promi
       throw e;
     }
     await moveRosterLink(lineUserId, "customer");
-    return { outcome: "linked", parent: existing, children: await listStudentsOfParent(existing.id), isNew: false };
+    return { outcome: "linked", parent: existing, children: await listStudentsOfParent(existing.id) }; // an EXISTING family links at once
   }
   // A NEW phone — the chat's two lines: the parent row is created with this account as its primary
   // (`parents.line_user_id`, which `familyOfLineUser` reads as the fallback), and the roster link moves.
@@ -176,9 +178,10 @@ export async function linkFamilyByPhone(lineUserId: string, code: string): Promi
   // `verify_parent_ok_new`; they now get `verify_parent_other_family` — the reply that already means this.
   if (await findArchivedParentByPhone(phone)) return { outcome: "phone-archived" }; // TASK-411 — before the insert (23505 otherwise); never a silent restore
   if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" };
-  const parent = await findOrCreateParentByPhone(phone, { lineUserId });
-  await moveRosterLink(lineUserId, "customer");
-  return { outcome: "linked", parent, children: [], isNew: true };
+  // 🔴 TASK-590 (D11 a) — it used to CREATE the parent and BIND this account here, at the phone step, before any child: an
+  // abandoned form left a real linked parent with no child. Now a new phone writes NOTHING; the refusals above still run (so the
+  // parent hears them at the phone step), and the family is created WITH its first child, in one transaction, or not at all.
+  return { outcome: "new", phone };
 }
 
 /**
@@ -304,25 +307,26 @@ export function householdPatch(
 
 export async function createStudentFromLine(
   parent: { id: string; phone: string },
-  input: { name: string; birthDate?: string | null; province?: string | null; address?: string | null },
+  input: { name: string; birthDate?: string | null; address?: AddressParts | null },
+  exec: any = db,
 ) {
-  // 🔴 TASK-352 (`REQ-088 §9`) — owner: *"เก็บจังหวัดลงจังหวัด และเอาจังหวัด อำเภอ ตำบล มาต่อกัน แล้วเซฟลง note แทน"*.
-  // `province` now means THE PICKED PROVINCE NAME (full form, one of the 77) and lands in `parents.province`,
-  // which the report groups on. `address` is the customer's joined line and lands in `parents.note`.
-  // 🚫 A TYPED address never touches `province`: no guessing a province out of free text — a wrong bucket is
-  // worse than an empty one. 🔑 The CHAT sends `address` only, so it changes by CONSTRUCTION, not by edit.
-  const province = input.province?.trim() || null;
-  const address = input.address?.trim() || null;
-  // Refused HERE, in the one writer, so no door and no future caller can split the column with a near-miss.
-  if (province && !isThaiProvince(province)) throw badRequest("จังหวัดไม่ถูกต้อง");
-  const created = await createStudentForParent(parent.id, { name: input.name, birthDate: input.birthDate ?? null });
-  if (province || address) {
-    // Read the row's note NOW rather than trusting the `parent` handed in — the chat passes a row it loaded
-    // earlier, and a note a staff member wrote since must survive too.
-    const [row] = await db.select({ note: parents.note }).from(parents).where(eq(parents.id, parent.id)).limit(1);
-    await db.update(parents).set(householdPatch(row?.note ?? null, { province, address })).where(eq(parents.id, parent.id));
+  // 🔴 TASK-583 (ruling 4) — THE rule for every LINE door, in the one writer: a child is never written without a birthday. Each
+  // door asks first (the page: BIRTHDATE_REQUIRED; the chat: a re-ask), so this is the floor no future door can go under.
+  if (!input.birthDate) throw badRequest("กรุณาระบุวันเกิดของนักเรียน"); // 📋 DRAFT — unreachable from today's doors
+  // 🔴 TASK-590 (F-C) — an address, when one is written, is ALWAYS a full one: `checkFullAddress`, THE one rule, applied again
+  // HERE at the write (the doors ask first, for their own codes). 🔴 THE LIMIT (see lib/full-address.ts): the SHAPE is checked —
+  // three parts, the province one of the 77 — NOT that the district belongs to the province. `parents.province` ← the province;
+  // `parents.note` ← the one line (the page's order and spelling), APPENDED — never overwriting a staff note (TASK-352).
+  const given = input.address && (input.address.province || input.address.district || input.address.subDistrict) ? input.address : null;
+  const checked = given ? checkFullAddress(given) : null;
+  if (checked && !checked.ok) throw badRequest("ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง"); // 📋 DRAFT — the floor; doors refuse first
+  const created = await createStudentForParent(parent.id, { name: input.name, birthDate: input.birthDate }, exec);
+  if (checked?.ok) {
+    // Read the row's note NOW rather than trusting the `parent` handed in — a note a staff member wrote since must survive too.
+    const [row] = await exec.select({ note: parents.note }).from(parents).where(eq(parents.id, parent.id)).limit(1);
+    await exec.update(parents).set(householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })).where(eq(parents.id, parent.id));
   }
-  await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone });
+  await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone }, exec);
   return created;
 }
 
@@ -336,21 +340,42 @@ export type AddChild =
   | { outcome: "birthdate-invalid" }
   | { outcome: "birthdate-required" } // TASK-565
   | { outcome: "address-required" } // TASK-565
+  | { outcome: "address-incomplete"; missing: Array<"province" | "district" | "subDistrict"> } // TASK-590 (F-C)
   | { outcome: "province-unknown"; province: string };
 
+/** The child's fields as both doors collect them (🔻 TASK-590: the address is THREE parts, never a pre-joined line). */
+export type ChildInput = { name: string; birthDate?: string | null; province?: string | null; district?: string | null; subDistrict?: string | null; detailProvided?: boolean };
+
+/** The name + birthday half of every door's checks — pure, so the page, the chat's confirm and the one-transaction register agree. */
+function checkNameAndBirthday(input: ChildInput): { ok: true; name: string; birthDate: string } | { ok: false; refusal: AddChild } {
+  const name = (input.name ?? "").trim();
+  if (!name) return { ok: false, refusal: { outcome: "name-required" } };
+  if (isReservedWord(name)) return { ok: false, refusal: { outcome: "name-reserved", word: name } };
+  // 🔻 TASK-565 — the birthday is REQUIRED (ข้าม removed); a given value goes through the chat's parser unchanged.
+  const given = (input.birthDate ?? "").trim();
+  if (!given) return { ok: false, refusal: { outcome: "birthdate-required" } };
+  const parsed = parseBirthDate(given);
+  if (!parsed.ok) return { ok: false, refusal: { outcome: "birthdate-invalid" } };
+  if (parsed.value == null) return { ok: false, refusal: { outcome: "birthdate-required" } }; // the typed word ข้าม is a skip too
+  return { ok: true, name, birthDate: parsed.value };
+}
+
+/** The address half: THE rule (`checkFullAddress`), mapped to the page's outcomes. */
+function checkAddress(input: ChildInput): { ok: true; address: AddressParts } | { ok: false; refusal: AddChild } {
+  const c = checkFullAddress(input);
+  if (c.ok) return { ok: true, address: c.address };
+  if (c.outcome === "address-required") return { ok: false, refusal: { outcome: "address-required" } };
+  if (c.outcome === "address-incomplete") return { ok: false, refusal: { outcome: "address-incomplete", missing: c.missing } };
+  return { ok: false, refusal: { outcome: "province-unknown", province: c.province } };
+}
+
 /**
- * ✍️ The page's whole add-child sequence — **the chat's guards, in the chat's ORDER, through the chat's
- * functions**: `isReservedWord` (TASK-245) → `assertCanAddStudent` (the cap, asked FIRST so nobody fills a form
- * and is refused at the end — the chat's own ordering, SA instruction) → `duplicateOutcomeFor` (skipped when
- * detail was already provided, exactly as the chat skips it at `AWAIT_STUDENT_DETAIL`) → `parseBirthDate`
- * (day-first text, refusing ISO on purpose — the SAME parser) → `createStudentFromLine`.
- * 📌 The chat cannot call this composition because it asks its questions one STEP at a time; what it calls is
- * every function in it, in this order. The order is asserted against the chat's source.
+ * ✍️ The page's add-child sequence for a LINKED family — **the chat's guards, in the chat's ORDER, through the chat's
+ * functions**: `isReservedWord` → `assertCanAddStudent` (the cap, asked FIRST) → `duplicateOutcomeFor` (skipped when detail was
+ * already provided) → the birthday → the address (🔻 TASK-590: THE full-address rule, only while none is on file) →
+ * `createStudentFromLine`.
  */
-export async function addChildForLineParent(
-  lineUserId: string,
-  input: { name: string; birthDate?: string | null; province?: string | null; address?: string | null; detailProvided?: boolean },
-): Promise<AddChild> {
+export async function addChildForLineParent(lineUserId: string, input: ChildInput): Promise<AddChild> {
   const parent = await findParentByLineUserId(lineUserId);
   if (!parent) return { outcome: "not-linked" };
   const name = (input.name ?? "").trim();
@@ -364,32 +389,62 @@ export async function addChildForLineParent(
   if (!input.detailProvided && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
     return { outcome: "name-duplicate-needs-detail", name };
   }
-  // 🔻 TASK-565 (REQ-110 item 10, the owner: "ข้าม" is removed) — the birthday is REQUIRED for every child on this door. An
-  // absent or empty value used to be the skip (contract §C3); it is now refused with its own code. Any value that IS given
-  // goes through the chat's parser unchanged — same day-first rule, same refusal of ISO.
-  const given = (input.birthDate ?? "").trim();
-  if (!given) return { outcome: "birthdate-required" };
-  const parsed = parseBirthDate(given);
-  if (!parsed.ok) return { outcome: "birthdate-invalid" };
-  if (parsed.value == null) return { outcome: "birthdate-required" }; // the typed word ข้าม is a skip too — refused the same way
-  // 🔻 TASK-565 — the address is REQUIRED ONCE per household: asked (province PICKED + the address line) only while none is on
-  // file (`householdAddressOf`); once it is, it is NOT asked again, and one sent anyway is NOT written (never a second line).
+  const nb = checkNameAndBirthday(input);
+  if (!nb.ok) return nb.refusal;
+  // 🔻 TASK-565 — the address is asked ONCE per household: not while one is on file (and one sent anyway is NOT written).
+  // 🔑 TASK-590 — a LEGACY household whose stored address has only a province IS on file: it is not asked again, and nothing
+  // about it fails. A household with no province (e.g. a chat-typed line in `note`) is asked — never blocked.
   const onFile = householdAddressOf(parent);
-  const province = onFile.addressOnFile ? null : (input.province ?? "").trim() || null;
-  const address = onFile.addressOnFile ? null : (input.address ?? "").trim() || null;
-  if (!onFile.addressOnFile && (!province || !address)) return { outcome: "address-required" };
-  // 🔴 TASK-352 — the PICKED province must be a REAL one, refused with a NAMED code before the write. The writer
-  // refuses it too (the same `isThaiProvince`) — this is the check that gives the page a code, that is the one
-  // that holds for every caller.
-  if (province && !isThaiProvince(province)) return { outcome: "province-unknown", province };
-  const { student, count } = await createStudentFromLine(parent, { name, birthDate: parsed.value, province, address });
+  let address: AddressParts | null = null;
+  if (!onFile.addressOnFile) {
+    const a = checkAddress(input);
+    if (!a.ok) return a.refusal;
+    address = a.address;
+  }
+  const { student, count } = await createStudentFromLine(parent, { name: nb.name, birthDate: nb.birthDate, address });
   return {
     outcome: "created",
     student: { id: student.id, name: student.name },
-    birthDate: parsed.value,
+    birthDate: nb.birthDate,
     count,
     atMax: count >= MAX_STUDENTS_PER_PARENT,
-    ...(onFile.addressOnFile ? onFile : householdAddressOf({ province })), // TASK-565 — the next child's form knows
+    ...(onFile.addressOnFile ? onFile : householdAddressOf({ province: address?.province ?? null })), // TASK-565 — the next child's form knows
   };
 }
 
+export type RegisterFamily =
+  | { outcome: "registered"; parent: ParentRow; student: { id: string; name: string }; birthDate: string; count: number }
+  | Exclude<AddChild, { outcome: "created" } | { outcome: "not-linked" } | { outcome: "family-full"; max: number } | { outcome: "name-duplicate-needs-detail"; name: string }>
+  | { outcome: "phone-invalid" }
+  | { outcome: "phone-archived" }
+  | { outcome: "line-bound-to-other-family" }
+  /** The phone became a family between the lookup and this call (another tab, another account): look it up again. */
+  | { outcome: "phone-now-registered" };
+
+/**
+ * 🔴 TASK-590 (D11 a) — A NEW FAMILY IS CREATED WITH ITS FIRST CHILD, OR NOT AT ALL.
+ * "Finished" = the first child accepted by the writer (Sober, TASK-590 §2: a family that HAS a child is the only definition that
+ * cannot be gamed). So the phone step writes NOTHING for a new phone (`linkFamilyByPhone` answers `new`), and THIS is the one
+ * write: every check first (pure, then the phone's refusals re-checked — a lookup is never trusted by the write), then ONE
+ * transaction: the parent row (this account as its primary) + the child + the household address + the admin notice. Any
+ * failure inside it rolls ALL of it back — no parent, no binding, no child, no notice: nothing left behind.
+ * Both doors call it: the page's `/register/create` (with `phone`) and the chat's CONFIRM (the phone parked on its draft).
+ */
+export async function registerFamilyWithFirstChild(lineUserId: string, phoneText: string, input: ChildInput): Promise<RegisterFamily> {
+  const phone = normalizePhone(phoneText);
+  if (phone.length < 9) return { outcome: "phone-invalid" };
+  const nb = checkNameAndBirthday(input);
+  if (!nb.ok) return nb.refusal as RegisterFamily;
+  const a = checkAddress(input); // a NEW household has nothing on file: the address is required
+  if (!a.ok) return a.refusal as RegisterFamily;
+  if (await findArchivedParentByPhone(phone)) return { outcome: "phone-archived" }; // TASK-411 — never a silent restore
+  if (await findParentByPhone(phone)) return { outcome: "phone-now-registered" };
+  if (await familyOfLineUser(lineUserId)) return { outcome: "line-bound-to-other-family" }; // TASK-354 item 12
+  const r = await db.transaction(async (tx) => {
+    const parent = await findOrCreateParentByPhone(phone, { lineUserId }, tx);
+    const { student, count } = await createStudentFromLine(parent, { name: nb.name, birthDate: nb.birthDate, address: a.address }, tx);
+    return { parent, student, count };
+  });
+  await moveRosterLink(lineUserId, "customer"); // after the commit, as the old phone step did (a role change moves the link)
+  return { outcome: "registered", parent: r.parent, student: { id: r.student.id, name: r.student.name }, birthDate: nb.birthDate, count: r.count };
+}

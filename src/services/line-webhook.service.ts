@@ -59,7 +59,9 @@ import {
   clearLinkSession as clearSession, endLinkingConversation,
   createStudentFromLine,
   duplicateOutcomeFor,
+  householdAddressOf, // TASK-590 — the address asked once per household, as on the page
   linkFamilyByPhone,
+  registerFamilyWithFirstChild, // TASK-590 (D11 a) — a new family is created WITH its first child
   setTwoFaChallenge,
   settleLinkedRole,
   settleAdminLink,
@@ -96,7 +98,8 @@ import {
   isPhoneShaped,
   normalizePhone,
 } from "./parent.service";
-import { hhmm, weekRange } from "../lib/time";
+import { ddmmyyyy, hhmm, weekRange } from "../lib/time";
+import { checkFullAddress, provinceFromTyped } from "../lib/full-address"; // TASK-590 (F-C) — THE one address rule
 import { renderTeacherSchedule, type TeacherSchedRow } from "../lib/teacher-schedule"; // TASK-486 — the ONE teacher formatter
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
 import { checkinLine, joinItems, leaveLine } from "../lib/line-v2-lines";
@@ -159,6 +162,8 @@ type LinkRole = "customer" | "teacher" | "admin";
  */
 type VerifyResult = {
   ok: boolean;
+  /** 🔴 TASK-590 (D11 a) — a NEW family's phone: nothing written yet; the wizard carries it to the first child's confirm. */
+  pendingPhone?: string;
   message: (lang: Lang) => string;
   /** 🔻 TASK-520 — a teacher claim that QUEUED a request: not a failure (nothing to retype), not yet a link. */
   queued?: boolean;
@@ -463,7 +468,8 @@ async function verifyAndLink(
   if (r.outcome === "phone-bound-to-other-line") return { ok: false, message: (l) => t("verify_parent_other", l) };
   if (r.outcome === "line-bound-to-other-family") return { ok: false, message: (l) => t("verify_parent_other_family", l) };
   if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) }; // TASK-411
-  if (r.isNew) return { ok: true, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
+  // 🔴 TASK-590 (D11 a) — a NEW phone wrote NOTHING: the same reply as before, and the phone rides the wizard to the first child.
+  if (r.outcome === "new") return { ok: true, pendingPhone: r.phone, message: (l) => t("verify_parent_ok_new", l, { phone: formatPhoneForDisplay(phone) }) };
   const kids = r.children;
 
   // 🔴 REQ-079 §2 — the phone alone now returns the children BY NAME. TASK-047 withheld them, and that
@@ -519,6 +525,32 @@ async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
 }
 
 /**
+ * The summary a parent confirms, and the step it parks them on. 🔻 TASK-590 — one place, reached from the last address question
+ * AND from the birthday when the household's address is already on file.
+ * 🔴 TASK-277 (REQ-079 §17) — THIS STEP IS LOAD-BEARING FOR CORRECTNESS, not just for review: the birthdate is entered day-first
+ * and `03-04-2024` is ambiguous to a HUMAN — what saves them is this summary printing the date back before anything is written, and
+ * the roster has no delete. 🚫 Nobody may "simplify" the confirm step away later.
+ * 🔴 TASK-280 — and the echo below is DAY-FIRST for the same reason. It printed the stored ISO, so the reader had to reverse the
+ * order to check it — performing the very conversion this step exists to spare them (close to no guard at all).
+ * 🔴 TASK-310 (§17c screen 7) — head, the three labelled lines and the confirm are the customer's OWN block, rendered ONCE; the exit
+ * lines are NOT in the string (`withExit` appends them — TASK-278 §4.1).
+ */
+async function showStudentSummary(lineUserId: string, draft: StudentDraft, replyToken: string, lang: Lang, addressText: string | null) {
+  await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", draft);
+  const next = { ...draft, province: addressText }; // the ADDRESS line shown back (the three parts joined, or the one on file)
+  const lines = summaryLines(next, {
+    name: t("add_l_name", lang),
+    birthDate: t("add_l_birthdate", lang),
+    province: t("add_l_province", lang),
+    none: t("add_l_none", lang),
+  });
+  return reply(
+    replyToken,
+    `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
+  );
+}
+
+/**
  * SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — name → (duplicate? more detail) → birthdate → province →
  * **summary → confirm** → saved + admin notified.
  *
@@ -536,12 +568,17 @@ async function handleAddStudentStep(
   replyToken: string,
   lang: Lang,
 ) {
+  const draft: StudentDraft = (session.draft as StudentDraft) ?? {};
   const parent = await findParentByLineUserId(lineUserId);
-  if (!parent) {
+  // 🔴 TASK-590 (D11 a) — a NEW family walks the SAME wizard with NO parent row yet: its phone is parked on the draft, and the
+  // family is created WITH this child at CONFIRM, in one transaction, or not at all (`registerFamilyWithFirstChild`).
+  const newPhone = !parent && typeof draft.newPhone === "string" ? draft.newPhone : null;
+  if (!parent && !newPhone) {
     await clearSession(lineUserId);
     return reply(replyToken, t("add_no_parent", lang));
   }
-  const draft: StudentDraft = (session.draft as StudentDraft) ?? {};
+  // 🔻 TASK-590 (F-C) — the address is asked ONCE per household, as on the page: not while one is on file.
+  const addressOnFile = !!parent && householdAddressOf(parent).addressOnFile;
 
   // 🔴 TASK-245 — THE EXIT, checked before any step reads the text as an answer.
   //
@@ -570,7 +607,8 @@ async function handleAddStudentStep(
     // It calls the SAME precondition `createStudentForParent` calls — extracted, not copied. A second
     // "how many is too many" here is the duplicated rule that drifts, and the write still enforces it, so this
     // is a courtesy check in front of the real one rather than a replacement for it.
-    try {
+    // 🔻 TASK-590 — a NEW family (no parent row yet) has no children: nothing to cap, no sibling to duplicate.
+    if (parent) try {
       await assertCanAddStudent(parent.id);
     } catch (e: any) {
       await clearSession(lineUserId);
@@ -583,7 +621,7 @@ async function handleAddStudentStep(
     // Only checked on the first pass; the detail step is the answer to it, not a second question.
     // 🔻 TASK-314 — the check and the question moved OUT of this step into `duplicateOutcomeFor` /
     // `askMoreDetail`, so the inline door reaches the same rule. Behaviour here is unchanged.
-    if (session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
+    if (parent && session.step === "AWAIT_STUDENT_NAME" && (await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
       return askMoreDetail(lineUserId, draft, name, replyToken, lang);
     }
     await resetStrikes(lineUserId); // a valid answer clears the count (`strikeOrPrompt`).
@@ -614,43 +652,45 @@ async function handleAddStudentStep(
     // would re-open that defect in COPY the day after closing it in behaviour. 📌 Their complaint is clutter on
     // a screen read for the first time; a parent who has just been refused is not on that screen any more.
     if (!parsed.ok) return strikeOrPrompt(lineUserId, session, replyToken, withExit(t("add_birthdate_bad", lang), lang), lang);
+    // 🔴 TASK-583 (ruling 4) — `ข้าม` and its synonyms parse as "no birthday"; that is no longer an answer. Re-asked with the SAME
+    // prompt (re-ask, do not explain — TASK-307's rule), and it counts as a strike like any other refusal. The prompt AS the customer
+    // wrote it (§16.2: no exit hint on this screen) — the exit still WORKS (checked first), and two strikes fetch a person.
+    if (parsed.value == null) return strikeOrPrompt(lineUserId, session, replyToken, t("add_birthdate_prompt", lang), lang);
     await resetStrikes(lineUserId);
+    // 🔻 TASK-590 (F-C) — a household with an address ON FILE is not asked again (as on the page): straight to the summary.
+    if (addressOnFile) return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, `${parent!.province} (${t("add_addr_on_file", lang)})`);
     await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
-    // 🔻 TASK-323 (`§16.2`) — the second of the two named screens. The exit still works; see the birthdate note.
-    return reply(replyToken, t("add_province_prompt", lang));
+    // 🔻 TASK-323 (`§16.2`) — no exit hint on the address question. The exit still works; see the birthdate note.
+    return reply(replyToken, t("add_addr_province_prompt", lang));
   }
 
+  // 🔴 TASK-590 (F-C, ruling 4: the chat matches the page) — the address is THREE questions, answered into THE one rule
+  // (`checkFullAddress`, which the page's body meets too): province · district · sub-district, each required, no skip.
+  // 🔴 THE LIMIT: the province is resolved to one of the 77 (`provinceFromTyped`: "จังหวัด" dropped, Bangkok's everyday spellings
+  // known); the district and sub-district are what the parent TYPED — NOT checked against the province (no geography, by ruling).
   if (session.step === "AWAIT_STUDENT_PROVINCE") {
-    const province = isSkip(text) ? null : text.trim() || null;
-    const next = { ...draft, province };
+    const province = provinceFromTyped(text);
+    if (!province) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_province_bad", lang), lang);
     await resetStrikes(lineUserId);
-    await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", next);
-    // 🔴 TASK-277 (REQ-079 §17) — THIS STEP IS LOAD-BEARING FOR CORRECTNESS, not just for review.
-    //
-    // The birthdate is entered day-first (`วัน-เดือน-ปี`, the owner's ruling), and `03-04-2024` is genuinely
-    // ambiguous to a HUMAN — 3 April or 4 March. The parser is unambiguous; the person typing is not.
-    // **What saves them is this summary printing the date back before anything is written**, and the roster
-    // has no delete.
-    // 🚫 Nobody may "simplify" the confirm step away later. §17 says it in the owner's own decision, and it
-    // stopped being a nicety the day the input format became day-first.
-    // 🔴 TASK-280 — and the echo below is DAY-FIRST for the same reason. It printed the stored ISO, so the
-    // reader had to reverse the order to check it — **performing the very conversion this step exists to
-    // spare them.** A confirm step that echoes in a different format is not a weaker guard on this field;
-    // it is close to no guard at all.
-    const lines = summaryLines(next, {
-      name: t("add_l_name", lang),
-      birthDate: t("add_l_birthdate", lang),
-      province: t("add_l_province", lang),
-      none: t("add_l_none", lang),
-    });
-    // 🔴 TASK-310 (§17c screen 7) — head, the three labelled lines and the confirm are the customer's
-    // OWN block, so the whole screen renders ONCE. ⚠️ Their last two lines (*"พิมพ์ ยกเลิก เพื่อออกจาก
-    // การลงทะเบียน / Type "Cancel" to exit."*) are NOT in the string: `withExit` already appends the exit
-    // to every question, and TASK-278 §4.1 ruled that putting them back prints it TWICE on this one step.
-    return reply(
-      replyToken,
-      `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
-    );
+    await setDraft(lineUserId, "AWAIT_STUDENT_DISTRICT", { ...draft, province });
+    return reply(replyToken, t("add_addr_district_prompt", lang));
+  }
+
+  if (session.step === "AWAIT_STUDENT_DISTRICT") {
+    const district = text.trim();
+    if (!district || isSkip(district)) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_district_prompt", lang), lang);
+    await resetStrikes(lineUserId);
+    await setDraft(lineUserId, "AWAIT_STUDENT_SUBDISTRICT", { ...draft, district });
+    return reply(replyToken, t("add_addr_subdistrict_prompt", lang));
+  }
+
+  if (session.step === "AWAIT_STUDENT_SUBDISTRICT") {
+    const subDistrict = text.trim();
+    if (!subDistrict || isSkip(subDistrict)) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_subdistrict_prompt", lang), lang);
+    await resetStrikes(lineUserId);
+    const next = { ...draft, subDistrict };
+    const full = checkFullAddress(next);
+    return showStudentSummary(lineUserId, next, replyToken, lang, full.ok ? full.address.line : null);
   }
 
   if (session.step === "AWAIT_STUDENT_CONFIRM") {
@@ -661,6 +701,17 @@ async function handleAddStudentStep(
       await clearSession(lineUserId);
       return reply(replyToken, both((l) => `${t("add_cancelled", l)}\n\n${t("menu_body", l)}`));
     }
+    // 🔴 TASK-583 — no branch may carry a hole to the write: a session started BEFORE this deploy can hold a skipped birthday or
+    // address. It is sent back to the missing question instead of being written.
+    if (!draft.birthDate) {
+      await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", draft);
+      return reply(replyToken, t("add_birthdate_prompt", lang));
+    }
+    // 🔻 TASK-590 (F-C) — when the address is asked (none on file), all THREE parts, meeting THE rule; else back to the province.
+    if (!addressOnFile && !checkFullAddress(draft).ok) {
+      await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", draft);
+      return reply(replyToken, t("add_addr_province_prompt", lang));
+    }
     if (!isConfirm(text)) {
       // An unrecognised answer at the last step is an unrecognised in-flow reply like any other — same
       // two-strikes rule as everywhere else, rather than a bespoke retry loop (TASK-231).
@@ -669,15 +720,24 @@ async function handleAddStudentStep(
     try {
       // 🔻 TASK-314 — the write AND the admin notification (AC-11) moved into `createStudentFromLine`, the one
       // LINE-side creator both doors call. Same call, same order, same content; only the home changed.
-      // 🔻 TASK-352 (`REQ-088 §9`) — the screen-6 string is an ADDRESS (`ตำบล อำเภอ จังหวัด`, typed free-text) and
-      // lands in `parents.note`, APPENDED. 🚫 The chat NEVER writes `province`: `parents.province` holds the
-      // picked province only, and a typed line cannot pick one. (The draft field keeps its old name — it is a
-      // session key, not a column.) 🔑 One writer, so this door changed by CONSTRUCTION when the writer did.
-      const { student, count } = await createStudentFromLine(parent, {
-        name: draft.name!,
-        birthDate: draft.birthDate ?? null,
-        address: draft.province ?? null,
-      });
+      // 🔻 TASK-590 (F-C) — the address is THREE parts now, checked by THE rule in the writer; the province is one of the 77, so the
+      // chat now fills `parents.province` too (resolved, never guessed) and the one line goes to `note`, APPENDED (TASK-352).
+      const address = addressOnFile ? null : { province: draft.province, district: draft.district, subDistrict: draft.subDistrict };
+      let student: { name: string }, count: number;
+      if (newPhone) {
+        // 🔴 TASK-590 (D11 a) — a NEW family: parent + binding + this child in ONE transaction, or nothing (`registerFamilyWithFirstChild`).
+        const r = await registerFamilyWithFirstChild(lineUserId, newPhone, { name: draft.name!, birthDate: ddmmyyyy(draft.birthDate), ...address });
+        if (r.outcome !== "registered") {
+          await clearSession(lineUserId);
+          const key = r.outcome === "phone-now-registered" ? "add_phone_now_registered" : r.outcome === "line-bound-to-other-family" ? "verify_parent_other_family" : r.outcome === "phone-archived" ? "verify_parent_archived" : "add_generic_err";
+          return reply(replyToken, both((l) => `${t(key, l)}\n\n${t("menu_body", l)}`));
+        }
+        // the chat's post-link order, AFTER the commit: seed the language → link the rich menus (what the phone step used to do)
+        await settleLinkedRole(lineUserId, "customer");
+        ({ student, count } = r);
+      } else {
+        ({ student, count } = await createStudentFromLine(parent!, { name: draft.name!, birthDate: draft.birthDate ?? null, address }));
+      }
       await clearSession(lineUserId);
       const atMax = count >= MAX_STUDENTS_PER_PARENT;
       const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
@@ -774,50 +834,9 @@ async function askMoreDetail(lineUserId: string, draft: StudentDraft, name: stri
 // write JOINED it there (it was written beside the student in the confirm step below; the page would
 // otherwise need a second call). One writer, one place, both doors.
 
-async function addStudentAndReply(
-  lineUserId: string,
-  name: string,
-  replyToken: string,
-  opts: { continueSession: boolean },
-  lang: Lang,
-) {
-  const parent = await findParentByLineUserId(lineUserId);
-  if (!parent) {
-    await clearSession(lineUserId);
-    return reply(replyToken, t("add_no_parent", lang));
-  }
-  // 🔴 TASK-314 — AC-9 on the inline door: the same question the wizard asks, and the parent continues in the
-  // wizard from its detail step. Before this, `add น้องเอ` twice wrote two `น้องเอ`.
-  if ((await duplicateOutcomeFor(parent.id, name)) === "more-detail") {
-    return askMoreDetail(lineUserId, {}, name, replyToken, lang);
-  }
-  try {
-    const { student, count } = await createStudentFromLine(parent, { name });
-    const atMax = count >= MAX_STUDENTS_PER_PARENT;
-    if (opts.continueSession && !atMax) {
-      return reply(replyToken, t("added_more", lang, { name: student.name, count }));
-    }
-    await clearSession(lineUserId);
-    const note = atMax ? t("added_atmax_note", lang, { max: MAX_STUDENTS_PER_PARENT }) : "";
-    return reply(
-      replyToken,
-      // 🔴 TASK-310 (§17c screen 8) — their success line, then their *"add another"* sentence, then OUR menu.
-      // ⚠️ The invitation is CONDITIONAL and their copy could not know it: a household already at
-      // `MAX_STUDENTS_PER_PARENT` must not be invited to add a sixth. **The words are theirs; the condition
-      // is ours.** 📌 `menu_body` stays bilingual through `both()` — it is ours, and it is not a §17c screen.
-      `${t("added_done", lang, { name: student.name, note })}${atMax ? "" : "\n" + t("add_another_hint", lang)}\n\n${both((l) => t("menu_body", l))}`,
-    );
-  } catch (e: any) {
-    // createStudentForParent throws a Thai validation message (shared with the REST API — out of the LINE
-    // reply layer's i18n scope); surface it, and drop the session on the "over max" case.
-    const msg = e?.message ?? t("add_generic_err", lang);
-    if (msg.includes("สูงสุด")) {
-      await clearSession(lineUserId);
-      return reply(replyToken, both((l) => `${msg}\n\n${t("menu_body", l)}`));
-    }
-    return reply(replyToken, msg); // keep the session so they can retry the name
-  }
-}
+// 🔻 TASK-583 — `addStudentAndReply` REMOVED: the inline door wrote a child from the NAME ALONE (no birthday, no address). It now
+// joins the wizard at the name step (see the `addMatch` branch), so every LINE-side child goes through `createStudentFromLine` from
+// the wizard's CONFIRM or the page — never from a name alone.
 
 // ── Shared tap/keyword actions (reused by both the keyword branch and the postback branch) ──
 // (`bookingLabel` — name + time — retired by TASK-145: check-in, leave and qr now all use `sessionLabel`.)
@@ -1242,7 +1261,14 @@ async function handleParentCommand(lineUserId: string, text: string, replyToken:
       const session = (await getSession(lineUserId)) ?? {};
       return strikeOrPrompt(lineUserId, session, replyToken, t("add_name_reserved", lang, { word: name }), lang);
     }
-    if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);
+    // 🔴 TASK-583 (ruling 4: the chat matches the page — every field required) — `add น้องเอ` used to WRITE a child from the
+    // name alone (no birthday, no address): the widest skip in the chat, and a silent one. It now enters the wizard AT the
+    // name step with that name, so it meets every guard and every required question the typed wizard does. 🚫 No second writer.
+    if (name) {
+      await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
+      const session = (await getSession(lineUserId)) ?? {};
+      return handleAddStudentStep(lineUserId, session as any, name, replyToken, lang);
+    }
     await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");
     return reply(replyToken, withExit(t("add_student_name_prompt", lang), lang));
   }
@@ -1487,6 +1513,14 @@ async function handleMessage(ev: LineWebhookEvent) {
     }
     if (!res.ok) return strikeOrPrompt(lineUserId, session, replyToken, both(res.message), lang);
     await resetStrikes(lineUserId);
+    // 🔴 TASK-590 (D11 a) — a NEW family: NOTHING is linked yet, so no menus and no language seed (they follow the first child's
+    // commit). The phone is parked on the draft, and the SAME decision as ever (`afterParentLink`, zero children) asks for the
+    // first child — the screen is unchanged (TASK-310 screen 4).
+    if (res.pendingPhone) {
+      const tail = await afterParentLink(lineUserId, lang, []);
+      await setDraft(lineUserId, "AWAIT_STUDENT_NAME", { newPhone: res.pendingPhone });
+      return reply(replyToken, `${both(res.message)}${tail}`);
+    }
     // 🔻 TASK-347 — seed the language, then link the role's rich menu (and TASK-234's รู้จักแล้ว menu for a
     // family): `settleLinkedRole`, the SAME sequence in the SAME order the page runs after `/link`, so a
     // page-registered parent lands in exactly this door's end state. Best-effort, as it always was.

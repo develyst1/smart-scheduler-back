@@ -30,7 +30,7 @@ describe("🔴 §1 — a moved, un-reconfirmed course shows FROM THE MOMENT OF T
     expect(check.namesPeopleInDigest).toBeFalsy(); // 🔐 the digest carries the COUNT; the panel names the course (REQ-020's list unchanged)
   });
   test("the MOVE writes the mark (only when it un-confirmed something); a course CONFIRM clears it when nothing is left pending", () => {
-    expect(fnBody(S, "export async function changeCourseStart(")).toContain("...(plan.needsReconfirm ? { reconfirmNeededSince: new Date() } : {})");
+    expect(fnBody(S, "export async function changeCourseStart(")).toContain("...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {})"); // 🔻 TASK-578: a count now
     const confirm = fnBody(S, "export async function confirmCourse(");
     expect(confirm).toContain("if (pending.length === confirmed) await tx.update(coursePackages).set({ reconfirmNeededSince: null }).where(eq(coursePackages.id, id));");
   });
@@ -54,7 +54,7 @@ describe("🔴 §2 — the preview is the ACT's own plan, run without writes (TA
     const readOnly = { query: { coursePackages: { findFirst: async () => course }, bookings: { findMany: async () => rows }, teacherLeaveDays: { findFirst: async () => undefined } } };
     const p = await previewCourseStart("c1", { startDate: "2026-10-12" }, readOnly);
     expect(p.moves.map((m) => [m.id, m.to, m.toStatus])).toEqual([["b1", "2026-10-12", "PENDING"], ["b2", "2026-10-19", "PENDING"], ["b3", "2026-10-26", "PENDING"], ["b4", "2026-11-02", "PENDING"]]);
-    expect([p.needsReconfirm, p.forecast, p.previousExpiryDate]).toEqual([true, true, "2026-11-02"]);
+    expect([p.needsReconfirm, p.forecast, p.previousExpiryDate]).toEqual([4, true, "2026-11-02"]); // 🔻 TASK-578 (D9): the preview carries the COUNT too
     const body = fnBody(S, "export async function previewCourseStart(");
     expect(body).not.toMatch(/\.update\(|\.insert\(|\.delete\(|db\.transaction|enqueueLine/);
   });

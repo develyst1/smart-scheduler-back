@@ -34,15 +34,15 @@ describe("TASK-277 — the owner's strings, verbatim, with the escape kept", () 
     expect(th).not.toContain("ปปปป-ดด-วว");
   });
 
-  test("🔻 `ข้าม` is no longer ADVERTISED on the prompt — and it still WORKS, and the rejection still says so", () => {
+  test("🔻 `ข้าม` is no longer ADVERTISED anywhere (🔻 TASK-583, ruling 4: no ข้าม) — the parser still RECOGNISES it as 'no date', and the chat REFUSES that", () => {
     // 🔴 **The one thing §17c costs us, named rather than discovered.** Their screen 5 has no escape in it,
     // and TASK-310 §2 says use their words. ⇒ the prompt stops OFFERING `ข้าม`. 🔑 Two things keep this
     // from being a trap, and both are asserted here: **the parser still accepts it**, and the REJECTION —
     // which is OURS, not a §17c screen — still names it and still carries the example. ⇒ a parent who does
     // not know the birthdate types anything, is refused ONCE, and is told both the format and the way past.
     expect(t("add_birthdate_prompt", "TH")).not.toContain("ข้าม");
-    expect(t("add_birthdate_bad", "TH")).toContain("ข้าม");
-    expect(t("add_birthdate_bad", "EN").toLowerCase()).toContain("skip");
+    expect(t("add_birthdate_bad", "TH")).not.toContain("ข้าม"); // 🔻 TASK-583 — the escape is gone from the rejection too
+    expect(t("add_birthdate_bad", "EN").toLowerCase()).not.toContain("skip");
     expect(t("add_birthdate_bad", "TH")).toContain("02-12-2024");
     expect(t("add_birthdate_bad", "EN")).toContain("02-12-2024");
     // …and the parser still honours it, in both languages' words. 🚫 **Behaviour unchanged; only the ad.**

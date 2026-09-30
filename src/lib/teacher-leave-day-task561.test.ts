@@ -143,9 +143,12 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
     const readers = all.filter(([f, s]) => !declares.has(f) && /teacherLeaveDays|teacher_leave_days/.test(code(s))).map(([f]) => f);
     expect(readers).toEqual(["src/lib/teacher-leave.ts"]); // 🚫 no second definition
   });
-  test("🚫 nothing here cancels or moves: the leave module writes nothing, and `reportOwnLeave` is untouched (the owner's question)", () => {
-    expect(code(read("src/lib/teacher-leave.ts"))).not.toMatch(/\.(insert|update|delete)\(/);
-    expect(fnBody(S, "export async function reportOwnLeave(")).not.toMatch(/teacherLeave|TEACHER_ON_LEAVE/);
+  test("🚫 nothing here cancels or moves: the leave module writes ONLY `teacher_leave_days` (🔻 TASK-582: the writer + the lift), never a booking", () => {
+    const M = code(read("src/lib/teacher-leave.ts"));
+    expect([...M.matchAll(/\.(insert|update|delete)\((\w+)\)/g)].map((m) => `${m[1]}:${m[2]}`)).toEqual(["insert:teacherLeaveDays", "delete:teacherLeaveDays"]);
+    expect(M).not.toMatch(/\.update\(|CANCELLED|enqueueLine|notifyAdmins/);
+    // 🔻 TASK-582 — `reportOwnLeave` now FORKS (the owner ruled the question); its two sides are pinned in teacher-leave-act-task582
+    expect(fnBody(S, "export async function reportOwnLeave(")).not.toMatch(/TEACHER_ON_LEAVE/);
   });
 });
 

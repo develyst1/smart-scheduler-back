@@ -41,7 +41,7 @@ export const campReminderKey = (recipientType: "teacher" | "parent", personId: s
   `camp-${deviceReminderKey(recipientType, personId, date, lineUserId, primary)}`;
 
 /**
- * One send per TEACHER per OPEN week covering today (the head count by half), one per PARENT device with a PLANNED
+ * One send per TEACHER per week covering today (🔴 TASK-581: OPEN or CLOSED — Close gates new bookings only) (the head count by half), one per PARENT device with a PLANNED
  * day today (one row per child). A person with no linked account yields ONE row with `lineUserId: null` — the
  * SKIPPED row that counts the reach, as the session reminder does.
  */
@@ -53,7 +53,6 @@ export function campReminderSends(days: CampDayInput[], weeks: CampWeekInput[], 
   // teachers: per week, the counts; a teacher on two weeks gets two rows in ONE send
   const byTeacher = new Map<string, { lineUserId: string | null; rows: CampTeacherRow[] }>();
   for (const w of weeks) {
-    if (w.status !== "OPEN") continue;
     const mine = live.filter((d) => d.weekId === w.id);
     if (!mine.length) continue;
     const row: CampTeacherRow = { weekName: w.name, date, names: mine.map((d) => d.studentName), total: mine.length, am: mine.filter((d) => d.half === "AM").length, pm: mine.filter((d) => d.half === "PM").length, full: mine.filter((d) => d.half === "FULL").length };
@@ -67,12 +66,12 @@ export function campReminderSends(days: CampDayInput[], weeks: CampWeekInput[], 
     out.push({ recipientType: "teacher", personId: teacherId, lineUserId: g.lineUserId, key: campReminderKey("teacher", teacherId, date, g.lineUserId, g.lineUserId), payload: { kind: "camp_reminder", audience: "teacher", rows: g.rows } });
   }
 
-  // parents: one send per DEVICE, one row per child; the week must still be OPEN
+  // parents: one send per DEVICE, one row per child (TASK-581: a CLOSED week's day is still reminded)
   const byParent = new Map<string, { lineUserIds: string[]; rows: CampParentRow[] }>();
   for (const d of live) {
     if (!d.parentId) continue;
     const w = weekById.get(d.weekId);
-    if (!w || w.status !== "OPEN") continue;
+    if (!w) continue;
     const g = byParent.get(d.parentId) ?? { lineUserIds: d.parentLineUserIds, rows: [] };
     g.rows.push({ child: d.studentName, weekName: w.name, date, half: d.half });
     byParent.set(d.parentId, g);

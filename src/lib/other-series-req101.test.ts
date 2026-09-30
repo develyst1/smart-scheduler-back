@@ -17,6 +17,7 @@ import * as v from "../validation";
 import * as sched from "../services/scheduler.service";
 import * as series from "../services/other-series.service";
 import { seriesRateOf } from "./coach-rate"; // TASK-562
+import { assertRatesOnBooking } from "./other-kind"; // TASK-579
 import * as lineLib from "./line";
 import { groupForBackfill, describeGroup } from "../../scripts/backfill-other-series";
 import { db } from "../db";
@@ -406,5 +407,50 @@ describe("🔴 TASK-562 — a COVER on ONE session: A REPLACES B on that row onl
     expect(M).toContain("if (rate == null) throw RATE_REQUIRED(current.date);");
     expect(M).toContain("patch.teacherRateMinor = rate;");
     expect(M.indexOf("RATE_REQUIRED(")).toBeLessThan(M.indexOf("db.transaction(")); // refused before anything is written
+  });
+});
+
+// ───────────────────────── TASK-579 — a rate may be set AS a coach joins the row (ruled (c)) — and for NO ONE else ─────────────────────────
+// Found, not built: both cover doors ALREADY carry the joining coach's rate in the same act (the swap's `rateMinor` with `onDate`;
+// Move session's `classRateMinor` with a teacher change). The shared guard `assertRatesOnBooking` is NOT loosened — its five
+// callers each already check the coaches THEIR act puts on the row; loosening it would loosen all five.
+describe("🔴 TASK-579 — the cover act takes a rate for the coach it ADDS, and only for that coach, only in that act", () => {
+  const rows = () => [row({ id: "b1", date: "2026-10-05", status: "ATTENDED" }), row({ id: "b2", date: "2026-10-12", status: "CONFIRMED" }), row({ id: "b3", date: "2026-10-19" })];
+  const arm = (rs: any[]) => {
+    const { tx, writes } = fakeTx(rs);
+    spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
+    spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async () => ({ status: "queued" }) as any) as any));
+    spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
+    return writes;
+  };
+  test("✅ half 1: a FRESH coach (on no row, no rate anywhere in the series) gets the given rate — on the one row they join, paired with them", async () => {
+    expect(seriesRateOf(rows() as any, T3)).toBeNull(); // the coach the door offers has no rate yet — Khwan's case
+    const writes = arm(rows());
+    expect(await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 })).toEqual({ moved: 1 });
+    expect(writes.filter((w) => w.op === "update").map((w) => [w.patch])).toEqual([[{ teacherId: T3, teacherRateMinor: 45000 }]]);
+  });
+  test("🚫 half 2: the act has NO way to name anyone else's rate — the schema has one number (no map), a stray map is STRIPPED, and the number lives only with `onDate`", () => {
+    const p = v.otherSeriesSwap.safeParse({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000, teacherRates: { [T2]: 1 }, rates: { [T1]: 1 } });
+    expect(p.success && p.data).toEqual({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 }); // exactly the fields the door sends — nothing wider
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 45000 }).success).toBe(false);
+    const S = region(code(src("src/services/other-series.service.ts")), "export async function swapOtherSeriesTeacher(", "\n}\n");
+    // the ONE write pairs the rate with `input.to` — the coach this act puts on the row — and nothing else in the act writes a rate
+    expect(S).toContain("await tx.update(bookings).set(input.onDate ? { teacherId: input.to, teacherRateMinor: coverRate } : { teacherId: input.to }).where(eq(bookings.id, r.id));");
+    expect((S.match(/teacherRateMinor|rateMinor:|teacherRates/g) ?? []).length).toBe(1);
+  });
+  test("🚫 half 2: a rate for a coach NOT on the row and NOT being added is still refused — by the unchanged guard, at the header PATCH (Tanya's door)", () => {
+    expect(() => assertRatesOnBooking({ [T3]: 45000 }, [T1, T2])).toThrow(ApiException);
+    expect(() => assertRatesOnBooking({ [T1]: 1, [T2]: 1 }, [T1, T2])).not.toThrow();
+  });
+  test("⚠️ every caller of the guard, by source — each checks the coaches ITS act puts on the row; none widened", () => {
+    const calls = (f: string) => (code(src(f)).match(/assertRatesOnBooking\([^;]*;/g) ?? []);
+    expect(calls("src/services/scheduler.service.ts")).toEqual([
+      "assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);", // createBooking — the coaches it creates
+      "assertRatesOnBooking(input.teacherRates, [current.teacherId, ...extras]);", // editOtherBooking — adds no coach
+      "assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);", // createOtherSeries
+      "assertRatesOnBooking(input.teacherRates, [input.teacherId, ...(input.additionalTeacherIds ?? [])]);", // createGroupSeries
+    ]);
+    expect(calls("src/services/other-series.service.ts")).toEqual(["assertRatesOnBooking(input.teacherRates, [t.teacherId, ...extrasOf(t)]);"]); // updateOtherSeries — adds no coach
+    expect(code(src("src/lib/other-kind.ts"))).toContain("const stray = Object.keys(rates).filter((id) => !on.has(id));"); // the guard itself: unchanged
   });
 });

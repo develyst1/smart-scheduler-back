@@ -22,7 +22,9 @@ const WIZARD = SVC.slice(SVC.indexOf("async function handleAddStudentStep("), SV
 describe("🔴 TASK-323 §1 — the hint comes off TWO screens, and only two", () => {
   test("🔑 the birthdate and province PROMPTS render without it", () => {
     expect(SVC).toContain('return reply(replyToken, t("add_birthdate_prompt", lang));');
-    expect(SVC).toContain('return reply(replyToken, t("add_province_prompt", lang));');
+    // 🔻 TASK-590 (F-C) — the customer's address screen is THREE questions now; the first carries the same "no hint" rule
+    expect(SVC).toContain('return reply(replyToken, t("add_addr_province_prompt", lang));');
+    expect(SVC).not.toContain('withExit(t("add_addr_province_prompt", lang), lang)');
     expect(SVC).not.toContain('withExit(t("add_birthdate_prompt", lang), lang)');
     expect(SVC).not.toContain('withExit(t("add_province_prompt", lang), lang)');
   });

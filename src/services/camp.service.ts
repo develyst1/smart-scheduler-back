@@ -84,19 +84,16 @@ export async function updateWeek(id: string, input: { name?: string; capacity?: 
   if (input.status !== undefined) { patch.status = input.status; patch.closedAt = input.status === "CLOSED" ? new Date() : null; }
   const ws = input.windowStart ?? hm(w.windowStart) ?? CAMP_WINDOW_DEFAULT.start, we = input.windowEnd ?? hm(w.windowEnd) ?? CAMP_WINDOW_DEFAULT.end;
   if (input.windowStart !== undefined || input.windowEnd !== undefined) { assertCampWindow(ws, we); patch.windowStart = ws; patch.windowEnd = we; }
-  // TASK-418 — the cascades, ONE tx: a week-level teacher/window change re-derives ONLY the days nobody edited by hand
-  // (`edited_at IS NULL`); CLOSED ⇒ every derived row of the week gone; OPEN again ⇒ every day re-synced.
+  // TASK-418 — the cascade, ONE tx: a week-level teacher/window change re-derives ONLY the days nobody edited by hand
+  // (`edited_at IS NULL`) — on an OPEN or a CLOSED week alike.
+  // 🔴 TASK-581 (REQ-110 item 8, the owner's ruling) — CLOSE stops NEW bookings only: the status is read by `planDays` and by
+  // NOTHING else. The flip writes the week row (`status`, `closedAt`) and nothing more — no coach block deleted (past or future),
+  // no re-sync on OPEN — so close ⇒ open leaves the week exactly as it was. (It used to delete every derived block, including past
+  // ones, and OPEN re-derived only the future: a switch that lost data.)
   const onLeave: Array<{ date: string; teacherId: string }> = []; // TASK-561 — SKIP + LIST
   const [updated] = await db.transaction(async (tx) => {
     const [u] = await tx.update(campWeeks).set(patch).where(eq(campWeeks.id, id)).returning();
-    const status = input.status ?? w.status;
-    if (status === "CLOSED") {
-      const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e }: any) => e(d.campWeekId, id) });
-      for (const d of days) await deleteCampDayRows(tx, d.id);
-    } else if (input.status === "OPEN" && w.status !== "OPEN") {
-      const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e }: any) => e(d.campWeekId, id) });
-      for (const d of days) for (const teacherId of (await syncCampDayRows(tx, d.id)).onLeave) onLeave.push({ date: d.date, teacherId });
-    } else if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {
+    if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {
       const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e, isNull: nul, and: a }: any) => a(e(d.campWeekId, id), nul(d.editedAt)) });
       for (const d of days) {
         await tx.update(campWeekDays).set({ startTime: ws, endTime: we }).where(eq(campWeekDays.id, d.id));
@@ -262,9 +259,10 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
   const onLeave: string[] = [];
   for (const c of coaches) if (await teacherLeaveOn(tx, c.teacherId, d.date)) onLeave.push(c.teacherId);
   const working = coaches.filter((c) => !onLeave.includes(c.teacherId));
-  const wanted = d.week.status === "OPEN" ? wantedCampSlots(working.map((c) => ({ teacherId: c.teacherId, start: c.startTime, end: c.endTime }))) : new Set<string>();
+  // 🔴 TASK-581 — the week's status is NOT read here: a CLOSED week's coaches keep their blocks (Close gates new bookings only).
+  const wanted = wantedCampSlots(working.map((c) => ({ teacherId: c.teacherId, start: c.startTime, end: c.endTime })));
   const existing = await existingCampRows(tx, dayId);
-  const kept = new Set([...existing].filter(([k]) => d.week.status === "OPEN" && onLeave.includes(k.split("|")[0]!)).map(([, id]) => id));
+  const kept = new Set([...existing].filter(([k]) => onLeave.includes(k.split("|")[0]!)).map(([, id]) => id));
   const { insert, remove: diffRemove } = campSlotDiff(wanted, existing);
   const remove = diffRemove.filter((id) => !kept.has(id));
   // 🔴 TASK-445 — THE 500: the clash's `23505` ABORTS the transaction; the catch below then read the coach's name ON THAT TX
@@ -294,20 +292,14 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
   return { inserted: insert.length, deleted: remove.length, onLeave };
 }
 
-/** A closed week (or a day with no teacher) holds nothing: every derived row of the day gone. */
-async function deleteCampDayRows(tx: any, dayId: string): Promise<number> {
-  const rows = await tx.delete(bookings).where(eq(bookings.campWeekDayId, dayId)).returning({ id: bookings.id });
-  return rows.length;
-}
-
 /**
  * The per-day edit = the per-day SWAP (`PATCH /camp/weeks/:id/days/:date`): the day row changes, `edited_at` is
- * stamped (a week-level change will leave this day alone), and the ONE sync re-derives it. A CLOSED week ⇒ 409.
+ * stamped (a week-level change will leave this day alone), and the ONE sync re-derives it. 🔴 TASK-581 — a CLOSED week is
+ * swapped like an open one (its existing days still run; Close gates new bookings only).
  */
 export async function updateWeekDay(weekId: string, date: string, input: { teachers?: CampDayTeacherInput[]; teacherIds?: string[]; startTime?: string; endTime?: string; teacherRates?: Record<string, number> }) {
   const w = await db.query.campWeeks.findFirst({ where: (x, { eq: e }) => e(x.id, weekId) });
   if (!w) throw notFound("ไม่พบสัปดาห์แคมป์");
-  if (w.status !== "OPEN") throw conflict("CAMP_WEEK_CLOSED", `สัปดาห์ ${w.name} ปิดรับแล้ว`);
   const d = await db.query.campWeekDays.findFirst({ where: (x, { and: a, eq: e }) => a(e(x.campWeekId, weekId), e(x.date, date)), with: { teachers: true } });
   if (!d) throw notFound("ไม่พบวันแคมป์");
   const start = input.startTime ?? hm(d.startTime)!, end = input.endTime ?? hm(d.endTime)!;
@@ -520,11 +512,12 @@ const dayDTO = (d: any) => ({ dayId: d.id, weekId: d.campWeekId, date: d.date, h
 // ───────────── the reminder's inputs (TASK-403) ─────────────
 /**
  * The camp rows for the 08:15 job — a SEPARATE select on `camp_days` (the session reminder's select is REQ-094's
- * byte-frozen one). Every PLANNED day dated `runDate` with its student's family accounts, and every OPEN week
- * covering `runDate` with its teachers. The builder (`lib/camp-reminder.ts`) decides who gets what.
+ * byte-frozen one). Every PLANNED day dated `runDate` with its student's family accounts, and every week covering
+ * `runDate` with its teachers — 🔴 TASK-581: OPEN or CLOSED (a closed week's existing days still run, so both are told).
+ * The builder (`lib/camp-reminder.ts`) decides who gets what.
  */
 export async function campReminderInputs(runDate: string): Promise<{ days: CampDayInput[]; weeks: CampWeekInput[] }> {
-  const weeksRows = await db.query.campWeeks.findMany({ where: (w: any, { and: a, lte: le, gte: ge, eq: e }: any) => a(le(w.startDate, runDate), ge(w.endDate, runDate), e(w.status, "OPEN")) });
+  const weeksRows = await db.query.campWeeks.findMany({ where: (w: any, { and: a, lte: le, gte: ge }: any) => a(le(w.startDate, runDate), ge(w.endDate, runDate)) });
   const teacherIds = [...new Set(weeksRows.flatMap((w: any) => w.teacherIds ?? []))] as string[];
   const teacherRows = teacherIds.length ? await db.query.teachers.findMany({ where: (t: any, { inArray: inA }: any) => inA(t.id, teacherIds) }) : [];
   const teacherById = new Map(teacherRows.map((t: any) => [t.id, t]));

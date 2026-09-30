@@ -6,7 +6,7 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
-import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561
+import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
@@ -3327,6 +3327,15 @@ async function sendClassCancelledToOtherTeachers(
  * admin's cancel is (a PENDING session was never announced).
  */
 export async function reportOwnLeave(me: string, input: { date: string; sessionIds?: string[]; reason: string }, actor: string | null) {
+  // 🔴 TASK-582 — THE FORK (the owner: for FUTURE dates the new act REPLACES the auto-cancel). A date strictly after today ⇒ the
+  // advance-leave act: the WHOLE day blocked for new bookings, its live classes LISTED, 🚫 nothing cancelled, nobody notified.
+  // Today or the past ⇒ everything below, unchanged. `sessionIds` picks classes to CANCEL, so it has no meaning for a whole-day
+  // block ⇒ refused in words rather than silently ignored.
+  if (isAdvanceLeave(input.date)) {
+    if (input.sessionIds) throw badRequest("ลาล่วงหน้าเป็นการปิดทั้งวัน — ไม่ต้องเลือกคาบ คาบที่มีอยู่แล้วจะแสดงให้แอดมินจัดการ"); // 📋 DRAFT
+    const r = await recordAdvanceLeave(db, me, { date: input.date, reason: input.reason }, actor);
+    return { mode: "advance" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0, leave: r.leave, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings };
+  }
   const mine = await db.query.bookings.findMany({
     where: (b, { and: a, eq: e, isNull: nul, inArray: inA }) => a(e(b.date, input.date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES, "ATTENDED"]), ownScopeWhere(me)),
     with: { course: true, voucher: true, additionalTeachers: true, seats: { with: { student: true } } },
@@ -3351,6 +3360,16 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
   void actor;
   return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };
 }
+
+/** TASK-582 — a linked teacher's OWN recorded advance-leave days from today on (what can still be lifted). A read. */
+export const ownLeaveDays = (me: string) => ownAdvanceLeaves(db, me);
+/** TASK-582 — lift one of MY recorded days: deletes that leave row only; 🚫 restores nothing, cancels nothing. */
+export const liftOwnLeave = (me: string, date: string) => liftAdvanceLeave(db, me, date);
+/** TASK-587 (a) — the admin's list of recorded leave days (from today by default, 60 days on), each with its live classes. A read. */
+export const listRecordedLeaveDays = (q: { from?: string; to?: string }) => {
+  const from = q.from ?? bangkokNow().date;
+  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60));
+};
 
 // TASK-439 (REQ-103): `course` is `{ id, size }` on purpose — a whole-voucher cancel passes `{ id: voucherId, size: totalHours }` and
 // `cause: "voucher_ended"`, so a coach reads the SAME message for the same loss (`<subject> <hours> HR`, no new bytes).
@@ -5194,7 +5213,7 @@ export async function changeCourseStart(id: string, input: { startDate: string }
       await reconcileBookingHolds(tx, m.id, m.teacherId, m.toStatus, false);
     }
     // 🔻 TASK-573 §1 — a move that un-confirmed sessions is WRITTEN DOWN, so the attention panel shows it from this moment.
-    await tx.update(coursePackages).set({ startDate: input.startDate, weekday: weekdayOf(input.startDate), expiryDate: plan.expiryDate, ...(plan.needsReconfirm ? { reconfirmNeededSince: new Date() } : {}) }).where(eq(coursePackages.id, id));
+    await tx.update(coursePackages).set({ startDate: input.startDate, weekday: weekdayOf(input.startDate), expiryDate: plan.expiryDate, ...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {}) }).where(eq(coursePackages.id, id));
     await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: plan.expiryDate, actor: actor ?? null });
     return {
       moved: plan.moves.filter((m) => m.from !== m.to).length,

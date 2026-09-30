@@ -181,7 +181,10 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // them because it can now reject: a reserved word.
     // TASK-313 §2 — a SEVENTH call site: the inline `add <reserved word>` door now refuses through the same
     // handover rule as the name prompt. It was the one door TASK-245 never reached.
-    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(8); // the declaration + seven call sites
+    // 🔻 TASK-583 (ruling 4: no ข้าม) — an EIGHTH and NINTH: a skip word at the birthday and at the address is now a REFUSAL, so it
+    // counts as a strike like every other refusal (two, then a person).
+    // 🔻 TASK-590 (F-C) — the one address refusal became THREE (an unknown province · an empty/skipped district · sub-district).
+    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(12); // the declaration + eleven call sites
     // 🔻 TASK-310 — the sixth argument is no longer a PICKER: `REQ-079 §17c`'s screen 2 offers one path
     // (type `Next`) so that a parent never learns the other roles exist, and a role picker is a role list
     // you cannot look away from. ✅ **The wiring this test guards is unchanged either way** — the role

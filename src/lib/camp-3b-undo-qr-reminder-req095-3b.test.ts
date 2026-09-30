@@ -169,7 +169,7 @@ describe("🔴 the check-in QR — lazy token, the whole date, the public scan t
 describe("🔴 the camp-day reminder — the pure builder by value, the words by VALUE (TASK-405), the flag OFF by default, the job's gate (source)", () => {
   const weeks: CampWeekInput[] = [
     { id: W1, name: "Camp A", status: "OPEN", teachers: [{ id: "t1", lineUserId: "Ut1" }, { id: "t2", lineUserId: null }] },
-    { id: W2, name: "Camp B", status: "CLOSED", teachers: [{ id: "t1", lineUserId: "Ut1" }] },
+    { id: W2, name: "Camp B", status: "CLOSED", teachers: [{ id: "t3", lineUserId: "Ut3" }] }, // 🔻 TASK-581: its own coach (a CLOSED week is now reminded)
   ];
   const day = (o: Partial<CampDayInput>): CampDayInput => ({ dayId: "d", weekId: W1, half: "AM", status: "PLANNED", studentId: "s1", studentName: "น้องเอ", parentId: "p1", parentLineUserIds: ["Up1a", "Up1b"], ...o });
   const days = [
@@ -181,24 +181,28 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
     day({ dayId: "d6", weekId: W2, studentId: "s6", studentName: "น้องเอฟ", parentId: "p5", parentLineUserIds: ["Up5"] }),
   ];
   const sends = campReminderSends(days, weeks, "2026-10-05");
-  test("only PLANNED days count; a CLOSED week sends nothing; the teacher gets the head count by half; the unlinked teacher is a SKIPPED row", () => {
+  test("only PLANNED days count; 🔻 TASK-581: a CLOSED week's days ARE reminded (Close gates new bookings only); the teacher gets the head count by half; the unlinked teacher is a SKIPPED row", () => {
     expect([...CAMP_REMINDABLE]).toEqual(["PLANNED"]);
     const t1 = sends.find((s) => s.recipientType === "teacher" && s.personId === "t1")!;
     expect(t1.payload).toEqual({ kind: "camp_reminder", audience: "teacher", rows: [{ weekName: "Camp A", date: "2026-10-05", names: ["น้องเอ", "น้องบี", "น้องซี"], total: 3, am: 1, pm: 1, full: 1 }] }); // TASK-405: + date, names
     expect(t1.lineUserId).toBe("Ut1");
     const t2 = sends.find((s) => s.recipientType === "teacher" && s.personId === "t2")!;
     expect(t2.lineUserId).toBeNull();
-    expect(sends.filter((s) => s.recipientType === "teacher").length).toBe(2);
-    expect(sends.some((s) => JSON.stringify(s.payload).includes("Camp B"))).toBe(false);
+    expect(sends.filter((s) => s.recipientType === "teacher").length).toBe(3); // 🔻 TASK-581: + the CLOSED week's coach
+    expect(sends.find((s) => s.personId === "t3")!.payload).toEqual({ kind: "camp_reminder", audience: "teacher", rows: [{ weekName: "Camp B", date: "2026-10-05", names: ["น้องเอฟ"], total: 1, am: 1, pm: 0, full: 0 }] });
+    // a coach on two weeks (one of them CLOSED) ⇒ two rows in ONE send
+    const both = campReminderSends(days, [weeks[0]!, { ...weeks[1]!, teachers: [{ id: "t1", lineUserId: "Ut1" }] }], "2026-10-05").filter((x) => x.personId === "t1");
+    expect([both.length, (both[0]!.payload as any).rows.map((r: any) => [r.weekName, r.total])]).toEqual([1, [["Camp A", 3], ["Camp B", 1]]]);
   });
-  test("a two-device family gets TWO sends with two keys (one row per child in each); an unlinked parent is one SKIPPED row; ATTENDED / CANCELLED / closed-week children are absent", () => {
+  test("a two-device family gets TWO sends with two keys (one row per child in each); an unlinked parent is one SKIPPED row; ATTENDED / CANCELLED children are absent; 🔻 TASK-581: a CLOSED week's child IS reminded", () => {
     const p1 = sends.filter((s) => s.recipientType === "parent" && s.personId === "p1");
     expect(p1.map((s) => s.lineUserId)).toEqual(["Up1a", "Up1b"]);
     expect(new Set(p1.map((s) => s.key)).size).toBe(2);
     for (const s of p1) expect(s.payload).toEqual({ kind: "camp_reminder", audience: "parent", rows: [{ child: "น้องเอ", weekName: "Camp A", date: "2026-10-05", half: "AM" }, { child: "น้องบี", weekName: "Camp A", date: "2026-10-05", half: "FULL" }] });
     const p2 = sends.filter((s) => s.recipientType === "parent" && s.personId === "p2");
     expect(p2.length).toBe(1); expect(p2[0]!.lineUserId).toBeNull();
-    expect(sends.filter((s) => ["p3", "p4", "p5"].includes(s.personId)).length).toBe(0);
+    expect(sends.filter((s) => ["p3", "p4"].includes(s.personId)).length).toBe(0);
+    expect(sends.filter((s) => s.personId === "p5").map((s) => [s.lineUserId, s.payload])).toEqual([["Up5", { kind: "camp_reminder", audience: "parent", rows: [{ child: "น้องเอฟ", weekName: "Camp B", date: "2026-10-05", half: "AM" }] }]]); // 🔻 TASK-581
   });
   test("🔑 the keys carry their own prefix — a family with a session AND a camp day today gets both messages", () => {
     expect(campReminderKey("parent", "p1", "2026-10-05", "Up1a", "Up1a")).toBe("camp-reminder:parent:p1:2026-10-05");
@@ -272,7 +276,8 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
     expect(JOB.indexOf("const campEnabled")).toBeGreaterThan(JOB.indexOf("const due = dueSends(sends, alreadyKeyed);"));
     expect(JOB).not.toContain('"EXTENDED"');
     const IN = region(SVC, "export async function campReminderInputs(", "\n}\n");
-    expect(IN).toContain('e(w.status, "OPEN")');
+    expect(IN).toContain("a(le(w.startDate, runDate), ge(w.endDate, runDate))"); // 🔻 TASK-581: every week covering the date — the status is NOT read
+    expect(IN).not.toContain('"OPEN"');
     expect(IN).toContain("familyLineUserIdsBulk(parentIds)");
     expect(IN).not.toContain("bookings");
   });

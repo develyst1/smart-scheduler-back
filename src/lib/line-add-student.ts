@@ -20,6 +20,8 @@ export type AddStudentStep =
   | "AWAIT_STUDENT_DETAIL"
   | "AWAIT_STUDENT_BIRTHDATE"
   | "AWAIT_STUDENT_PROVINCE"
+  | "AWAIT_STUDENT_DISTRICT" // 🔻 TASK-590 (F-C) — the address is THREE questions: province · district · sub-district
+  | "AWAIT_STUDENT_SUBDISTRICT"
   | "AWAIT_STUDENT_CONFIRM";
 
 /** Every step the wizard owns, so the router and the handler cannot disagree about what "in this flow" means. */
@@ -28,6 +30,8 @@ export const ADD_STUDENT_STEPS: readonly AddStudentStep[] = [
   "AWAIT_STUDENT_DETAIL",
   "AWAIT_STUDENT_BIRTHDATE",
   "AWAIT_STUDENT_PROVINCE",
+  "AWAIT_STUDENT_DISTRICT",
+  "AWAIT_STUDENT_SUBDISTRICT",
   "AWAIT_STUDENT_CONFIRM",
 ];
 
@@ -38,7 +42,11 @@ export const isAddStudentStep = (step: string | null | undefined): step is AddSt
 export interface StudentDraft {
   name?: string;
   birthDate?: string | null;
-  province?: string | null;
+  province?: string | null; // 🔻 TASK-590 — the PROVINCE only now (one of the 77, resolved from what was typed)
+  district?: string | null; // TASK-590
+  subDistrict?: string | null; // TASK-590
+  /** 🔴 TASK-590 (D11 a) — a NEW family's phone, parked here: nothing is written until the first child is confirmed. */
+  newPhone?: string | null;
 }
 
 /** Words that mean "I don't want to answer this one" — the existing skip vocabulary, reused deliberately. */
@@ -170,6 +178,10 @@ export function nextStep(current: AddStudentStep, outcome: DuplicateOutcome = "o
     case "AWAIT_STUDENT_BIRTHDATE":
       return "AWAIT_STUDENT_PROVINCE";
     case "AWAIT_STUDENT_PROVINCE":
+      return "AWAIT_STUDENT_DISTRICT";
+    case "AWAIT_STUDENT_DISTRICT":
+      return "AWAIT_STUDENT_SUBDISTRICT";
+    case "AWAIT_STUDENT_SUBDISTRICT":
       return "AWAIT_STUDENT_CONFIRM";
     case "AWAIT_STUDENT_CONFIRM":
       return "AWAIT_STUDENT_CONFIRM";

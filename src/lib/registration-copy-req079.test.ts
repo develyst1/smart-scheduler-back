@@ -198,10 +198,13 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     expect(src("src/services/scheduler.service.ts")).toContain("LEAVE_NOTICE_TOO_LATE");
   });
 
-  test("🚫 the ADDRESS field and its storage are untouched — a prompt that lists parts is not a schema", () => {
-    // `§17e`'s correction, in @Porter's own words. The prompt names District / Sub-district / Province as
-    // GUIDANCE; the answer is and stays ONE free-text value on the household.
-    expect(SVC).toContain('const province = isSkip(text) ? null : text.trim() || null;');
+  test("🔻 TASK-590 (F-C) — the ADDRESS is THREE questions now, into the ONE rule; its STORAGE is unchanged (no new column)", () => {
+    // `§17e`'s correction said "a prompt that lists parts is not a schema" — and F-C (the owner: province + district + sub-district,
+    // on the form AND the chat, from ONE rule) is exactly the decision that makes the parts required. The storage did NOT move:
+    // `province` + the one line in `note`.
+    expect(SVC).toContain("const province = provinceFromTyped(text);");
+    expect(SVC).toContain("if (!district || isSkip(district)) return strikeOrPrompt(");
+    expect(SVC).toContain("if (!subDistrict || isSkip(subDistrict)) return strikeOrPrompt(");
     // 🔻 TASK-347 (`REQ-088`) — the household `province` write moved to `line-register.service.ts`, the ONE home of the registration
     // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
     // 📌 It JOINED the one writer rather than sitting beside it: the page would otherwise need a second call.
@@ -210,10 +213,10 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     // into `parents.note`, APPENDED. 🔑 The claim this test makes is UNCHANGED and is the one that matters: the
     // prompt names parts as GUIDANCE and the answer stays ONE free-text value — it is just that the value's home is
     // now `note`, and the chat never writes `province` at all. Storage unchanged: no new column.
-    expect(SVC).toContain("address: draft.province ?? null,");
-    expect(SVC).not.toContain("province: draft.province");
+    // 🔻 TASK-590 — the chat now sends the three parts (its province RESOLVED to one of the 77), and the writer builds the one line
+    expect(SVC).toContain("{ province: draft.province, district: draft.district, subDistrict: draft.subDistrict }");
     const REG = src("src/services/line-register.service.ts");
-    expect(REG).toContain("householdPatch(row?.note ?? null, { province, address })"); // the rule is pure and unit-tested
+    expect(REG).toContain("householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })"); // the rule is pure and unit-tested
     expect(src("src/db/schema.ts")).toContain("province");
   });
 
@@ -236,10 +239,8 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
   test("🔑 TASK-307's no-skip branch still works — and it re-asks with the NEW copy", () => {
     // The first child cannot be skipped (`REQ-085 §6`), and the sentence it re-asks with is now the
     // customer's. ⚠️ **Both halves, because a working guard that quotes retired copy is half a regression.**
-    const guard = SVC.slice(
-      SVC.indexOf('if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME")'),
-      SVC.indexOf("return handleAddStudentStep("),
-    );
+    const at = SVC.indexOf('if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME")');
+    const guard = SVC.slice(at, SVC.indexOf("return handleAddStudentStep(", at)); // 🔻 TASK-583: the end searched AFTER the start
     expect(guard).toContain("if (!kids.length) {");
     expect(guard).toContain('withExit(t("add_student_name_prompt", lang), lang)');
     expect(t("add_student_name_prompt", "TH")).toBe(SCREEN["4b"]);
@@ -288,6 +289,6 @@ describe("🔑 TASK-310 — the screens as ASSEMBLED, not only as strings", () =
   test("🔑 screen 8 invites another child — unless the household is at the cap", () => {
     // **The words are theirs; the condition is ours** — their copy could not know about `MAX_STUDENTS_PER_PARENT`.
     expect(SVC).toContain('${atMax ? "" : "\\n" + t("add_another_hint", lang)}');
-    expect(SVC.match(/atMax \? "" : "\\n" \+ t\("add_another_hint", lang\)/g)!.length).toBe(2);
+    expect(SVC.match(/atMax \? "" : "\\n" \+ t\("add_another_hint", lang\)/g)!.length).toBe(1); // 🔻 TASK-583: the inline door's copy went with it — one screen 8, the wizard's
   });
 });

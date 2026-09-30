@@ -115,7 +115,7 @@ describe("TASK-278 §4 — the five places their text is NOT applied literally",
     const e = en("add_birthdate_prompt");
     expect(e).toContain("DD-MM-YYYY");
     expect(e.toLowerCase()).not.toContain("skip");
-    expect(t("add_birthdate_bad", "TH")).toContain("ข้าม");
+    expect(t("add_birthdate_bad", "TH")).not.toContain("ข้าม"); // 🔻 TASK-583 (ruling 4: no ข้าม) — gone from the rejection too
     expect(t("add_birthdate_bad", "EN")).toContain("02-12-2024");
   });
 

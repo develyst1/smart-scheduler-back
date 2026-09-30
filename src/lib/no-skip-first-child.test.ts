@@ -16,10 +16,8 @@ const src = (f: string) => readSrc(readFileSync(resolve(import.meta.dir, "..", "
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const WEBHOOK = code(src("src/services/line-webhook.service.ts"));
 /** The skip guard alone. */
-const guard = WEBHOOK.slice(
-  WEBHOOK.indexOf('if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME")'),
-  WEBHOOK.indexOf("return handleAddStudentStep("),
-);
+const GUARD_AT = WEBHOOK.indexOf('if (SKIP_WORDS.includes(lower) && session?.step === "AWAIT_STUDENT_NAME")');
+const guard = WEBHOOK.slice(GUARD_AT, WEBHOOK.indexOf("return handleAddStudentStep(", GUARD_AT)); // 🔻 TASK-583: the END is searched AFTER the start (the inline door now calls it earlier in the file)
 
 describe("🔑 TASK-307 — the two moments the owner named are ONE branch", () => {
   test("🔴 the decision is `kids.length`, not the STEP", () => {

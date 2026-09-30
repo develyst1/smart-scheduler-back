@@ -16,6 +16,7 @@ import { verifyLiffIdToken } from "../lib/line-id-token";
 import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa";
 import { formatPhoneForDisplay } from "../lib/line-webhook";
 import { ddmmyyyy } from "../lib/time";
+import { t } from "../lib/line-i18n"; // TASK-583 — the duplicate sentence, from the chat's own table
 import { MAX_STUDENTS_PER_PARENT } from "../services/parent.service";
 import {
   addChildForLineParent,
@@ -25,6 +26,7 @@ import {
   linkStatus,
   lookupFamilyByPhone,
   parkedTwoFaCode,
+  registerFamilyWithFirstChild,
   setTwoFaChallenge,
   settleLinkedRole,
   twoFaEnabled,
@@ -37,8 +39,13 @@ const linkBody = withToken.extend({ phone: z.string().trim().min(1), code: z.str
 const createBody = withToken.extend({
   name: z.string().optional(),
   birthDate: z.string().optional(), // the customer's `DD-MM-YYYY` text — 🔻 TASK-565: REQUIRED (absent ⇒ BIRTHDATE_REQUIRED, a code the page can act on)
-  province: z.string().optional(), // 🔻 TASK-352 — the PICKED province, full form, one of the 77 → `parents.province`
-  address: z.string().optional(), // 🔻 TASK-352 — the joined line, the customer's format → APPENDED to `parents.note`
+  // 🔻 TASK-590 (F-C) — the address arrives as its THREE picked parts; the server checks their SHAPE (`checkFullAddress`) and builds
+  // the one line itself. `address` (a pre-joined line) is no longer read. 🔴 The district is NOT checked against the province.
+  province: z.string().optional(), // the PICKED province, full form, one of the 77 → `parents.province`
+  district: z.string().optional(),
+  subDistrict: z.string().optional(),
+  // 🔻 TASK-590 (D11 a) — a NEW family's phone: the family is created WITH this child, in one transaction (`/link` answered `new`).
+  phone: z.string().trim().optional(),
   detailProvided: z.boolean().optional(),
 });
 
@@ -69,6 +76,8 @@ const REFUSAL: Record<string, [number, string]> = {
   "birthdate-required": [400, "BIRTHDATE_REQUIRED"], // TASK-565 — ข้าม removed
   "address-required": [400, "ADDRESS_REQUIRED"], // TASK-565 — once per household, while none is on file
   "province-unknown": [400, "PROVINCE_UNKNOWN"],
+  "address-incomplete": [400, "ADDRESS_INCOMPLETE"], // TASK-590 (F-C) — some of the three parts missing; `missing` names them
+  "phone-now-registered": [409, "PHONE_NOW_REGISTERED"], // TASK-590 (D11 a) — the phone became a family since `/link`: look it up again
 };
 
 const childView = (k: any) => ({ id: k.id, name: k.name, nickname: k.nickname ?? null });
@@ -82,7 +91,10 @@ export const publicRegister = new Hono()
     const s = await linkStatus(who.sub);
     // 🚫 `parentId` stays on the server; the page gets a MASKED phone and a COUNT — never names (TASK-047).
     // 🔻 TASK-565 — + whether the household's address is already on file (and which province, to SHOW it), so the form asks for it only once.
-    return s.linked ? c.json({ ok: true, linked: true, phone: s.phone, childCount: s.childCount, addressOnFile: s.addressOnFile, province: s.province }) : c.json({ ok: true, linked: false });
+    // 🔴 TASK-578 (D11 b) — + `canAddMore`: a LINKED family can still add a child (the cap, not a copy of it) — including one with
+    // 0 children (a registration abandoned after the phone step, or its only child archived / deleted). Without it the page could
+    // only say "already linked — nothing to do": a dead end for exactly the families that most need to add a child.
+    return s.linked ? c.json({ ok: true, linked: true, phone: s.phone, childCount: s.childCount, canAddMore: s.childCount < MAX_STUDENTS_PER_PARENT, addressOnFile: s.addressOnFile, province: s.province }) : c.json({ ok: true, linked: false });
   })
 
   // ── §10.3 unlink — the SAME writer the admin's `Clear LINE link` runs, from `sub`. ────────────────────────
@@ -134,6 +146,9 @@ export const publicRegister = new Hono()
     }
     // 🔑 `phone` again, not a family id: the server re-looks it up and RE-CHECKS every refusal at the write.
     const r = await linkFamilyByPhone(who.sub, phone);
+    // 🔴 TASK-590 (D11 a) — a NEW phone: NOTHING was written. The page goes on to the child form and sends the phone WITH the child
+    // (\`/register/create\`), where the family is created in one transaction. No menu, no session change: nothing is linked yet.
+    if (r.outcome === "new") return c.json({ ok: true, outcome: "new", phone: formatPhoneForDisplay(r.phone) });
     if (r.outcome !== "linked") return refuse(c, ...REFUSAL[r.outcome]!);
     // The chat's post-link ORDER, exactly: seed the language → link the rich menus → THEN the session.
     await settleLinkedRole(who.sub, "customer");
@@ -142,23 +157,40 @@ export const publicRegister = new Hono()
     await clearLinkSession(who.sub);
     const canAddMore = r.children.length < MAX_STUDENTS_PER_PARENT; // the cap, not a copy of it
     const addr = householdAddressOf(r.parent); // TASK-565
-    return c.json({ ok: true, outcome: "linked", isNew: r.isNew, children: r.children.map(childView), canAddMore, addressOnFile: addr.addressOnFile, province: addr.province });
+    return c.json({ ok: true, outcome: "linked", children: r.children.map(childView), canAddMore, addressOnFile: addr.addressOnFile, province: addr.province }); // 🔻 TASK-590: no \`isNew\` — a new phone answers \`new\` above
   })
 
   // ── §C3 create — add a child to MY family. THE ONE WRITER. ───────────────────────────────────────────────
   .post("/register/create", zValidator("json", createBody), async (c) => {
-    const { idToken, name, birthDate, province, address, detailProvided } = c.req.valid("json");
+    const { idToken, name, birthDate, province, district, subDistrict, phone, detailProvided } = c.req.valid("json");
     const who = await verifyLiffIdToken(idToken);
     if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
-    // 🔑 The family is `sub`'s — no phone, no id. The guards run in the CHAT's order inside this one call.
-    const r = await addChildForLineParent(who.sub, { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, address: address ?? null, detailProvided });
+    const child = { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, district: district ?? null, subDistrict: subDistrict ?? null, detailProvided };
+    // 🔴 TASK-590 (D11 a) — an account with NO family, carrying the phone \`/link\` answered \`new\` for ⇒ the family is created WITH this
+    // child, in ONE transaction, or not at all. A LINKED account ⇒ the family is \`sub\`'s, and \`phone\` is ignored (never re-pointed).
+    if (phone && !(await linkStatus(who.sub)).linked) {
+      const n = await registerFamilyWithFirstChild(who.sub, phone, child);
+      if (n.outcome !== "registered") {
+        const [status, code] = REFUSAL[n.outcome]!;
+        const extra = n.outcome === "name-reserved" ? { word: n.word } : n.outcome === "province-unknown" ? { province: n.province } : n.outcome === "address-incomplete" ? { missing: n.missing } : {};
+        return refuse(c, status, code, extra);
+      }
+      // The chat's post-link ORDER, after the commit: seed the language → link the rich menus → THEN the session.
+      await settleLinkedRole(who.sub, "customer");
+      await clearLinkSession(who.sub);
+      return c.json({ ok: true, outcome: "created", registered: true, student: n.student, birthDate: ddmmyyyy(n.birthDate), count: n.count, atMax: false, canAddMore: true, ...householdAddressOf({ province: province?.trim() || null }) }); // the full address was required, so it is on file now
+    }
+    // 🔑 The family is `sub`'s — no id from the body. The guards run in the CHAT's order inside this one call.
+    const r = await addChildForLineParent(who.sub, child);
     if (r.outcome !== "created") {
       const [status, code] = REFUSAL[r.outcome]!;
       const extra =
         r.outcome === "name-reserved" ? { word: r.word }
         : r.outcome === "family-full" ? { max: r.max }
-        : r.outcome === "name-duplicate-needs-detail" ? { name: r.name }
+        // 🔴 TASK-583 — the sentence travels WITH the code, from the chat's own key: ONE source for both doors (the page renders it)
+        : r.outcome === "name-duplicate-needs-detail" ? { name: r.name, message: { TH: t("add_dup_detail", "TH"), EN: t("add_dup_detail", "EN") } }
         : r.outcome === "province-unknown" ? { province: r.province }
+        : r.outcome === "address-incomplete" ? { missing: r.missing } // TASK-590
         : {};
       return refuse(c, status, code, extra);
     }

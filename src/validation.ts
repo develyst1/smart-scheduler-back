@@ -672,6 +672,12 @@ export const groupSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).nullable().optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
+export const leaveDateParam = z.object({ date: DATE }); // TASK-582 — lifting ONE advance-leave day
+// TASK-587 (a) — the admin's window over recorded leave days: both optional (from = today, to = from + 60); at most 92 days, in order.
+export const leaveDaysQuery = z
+  .object({ from: DATE.optional(), to: DATE.optional() })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "วันเริ่มต้องไม่หลังวันสิ้นสุด" })
+  .refine((q) => !q.from || !q.to || (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000 <= 92, { message: "ช่วงวันที่ยาวเกิน 92 วัน" });
 export const teacherLeave = z.object({
   date: DATE,
   sessionIds: z.array(ID).min(1).max(50).optional(),

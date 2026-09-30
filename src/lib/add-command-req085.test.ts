@@ -86,7 +86,9 @@ describe("🔑 TASK-312 §1 — the write happens ONLY on a name, and the patter
   test("the router writes on `addMatch.name` and prompts otherwise", () => {
     const block = SVC.slice(SVC.indexOf("const addMatch = parseAddCommand(raw);"), SVC.indexOf("if (inList(CMD_COURSES, cmd))"));
     expect(block).toContain("const name = addMatch.name;");
-    expect(block).toContain("if (name) return addStudentAndReply(lineUserId, name, replyToken, { continueSession: false }, lang);");
+    // 🔻 TASK-583 (ruling 4) — a name no longer WRITES: it enters the wizard at the name step (every field then required)
+    expect(block).toContain("return handleAddStudentStep(lineUserId, session as any, name, replyToken, lang);");
+    expect(block).not.toMatch(/createStudentFromLine|addStudentAndReply/);
     expect(block).toContain('await setStep(lineUserId, "AWAIT_STUDENT_NAME", "customer");');
   });
 

@@ -197,7 +197,9 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
     expect(lookup).toContain('if (!existing && (await findArchivedParentByPhone(phone))) return { outcome: "phone-archived" };');
     const link = region(RG, "export async function linkFamilyByPhone(", "\n}\n");
     expect(link).toContain('if (await findArchivedParentByPhone(phone)) return { outcome: "phone-archived" };');
-    expect(link.indexOf('outcome: "phone-archived"')).toBeLessThan(link.indexOf("findOrCreateParentByPhone(phone, { lineUserId })"));
+    // 🔻 TASK-590 (D11 a) — the new-phone path writes NOTHING now (no `findOrCreateParentByPhone` there at all); the refusal still comes first
+    expect(link).not.toContain("findOrCreateParentByPhone(");
+    expect(link.indexOf('outcome: "phone-archived"')).toBeLessThan(link.indexOf('return { outcome: "new", phone };'));
     expect(RG).not.toMatch(/unarchiveParent|archivedAt: null/); // never a silent restore
     expect(code(src("src/services/line-webhook.service.ts"))).toContain('if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) };');
     expect(code(src("src/routes/register.ts"))).toContain('"phone-archived": [409, "PHONE_ARCHIVED"],');
@@ -210,7 +212,7 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
     expect(code(I)).not.toMatch(/reactivate|แอดมินเพื่อเปิดใช้งาน/);
     const W = code(src("src/services/line-webhook.service.ts"));
     expect(W).toContain('if (r.outcome === "phone-archived") return { ok: false, message: (l) => t("verify_parent_archived", l) };');
-    expect(W.indexOf('"phone-archived"')).toBeLessThan(W.indexOf("if (r.isNew)")); // refused before the success branches
+    expect(W.indexOf('"phone-archived"')).toBeLessThan(W.indexOf('if (r.outcome === "new")')); // refused before the success branches (🔻 TASK-590: `new` replaces `isNew`)
   });
   test("by VALUE: `lookupFamilyByPhone` on an archived family's number ⇒ `phone-archived` (the active lookup null, the archived one found); a fresh number ⇒ `new`", async () => {
     const s1 = spyOn(parent, "findParentByPhone").mockImplementation((async () => null) as any);

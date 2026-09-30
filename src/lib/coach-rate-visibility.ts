@@ -63,13 +63,18 @@ export function maskCoachRate<T>(body: T): T {
 const READ_ONLY_RATE_NAMES: readonly string[] = ["rate", "teacherRateMinor"];
 export const COACH_RATE_BODY_FIELDS = COACH_RATE_FIELDS.filter((f) => !READ_ONLY_RATE_NAMES.includes(f));
 
-/** Does this body edit a coach rate? Any rate field at the top level, or `duo.classRateMinor` (TASK-434: `duo` alone is not an edit). */
+/**
+ * Does this body edit a coach rate? A rate field (by NAME) at ANY depth — through every object and array — so `duo` alone is
+ * not an edit (TASK-434) while `duo.classRateMinor` and the camp day's `teachers[].rateMinor` are.
+ * 🔴 TASK-585 — it read the top level (+ `duo`) only, so `teachers[].rateMinor` (TASK-454) passed without key 59: a guard
+ * whose detector is shallower than the body it guards lies about its own coverage. It knows NO shape now, so a new nesting
+ * cannot hide from it; its test derives every writer's shape from the schemas and pins both directions.
+ */
 export const bodyEditsCoachRate = (body: unknown): boolean => {
   if (!body || typeof body !== "object") return false;
+  if (Array.isArray(body)) return body.some(bodyEditsCoachRate);
   const b = body as Record<string, unknown>;
-  if (COACH_RATE_BODY_FIELDS.some((f) => f in b)) return true;
-  const duo = b.duo;
-  return !!duo && typeof duo === "object" && "classRateMinor" in (duo as object);
+  return COACH_RATE_BODY_FIELDS.some((f) => f in b) || Object.values(b).some(bodyEditsCoachRate);
 };
 
 /** The write half of view ⇔ edit — the `assertMayDiscount` shape: called at the ROUTE, before the service. */
