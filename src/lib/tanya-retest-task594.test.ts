@@ -36,13 +36,15 @@ describe("🔴 §1 — does the chat link at the PHONE step? NO. The code path, 
     // 🚫 nothing in the chat creates a parent or binds a LINE account anywhere else
     expect(W).not.toMatch(/findOrCreateParentByPhone\(|bindFamilyLine\(|linkParentLine\(/);
   });
-  test("🔴 what she READ: the phone step answers “Registration completed ✅” — the SAME sentence as a real link, while nothing is saved", () => {
+  test("✅ what she READ is FIXED (TASK-601): the phone step no longer claims a completion, and the two sentences now DIFFER", () => {
     // 📌 Today's fact, pinned so the attribution cannot be lost. Both sentences claim the registration is done:
     //    · a NEW phone  ⇒ `verify_parent_ok_new`      — NOTHING is saved yet (the family is created with the first child)
     //    · an EXISTING phone ⇒ `verify_parent_ok_existing` — the account IS linked at once (the designed behaviour)
     // ⚠️ FLAGGED to @Sober / the owner (COPY §19 DRAFT): a tester holding our own spec read the first as a contradiction.
-    expect(t("verify_parent_ok_new", "EN")).toContain("Registration completed ✅");
-    expect(t("verify_parent_ok_existing", "EN")).toContain("Registration completed ✅");
+    // 🔻 TASK-601 (COPY §19, owner-approved) — this assertion RECORDED the defect as today's fact; it now records the fix. The
+    // shape and value pins live in `registration-sentence-task601.test.ts`.
+    expect(t("verify_parent_ok_new", "EN")).not.toContain("Registration completed");
+    expect(t("verify_parent_ok_existing", "EN")).toContain("Registration completed ✅"); // the customer's sentence, where it is true
     expect(VERIFY.indexOf('"verify_parent_ok_existing"')).toBeGreaterThan(-1);
     // …and the sentence is the customer's own §17c screen 4, which is why it is a DRAFT and not an edit
     expect(Object.keys(REGISTRATION_COPY)).toContain("verify_parent_ok_new");

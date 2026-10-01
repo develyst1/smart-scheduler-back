@@ -86,10 +86,13 @@ describe("TASK-273 — the ten headings are BYTE-IDENTICAL to before", () => {
       TH: "กลุ่มที่ชนกับคาบส่วนตัว (รอแอดมินแก้)",
       EN: "Group sessions clashing with a private class (awaiting admin)",
     },
-    // 🔻 TASK-573 — the twelfth, APPENDED the same way (📋 a DRAFT heading, in the owner's copy batch).
+    // 🔻 TASK-573 — the twelfth, APPENDED the same way. 🔴 TASK-603 — its DRAFT sentence was SUPERSEDED by the owner's ruling
+    // (2026-10-01, *"12 เอาแบบยาว"*): COPY §12's longer wording wins, because it repeats the move dialog's own words
+    // (**ตารางเดิม / old dates**) and the draft did not. ⚠️ DECLARED: this entry is the ONE that changed — **the ten headings this
+    // test exists for are still byte-identical**, and the eleventh too, which is what keeps its claim meaningful.
     courses_awaiting_reconfirm: {
-      TH: "คอร์สที่เลื่อนวันเริ่มแล้ว รอยืนยันใหม่",
-      EN: "Courses with a moved start date, awaiting re-confirmation",
+      TH: "คอร์สที่เลื่อนแล้วแต่ยังไม่ได้ยืนยันใหม่ (ลูกค้ายังถือตารางเดิม)",
+      EN: "Courses moved but not re-confirmed (the family still has the old dates)",
     },
   };
 

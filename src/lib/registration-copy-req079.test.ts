@@ -10,7 +10,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { REGISTRATION_COPY, REGISTRATION_KEYS, both, t, tb } from "./line-i18n";
+import { REGISTRATION_COPY, REGISTRATION_KEYS, allChatStrings, both, t, tb } from "./line-i18n";
 import { parseRoleChoice } from "./line-webhook";
 import { readSrc } from "./read-src";
 
@@ -52,7 +52,11 @@ describe("🔑 TASK-310 §2 — the eight screens, BYTE-FOR-BYTE against §17c",
   test("screen 4 — the success line and the name prompt, and the phone is a VARIABLE", () => {
     // 🔴 `§17d-4`, ruled by the owner: their `082-503-1502` is **the number the person just typed**. A literal
     // would have shipped their example to every family.
-    expect(t("verify_parent_ok_new", "TH")).toBe(SCREEN["4a"]);
+    // 🔴 TASK-601 — DECLARED, a deliberate departure from "§17c byte-for-byte": screen 4a said the registration was COMPLETE, and
+    // since TASK-590 nothing is saved at the phone step. The owner approved COPY §19's replacement for the NEW-phone case — the only
+    // case 4a ever rendered — so 4a's bytes are now carried by NO key, and that retirement is asserted rather than left to be noticed.
+    expect(t("verify_parent_ok_new", "TH")).toBe("รับเบอร์แล้วค่ะ ✅ เบอร์โทรศัพท์ / Phone: {phone}\nลงทะเบียนจะเสร็จสมบูรณ์เมื่อเพิ่มนักเรียนคนแรกค่ะ\nYour registration is complete once you add your first student.");
+    expect(allChatStrings().filter(([, th]) => th === SCREEN["4a"]).map(([k]) => k)).toEqual([]);
     expect(t("verify_parent_ok_new", "TH", { phone: "082-503-1502" })).toContain("Phone: 082-503-1502");
     expect(t("add_student_prompt", "TH")).toBe(SCREEN["4b"]);
     // 🔑 The re-ask is the same sentence — one wording for one question (TASK-307 §3).
@@ -269,8 +273,10 @@ describe("🔑 TASK-310 — the screens as ASSEMBLED, not only as strings", () =
     // ⚠️ The composition is where a bilingual block gets doubled, and a doubled screen still passes every
     // string pin above. **This is the assertion that catches it.**
     const screen4 = `${both((l) => t("verify_parent_ok_new", l, { phone: "082-503-1502" }))}\n${t("add_student_prompt", "TH")}`;
+    // 🔻 TASK-601 — the first half is COPY §19's sentence now (declared above); the COMPOSITION rule is unchanged, and that is what
+    // this test exists for: each half renders exactly ONCE.
     expect(screen4).toBe(
-      'ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: 082-503-1502\n' +
+      'รับเบอร์แล้วค่ะ ✅ เบอร์โทรศัพท์ / Phone: 082-503-1502\nลงทะเบียนจะเสร็จสมบูรณ์เมื่อเพิ่มนักเรียนคนแรกค่ะ\nYour registration is complete once you add your first student.\n' +
         'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
     );
     // …and the service builds it exactly that way — 🔻 TASK-315 through `afterParentLink`, which returns this

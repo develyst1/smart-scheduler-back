@@ -183,9 +183,11 @@ describe("🔴 TASK-318 §4 (`§16.4`) — `Sessions :` is gone from the course-
 
 describe("✅ TASK-318 §5 (batch 7b) — the ✅ on the THAI success lines of screens 4 and 8", () => {
   test("both languages now carry it, as their document does", () => {
-    expect(t("verify_parent_ok_new", "TH")).toBe(
-      "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
-    );
+    // 🔻 TASK-601 (COPY §19, owner-approved) — screen 4's success line is RETIRED for a new phone: nothing is saved at that step
+    // since TASK-590, so the ✅ now sits on what IS true ("we have your number"), and the sentence names what completes the
+    // registration. 🔑 TASK-318's own claim survives: the ✅ still rides the THAI line, in both languages' view.
+    expect(t("verify_parent_ok_new", "TH")).toBe("รับเบอร์แล้วค่ะ ✅ เบอร์โทรศัพท์ / Phone: {phone}\nลงทะเบียนจะเสร็จสมบูรณ์เมื่อเพิ่มนักเรียนคนแรกค่ะ\nYour registration is complete once you add your first student.");
+    expect(t("verify_parent_ok_new", "TH")).toContain("✅");
     expect(t("added_done", "TH")).toBe('เพิ่ม "{name}" สำเร็จแล้วค่ะ ✅\n"{name}" has been added successfully. ✅{note}');
   });
 

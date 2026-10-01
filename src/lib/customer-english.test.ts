@@ -57,9 +57,15 @@ describe("🔻 TASK-278 §2 — §17b's sentences, RE-POINTED at §17c (TASK-310
     expect(en("add_province_prompt")).toContain("District, Sub-district, Province");
   });
 
-  test("screen 4 · registration completed — their sentence, OUR variables", () => {
+  // 🔴 TASK-601 — DECLARED: this test PINNED THE DEFECT. It asserted that BOTH keys claim *"Registration completed ✅"*, which was
+  // faithful to the code and the code was wrong: since TASK-590 the phone step saves NOTHING for a new phone (the family is created
+  // with its first child, in one transaction), so on that key the customer's sentence had become false.
+  // 🔑 The same family as TASK-577: a pin can be perfectly faithful to code that is itself wrong.
+  // ⇒ the EXISTING-phone key keeps their sentence, pinned by value; the NEW-phone key is COPY §19 (owner-approved) and is pinned —
+  // as different, and against claiming completion — in `registration-sentence-task601.test.ts`.
+  test("screen 4 · registration completed — their sentence, OUR variables (the EXISTING-phone key only)", () => {
     expect(en("verify_parent_ok_existing")).toContain("Registration completed ✅");
-    expect(en("verify_parent_ok_new")).toContain("Registration completed ✅");
+    expect(en("verify_parent_ok_new")).not.toContain("Registration completed ✅"); // 🔻 TASK-601 — nothing is saved yet at that step
   });
 });
 

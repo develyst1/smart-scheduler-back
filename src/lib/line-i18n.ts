@@ -101,10 +101,17 @@ const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
     TH: "คาบในอนาคตที่ครูไม่พร้อม (ปิดใช้งาน/ไม่สอนวันนั้น)",
     EN: "Future sessions with an unavailable teacher (archived / off that weekday)",
   },
-  // 📋 DRAFT (TASK-573 §1, the owner's copy batch) — a course whose start was moved and not yet re-confirmed.
+  // ✅ APPROVED (the owner, 2026-10-01: *"12 เอาแบบยาว"*) — a course whose start was moved and not yet re-confirmed.
+  // 🔴 TASK-603 — this carried COPY §10's shorter draft (*"คอร์สที่เลื่อนวันเริ่มแล้ว รอยืนยันใหม่"*), which the ruling SUPERSEDED.
+  // 🔑 Why the longer sentence won: it repeats the move dialog's own words — **ตารางเดิม / old dates** — so two warnings about one
+  // state cannot contradict each other. The short draft was not wrong; it was silent about the consequence.
+  // 📌 The ADMIN PANEL already renders this sentence from the FE's own dictionary (@Fern, TASK-602). This is the LINE DIGEST's copy,
+  // and it was the last place still carrying the superseded draft — so the two surfaces now say the same thing.
+  // 🚫 The ruling touched the SENTENCE only: the panel's `<new start> · <child> · <sessions pending>` line shape and the
+  // COUNT-ONLY-in-the-digest promise are unchanged (`namesPeopleInDigest` stays off — pinned in `attention.ts`).
   courses_awaiting_reconfirm: {
-    TH: "คอร์สที่เลื่อนวันเริ่มแล้ว รอยืนยันใหม่",
-    EN: "Courses with a moved start date, awaiting re-confirmation",
+    TH: "คอร์สที่เลื่อนแล้วแต่ยังไม่ได้ยืนยันใหม่ (ลูกค้ายังถือตารางเดิม)",
+    EN: "Courses moved but not re-confirmed (the family still has the old dates)",
   },
 };
 
@@ -148,11 +155,19 @@ export const REGISTRATION_COPY = {
   /** §17c screen 3. 🚫 `code_teacher` / `code_admin` are NOT §17c screens — no parent ever reads them. */
   code_customer: "กรุณาระบุเบอร์โทรศัพท์ค่ะ\nPlease enter your phone number.",
   /**
-   * §17c screen 4, first half. ⚠️ Their `082-503-1502` is `{phone}` — `§17d-4`, ruled by the owner: the
+   * §17c screen 4, first half — for a phone we do NOT know. ⚠️ Their `082-503-1502` is `{phone}` — `§17d-4`, ruled by the owner: the
    * screen shows **the number the person just typed**, so a literal would have shipped their example.
    * (`formatPhoneForDisplay` renders it in their shape; the stored value stays digits.)
+   *
+   * 🔴 TASK-601 (COPY §19, the owner approved it as drafted) — it used to say *"ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅ / Registration
+   * completed ✅"*. **Since TASK-590 nothing is saved at the phone step** — the family is created when its FIRST CHILD is confirmed,
+   * in one transaction — so that sentence claimed a completion that had not happened, and Tanya read it as *"the chat links the
+   * parent at the phone step"* (TASK-594 §1: the behaviour was right, the words were not).
+   * 🔑 It now says what IS true (we have the number) and NAMES the condition that completes the registration.
+   * 🚫 `verify_parent_ok_existing` keeps the customer's own sentence: there the account really is linked at that moment.
    */
-  verify_parent_ok_new: "ลงทะเบียนผู้ปกครองสำเร็จแล้วค่ะ ✅\nRegistration completed ✅\nเบอร์โทรศัพท์ / Phone: {phone}",
+  verify_parent_ok_new:
+    "รับเบอร์แล้วค่ะ ✅ เบอร์โทรศัพท์ / Phone: {phone}\nลงทะเบียนจะเสร็จสมบูรณ์เมื่อเพิ่มนักเรียนคนแรกค่ะ\nYour registration is complete once you add your first student.",
   /**
    * §17c screen 4, second half — asked as one body with the line above it.
    * 🔻 **Their sentence carries neither the `{max}` cap nor the `ข้าม` escape our wording had.** The cap is
