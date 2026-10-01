@@ -173,6 +173,19 @@ export const REGISTRATION_COPY = {
    */
   add_province_prompt:
     "กรุณาระบุ เขต แขวง จังหวัด เช่น พระโขนงเหนือ วัฒนา กทม\nPlease enter your address: District, Sub-district, Province\nEg. Prakanueng Nuea, Wattana, BKK",
+  /**
+   * 🔴 TASK-590 (F-C) / 🔻 TASK-594 §2 — screen 6 asked in THREE questions, because one typed line cannot be three checked parts.
+   * 🔑 They live HERE, beside the screen they replace, so they are BILINGUAL like it: every §17c screen carries both languages in one
+   * string (the customer wrote them that way, for a reader whose language we do not yet know). They were keyed `{TH,EN}` when they
+   * shipped, so a session rendered ONE language between two bilingual screens — Tanya read that as "Thai-only in an EN chat".
+   * 🚫 Their REFUSALS are not here: a refusal answers inside a session whose language IS known (`add_addr_province_bad`, the same
+   * shape as `add_birthdate_bad`). 📋 DRAFT (COPY §18).
+   */
+  add_addr_province_prompt: "กรุณาระบุจังหวัดค่ะ เช่น กรุงเทพมหานคร\nPlease enter your province, e.g. Bangkok",
+  add_addr_district_prompt: "กรุณาระบุอำเภอ/เขตค่ะ เช่น วัฒนา\nPlease enter your district, e.g. Watthana",
+  add_addr_subdistrict_prompt: "กรุณาระบุตำบล/แขวงค่ะ เช่น พระโขนงเหนือ\nPlease enter your sub-district, e.g. Phra Khanong Nuea",
+  /** 🔻 TASK-594 §2 — shown INSIDE screen 7's address line, so it is bilingual like the screen that carries it. 📋 DRAFT (COPY §18). */
+  add_addr_on_file: "ที่อยู่เดิมของครอบครัว / on file",
   /** §17c screen 7, head. */
   add_summary_head: "กรุณาตรวจสอบข้อมูลก่อนบันทึกค่ะ\nPlease check your information before saving.",
   /**
@@ -366,13 +379,12 @@ const TABLE: Record<string, Entry> = {
     TH: "มีน้องชื่อนี้ในครอบครัวแล้ว — กรุณาใส่ชื่อจริงของน้อง (ชื่อ-นามสกุล) เพื่อไม่ให้สับสนกันค่ะ",
     EN: "There is already a child with this name. Please enter the child's real name (first name and surname) so they are not mixed up.",
   },
-  // 🔴 TASK-590 (F-C, ruling 4) — the chat's address is THREE questions now, meeting the page's one rule. 📋 DRAFT (COPY §18) — they
-  // replace the customer's one-line screen 6 (`add_province_prompt`, kept, unused) because one typed line cannot be three checked parts.
-  add_addr_province_prompt: { TH: "กรุณาระบุจังหวัด เช่น กรุงเทพมหานคร", EN: "Please enter your province, e.g. Bangkok" },
+  // 🔻 TASK-594 §2 — the three address PROMPTS and the summary's on-file note MOVED to `REGISTRATION_COPY` (bilingual): they replace
+  // and sit inside the customer's §17c screens, and a one-language question between two bilingual ones is what Tanya read as
+  // "Thai-only". 🔑 `add_addr_province_bad` STAYS here, in the session's own language, because it is a REFUSAL — the same shape as
+  // `add_birthdate_bad` beside it (the wizard knows the session's language; §17c screens are bilingual because the customer wrote
+  // them that way). 📋 DRAFT (COPY §18).
   add_addr_province_bad: { TH: "ไม่พบจังหวัดนี้ค่ะ กรุณาพิมพ์ชื่อจังหวัดเต็ม เช่น เชียงใหม่ หรือ กรุงเทพมหานคร", EN: "We could not find that province. Please type its full name, e.g. เชียงใหม่ or กรุงเทพมหานคร" },
-  add_addr_district_prompt: { TH: "กรุณาระบุอำเภอ/เขต เช่น วัฒนา", EN: "Please enter your district, e.g. Watthana" },
-  add_addr_subdistrict_prompt: { TH: "กรุณาระบุตำบล/แขวง เช่น พระโขนงเหนือ", EN: "Please enter your sub-district, e.g. Phra Khanong Nuea" },
-  add_addr_on_file: { TH: "ที่อยู่เดิมของครอบครัว", EN: "the address we have on file" },
   // 🔴 TASK-590 (D11 a) — the phone became a family between the phone step and the confirm (another account, another tab). 📋 DRAFT
   add_phone_now_registered: { TH: "เบอร์นี้เพิ่งถูกลงทะเบียนไว้แล้วค่ะ ยังไม่ได้บันทึกนักเรียน กรุณาพิมพ์ \"สมัคร\" แล้วใส่เบอร์อีกครั้ง", EN: "This phone number was just registered. The student was not saved — please type \"Register\" and enter the number again." },
   add_birthdate_bad: {

@@ -180,13 +180,18 @@ describe("🔴 the DTO — the new shape, the two derived views, and the kid cou
     expect(d.teacherRates).toEqual({ [A]: 50000, [B]: 0 });
     expect(SVC).toContain("teacherIds: teachers.map((t) => t.teacherId),"); // derived — the two can never disagree
   });
-  test("🔴 the hour cell carries the DATE's kid count — the SAME number on every block of that day (it counts children on the day, not children with this coach)", () => {
+  // 🔻 TASK-594 §4 — the claim NARROWED, because this pin held the defect: it is the same number on every block of that day **in
+  // THAT WEEK**, not on every block of that date. The map was keyed by date alone and summed every week covering it, so two weeks
+  // on one date pooled (Tanya: "7 คน" on a week with one child). 🔑 A source pin could not see that — the VALUE test that can lives
+  // in `tanya-retest-task594.test.ts`, where the two candidate meanings disagree.
+  test("🔴 the hour cell carries ITS WEEK's kid count for that date — the same number on every block of that day in that week (children on the day, not children with this coach)", () => {
     const row = { id: "b1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", status: "CONFIRMED", bookingType: "OTHER", otherKind: "CAMP", teacherId: A, teacher: { id: A, name: "Ek" }, student: null, subject: null, additionalTeachers: [], campWeekDayId: D1 };
     expect(toBookingDTO(row, { campKidCount: 7 }).campKidCount).toBe(7);
     expect(toBookingDTO(row).campKidCount).toBeNull(); // a reader that did not ask gets null, never a guess
     const CAL = region(code(src("src/services/scheduler.service.ts")), "export async function getCalendar(", "export async function getBookings(");
     expect(CAL).toContain("const campWeeks = await weeksForCalendar(range);");
-    expect(CAL).toContain("campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null");
+    expect(CAL).toContain("campKidCount: row.campWeekDayId ? (kidsByWeekDate.get(`${row.campWeekDay?.campWeekId}|${row.date}`) ?? 0) : null");
+    expect(CAL).not.toContain("kidsByDate"); // 🔻 TASK-594 §4 — the date-only map is gone
     expect((CAL.match(/weeksForCalendar\(range\)/g) ?? []).length).toBe(1); // ONE read feeds the banner and the cells
     expect(code(src("src/db/mappers.ts"))).toContain("campKidCount: opts.campKidCount ?? null,");
   });

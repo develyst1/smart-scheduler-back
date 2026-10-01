@@ -7,7 +7,7 @@ import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TR
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
 import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
-import { isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570
+import { isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
@@ -542,14 +542,21 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
   // marker that used to be read here the same way is a RELATION since TASK-371 and rides in `withBookingRelations`).
   const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
   // TASK-454 (REQ-105 §5) — the camp weeks are read ONCE, here: the banner below shows them, and every camp hour cell
-  // carries its DATE's kid count from the same numbers (a day fact — the same number on every block of that date).
+  // carries its OWN WEEK's kid count for its date from the same numbers.
+  //
+  // 🔴 TASK-594 §4 (Tanya: "7 คน" on a week with ONE child; @Fern attributed it to the payload) — this map was keyed by DATE ALONE
+  // and SUMMED every week that covers it (`kidsByDate.set(date, prev + n)`). `dayCounts` is per WEEK per DATE, so on a date where two
+  // camp weeks run, each week's blocks showed BOTH weeks' children. 🔑 The number was never wrong for the question it answered
+  // ("children at camp that day"); it was shown against a block that asks a narrower one ("children in THIS week that day").
+  // ⇒ keyed by WEEK + DATE, and read through the block's own `campWeekDayId` → week. 🚫 No consumer wanted the pooled total: the
+  // banner takes `dayCounts` PER WEEK straight from `campWeeks` below, and this map had exactly one reader.
   const campWeeks = await weeksForCalendar(range);
-  const kidsByDate = new Map<string, number>();
-  for (const w of campWeeks) for (const [date, n] of Object.entries(w.dayCounts ?? {})) kidsByDate.set(date, (kidsByDate.get(date) ?? 0) + Number(n));
+  const kidsByWeekDate = new Map<string, number>();
+  for (const w of campWeeks) for (const [date, n] of Object.entries(w.dayCounts ?? {})) kidsByWeekDate.set(`${w.id}|${date}`, Number(n));
 
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
-    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByDate.get(row.date) ?? 0) : null, provenance: scope ? "masked" : "raw" }); // TASK-481 — B
+    const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByWeekDate.get(`${row.campWeekDay?.campWeekId}|${row.date}`) ?? 0) : null, provenance: scope ? "masked" : "raw" }); // TASK-481 — B · 🔻 TASK-594 §4: THIS week's count
     const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
