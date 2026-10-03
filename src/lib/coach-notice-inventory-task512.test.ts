@@ -59,6 +59,10 @@ const NAMED_BY_DESIGN: Record<string, string> = {
   // `teachersOfBooking` on any course row IS the primary. The message is a COURSE summary with ONE `Coach :` (rows[0].teacher):
   // if a multi-coach course ever exists, that is a message-design decision, not a recipient loop.
   [`${S}#confirmCourse`]: "a COURSE summary to its one coach — one coach per course by construction (AC-20)",
+  // 🔻 TASK-608 — an admin recorded / lifted a LEAVE DAY. 🔑 The audience is the SUBJECT TEACHER ALONE, and there is no predicate to
+  // apply: the fact is a DAY, not a class — no booking, no `teachersOfBooking`, nothing for another coach to be told about (their
+  // classes are untouched, and the families are deliberately silent — nothing was cancelled, TASK-587).
+  [`${S}#notifyTeacherOfLeaveDay`]: "the ONE teacher whose day it is — a day, not a class; no other coach and no family",
 };
 /** Reaches the additional teachers TODAY, but through its own answer — a copy that currently agrees (named, not yet converged). */
 const OWN_COPY_REACHES_ALL: Record<string, string> = {

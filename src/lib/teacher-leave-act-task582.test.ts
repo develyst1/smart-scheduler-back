@@ -78,7 +78,10 @@ describe("🔑 THE FORK — named once (`isAdvanceLeave`), both sides pinned", (
     spies.push(spyOn(db, "insert").mockImplementation(s.exec.insert));
     spies.push(spyOn(db, "select").mockImplementation(s.exec.select));
     const r = await sched.reportOwnLeave(ME, { date: "2026-10-21", reason: "ธุระ" }, "coach-ek");
-    expect(r).toEqual({ mode: "advance", cancelled: 0, bookingIds: [], familiesNotified: 0, leave: { date: "2026-10-21", reason: "ธุระ" }, alreadyRecorded: false, bookings: s.listed });
+    // 🔻 TASK-608 — `teacherNotified` is new and ADDITIVE: the act is now reached by an admin too, and a teacher is told only when
+    // someone else blocks their day. 🔑 On THIS door it is always 0 — a teacher needs no notice of their own act — which is the half
+    // this assertion holds.
+    expect(r).toEqual({ mode: "advance", cancelled: 0, bookingIds: [], familiesNotified: 0, leave: { date: "2026-10-21", reason: "ธุระ" }, alreadyRecorded: false, bookings: s.listed, teacherNotified: 0 });
     expect(s.rows).toEqual([{ id: "l-1", teacherId: ME, date: "2026-10-21", reason: "ธุระ", createdBy: "coach-ek" }]);
     expect(sent).toEqual([]);
   });
@@ -150,7 +153,7 @@ describe("🔴 THE GATE, LIVE — the row this act writes is the row THE reader 
     spies.push(spyOn(db, "delete").mockImplementation(s.exec.delete));
     for (const m of ["update", "insert", "transaction"] as const) spies.push(spyOn(db as any, m).mockImplementation(trip(`the lift called db.${m}`) as any));
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation(trip("the lift read bookings") as any));
-    expect(await sched.liftOwnLeave(ME, "2026-10-08")).toEqual({ lifted: "2026-10-08" });
+    expect(await sched.liftOwnLeave(ME, "2026-10-08")).toEqual({ lifted: "2026-10-08", teacherNotified: 0 }); // 🔻 TASK-608 — additive; 0 on the teacher's OWN door
     expect(s.rows.map((r) => r.teacherId)).toEqual(["someone-else"]); // only MY row
     const e: any = await sched.liftOwnLeave(ME, "2026-10-08").catch((x) => x);
     expect([e.status, e.message]).toEqual([404, "ไม่พบวันลาล่วงหน้านี้"]); // 📋 DRAFT

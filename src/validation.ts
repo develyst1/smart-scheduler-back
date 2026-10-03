@@ -673,6 +673,7 @@ export const groupSeriesPatch = z
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
 export const leaveDateParam = z.object({ date: DATE }); // TASK-582 — lifting ONE advance-leave day
+export const teacherLeaveDayParam = z.object({ teacherId: ID, date: DATE }); // TASK-608 — an admin lifting ONE teacher's day
 // TASK-587 (a) — the admin's window over recorded leave days: both optional (from = today, to = from + 60); at most 92 days, in order.
 export const leaveDaysQuery = z
   .object({ from: DATE.optional(), to: DATE.optional() })
@@ -683,6 +684,8 @@ export const teacherLeave = z.object({
   sessionIds: z.array(ID).min(1).max(50).optional(),
   reason: z.string().trim().min(3).max(200),
 });
+// TASK-608 — the ADMIN's door: the same body as the teacher's own, plus WHOSE day it is (the actor is the signed-in admin, never a field).
+export const adminTeacherLeave = teacherLeave.extend({ teacherId: ID });
 export const resetPassword = z.object({ password: z.string() });
 // TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.
 export const setUserMenus = z.object({ keys: z.array(z.string()) });

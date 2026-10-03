@@ -85,14 +85,15 @@ describe("🔴 (a) THE ADMIN'S LIST — recorded days in a window, each with its
 describe("⚖️ (b) the notice — the premise checked, and what is pinned", () => {
   const S = code("src/services/scheduler.service.ts");
   test("🔑 FINDING, by source: the OLD act (today / past) told the FAMILIES and the OTHER COACHES — and NO admin (so no admin signal was lost)", () => {
-    const L = fnBody(S, "export async function reportOwnLeave(");
+    // 🔻 TASK-608 — ANCHORED ON THE ACT (`reportTeacherLeave`): `reportOwnLeave` is now a one-line delegation, and an anchor on it silently stopped this pin.
+    const L = fnBody(S, "export async function reportTeacherLeave(");
     expect(L).toContain("await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: \"TEACHER_LEAVE\", note: input.reason }, me);");
     expect(L).toContain("familiesNotified += await sendClassCancelledToFamilies(tx, b as any, \"TEACHER_LEAVE\", replanned?.appended ?? []);");
     expect(L).not.toMatch(/notifyAdmins|recipientType: "admin"/);
     for (const f of [fnBody(S, "async function sendClassCancelledToOtherTeachers("), fnBody(S, "async function sendClassCancelledToFamilies(")]) expect(f).not.toMatch(/notifyAdmins|"admin"/);
   });
   test("🚫 the ADVANCE act tells NOBODY: no family (a class still going ahead must not read as 'teacher away'), no coach, no admin (not ruled)", () => {
-    const L = fnBody(S, "export async function reportOwnLeave(");
+    const L = fnBody(S, "export async function reportTeacherLeave(");
     const ADV = L.slice(L.indexOf("if (isAdvanceLeave(input.date)) {"), L.indexOf("const mine = await db.query.bookings.findMany({"));
     expect(ADV).toContain("recordAdvanceLeave(db, me,");
     expect(ADV).not.toMatch(/enqueueLine|notifyAdmins|sendClassCancelled|sendLeaveNotice/);

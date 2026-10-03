@@ -22,6 +22,7 @@ export const FREE_FORM_PARAMS: Readonly<Record<string, readonly string[]>> = {
   "/api/settings/:key": ["key"], // a settings key, e.g. `checkin_early_minutes` — the registry validates it
   "/api/camp/weeks/:id/days/:date": ["date"], // a YYYY-MM-DD business date — the camp service validates it
   "/api/teachers/me/leave/:date": ["date"], // 🔻 TASK-582 — the advance-leave day being lifted; its route validates YYYY-MM-DD (`v.leaveDateParam`)
+  "/api/teacher-leave-days/:teacherId/:date": ["date"], // 🔻 TASK-608 — the ADMIN's lift: the business date (`:teacherId` stays a uuid; `v.teacherLeaveDayParam`)
   "/api/calendar/:file": ["file"], // `<token>.ics` — mounted before this guard, declared so this map is the COMPLETE list
   "/api/users/line-admins/:ref": ["ref"], // 🔻 TASK-538 — an opaque 16-hex handle for one LINE admin link (never the LINE id); the service validates its shape
 };

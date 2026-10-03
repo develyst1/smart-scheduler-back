@@ -319,7 +319,12 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(v.teacherLeave.safeParse({ date: "2026-10-05", sessionIds: [B1], reason: "ป่วยกะทันหัน" }).success).toBe(true);
     expect(v.teacherLeave.safeParse({ date: "2026-10-05", sessionIds: [], reason: "ป่วย" }).success).toBe(false);
     expect(v.teacherLeave.safeParse({ date: "05/10/2026", reason: "ป่วย" }).success).toBe(false);
-    const L = region(SCHED, "export async function reportOwnLeave(", "async function sendCourseDroppedToTeachers(");
+    // 🔻 TASK-608 — ANCHORED ON THE ACT (`reportTeacherLeave`), not on `reportOwnLeave`, which is now a one-line delegation.
+    // 🔑 WHY THIS ANCHOR IS STABLE: the act is where the behaviour lives — the cancel path, its notices and its fork. A door can be
+    // added, renamed or reduced to a one-liner without moving it. The old anchor died the moment the teacher's door delegated, and
+    // because `region` THROWS on a missing start, every assertion below it in this file silently stopped running — NO RESULT, not a
+    // pass. ⚠️ These are the pins guarding the SHIPPED teacher door, so a pin that cannot speak here is the worst kind.
+    const L = region(SCHED, "export async function reportTeacherLeave(", "async function sendCourseDroppedToTeachers(");
     expect(L).toContain('a(e(b.date, input.date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES, "ATTENDED"]), ownScopeWhere(me))');
     expect(L).toContain('if (wanted) for (const id of wanted) if (!mine.some((b) => b.id === id)) throw notFound("ไม่พบคาบเรียน");');
     expect(L).toContain('if (delivered) throw conflict("SESSION_DELIVERED", `คาบ ${hhmm(delivered.startTime)} สอนไปแล้ว — แจ้งลาไม่ได้`);');
@@ -333,7 +338,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off
     expect(L).toContain("return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };");
     // the other teachers: minus me, CONFIRMED only
-    const O = region(SCHED, "async function sendClassCancelledToOtherTeachers(", "export async function reportOwnLeave(");
+    const O = region(SCHED, "async function sendClassCancelledToOtherTeachers(", "export async function reportTeacherLeave("); // 🔻 TASK-608 — the ACT, see above
     expect(O).toContain('if (current.status !== "CONFIRMED") return 0;');
     expect(O).toContain("const rows = (await teachersOfBooking(tx, current.id)).filter((t) => t.id !== me);"); // 🔻 TASK-510: THE predicate minus me (was a hand-written union — the same answer, a fourth copy)
     expect(O).toContain('kind: "class_cancelled_teacher"');
@@ -398,7 +403,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     const list = last.match(/"cancel_reason" IN \(([^)]*)\)/)![1]!.split(",").map((x) => x.trim().replace(/^'|'$/g, ""));
     expect(list).toEqual([...END_REASONS]);
     // the leave writes only a member of the set (the third copy is the DB's; the code's two agree with it)
-    const L = region(SCHED, "export async function reportOwnLeave(", "async function sendCourseDroppedToTeachers(");
+    const L = region(SCHED, "export async function reportTeacherLeave(", "async function sendCourseDroppedToTeachers(");
     const written = [...L.matchAll(/cancelReason: "([A-Z_]+)"/g)].map((m) => m[1]);
     expect(written.length).toBeGreaterThan(0);
     for (const w of written) expect(isEndReason(w)).toBe(true);

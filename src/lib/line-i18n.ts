@@ -767,6 +767,19 @@ const TABLE: Record<string, Entry> = {
   cp_half_full: { TH: "เต็มวัน", EN: "Full day" },
   cp_half_am: { TH: "ช่วงเช้า", EN: "Morning (AM)" },
   cp_half_pm: { TH: "ช่วงบ่าย", EN: "Afternoon (PM)" },
+  // ⭐ TASK-608 (REQ-111 C) — an ADMIN blocked, or unblocked, a teacher's DAY. 📋 DRAFT (COPY §T-608), both languages.
+  // 🔑 The second line is the one that must be unmissable: **nothing was cancelled**, so the teacher keeps teaching the classes already
+  // on that day until an admin says otherwise. ⚠️ A teacher who believes their classes were cancelled does not turn up.
+  // 🚫 No family and no other coach receives either of these: nothing changed for them (TASK-587's closed defect).
+  ob_teacher_leave_recorded_title: { TH: "🗓️ แอดมินบันทึกวันลาของคุณแล้ว", EN: "🗓️ An admin recorded a leave day for you" },
+  ob_teacher_leave_lifted_title: { TH: "🗓️ แอดมินยกเลิกวันลาของคุณแล้ว", EN: "🗓️ An admin removed your leave day" },
+  ob_tl_blocked: { TH: "วันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class can be booked with you that day." },
+  ob_tl_open_again: { TH: "วันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again that day." },
+  ob_tl_nothing_cancelled: {
+    TH: "คาบที่จองไว้แล้ว {n} คาบยังอยู่ในตารางและยังไม่ได้ยกเลิก — กรุณาถือว่าสอนตามปกติจนกว่าแอดมินจะแจ้ง",
+    EN: "The {n} class(es) already booked that day are unchanged and NOT cancelled — please treat them as going ahead until an admin tells you otherwise.",
+  },
+  ob_tl_by: { TH: "บันทึกโดย", EN: "Recorded by" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };
 

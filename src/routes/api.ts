@@ -27,7 +27,7 @@ import * as undo from "../services/undo.service";
 const assertMayUndo = (c: any) => {
   if (isScoped(c.get("user"))) throw SCOPE_TEACHER();
 };
-import { viewerOf } from "../lib/budget-visibility";
+import { hideLedgerRows, viewerOf } from "../lib/budget-visibility";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
@@ -200,6 +200,22 @@ export const api = new Hono()
   // TASK-587 (a) — the ADMIN's list: recorded leave days and the live classes on each (the owner: "listed for the admin"). The
   // calendar's own read key — it shows the calendar's own rows; a linked teacher is refused (not in TEACHER_ALLOWED).
   .get("/teacher-leave-days", zValidator("query", v.leaveDaysQuery), async (c) => c.json({ items: await svc.listRecordedLeaveDays(c.req.valid("query")) }))
+  // 🔴 TASK-608 (REQ-111 C) — an ADMIN records / lifts a teacher's leave ON THEIR BEHALF. 🔑 The SAME act as the teacher's own door
+  // (`reportTeacherLeave` / `liftTeacherLeave`), so the future-vs-today FORK is asked in ONE place for both.
+  // 🔴 They hang off THIS noun — the admin's own, where TASK-587's admin READ already lives — and NOT off `/teachers/:id/leave`.
+  // ⚠️ THE REASON, because it cost a shipped feature: `/teachers/:id/leave` is a WILDCARD SIBLING of the literal `/teachers/me/leave`,
+  // and the two are resolved by DIFFERENT ENDS of the match list — Hono dispatches to the FIRST match (the literal `me` handler) while
+  // `accessGuard` reads its key from the LAST (`[...matchedRoutes].reverse().find(...)`, the `:id` route). The `:id` route is correctly
+  // absent from `TEACHER_ALLOWED`, so the guard refused a LINKED COACH on the coach's OWN door and the handler was never reached.
+  // 🔑 A noun with no literal sibling cannot be shadowed. 🚫 Re-ordering was rejected: it only moves the break from the guard to the
+  // handler. (Caught by the suite before it shipped; `tsc` cannot see it.)
+  .post("/teacher-leave-days", zValidator("json", v.adminTeacherLeave), async (c) => {
+    const { teacherId, ...input } = c.req.valid("json");
+    return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));
+  })
+  .delete("/teacher-leave-days/:teacherId/:date", zValidator("param", v.teacherLeaveDayParam), async (c) =>
+    c.json(await svc.liftTeacherLeave(c.req.valid("param").teacherId, c.req.valid("param").date, { onBehalf: true })),
+  )
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
     c.json(await svc.getTeachers({ archived: c.req.valid("query").archived }, viewerOf(c))), // TASK-426
   )
@@ -454,7 +470,8 @@ export const api = new Hono()
   )
   // SPEC-035 (TASK-119): read-only "ประวัติการตัดคอร์ส" — a timeline reconstructed from existing bookings + the
   // freelance ledger. No migration; who/intermediate-hops are honest gaps (actor:null, current-status-only).
-  .get("/courses/:id/history", async (c) => c.json(await svc.getCourseHistory(c.req.param("id"))))
+  // TASK-607 — the freelance ledger rows only for `action:teachers.budget-view` (filtered here: the service is not this batch's file).
+  .get("/courses/:id/history", async (c) => c.json(hideLedgerRows(viewerOf(c), await svc.getCourseHistory(c.req.param("id")))))
   .get("/entitlements/:id/plan", async (c) =>
     c.json(await svc.getEntitlementPlan(c.req.param("id"))),
   )

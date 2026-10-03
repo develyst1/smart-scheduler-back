@@ -233,10 +233,16 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     expect(SVC).toContain(".set({ expiryDate: expiryAfterAppends })");
   });
 
-  test("🔑 a course with NO quota left is STILL REFUSED — the gate that remains", () => {
+  test("🔑 a STARTED course with NO quota left is STILL REFUSED — the gate that remains", () => {
     // ⚠️ Without this, *"no ceiling"* becomes *"no limit"*. The quota is now the only gate, and both of its
     // doors still hold: the per-session leave and the plan editor's `mark-absence`.
-    expect(SVC).toContain("if (canTakeLeave(current.course)) {");
+    // 🔴 TASK-609 (REQ-111 F) — DECLARED, because it narrows this claim: on a course that has **NOT STARTED**, the gate is no longer
+    // `leaveRemaining` but the DECLARED-DAY CAP (`preStartDeclaration`, capped at the quota the customer bought). That is the owner's
+    // ruling — a pre-start absence is FREE, so a pool it never spends cannot be what refuses it.
+    // 🔑 The claim this test exists for is UNCHANGED for every STARTED course, and that is asserted here by value:
+    expect(SVC).toContain("if (canTakeLeave(current.course) || declaredFree) {");
+    expect(SVC).toContain("const pre = await preStartDeclaration(tx, current);"); // …and the bypass is reachable ONLY through it
+    expect(SVC).toContain('throw conflict("DECLARED_ABSENCE_CAP"'); // …which has a gate of its own, with the count
     expect(SVC).toContain("toCourseSummary(course).leaveLocked");
     expect(SVC).toContain('conflict("LEAVE_LOCKED"');
   });

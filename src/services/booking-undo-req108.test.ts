@@ -307,8 +307,12 @@ describe("🔑 by source — the leave doors RECORD the charge; every counter mo
   test("Door 1 · Door 2 · TASK-258 · the creation flip each write `leaveCharged`, and both increments are `sql` (no read-modify-write)", () => {
     // 🔻 TASK-540 — the note half moved into `leaveNoteWrite` (same `reason ?? note`, plus the record of what it replaced); the charge is unchanged
     expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), leaveCharged: !b.plannedAtCreation })');
-    expect(S).toContain("const charges = !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
-    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges })');
+    // 🔻 TASK-609 — one term added: a PRE-START DECLARATION is free, so it must not record a charge. The claim is unchanged — the
+    // door still RECORDS whether this leave took quota — and `declaredFree` is the only new way for the answer to be `false`.
+    expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
+    // 🔻 TASK-609 — and the row is BORN in the at-creation free shape when it is a declaration, so every existing reader of "free"
+    // (`leaveChargeOf`, the undo, the start-date planner) sees it with no second flag to keep in step.
+    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })');
     // 🔻 TASK-497 — TASK-258's door no longer writes SICK_LEAVE (owner: CONFIRMED); it writes no `leaveCharged` because it writes no leave.
     expect(S).toContain("await revertAttendance(tx, current, { note: reason ?? current.note });");
     expect(S).not.toContain('.set({ status: "SICK_LEAVE", note: reason ?? current.note, leaveCharged: false })');
@@ -550,7 +554,8 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     const S = src("src/services/scheduler.service.ts");
     const LEAVE = S.slice(S.indexOf("export async function sendLeaveNotice("), S.indexOf("const confirmedOnly ="));
     const CANCEL = S.slice(S.indexOf("async function sendClassCancelledToTeacher("), S.indexOf("export async function sendClassCancelledToFamilies("));
-    const OTHERS = S.slice(S.indexOf("async function sendClassCancelledToOtherTeachers("), S.indexOf("export async function reportOwnLeave("));
+    // 🔻 TASK-608 — ANCHORED ON THE ACT (`reportTeacherLeave`): `reportOwnLeave` is now a one-line delegation, and an anchor on it silently stopped this pin.
+    const OTHERS = S.slice(S.indexOf("async function sendClassCancelledToOtherTeachers("), S.indexOf("export async function reportTeacherLeave("));
     for (const R of [LEAVE, CANCEL, OTHERS]) {
       expect(R).toContain("await teachersOfBooking(tx, ");
       expect(R).not.toMatch(/tx\.query\.teachers\.find(First|Many)/);

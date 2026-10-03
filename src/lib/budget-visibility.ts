@@ -32,3 +32,11 @@ export const viewerOf = (c: { get: (k: "user") => any }): Viewer => {
   const u = c.get("user");
   return u ? { isSuperAdmin: !!u.isSuperAdmin, grants: u.grants ?? new Set(), teacherId: u.teacherId ?? null } : null;
 };
+
+// TASK-607 (REQ-111 H, owner ruling §6.6) — the course history's "Freelance budget drawn / refunded" rows ARE the
+// coach's hour-ceiling ledger ⇒ the same rule as the figures above: dropped for a viewer without the key. Every other
+// event keeps its order; `summary` is built from the course + bookings, never the ledger, so it is untouched.
+const LEDGER_KINDS: ReadonlySet<string> = new Set(["freelance-drawn", "freelance-refunded"]);
+export function hideLedgerRows<T extends { events: Array<{ kind: string }> }>(viewer: Viewer, history: T): T {
+  return canSeeBudget(viewer) ? history : { ...history, events: history.events.filter((e) => !LEDGER_KINDS.has(e.kind)) };
+}

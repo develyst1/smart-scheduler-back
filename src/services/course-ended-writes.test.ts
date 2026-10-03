@@ -149,6 +149,13 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // rows are all CANCELLED, so none is ever selected. Classified deliberately, not by default.
   "POST /teachers/me/leave": "unrelated",
   "DELETE /teachers/me/leave/:date": "unrelated", // TASK-582 — lifts a leave-day row only; no booking is touched
+  // 🔻 TASK-608 — the ADMIN's half of the SAME act (`reportTeacherLeave` / `liftTeacherLeave`): only the CALLER is new.
+  // 🔑 @Sober's argument, and it is the decisive one: **the act did not change, so there is nothing new to rule on** — these two
+  // inherit the classification of the `me` pair above, for the reason written there (the cancel path selects LIVE rows, and an ended
+  // course has none). ⇒ a future day only stops NEW bookings, which an ended course cannot gain either.
+  // ⚠️ If the ACT ever starts touching a course's rows, BOTH pairs change together — that is the point of saying "the same act".
+  "POST /teacher-leave-days": "unrelated",
+  "DELETE /teacher-leave-days/:teacherId/:date": "unrelated",
   // TASK-411 (REQ-098) — archive/restore a PARENT: refused while any live future session exists, else it writes
   // parents + students only (no booking, course or voucher row moves). Classified deliberately, not by default.
   "POST /parents/:id/archive": "unrelated",

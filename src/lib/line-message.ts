@@ -730,6 +730,22 @@ function buildOutboxMessage(
         (k === "added" ? t("os_added_footer", lang) : "")
       );
     }
+    // ⭐ TASK-608 (REQ-111 C) — an admin blocked / unblocked a teacher's DAY. Everything is on the PAYLOAD: there is no booking row to
+    // load a `ctx` from (the fact is a DAY), the same shape `camp_deduction` uses.
+    // 🔑 On the RECORD, the "nothing was cancelled" line rides whenever classes are on the day — a teacher who reads only the title
+    // must not conclude their classes are off.
+    case "teacher_leave_recorded":
+    case "teacher_leave_lifted": {
+      const recorded = payload.kind === "teacher_leave_recorded";
+      const n = Number(payload.classes ?? 0);
+      return (
+        t(recorded ? "ob_teacher_leave_recorded_title" : "ob_teacher_leave_lifted_title", lang) + "\n" +
+        line(t("ob_f_date", lang), payload.date ? ddmmyyyy(String(payload.date)) : undefined) +
+        `${t(recorded ? "ob_tl_blocked" : "ob_tl_open_again", lang)}\n` +
+        (recorded && n > 0 ? `${t("ob_tl_nothing_cancelled", lang, { n })}\n` : "") +
+        line(t("ob_tl_by", lang), payload.actor ? String(payload.actor) : undefined)
+      );
+    }
     case "teacher_assigned":
     case "teacher_unassigned": {
       // 🔴 TASK-344 — **LIVE, and neither @Sober's candidate list nor my first sweep found it.** Both kinds

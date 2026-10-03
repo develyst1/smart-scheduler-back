@@ -95,7 +95,7 @@ describe("🔴 the census — the API has FOUR param names, and a fifth must not
     // moves: every route with a free-form param is LISTED, and every other param in the table is a uuid.
     const freeRoutes = Object.keys(ROUTE_ACCESS).filter((k) => /:(key|date)\b/.test(k)).map((k) => `/api${k.slice(k.indexOf(" ") + 1)}`);
     const declared = freeRoutes.filter((p) => FREE_FORM_PARAMS[p]);
-    expect(declared.sort()).toEqual(["/api/camp/weeks/:id/days/:date", "/api/settings/:key", "/api/settings/:key", "/api/teachers/me/leave/:date"].sort()); // 🔻 TASK-582: + lifting an advance-leave day
+    expect(declared.sort()).toEqual(["/api/camp/weeks/:id/days/:date", "/api/settings/:key", "/api/settings/:key", "/api/teacher-leave-days/:teacherId/:date", "/api/teachers/me/leave/:date"].sort()); // 🔻 TASK-582: + lifting an advance-leave day
     // …and the SERIES `:key` routes are NOT declared — so the guard checks them (that is DEF-2, fixed)
     expect(freeRoutes.filter((p) => /series\/:key/.test(p) && FREE_FORM_PARAMS[p])).toEqual([]);
     // a fifth shape (`:code`, `:slug`, `:token`…) is neither guarded nor listed ⇒ this assertion fails the suite,

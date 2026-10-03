@@ -7,7 +7,7 @@ import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TR
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
 import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
-import { isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570
+import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
@@ -3333,7 +3333,21 @@ async function sendClassCancelledToOtherTeachers(
  * family on a GROUP row too); the OTHER teachers on the row — the coach notice; never me. Both CONFIRMED-only, as the
  * admin's cancel is (a PENDING session was never announced).
  */
-export async function reportOwnLeave(me: string, input: { date: string; sessionIds?: string[]; reason: string }, actor: string | null) {
+/**
+ * 🔴 TASK-608 (REQ-111 C) — THE LEAVE ACT, for ONE teacher, reached by TWO doors: the teacher's own
+ * (`POST /teachers/me/leave`) and an admin's on their behalf (`POST /teachers/:id/leave`).
+ * 🔑 **It is a second CALLER, not a second act** — above all the FORK below (`isAdvanceLeave`) is asked here, once, so the two doors
+ * cannot drift apart. 🚫 A second comparison anywhere else is the defect this shape exists to prevent.
+ * `onBehalf` says only WHO acted, never WHAT happens: it decides whether the teacher is TOLD (they need no notice of their own act),
+ * and nothing else. 🚫 It must never reach the fork.
+ */
+export async function reportTeacherLeave(
+  teacherId: string,
+  input: { date: string; sessionIds?: string[]; reason: string },
+  actor: string | null,
+  opts: { onBehalf: boolean },
+) {
+  const me = teacherId;
   // 🔴 TASK-582 — THE FORK (the owner: for FUTURE dates the new act REPLACES the auto-cancel). A date strictly after today ⇒ the
   // advance-leave act: the WHOLE day blocked for new bookings, its live classes LISTED, 🚫 nothing cancelled, nobody notified.
   // Today or the past ⇒ everything below, unchanged. `sessionIds` picks classes to CANCEL, so it has no meaning for a whole-day
@@ -3341,7 +3355,12 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
   if (isAdvanceLeave(input.date)) {
     if (input.sessionIds) throw badRequest("ลาล่วงหน้าเป็นการปิดทั้งวัน — ไม่ต้องเลือกคาบ คาบที่มีอยู่แล้วจะแสดงให้แอดมินจัดการ"); // 📋 DRAFT
     const r = await recordAdvanceLeave(db, me, { date: input.date, reason: input.reason }, actor);
-    return { mode: "advance" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0, leave: r.leave, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings };
+    // ⭐ TASK-608 — a day blocked ON SOMEONE'S BEHALF is a change to THEIR week: the teacher is told, and must not learn it from an
+    // empty calendar. 🚫 Only on behalf — a teacher needs no notice of their own act. 🚫 And NEVER the families: nothing was
+    // cancelled, and "teacher X is away" about a class still going ahead is the defect closed in TASK-587.
+    // 📌 Not re-sent when the day was already recorded: the same act twice is not two changes to their week.
+    const notified = opts.onBehalf && !r.alreadyRecorded ? await notifyTeacherOfLeaveDay(me, { kind: "teacher_leave_recorded", date: input.date, classes: r.bookings.length, actor }) : 0;
+    return { mode: "advance" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0, leave: r.leave, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings, teacherNotified: notified };
   }
   const mine = await db.query.bookings.findMany({
     where: (b, { and: a, eq: e, isNull: nul, inArray: inA }) => a(e(b.date, input.date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES, "ATTENDED"]), ownScopeWhere(me)),
@@ -3369,9 +3388,61 @@ export async function reportOwnLeave(me: string, input: { date: string; sessionI
 }
 
 /** TASK-582 — a linked teacher's OWN recorded advance-leave days from today on (what can still be lifted). A read. */
+/**
+ * ⭐ TASK-608 — the ONE notice this act sends: to the TEACHER whose day it is, carrying the day, how many classes are on it and that
+ * an admin recorded it. 🚫 Nobody else — no family (nothing is cancelled), no other coach (their classes are untouched).
+ * An unlinked teacher yields a SKIPPED outbox row (TASK-152's loud absence), so a mis-set account is visible rather than silent.
+ */
+async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; classes?: number; actor: string | null }): Promise<number> {
+  const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });
+  await enqueueLine({ recipientType: "teacher", recipientLineUserId: teacher?.lineUserId ?? null, payload });
+  return 1;
+}
+
+/**
+ * 🔴 TASK-609 (REQ-111 F) — may THIS leave be a FREE pre-start declaration, and how many are already declared?
+ * `null` ⇒ it is an ordinary leave (no course, or the course has started). Otherwise the counts, for the cap.
+ *
+ * 🔑 Both halves are REUSED, not rewritten:
+ *   · **has it started** — `courseNotStarted` (TASK-570's predicate: nothing delivered, nothing imported as taught, every live row
+ *     today or later). 🚫 No second "has it started" rule exists, and this one is asked from here.
+ *   · **the quota the customer bought** — `courseLeaveQuota(course)` = the course's OWN `leave_quota`, else the by-size table.
+ *     🚫 Never a constant: a course that bought a different quota is capped at the number IT bought.
+ * ⚖️ **Same NUMBER, separate COUNTER — answered from the code, not from the words:** `leaveUsed` is incremented in exactly two
+ * places, and both are guarded by `charges`, which excludes a declared day. So a declaration CANNOT spend the post-start pool
+ * without changing those writes. The cap therefore counts DECLARED DAYS against the quota's number, and a started course still
+ * has its full `leaveRemaining`. 📌 The alternative reading (one shared pool) would make the day merely deferred, not free.
+ */
+async function preStartDeclaration(
+  tx: any,
+  current: { courseId?: string | null; course?: any; id: string },
+): Promise<{ declared: number; quota: number } | null> {
+  if (!current.courseId || !current.course) return null;
+  const rows = await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) });
+  if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;
+  // the row being declared now is not yet SICK_LEAVE, so it is not double-counted
+  const declared = (rows as any[]).filter((r) => r.id !== current.id && r.status === "SICK_LEAVE" && r.plannedAtCreation).length;
+  return { declared, quota: courseLeaveQuota(current.course) };
+}
+
+/** TASK-582 — a linked teacher reports their OWN leave: the act above, with no notice to themselves. */
+export const reportOwnLeave = (me: string, input: { date: string; sessionIds?: string[]; reason: string }, actor: string | null) =>
+  reportTeacherLeave(me, input, actor, { onBehalf: false });
+
+/**
+ * 🔴 TASK-608 — THE LIFT, for ONE teacher, reached by the same two doors. ⚖️ It NOTIFIES on behalf, and the choice is deliberate:
+ * 🔑 *a notice with no counterpart leaves a teacher believing a day is still blocked* — they were told it was blocked, so they are
+ * told when it is not. 🚫 Still nothing restored, nothing cancelled, and no family told.
+ */
+export async function liftTeacherLeave(teacherId: string, date: string, opts: { onBehalf: boolean }) {
+  const r = await liftAdvanceLeave(db, teacherId, date);
+  const notified = opts.onBehalf ? await notifyTeacherOfLeaveDay(teacherId, { kind: "teacher_leave_lifted", date, actor: null }) : 0;
+  return { ...r, teacherNotified: notified };
+}
+
 export const ownLeaveDays = (me: string) => ownAdvanceLeaves(db, me);
 /** TASK-582 — lift one of MY recorded days: deletes that leave row only; 🚫 restores nothing, cancels nothing. */
-export const liftOwnLeave = (me: string, date: string) => liftAdvanceLeave(db, me, date);
+export const liftOwnLeave = (me: string, date: string) => liftTeacherLeave(me, date, { onBehalf: false });
 /** TASK-587 (a) — the admin's list of recorded leave days (from today by default, 60 days on), each with its live classes. A read. */
 export const listRecordedLeaveDays = (q: { from?: string; to?: string }) => {
   const from = q.from ?? bangkokNow().date;
@@ -3929,17 +4000,29 @@ export async function updateBookingStatus(
         }
       }
 
+      // 🔴 TASK-609 (REQ-111 F) — a course that has NOT STARTED takes a planned absence FREE, capped at the quota the customer
+      // bought. 🔑 This JOINS two things that already existed and writes no third rule: `courseNotStarted` (TASK-570's derived
+      // predicate) and the at-creation free-absence shape (`plannedAtCreation` + `leaveCharged: false`, the make-up still appended).
+      const pre = await preStartDeclaration(tx, current);
+      if (pre && pre.declared >= pre.quota) {
+        throw conflict("DECLARED_ABSENCE_CAP", `คอร์สนี้ประกาศวันหยุดล่วงหน้าครบแล้ว ${pre.declared}/${pre.quota} วัน — เริ่มเรียนก่อน แล้วจึงแจ้งลาตามปกติ หรือปลดล็อกโดยแอดมิน`); // 📋 DRAFT
+      }
+      const declaredFree = !!pre; // within the cap: this is a DECLARED day, not a leave
       // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave takes quota, decided by the SAME conditions as the increment
       // below: a course leave within quota that was not declared at creation. An over-quota leave (status set, `locked`) and a
       // voucher / single leave take none — and before 0058 nothing on the row said so.
-      const charges = !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);
+      const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);
       await tx
         .update(bookings)
-        .set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges }) // 🔻 TASK-540 — the note the leave replaced, recorded
+        // 🔻 TASK-609 — a pre-start declaration is born in the SAME shape as an at-creation one, so every reader that already knows
+        // "free" (`leaveChargeOf`, the undo, the start-date planner) knows it too, with no second flag to keep in step.
+        .set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) }) // 🔻 TASK-540 — the note the leave replaced, recorded
         .where(eq(bookings.id, id));
 
       if (current.courseId && current.course) {
-        if (canTakeLeave(current.course)) {
+        // 🔻 TASK-609 — a DECLARED day gets its make-up like any absence, and is never "locked": its cap is the declared count
+        // above, not `leaveRemaining`. 🔑 That is what makes it FREE rather than merely deferred.
+        if (canTakeLeave(current.course) || declaredFree) {
           // TASK-148 (REQ-045 B): a row born `plannedAtCreation` is a free absence — taking leave on it again
           // must not start charging quota. A normal sick leave (the overwhelming case) is unaffected.
           // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write (a concurrent leave used to lose a count).

@@ -148,7 +148,8 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
     expect([...M.matchAll(/\.(insert|update|delete)\((\w+)\)/g)].map((m) => `${m[1]}:${m[2]}`)).toEqual(["insert:teacherLeaveDays", "delete:teacherLeaveDays"]);
     expect(M).not.toMatch(/\.update\(|CANCELLED|enqueueLine|notifyAdmins/);
     // 🔻 TASK-582 — `reportOwnLeave` now FORKS (the owner ruled the question); its two sides are pinned in teacher-leave-act-task582
-    expect(fnBody(S, "export async function reportOwnLeave(")).not.toMatch(/TEACHER_ON_LEAVE/);
+    // 🔻 TASK-608 — ANCHORED ON THE ACT (`reportTeacherLeave`): `reportOwnLeave` is now a one-line delegation, and an anchor on it silently stopped this pin.
+    expect(fnBody(S, "export async function reportTeacherLeave(")).not.toMatch(/TEACHER_ON_LEAVE/);
   });
 });
 
