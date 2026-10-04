@@ -396,9 +396,10 @@ export const api = new Hono()
   .delete("/group-series/:key/teachers/:teacherId", zValidator("query", v.otherSeriesFromQuery), async (c) =>
     c.json(await otherSeries.removeTeacherFromOtherSeries({ groupKey: c.req.param("key") }, c.req.param("teacherId"), c.req.valid("query"))),
   )
-  .patch("/group-series/:key/teacher", zValidator("json", v.groupSeriesSwap), async (c) =>
-    c.json(await otherSeries.swapGroupSeriesTeacher({ groupKey: c.req.param("key") }, c.req.valid("json"))),
-  )
+  .patch("/group-series/:key/teacher", zValidator("json", v.groupSeriesSwap), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // 🔻 TASK-634 — a `rateMinor` ⇒ key 59; a swap without one passes
+    return c.json(await otherSeries.swapGroupSeriesTeacher({ groupKey: c.req.param("key") }, c.req.valid("json")));
+  })
   .post("/group-series/:key/dates", zValidator("json", v.otherSeriesDates), async (c) =>
     c.json(await otherSeries.addDatesToOtherSeries({ groupKey: c.req.param("key") }, c.req.valid("json")), 201),
   )
@@ -423,9 +424,10 @@ export const api = new Hono()
   // TASK-453 — CLOSE a group series: no new dates, no new enrolment; every existing row keeps running.
   .post("/group-series/:key/close", async (c) => c.json(await otherSeries.closeGroupSeries({ groupKey: c.req.param("key") })))
   // TASK-397 — swap the group's teacher (this date, or from here on); every seat moves with it in one tx. No notice.
-  .patch("/bookings/:id/group-teacher", zValidator("json", v.groupTeacherSwap), async (c) =>
-    c.json(await svc.swapGroupTeacher(c.req.param("id"), c.req.valid("json"))),
-  )
+  .patch("/bookings/:id/group-teacher", zValidator("json", v.groupTeacherSwap), async (c) => {
+    assertMayEditCoachRate(c.req.valid("json"), viewerOf(c)); // 🔻 TASK-634 — the SAME gate as every other door that takes a rate
+    return c.json(await svc.swapGroupTeacher(c.req.param("id"), c.req.valid("json")));
+  })
   // SPEC-075 / TASK-260 (REQ-076) — pause / resume ONE booking. These shapes are the ratified contract (§8),
   // and they are REQ-071's COURSE pause/resume shapes deliberately, so one verb keeps one convention across
   // the product. The FE half (TASK-261) is already built against exactly these.

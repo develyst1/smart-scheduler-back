@@ -1,19 +1,113 @@
 {
   "task": "TASK-609",
   "proves": "src/lib/pre-start-declared-absence-task609.test.ts",
-  "note": "🔴 TASK-627 — the set TASK-609's verdicts were measured against. ⚠️ F10's anchor was RE-CUT when §3 changed the count: the cap now counts `plannedAtCreation` ALONE (a cancelled declaration still counts), so the old anchor carrying `r.status === \"SICK_LEAVE\" &&` no longer exists. F11 is §3's own mutation — putting the status filter BACK, which is the cap-reset leak.",
+  "note": "🔴 TASK-627 — the set TASK-609's verdicts were measured against. ⚠️ F10's anchor was RE-CUT when §3 changed the count: the cap now counts `plannedAtCreation` ALONE (a cancelled declaration still counts), so the old anchor carrying `r.status === \"SICK_LEAVE\" &&` no longer exists. F11 is §3's own mutation — putting the status filter BACK, which is the cap-reset leak. ⚠️ 2026-10-04, after TASK-635: F9 was RE-ANCHORED on §T-609-CAP's approved sentence. Its claim is unchanged — strip the count out of the refusal and it must bite. 🔻 2026-10-04, TASK-643 (owner abolished the pre-start CAP): F4, F9, F10 and F11 are RETIRED — their subject is gone, and a mutation left in a set to \"survive\" is indistinguishable from one that should have bitten. F3 is INVERTED: it now puts a cap BACK, which must bite. F5 and F6 were RE-ANCHORED, not retired — @Sober predicted they keep their subject and they do; what they lost was the anchor, because the helper now RETURNS the predicate instead of guarding on it.",
   "tests": "src/lib/pre-start-declared-absence-task609.test.ts src/lib/course-start-change-task570.test.ts src/lib/planned-at-creation-dto-task542.test.ts src/lib/advance-leave-on-extended-req089.test.ts src/services/booking-undo-req108.test.ts",
   "mutations": [
- {"id":"F1","what":"a DECLARED day becomes CHARGEABLE (the free shape not written)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })","to":"leaveCharged: charges })"}]}]},
- {"id":"F2","what":"a declared day CHARGES quota (the free term dropped)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"      const charges = !declaredFree && !!(current.courseId","to":"      const charges = !!(current.courseId"}]}]},
- {"id":"F3","what":"the CAP does not apply (any number of free days)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"      if (pre && pre.declared >= pre.quota) {","to":"      if (false) {"}]}]},
- {"id":"F4","what":"the cap counts the WRONG pool — the bought quota ignored, a constant used","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  return { declared, quota: courseLeaveQuota(current.course) };","to":"  return { declared, quota: 2 };"}]}]},
- {"id":"F5","what":"a STARTED course also declares free (the predicate bypassed)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;","to":"  if (false) return null;"}]}]},
- {"id":"F6","what":"a second 'has it started' rule, forked from the shared one","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;","to":"  if (!(rows as any[]).every((r: any) => r.date >= bangkokNow().date)) return null;"}]}]},
- {"id":"F7","what":"a declared day is LOCKED instead of free (its gate back on leaveRemaining)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"        if (canTakeLeave(current.course) || declaredFree) {","to":"        if (canTakeLeave(current.course)) {"}]}]},
- {"id":"F8","what":"the start-date change CONVERTS a declared day into a charged leave","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"await tx.update(bookings).set({ date: m.to, ...reconfirm }).where(eq(bookings.id, m.id));","to":"await tx.update(bookings).set({ date: m.to, ...reconfirm, plannedAtCreation: false, leaveCharged: true }).where(eq(bookings.id, m.id));"}]}]},
- {"id":"F9","what":"the at-cap refusal loses its COUNT (a bare refusal)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"`คอร์สนี้ประกาศวันหยุดล่วงหน้าครบแล้ว ${pre.declared}/${pre.quota} วัน — เริ่มเรียนก่อน แล้วจึงแจ้งลาตามปกติ หรือปลดล็อกโดยแอดมิน`","to":"`ประกาศวันหยุดล่วงหน้าครบแล้ว`"}]}]},
- {"id":"F10","what":"the row being declared is counted against its own cap (off by one)","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;","to":"const declared = (rows as any[]).filter((r) => r.plannedAtCreation).length;"}]}]},
- {"id":"F11","what":"§3's leak restored — only LIVE leaves counted, so cancel-and-re-declare resets the cap without limit","files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;","to":"const declared = (rows as any[]).filter((r) => r.id !== current.id && r.status === \"SICK_LEAVE\" && r.plannedAtCreation).length;"}]}]}
+    {
+      "id": "F1",
+      "what": "a DECLARED day becomes CHARGEABLE (the free shape not written)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })",
+              "to": "leaveCharged: charges })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "what": "a declared day CHARGES quota (the free term dropped)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      const charges = !declaredFree && !!(current.courseId",
+              "to": "      const charges = !!(current.courseId"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "what": "🔻 INVERTED by TASK-643 — a CAP is quietly REINTRODUCED on the pre-start path (the owner abolished it; putting one back is now the defect)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave",
+              "to": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave\n      if (declaredFree && current.course && (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) })).filter((r: any) => r.id !== current.id && r.plannedAtCreation).length >= courseLeaveQuota(current.course)) throw conflict(\"DECLARED_ABSENCE_CAP\", \"ครบแล้ว\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F5",
+      "what": "a STARTED course also declares free (the predicate bypassed)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return courseNotStarted(current.course, rows as any, bangkokNow().date);",
+              "to": "  return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F6",
+      "what": "a second 'has it started' rule, forked from the shared one",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return courseNotStarted(current.course, rows as any, bangkokNow().date);",
+              "to": "  return (rows as any[]).every((r: any) => r.date >= bangkokNow().date);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F7",
+      "what": "a declared day is LOCKED instead of free (its gate back on leaveRemaining)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        if (canTakeLeave(current.course) || declaredFree) {",
+              "to": "        if (canTakeLeave(current.course)) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F8",
+      "what": "the start-date change CONVERTS a declared day into a charged leave",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await tx.update(bookings).set({ date: m.to, ...reconfirm }).where(eq(bookings.id, m.id));",
+              "to": "await tx.update(bookings).set({ date: m.to, ...reconfirm, plannedAtCreation: false, leaveCharged: true }).where(eq(bookings.id, m.id));"
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

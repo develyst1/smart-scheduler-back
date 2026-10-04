@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { courseLeaveQuota } from "./leave";
+import { courseBornCeiling } from "./course-plan"; // TASK-643 §3b — the expiry is what bounds a pre-start course now
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange, type StartChangeRow } from "./course-start-change";
 
 const root = resolve(import.meta.dir, "..", "..");
@@ -22,17 +23,22 @@ const R = (id: string, date: string, status = "PENDING", extra: Partial<StartCha
 
 describe("🔑 TASK-609 — the two halves are REUSED, not re-written", () => {
   test("the leave door asks TASK-570's predicate — there is no second 'has it started' rule in the service", () => {
-    expect(S).toContain("if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;");
+    // 🔻 TASK-643 — the helper no longer guards-and-counts; it RETURNS the predicate. The claim is unchanged: one rule, asked here.
+    expect(S).toContain("return courseNotStarted(current.course, rows as any, bangkokNow().date);");
     // 🚫 one definition: the service never derives "started" for itself
     expect(S).not.toMatch(/priorSessions.*>.*0|every\(\(r\) => .*date >= today\)/);
     expect((S.match(/courseNotStarted\(/g) ?? []).length).toBe(1);
   });
-  test("🔑 the CAP comes from the COURSE, never a constant: its own `leave_quota` wins, else the by-size table", () => {
-    expect(S).toContain("return { declared, quota: courseLeaveQuota(current.course) };");
-    // by value — the same course SIZE, two different quotas, because one course bought a different number
-    expect(courseLeaveQuota({ size: 4 })).toBe(courseLeaveQuota({ size: 4, leaveQuota: null }));
+  test("🔻 TASK-643 — the CAP is GONE, so the helper reads NO quota: pinned as an ABSENCE, not merely unasserted", () => {
+    // ⚠️ RETIRED with its subject. This asserted that the cap came from the course's own `leave_quota` and never from a constant.
+    // The owner abolished the cap (TASK-636 §1): pre-start declared absences are not limited. 🔑 What replaces the claim is the
+    // ABSENCE — a cap quietly reintroduced is now the defect, so the helper must read no quota and return no count.
+    expect(S).not.toMatch(/courseLeaveQuota\(current\.course\)/);
+    expect(S).not.toContain("const declared = (rows as any[])");
+    expect(S).toContain("): Promise<boolean> {"); // it answers ONE question now
+    // 🔑 and `courseLeaveQuota` itself is UNTOUCHED — the counter stays, because the expiry is derived from it
     expect(courseLeaveQuota({ size: 4, leaveQuota: 7 })).toBe(7);
-    expect(courseLeaveQuota({ size: 4, leaveQuota: 0 })).toBe(0); // bought none ⇒ declares none
+    expect(courseLeaveQuota({ size: 4, leaveQuota: 0 })).toBe(0);
   });
   test("the boundary itself is TASK-570's, unchanged — a session TODAY still counts as not started; anything delivered does not", () => {
     expect(courseNotStarted(C, [R("b1", TODAY), R("b2", "2026-10-08")], TODAY)).toBe(true);
@@ -42,23 +48,25 @@ describe("🔑 TASK-609 — the two halves are REUSED, not re-written", () => {
 });
 
 describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act on", () => {
-  const LEAVE = region(S, "const pre = await preStartDeclaration(tx, current);", "for (const sid of duoStudentIds(current))");
+  const LEAVE = region(S, "const declaredFree = await preStartDeclaration(tx, current);", "for (const sid of duoStudentIds(current))");
   test("a pre-start absence is born in the AT-CREATION shape: `plannedAtCreation` + no charge", () => {
-    expect(LEAVE).toContain("const declaredFree = !!pre;");
+    expect(LEAVE).toContain("const declaredFree = await preStartDeclaration(tx, current);"); // 🔻 TASK-643 — the helper's answer IS the flag now
     expect(LEAVE).toContain("leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {})");
     expect(LEAVE).toContain("const charges = !declaredFree && !!(");
   });
-  test("…and it still gets its MAKE-UP, and is never 'locked' — its gate is the declared cap, not `leaveRemaining`", () => {
+  test("…and it still gets its MAKE-UP, and is never 'locked' — 🔻 TASK-643: now with NO gate at all above it", () => {
     expect(LEAVE).toContain("if (canTakeLeave(current.course) || declaredFree) {");
     const gate = region(LEAVE, "if (canTakeLeave(current.course) || declaredFree) {", "locked = true;");
     expect(gate).toContain('status: "EXTENDED"'); // the make-up is appended inside the same branch
   });
-  test("🔑 AT THE CAP the act is refused with the COUNT, before anything is written", () => {
-    expect(LEAVE).toContain("if (pre && pre.declared >= pre.quota) {");
-    expect(LEAVE).toContain('throw conflict("DECLARED_ABSENCE_CAP"');
-    expect(LEAVE).toContain("${pre.declared}/${pre.quota}"); // the numbers an admin needs, in the sentence
-    // …and it is thrown BEFORE the row write
-    expect(LEAVE.indexOf('conflict("DECLARED_ABSENCE_CAP"')).toBeLessThan(LEAVE.indexOf('.set({ status: "SICK_LEAVE"'));
+  test("🔻 TASK-643 — INVERTED: there is NO cap, and a reintroduced one is now the defect", () => {
+    // ⚠️ This asserted the at-cap refusal, with its count, thrown before any write. The owner abolished the rule, so the claim is
+    // turned around: 🔑 **the customer disowned a cap, which makes a cap quietly put back the thing worth pinning.**
+    expect(S).not.toContain("DECLARED_ABSENCE_CAP");
+    expect(LEAVE).not.toMatch(/declared\s*>=|>= *(pre\.)?quota|LEAVE_CAP/);
+    // …and nothing is thrown between the predicate and the row write — the next thing that happens to a declared day is the WRITE
+    const upTo = LEAVE.slice(0, LEAVE.indexOf('.set({ status: "SICK_LEAVE"'));
+    expect(upTo).not.toMatch(/throw /);
   });
   test("⚖️ SAME NUMBER, SEPARATE COUNTER — answered from the code: `leaveUsed` moves only where a charge is recorded", () => {
     // every increment of the bought pool is guarded by `charges`, and `charges` excludes a declared day ⇒ a declaration
@@ -69,16 +77,19 @@ describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act 
       const before = S.slice(Math.max(0, m.index! - 400), m.index!);
       expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
     }
-    expect(S).toContain("const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;");
+    // 🔻 TASK-643 — the cap's own counting line is gone with the cap. 🔑 The claim this test exists for is UNCHANGED and is why
+    // removing the cap did not touch the counter: a declared day was never paid out of `leaveUsed` in the first place.
+    expect(S).not.toContain("const declared = (rows as any[])");
   });
 });
 
-describe("⚖️ TASK-609 §3 — the cap counts DECLARATIONS MADE, so it cannot be reset (@Sober's leak, ruled)", () => {
-  test("by source: the count is by `plannedAtCreation` ALONE — a declared day that is later CANCELLED still counts", () => {
-    // 🔑 Counting only live `SICK_LEAVE` rows would let cancel-and-re-declare reset the cap without limit, and **a limit any later
-    // edit can reset is decorative** — the owner's own objection to a quota that does not hold.
-    expect(S).toContain("const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;");
-    expect(S).not.toMatch(/r.status === "SICK_LEAVE" && r.plannedAtCreation/); // the status filter is GONE from the cap
+describe("⚖️ TASK-609 §3 — 🔻 RETIRED by TASK-643: the leak it ruled on cannot exist without a cap", () => {
+  test("the cap-reset leak has no subject any more — there is nothing to reset", () => {
+    // ⚠️ §3 ruled that the cap counts DECLARATIONS MADE rather than declarations standing, so cancel-and-re-declare could not
+    // reset it. 🔑 With the cap abolished the leak is not fixed, it is UNREACHABLE — and the distinction matters, because the
+    // reasoning would be needed again the day anyone reinstates a limit. 📌 Kept as a record, asserted as an absence.
+    expect(S).not.toContain("const declared = (rows as any[])");
+    expect(S).not.toContain("DECLARED_ABSENCE_CAP");
   });
   test("⚠️ and the COST is pinned, not left to be discovered: neither a cancel nor the Undo clears the flag", () => {
     // ⇒ a declaration taken back still consumes one of the cap. 🚫 Deliberately NOT fixed by clearing `plannedAtCreation` on the
@@ -132,5 +143,38 @@ describe("🔴 TASK-609 — NO CONVERSION, both ways, and ACROSS A START-DATE CH
   });
   test("…and the planner still READS a declared day (it stretches the expiry), which is why its absence above is a claim and not an oversight", () => {
     expect(code("src/lib/course-start-change.ts")).toContain('const declared = plan.filter((r) => r.status === "SICK_LEAVE" && r.plannedAtCreation).length;');
+  });
+});
+
+// ── 🔻 TASK-643 §3b — what BOUNDS a pre-start course once the cap is gone ───────────────────────────────────────────
+// @Sober: *removing a limit is the moment an unbounded loop shows itself; I want the NUMBER, not the reasoning.*
+// ✅ And the answer is the customer's own model, not a defect: the EXPIRY is the control, and it stretches one week per
+// declared absence (`courseBornCeiling` — the Kavya rule, 8 + 3 = 11), without limit, by design.
+describe("⚖️ TASK-643 §3b — with NO cap, the expiry is what bounds a pre-start course, BY VALUE", () => {
+  const WEEK = 7 * 24 * 3600 * 1000;
+  const weeksBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / WEEK);
+  const BASE = "2026-11-30"; // a size-4 course's base ceiling (start + size + quota weeks)
+  const LAST = "2026-11-02"; // the plan's last session
+  test("🔑 the NUMBER: more declared absences than the quota stretches the ceiling by exactly that many weeks", () => {
+    const quota = courseLeaveQuota({ size: 4 });
+    expect(quota).toBeGreaterThan(0);
+    const over = quota + 3; // 🔴 MORE than the course bought — impossible before TASK-643, ordinary now
+    expect(weeksBetween(BASE, courseBornCeiling(BASE, LAST, 0))).toBe(0);
+    expect(weeksBetween(BASE, courseBornCeiling(BASE, LAST, quota))).toBe(quota);
+    expect(weeksBetween(BASE, courseBornCeiling(BASE, LAST, over))).toBe(over); // 🔑 exactly that many — no ceiling on the ceiling
+    expect(weeksBetween(BASE, courseBornCeiling(BASE, LAST, 25))).toBe(25);
+  });
+  test("…and the make-ups land INSIDE it — the plan's end never passes the stretched ceiling", () => {
+    for (const n of [1, 5, 12]) {
+      const ceiling = courseBornCeiling(BASE, LAST, n);
+      // each declared absence earns one make-up, appended a week after the plan's last session
+      const lastMakeup = new Date(Date.parse(LAST) + n * WEEK).toISOString().slice(0, 10);
+      expect({ n, inside: lastMakeup <= ceiling }).toEqual({ n, inside: true });
+    }
+  });
+  test("🚫 it never SHRINKS, which is why an unbounded stretch is safe rather than merely tolerated", () => {
+    const drawnPast = "2027-03-01"; // an admin's hand-placed plan running past the base
+    expect(courseBornCeiling(BASE, drawnPast, 0) >= BASE).toBe(true);
+    expect(courseBornCeiling(BASE, drawnPast, 0) >= drawnPast).toBe(true);
   });
 });

@@ -182,7 +182,10 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
   });
   test("by source: the three routes call `assertMayEditCoachRate(…, viewerOf(c))` before their service; no other route does; no migration", () => {
     const API = code(src("src/routes/api.ts"));
-    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(12); // 🔻 TASK-584: + the cover door // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH // 🔻 TASK-434: the three + six rate-carrying writers
+    // 🔻 TASK-634 — 12 ⇒ 14: the two GROUP-swap doors now take an optional `rateMinor`, so they are rate writers and the
+    // gate is called at each. 🔑 This number going UP is the point, not a nuisance: a door that takes a rate and is NOT in
+    // this count is a door that prices a coach without key 59.
+    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(14); // 🔻 TASK-584: + the cover door // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH // 🔻 TASK-434: the three + six rate-carrying writers // 🔻 TASK-634: + the two group swaps
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);

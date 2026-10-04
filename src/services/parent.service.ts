@@ -37,10 +37,12 @@ export function normalizePhone(input: string): string {
  * 🚫 Deliberately NOT "does it contain 9 digits": `สวัสดีค่ะ 0924912848`, a nickname, a date or an address stays
  * silent. A chat that types its number alone is answering a question; a chat that mentions one is talking.
  */
-export function isPhoneShaped(input: string): boolean {
+// TASK-660 (F5) — the SAME shape test serves the student search, with its own floor (`PHONE_SEARCH_MIN_DIGITS`): one rule
+// for "is this a phone", two floors for two jobs. The chat's floor (9) is the default, so its callers are unchanged.
+export function isPhoneShaped(input: string, minDigits = 9): boolean {
   const t = (input ?? "").trim();
   if (!t || !/^\+?[\d\s().-]+$/.test(t)) return false;
-  return normalizePhone(t).length >= 9;
+  return normalizePhone(t).length >= minDigits;
 }
 
 export async function findParentByPhone(phone: string, exec: any = db): Promise<ParentRow | null> {
@@ -630,10 +632,15 @@ export async function findParentOfStudent(studentId: string, exec: any = db) {
   );
 }
 
-/** OR-conditions for the student search WHERE. The parent-phone `ilike` is included ONLY when the query has
- *  digits — otherwise `normalizePhone(q)` is `""` and `ilike(phone, '%%')` matches every student with a phone,
- *  which defeats the name/nickname filters and returns the whole roster (REQ-011 bug). Name + nickname always
- *  match. Exported so the phone-clause rule is unit-testable without a DB. */
+/** TASK-660 (F5) — a search is a phone search from 3 digits (`081` still finds phones; a lone `2` no longer floods the list). */
+export const PHONE_SEARCH_MIN_DIGITS = 3;
+
+/** OR-conditions for the student search WHERE. The parent-phone `ilike` is included ONLY when the query is
+ *  PHONE-SHAPED (`isPhoneShaped`: digits and phone separators only, ≥ `PHONE_SEARCH_MIN_DIGITS` digits).
+ *  TASK-033 (REQ-011) stopped a letters-only query becoming `ilike(phone, '%%')`; its "any digit" rule was the same
+ *  bug one step on — `Ari3y` ⇒ `phone ILIKE '%3%'` matched nearly every parent (F5, TEST-075). A name + digits
+ *  query (`โอ๊ด 081`) is a search for a PERSON and matches names only (Porter, TASK-660 Q1). Name + nickname
+ *  always match. Exported so the phone-clause rule is unit-testable without a DB. */
 export function studentSearchConditions(q: string) {
   return studentSearchConditionsOn(q, students, parents);
 }
@@ -641,12 +648,11 @@ export function studentSearchConditions(q: string) {
 /** TASK-420 — the same three conditions on an ALIASED pair (the course list matches a DUO course's co-student too). */
 export function studentSearchConditionsOn(q: string, s: typeof students, p: typeof parents) {
   const term = q.trim();
-  const digits = normalizePhone(q);
   const conditions = [
     ilike(s.name, `%${term}%`),
     ilike(s.nickname, `%${term}%`),
   ];
-  if (digits) conditions.push(ilike(p.phone, `%${digits}%`));
+  if (isPhoneShaped(q, PHONE_SEARCH_MIN_DIGITS)) conditions.push(ilike(p.phone, `%${normalizePhone(q)}%`));
   return conditions;
 }
 

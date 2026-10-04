@@ -1,7 +1,7 @@
 {
   "task": "TASK-629",
   "proves": "src/lib/swap-any-teacher-task629.test.ts",
-  "note": "🔴 TASK-627's convention. E1 is the one @Sober named: write the non-primary's rate onto the PRIMARY's column — it must bite. The set also runs the SHIPPED series suite (other-series-req101), because the widening's first risk is the primary path it rides on. ⚠️ 2026-10-04, after TASK-625: E7 and E8 were RETIRED FROM THIS SET and re-cut into `from-here-on-rate-task625.mutations.json`. They attacked the EXTRA path's own rate resolution, and TASK-625 collapsed that into ONE rule for every scope — so the lines they anchored on no longer exist. 🚫 Not deleted claims: the same two defects are E7/E8 there, against the rule's new single home.",
+  "note": "🔴 TASK-627's convention. E1 is the one @Sober named: write the non-primary's rate onto the PRIMARY's column — it must bite. The set also runs the SHIPPED series suite (other-series-req101), because the widening's first risk is the primary path it rides on. ⚠️ 2026-10-04, after TASK-625: E7 and E8 were RETIRED FROM THIS SET and re-cut into `from-here-on-rate-task625.mutations.json`. They attacked the EXTRA path's own rate resolution, and TASK-625 collapsed that into ONE rule for every scope — so the lines they anchored on no longer exist. 🚫 Not deleted claims: the same two defects are E7/E8 there, against the rule's new single home. ⚠️ 2026-10-04, after TASK-635: re-anchored on §T-629-MERGE's single-argument NOT_ON_ROW.",
   "tests": "src/lib/swap-any-teacher-task629.test.ts src/lib/other-series-req101.test.ts src/lib/cover-rate-key-task584.test.ts",
   "mutations": [
     {
@@ -46,8 +46,8 @@
               "to": "    let onExtra = locationOf(targets[0], input.from) === \"extra\";"
             },
             {
-              "from": "      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date, onExtra);",
-              "to": "      onExtra = locationOf(r, input.from) === \"extra\";\n      if (locationOf(r, input.from) === \"absent\") throw NOT_ON_ROW(r.date, onExtra);"
+              "from": "      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date);",
+              "to": "      onExtra = locationOf(r, input.from) === \"extra\";\n      if (locationOf(r, input.from) === \"absent\") throw NOT_ON_ROW(r.date);"
             }
           ]
         }

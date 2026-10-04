@@ -1,0 +1,68 @@
+{
+  "task": "TASK-661",
+  "proves": "src/lib/line-v2-messages-req107.test.ts",
+  "note": "The owner-approved check-in sentence (Draft A′, 2026-10-04) on empty_checkin + qr_none: one-character breaks in each key and each language must turn the byte-for-byte pin red. `tests` = the re-pinned REQ-107 test plus the two other files that read these keys (teacher-schedule-req109: empty_checkin TH is Thai; bilingual-flows: the send sites).",
+  "tests": "src/lib/line-v2-messages-req107.test.ts src/lib/teacher-schedule-req109.test.ts src/lib/bilingual-flows.test.ts",
+  "mutations": [
+    {
+      "id": "C1",
+      "what": "empty_checkin TH: one character (a space inside ไม่พบ)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "empty_checkin: { TH: \"วันนี้ไม่พบ",
+              "to": "empty_checkin: { TH: \"วันนี้ไม่ พบ"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "empty_checkin EN: a CURLY apostrophe in couldn’t (the likeliest real slip)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "empty_checkin: { TH: \"วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ หากน้องมีเรียนวันนี้ รบกวนติดต่อแอดมินเพื่อตรวจสอบก่อนเช็คอินนะคะ\", EN: \"We couldn't",
+              "to": "empty_checkin: { TH: \"วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ หากน้องมีเรียนวันนี้ รบกวนติดต่อแอดมินเพื่อตรวจสอบก่อนเช็คอินนะคะ\", EN: \"We couldn’t"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "what": "qr_none TH: one character (a space inside ไม่พบ)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "qr_none: { TH: \"วันนี้ไม่พบ",
+              "to": "qr_none: { TH: \"วันนี้ไม่ พบ"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "what": "qr_none EN: the final full stop dropped",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "checking in.\" }, // TASK-661",
+              "to": "checking in\" }, // TASK-661"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -241,8 +241,14 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     // ruling — a pre-start absence is FREE, so a pool it never spends cannot be what refuses it.
     // 🔑 The claim this test exists for is UNCHANGED for every STARTED course, and that is asserted here by value:
     expect(SVC).toContain("if (canTakeLeave(current.course) || declaredFree) {");
-    expect(SVC).toContain("const pre = await preStartDeclaration(tx, current);"); // …and the bypass is reachable ONLY through it
-    expect(SVC).toContain('throw conflict("DECLARED_ABSENCE_CAP"'); // …which has a gate of its own, with the count
+    expect(SVC).toContain("const declaredFree = await preStartDeclaration(tx, current);"); // …and the bypass is reachable ONLY through it
+    // 🔻 TASK-643 — RE-READ, as instructed, and the narrowing is now MORE exactly right, not less. When TASK-609 narrowed this
+    // claim, "a pre-start course bypasses the quota" came with its own cap, so the bypass was bounded. The owner has abolished
+    // that cap ⇒ **the bypass is now unbounded, and this test's subject — the STARTED course — is untouched by either change.**
+    // 🔑 So the narrowing holds: the gate that remains is `leaveRemaining`, for started courses, exactly as asserted below.
+    // ⚠️ What is NOT asserted here any more is a second gate above it, because there is none; it is pinned as an absence in
+    // `pre-start-declared-absence-task609`, where the inverted F3 lives.
+    expect(SVC).not.toContain("DECLARED_ABSENCE_CAP");
     expect(SVC).toContain("toCourseSummary(course).leaveLocked");
     expect(SVC).toContain('conflict("LEAVE_LOCKED"');
   });

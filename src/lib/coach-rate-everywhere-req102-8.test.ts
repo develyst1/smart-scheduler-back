@@ -146,6 +146,9 @@ describe("🔴 the WRITE half on every rate-carrying writer — 403 with a rate 
     for (const f of ["src/lib/line-message.ts", "src/lib/daily-reminder.ts", "src/lib/line-today-schedule.ts"]) expect(code(src(f))).not.toMatch(/teacherRates|rateMinor|classRateMinor|effectiveMinor/);
     const API = code(src("src/routes/api.ts"));
     expect(API).toMatch(/\.put\("\/teachers\/:id\/budget", zValidator\("json", v\.setFreelanceBudget\), async \(c\) =>\n\s+c\.json\(await svc\.setFreelanceBudget\(/);
-    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(12); // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH · 🔻 TASK-584: + the cover door
+    // 🔻 TASK-634 — 12 ⇒ 14: the two GROUP-swap doors now take an optional `rateMinor`, so they are rate writers and the
+    // gate is called at each. 🔑 This number going UP is the point, not a nuisance: a door that takes a rate and is NOT in
+    // this count is a door that prices a coach without key 59.
+    expect((API.match(/assertMayEditCoachRate\(/g) ?? []).length).toBe(14); // 🔻 TASK-441: + the GROUP series' add-teacher + header PATCH · 🔻 TASK-584: + the cover door · 🔻 TASK-634: + the two group swaps
   });
 });

@@ -177,10 +177,15 @@ describe("🔴 TASK-629 — a NON-PRIMARY swapped out: a DELETE and an INSERT on
 });
 
 describe("🔴 TASK-629 — every existing refusal survives, and the new one names the date", () => {
-  test("`from` on NO location of the row ⇒ 400, and the primary path's sentence is the one it always was", async () => {
+  test("🔻 §T-629-MERGE — `from` on NO location of the row ⇒ 400, now in the MERGED sentence", async () => {
+    // ⚠️ NARROWED, and the reason is the point: this asserted TASK-428's shipped wording *"ครูคนแรกไม่ใช่คนที่ระบุ"* — kept word
+    // for word by TASK-629 so a widening would not quietly reword an existing refusal. 🔑 After TASK-629 that sentence was
+    // reachable ONLY in this case — the named teacher on the row in no location at all — where it is TRUE but MISLEADING: it
+    // blames the primary when the real fact is that nobody on the session is that person. **The owner ruled the merge knowing
+    // it replaces a live sentence.** ⇒ what is asserted now is the ONE fact both cases share.
     const T4 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     arm(rows());
-    await expect(series.swapOtherSeriesTeacher(K, { from: T4, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({ status: 400, message: "วันที่ 2026-10-12 ครูคนแรกไม่ใช่คนที่ระบุ" });
+    await expect(series.swapOtherSeriesTeacher(K, { from: T4, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({ status: 400, message: "วันที่ 2026-10-12 ครูที่ระบุไม่ได้อยู่ในตารางของวันนั้น" });
   });
   test("🔑 an extra on the FIRST target but not on a later one ⇒ REFUSED, not half-done the other way", async () => {
     // ⚠️ My first version of this test PASSED FOR THE WRONG REASON: the fixture gave T3 no rate anywhere, so `RATE_REQUIRED`
@@ -194,7 +199,9 @@ describe("🔴 TASK-629 — every existing refusal survives, and the new one nam
     const { writes } = arm(withRate);
     await expect(series.swapOtherSeriesTeacher(K, { from: T2, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({
       status: 400,
-      message: "วันที่ 2026-10-19 ครูคนนี้ไม่ได้อยู่ในตารางของวันนี้", // 🔑 the EXTRA path's refusal, naming the row that disagreed
+      // 🔻 §T-629-MERGE — the EXTRA path's own draft sentence is gone too: both cases raise the merged one, naming the row
+      // that disagreed. 🔑 The claim here never was the wording — it is that the refusal names WHICH date broke the run.
+      message: "วันที่ 2026-10-19 ครูที่ระบุไม่ได้อยู่ในตารางของวันนั้น",
     });
     // ⚠️ b2 WAS written before b3 refused — the roll-back is the TRANSACTION's, which is why this call is one tx
     expect(writes.some((w) => w.op === "insert")).toBe(true);

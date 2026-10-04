@@ -113,6 +113,11 @@ describe("🔑 TASK-584 — EVERY rate writer, derived from the schemas + the ro
   test("the list — a NEW rate writer, a guard removed, or a rate field the guard cannot see changes this list", () => {
     expect(derive().writers.sort()).toEqual([
       "api PATCH /bookings/:id · classRateMinor · key59",
+      // 🔻 TASK-634 — the two GROUP-swap doors joined the list the day they started taking a `rateMinor`. 🔑 They arrive here
+      // DERIVED, each already carrying · key59 — which is the proof that widening those doors did not widen who may price a
+      // coach: the guard reads the BODY, so a door that takes a rate is gated the moment it takes one.
+      "api PATCH /bookings/:id/group-teacher · rateMinor · key59",
+      "api PATCH /group-series/:key/teacher · rateMinor · key59",
       "api PATCH /bookings/:id/other · teacherRates · key59",
       "api PATCH /courses/:id · classRateMinor · key59",
       "api PATCH /group-series/:key · teacherRates · key59",

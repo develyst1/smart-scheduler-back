@@ -488,7 +488,7 @@ export const groupSeries = z
   .refine((d) => !d.additionalTeacherIds || !d.additionalTeacherIds.includes(d.teacherId), { message: "ครูซ้ำกับครูคนแรก", path: ["additionalTeacherIds"] });
 
 // TASK-397 — swap the group's teacher from this date on (or this date only); every seat moves with it.
-export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean() });
+export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().int().min(0).optional() }); // 🔻 TASK-634 — see `groupSeriesSwap`
 
 // 🔴 TASK-453 (REQ-105 §8.1) — the two resolutions of a clash. ① moves the PRIVATE (at least one of the three
 // fields, the move's own shape); ② swaps the GROUP's coach for that session. Never forced, never automatic.
@@ -673,7 +673,14 @@ export const otherSeriesPatch = z
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
 // TASK-441 (REQ-104) — the GROUP series' own bodies: the swap has ONE primary (no `from`); the header PATCH has no kind.
-export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional() });
+// 🔻 TASK-634 — both group-swap doors take the OPTIONAL `rateMinor`, the same field the OTHER-series door already takes
+// (TASK-625 §8). **Why it is not a nicety:** TASK-632 rates the incoming coach from the group's own memory, and @Sober
+// established there is no other source of a coach's rate in this system — so a coach NEW to the series could never be
+// priced, and *a coach new to this series* is exactly what a cover IS. **The refusal is right; a refusal with no answer is not.**
+// ⚠️ **CONTRACT CHANGE on TWO doors: a body that was a 400 is now accepted.** 🚫 What did NOT change: **who may price a coach.**
+// `assertMayEditCoachRate` at each route reads the BODY (TASK-584's key `action:bookings.coach-rate`), so a rate still costs
+// the key and a swap without one still does not — proven by value on `bodyEditsCoachRate`, not reasoned.
+export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() });
 export const groupSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).nullable().optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });

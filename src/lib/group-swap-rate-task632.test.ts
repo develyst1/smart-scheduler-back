@@ -113,7 +113,9 @@ describe("🔴 TASK-632 — the group swap pays the INCOMING coach, on every dat
 
 describe("🔑 TASK-632 — the rule is REUSED, and the seat answer is written down rather than assumed", () => {
   test("ONE resolution, before the transaction, and it is TASK-562's own function — no second rate rule on this path", () => {
-    expect(SWAP).toContain("const rate = seriesRateOf(keyRows as any, input.teacherId);");
+    // 🔻 TASK-634 — NARROWED: the admin's `rateMinor` now comes FIRST, the series' memory is the fallback. 🔑 The claim this
+    // test exists for is unchanged and is about the COUNT below: still ONE resolution site, still before the transaction.
+    expect(SWAP).toContain("const rate = input.rateMinor ?? seriesRateOf(keyRows as any, input.teacherId);");
     expect(SWAP).toContain("if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);");
     expect((SWAP.match(/seriesRateOf\(/g) ?? []).length).toBe(1);
     expect((SWAP.match(/RATE_REQUIRED\(/g) ?? []).length).toBe(1);
@@ -129,9 +131,16 @@ describe("🔑 TASK-632 — the rule is REUSED, and the seat answer is written d
     // …and the seat write in the swap names only the teacher
     expect(SWAP).toContain("await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id)");
   });
-  test("⚠️ the GAP is written at the door, not discovered later: this path has no `rateMinor` to answer the refusal with", () => {
+  test("🔻 TASK-634 — the GAP IS CLOSED: the refusal can be answered, on BOTH group doors", () => {
+    // ⚠️ RETIRED, not deleted: this test used to assert that the gap EXISTED and was written down (`"This door has no such
+    // field"`). @Sober ruled the gap was not an edge but the NORMAL case — a cover is by definition a coach new to the series,
+    // and there is no other source of a coach's rate in this system — so TASK-632 alone would have traded a silent money
+    // defect for a HARD BLOCK. 🔑 The claim that replaces it: the admin can now answer the refusal, and the answer wins.
     const RAW = readSrc(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
-    expect(RAW).toContain("This door has no such field");
-    expect(code("src/validation.ts")).toContain("export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional() });");
+    expect(RAW).not.toContain("This door has no such field");
+    expect(RAW).toContain("TASK-634 — the refusal can now be ANSWERED");
+    const V = code("src/validation.ts");
+    expect(V).toContain("export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() });");
+    expect(V).toContain("export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().int().min(0).optional() });");
   });
 });

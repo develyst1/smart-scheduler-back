@@ -1,0 +1,98 @@
+{
+  "task": "TASK-660",
+  "proves": "src/services/parent.service.test.ts",
+  "note": "F5 — the student search's phone clause only when the query is phone-shaped (>= 3 digits). M1-M6 are the break-and-watch set quoted in TASK-660's Implementation Notes. `tests` = the task's own test file plus eligible-search.test.ts, which pins the SAME shared rule through studentSearchQuery.",
+  "tests": "src/services/parent.service.test.ts src/lib/eligible-search.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "revert to TASK-033's 'any digit' rule — the F5 defect itself",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "if (isPhoneShaped(q, PHONE_SEARCH_MIN_DIGITS)) conditions.push(",
+              "to": "if (normalizePhone(q)) conditions.push("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the phone needle is the raw term, not the digits",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "ilike(p.phone, `%${normalizePhone(q)}%`)",
+              "to": "ilike(p.phone, `%${term}%`)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "floor 4 — `081` stops finding phones (Porter's pure-digit pin)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export const PHONE_SEARCH_MIN_DIGITS = 3;",
+              "to": "export const PHONE_SEARCH_MIN_DIGITS = 4;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "floor 1 — a lone `2` floods the list again",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export const PHONE_SEARCH_MIN_DIGITS = 3;",
+              "to": "export const PHONE_SEARCH_MIN_DIGITS = 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "the name pattern becomes prefix-only (Porter's pure-name pin)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "ilike(s.name, `%${term}%`)",
+              "to": "ilike(s.name, `${term}%`)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "the phone clause on EVERY query (the REQ-011 roster flood)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "if (isPhoneShaped(q, PHONE_SEARCH_MIN_DIGITS)) conditions",
+              "to": "if (true) conditions"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

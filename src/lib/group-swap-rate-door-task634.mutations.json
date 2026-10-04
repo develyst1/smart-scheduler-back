@@ -1,0 +1,88 @@
+{
+  "task": "TASK-634",
+  "proves": "src/lib/group-swap-rate-door-task634.test.ts",
+  "note": "🔴 The five @Sober named: the given rateMinor ignored · a second resolution site · a rate accepted with no scope · the rate reaching the seats · the refusal moved inside the loop. D6–D8 attack the half he said he cared about most — that widening these doors must not widen WHO MAY PRICE A COACH.",
+  "tests": "src/lib/group-swap-rate-door-task634.test.ts src/lib/group-swap-rate-task632.test.ts src/lib/cover-rate-key-task584.test.ts src/lib/coach-rate-everywhere-req102-8.test.ts src/lib/coach-rate-visibility-req102-6.test.ts",
+  "mutations": [
+    {
+      "id": "D1",
+      "what": "🔴 the given `rateMinor` is IGNORED — the admin answers the refusal and the answer does nothing",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  const rate = input.rateMinor ?? seriesRateOf(keyRows as any, input.teacherId);",
+        "to": "  const rate = seriesRateOf(keyRows as any, input.teacherId);"
+      }]}]
+    },
+    {
+      "id": "D2",
+      "what": "the memory WINS over the admin — the given rate is only a fallback, so a correction cannot be made",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  const rate = input.rateMinor ?? seriesRateOf(keyRows as any, input.teacherId);",
+        "to": "  const rate = seriesRateOf(keyRows as any, input.teacherId) ?? input.rateMinor;"
+      }]}]
+    },
+    {
+      "id": "D3",
+      "what": "a SECOND resolution site: the delegating series door resolves its own rate instead of passing the admin's through",
+      "files": [{ "file": "src/services/other-series.service.ts", "edits": [{
+        "from": "  const r = await swapGroupTeacher(anchor.id, { teacherId: input.to, fromHereOn: true, rateMinor: input.rateMinor });",
+        "to": "  const r = await swapGroupTeacher(anchor.id, { teacherId: input.to, fromHereOn: true, rateMinor: input.rateMinor ?? seriesRateOf(rows as any, input.to) ?? undefined });"
+      }]}]
+    },
+    {
+      "id": "D4",
+      "what": "🔴 the supplied rate reaches the SEATS — an admin pricing the GROUP silently answers TASK-633's product question",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
+        "to": "      await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
+      }]}]
+    },
+    {
+      "id": "D5",
+      "what": "the refusal moves INSIDE the loop — with a rate now suppliable, a half-moved series becomes easier to cause, not harder",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [
+        { "from": "  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);", "to": "" },
+        { "from": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      try {", "to": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      if (rate == null) throw RATE_REQUIRED(g.date);\n      try {" }
+      ]}]
+    },
+    {
+      "id": "D6",
+      "what": "🔴 the key-59 gate is DROPPED from the per-booking group swap — anybody who may swap may now price a coach",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{
+        "from": "    assertMayEditCoachRate(c.req.valid(\"json\"), viewerOf(c)); // 🔻 TASK-634 — the SAME gate as every other door that takes a rate\n",
+        "to": ""
+      }]}]
+    },
+    {
+      "id": "D7",
+      "what": "🔴 the key-59 gate is DROPPED from the group-series swap — the same widening, on the other door",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{
+        "from": "    assertMayEditCoachRate(c.req.valid(\"json\"), viewerOf(c)); // 🔻 TASK-634 — a `rateMinor` ⇒ key 59; a swap without one passes\n",
+        "to": ""
+      }]}]
+    },
+    {
+      "id": "D8",
+      "what": "the gate runs AFTER the service — the rate is written, then the request is refused (a 403 that already happened)",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{
+        "from": "    assertMayEditCoachRate(c.req.valid(\"json\"), viewerOf(c)); // 🔻 TASK-634 — the SAME gate as every other door that takes a rate\n    return c.json(await svc.swapGroupTeacher(c.req.param(\"id\"), c.req.valid(\"json\")));",
+        "to": "    const out = await svc.swapGroupTeacher(c.req.param(\"id\"), c.req.valid(\"json\"));\n    assertMayEditCoachRate(c.req.valid(\"json\"), viewerOf(c));\n    return c.json(out);"
+      }]}]
+    },
+    {
+      "id": "D9",
+      "what": "the door accepts a rate with no scope — `fromHereOn` made optional, so \"this date or all of them\" stops being asked",
+      "files": [{ "file": "src/validation.ts", "edits": [{
+        "from": "export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().int().min(0).optional() });",
+        "to": "export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean().optional(), rateMinor: z.number().int().min(0).optional() });"
+      }]}]
+    },
+    {
+      "id": "D10",
+      "what": "the rate loses its bounds — a negative or fractional coach rate is accepted",
+      "files": [{ "file": "src/validation.ts", "edits": [{
+        "from": "export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().int().min(0).optional() });",
+        "to": "export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().optional() });"
+      }]}]
+    }
+  ]
+}

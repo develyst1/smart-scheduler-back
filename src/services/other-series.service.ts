@@ -45,11 +45,14 @@ const isGroupKey = (k: SeriesKey) => keyOf(k).type === "GROUP";
 const LIVE = [...COURSE_LIVE_STATUSES];
 export const PRIMARY_TEACHER = () => conflict("PRIMARY_TEACHER", "ครูคนแรกของตารางนำออกไม่ได้ — ใช้สลับครูแทน");
 export const ALREADY_ON_ROW = (date: string) => conflict("ALREADY_ON_ROW", `วันที่ ${date} ครูคนนี้อยู่ในตารางแล้ว`);
-// 🔴 TASK-629 — `from` is not where the branch resolved it: the primary path met a row whose primary is someone else (the
-// sentence TASK-428 already used, kept WORD FOR WORD so an existing refusal does not change its wording), and the extra
-// path a row that teacher is not an extra on. 📋 DRAFT: the second sentence is new wording — @Sober's for this batch.
-export const NOT_ON_ROW = (date: string, onExtra: boolean) =>
-  badRequest(onExtra ? `วันที่ ${date} ครูคนนี้ไม่ได้อยู่ในตารางของวันนี้` : `วันที่ ${date} ครูคนแรกไม่ใช่คนที่ระบุ`);
+// ✅ §T-629-MERGE (COPY-REVIEW, owner-approved 2026-10-04) — ONE sentence for BOTH cases, replacing TASK-428's shipped
+// *"วันที่ {date} ครูคนแรกไม่ใช่คนที่ระบุ"* and the draft I wrote for the non-primary case.
+// 🔑 Why one and not two: from the admin's side it is ONE fact — **the person you named is not on that session**. The
+// distinction between "not the primary" and "not on it at all" is OURS, not theirs, and after TASK-629 the old sentence was
+// reachable only when the named teacher is on the row in NO location — true, and misleading, because it blamed the primary.
+// 🔴 ONE producer, deliberately: two copies of a merged sentence is the merge undone at the first edit. The `onExtra` flag is
+// gone from the signature — a parameter that no longer changes the answer is a lie waiting for someone to use it.
+export const NOT_ON_ROW = (date: string) => badRequest(`วันที่ ${date} ครูที่ระบุไม่ได้อยู่ในตารางของวันนั้น`);
 const NOT_FOUND = () => notFound("ไม่พบตารางชุดนี้");
 
 type SeriesRow = {
@@ -305,7 +308,7 @@ export async function swapOtherSeriesTeacher(key: string, input: { from: string;
     // turned out to BE the money defect.
     let moved = 0;
     for (const r of targets) {
-      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date, onExtra);
+      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date); // §T-629-MERGE — one sentence, both cases
       if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);
       await assertTeacherBookable(tx, input.to, r.date); // ✅ TASK-561's leave block applies to a cover too — and to an extra
       if (onExtra) {
@@ -357,13 +360,13 @@ export async function swapOtherSeriesTeacher(key: string, input: { from: string;
  * TASK-441 — the GROUP primary swap from a date on: DELEGATED to `swapGroupTeacher` (every live seat follows its group row —
  * the OTHER swap has no seats and would strand them). The first live row on/after `fromDate` (default today) is the anchor.
  */
-export async function swapGroupSeriesTeacher(key: { groupKey: string }, input: { to: string; fromDate?: string }) {
+export async function swapGroupSeriesTeacher(key: { groupKey: string }, input: { to: string; fromDate?: string; rateMinor?: number }) {
   const rows = await seriesRows(db, key);
   if (!rows.length) throw NOT_FOUND();
   const anchor = seriesRowsFrom(rows, input.fromDate ?? today())[0];
   if (!anchor) return { moved: 0 };
   if (anchor.teacherId === input.to) throw ALREADY_ON_ROW(anchor.date);
-  const r = await swapGroupTeacher(anchor.id, { teacherId: input.to, fromHereOn: true });
+  const r = await swapGroupTeacher(anchor.id, { teacherId: input.to, fromHereOn: true, rateMinor: input.rateMinor }); // 🔻 TASK-634 — passed through, never re-resolved here
   return { moved: r.moved };
 }
 

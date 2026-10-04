@@ -1727,7 +1727,7 @@ export function assertNotCampRow(row: { campWeekDayId?: string | null } | null |
   if (row?.campWeekDayId) throw CAMP_ROW_OWNED();
 }
 
-export async function swapGroupTeacher(id: string, input: { teacherId: string; fromHereOn: boolean }) {
+export async function swapGroupTeacher(id: string, input: { teacherId: string; fromHereOn: boolean; rateMinor?: number }) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
   assertNotCampRow(current); // TASK-418
@@ -1743,15 +1743,17 @@ export async function swapGroupTeacher(id: string, input: { teacherId: string; f
   // 🔑 REUSED, not re-derived: `seriesRateOf` + `RATE_REQUIRED` are TASK-562's rule and TASK-625's shape — resolved ONCE,
   // before the transaction, so a swap we cannot rate moves NOTHING. 🚫 A second copy of this rule would be the defect it fixes,
   // wearing the other path's name.
-  // ⚠️ ONE difference from the OTHER-series door, and it is a GAP, not a decision I made: that door lets an admin answer the
-  // refusal with `rateMinor` (TASK-625 §8). **This door has no such field**, so an incoming coach the group has never paid is
-  // refused with no way to answer. 📌 Reported to @Sober rather than fixed here: widening this door is FE work too.
+  // ✅ TASK-634 — the refusal can now be ANSWERED: both group doors take an optional `rateMinor`, like the OTHER-series one.
+  // 🔑 @Sober's ruling on why that was not optional work: there is no other source of a coach's rate in this system, so a coach
+  // NEW to the series could never be priced — and that is exactly what a cover is. **This fix would otherwise have traded a
+  // silent money defect for a hard block on the ordinary operation.** 🚫 TASK-632 does not ship without it.
   // 🔑 The lookup needs the WHOLE key, not the from-here-on slice — a coach's rate may be recorded on a date already past.
   const keyRows = await db.query.bookings.findMany({
     where: (b, { and: a, eq: e }) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP")),
     with: { additionalTeachers: true },
   });
-  const rate = seriesRateOf(keyRows as any, input.teacherId);
+  // 🔻 TASK-634 — the admin's answer comes FIRST; the series' memory is the fallback. 🚫 Still ONE resolution site.
+  const rate = input.rateMinor ?? seriesRateOf(keyRows as any, input.teacherId);
   if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);
   let moved = 0;
   await db.transaction(async (tx) => {
@@ -3422,38 +3424,33 @@ async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teac
 }
 
 /**
- * 🔴 TASK-609 (REQ-111 F) — may THIS leave be a FREE pre-start declaration, and how many are already declared?
- * `null` ⇒ it is an ordinary leave (no course, or the course has started). Otherwise the counts, for the cap.
+ * 🔴 TASK-609 (REQ-111 F) — may THIS leave be a FREE pre-start declaration? `false` ⇒ an ordinary leave (no course, or the
+ * course has started).
  *
- * 🔑 Both halves are REUSED, not rewritten:
- *   · **has it started** — `courseNotStarted` (TASK-570's predicate: nothing delivered, nothing imported as taught, every live row
- *     today or later). 🚫 No second "has it started" rule exists, and this one is asked from here.
- *   · **the quota the customer bought** — `courseLeaveQuota(course)` = the course's OWN `leave_quota`, else the by-size table.
- *     🚫 Never a constant: a course that bought a different quota is capped at the number IT bought.
- * ⚖️ **Same NUMBER, separate COUNTER — answered from the code, not from the words:** `leaveUsed` is incremented in exactly two
- * places, and both are guarded by `charges`, which excludes a declared day. So a declaration CANNOT spend the post-start pool
- * without changing those writes. The cap therefore counts DECLARED DAYS against the quota's number, and a started course still
- * has its full `leaveRemaining`. 📌 The alternative reading (one shared pool) would make the day merely deferred, not free.
+ * 🔑 The predicate is REUSED, not rewritten: `courseNotStarted` (TASK-570 — nothing delivered, nothing imported as taught,
+ * every live row today or later). 🚫 No second "has it started" rule exists, and this one is asked from here.
+ * 🔻 TASK-643 — it used to ALSO count declarations and read `courseLeaveQuota`, for a cap the owner has since abolished.
+ * 🚫 That counting is gone rather than kept "in case": a value returned and never read is a rule waiting to be reinstated by accident.
+ * ⚖️ **Same NUMBER, separate COUNTER still holds and still matters:** `leaveUsed` is incremented in exactly two places, both
+ * guarded by `charges`, which excludes a declared day ⇒ a declaration cannot spend the post-start pool, and a started course
+ * still has its full `leaveRemaining`. 🔑 That is why removing the cap did NOT touch the counter: nothing about a free day
+ * was ever paid out of it. ⚠️ What bounds a pre-start course now is the EXPIRY (`courseBornCeiling` stretches it one week per
+ * declared absence — the customer's Kavya rule), which is their model and is pinned by value, not a defect to fix.
  */
 async function preStartDeclaration(
   tx: any,
   current: { courseId?: string | null; course?: any; id: string },
-): Promise<{ declared: number; quota: number } | null> {
-  if (!current.courseId || !current.course) return null;
+): Promise<boolean> {
+  if (!current.courseId || !current.course) return false;
   const rows = await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) });
-  if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;
-  // 🔴 TASK-609 §3 (@Sober's leak, RULED) — the cap counts DECLARATIONS MADE, not declarations currently standing: every row that
-  // carries `plannedAtCreation`, **whatever its status now**.
-  // 🔑 Why not "status is SICK_LEAVE": a declared day that is later CANCELLED would stop counting, so the cap could be reset by
-  // cancel-and-re-declare, without limit. **A limit any later edit can reset is decorative** — which is the owner's own objection to a
-  // quota that does not hold.
-  // ⚠️ THE COST, stated rather than discovered: a declaration taken back — by a cancel OR by the Undo — still consumes one of the cap,
-  // because neither clears the flag. So a MISTAKEN declaration costs one. 🚫 I did not "fix" that by clearing `plannedAtCreation` on
-  // the Undo path: that flag is what `leaveChargeOf` reads to answer "was this leave free?", so clearing it would change what the Undo
-  // reports about a row it has already refunded. ⇒ **if the owner wants corrections to be free, that is his call and a separate line.**
-  // 📌 The row being declared NOW is excluded: it is not a prior declaration (mutation F10 holds this).
-  const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;
-  return { declared, quota: courseLeaveQuota(current.course) };
+  return courseNotStarted(current.course, rows as any, bangkokNow().date);
+  // 🔻 TASK-643 (owner ruling 2026-10-04, TASK-636 §1) — THE CAP IS GONE, and with it everything this helper used to COUNT.
+  // Khwan: *"ลาล่วงหน้าก่อนเริ่มคอร์สเราไม่จำกัดอยู่แล้วนะคะ"* — and on the deployed build she is right; TASK-609 is what would have
+  // introduced the limit. ⇒ **pre-start declared absences are not limited.**
+  // 🔑 So this answers ONE question now — *has this course started?* — and returns one boolean. 🚫 It deliberately no longer returns a
+  // `quota`: **a value returned and never read is a rule waiting for someone to reinstate it by accident.**
+  // 🔴 What did NOT go, and must not: `plannedAtCreation` (the free-absence FLAG), this detection, and the leave COUNTER — the expiry
+  // is derived from the counter (`maxWeekFor(size, quota) = size + quota`) and the owner has not ruled on replacing it.
 }
 
 /** TASK-582 — a linked teacher reports their OWN leave: the act above, with no notice to themselves. */
@@ -4031,14 +4028,14 @@ export async function updateBookingStatus(
         }
       }
 
-      // 🔴 TASK-609 (REQ-111 F) — a course that has NOT STARTED takes a planned absence FREE, capped at the quota the customer
-      // bought. 🔑 This JOINS two things that already existed and writes no third rule: `courseNotStarted` (TASK-570's derived
-      // predicate) and the at-creation free-absence shape (`plannedAtCreation` + `leaveCharged: false`, the make-up still appended).
-      const pre = await preStartDeclaration(tx, current);
-      if (pre && pre.declared >= pre.quota) {
-        throw conflict("DECLARED_ABSENCE_CAP", `คอร์สนี้ประกาศวันหยุดล่วงหน้าครบแล้ว ${pre.declared}/${pre.quota} วัน — เริ่มเรียนก่อน แล้วจึงแจ้งลาตามปกติ หรือปลดล็อกโดยแอดมิน`); // 📋 DRAFT
-      }
-      const declaredFree = !!pre; // within the cap: this is a DECLARED day, not a leave
+      // 🔴 TASK-609 (REQ-111 F) — a course that has NOT STARTED takes a planned absence FREE. 🔑 It JOINS two things that already
+      // existed and writes no third rule: `courseNotStarted` (TASK-570's derived predicate) and the at-creation free-absence shape
+      // (`plannedAtCreation` + `leaveCharged: false`, the make-up still appended).
+      // 🔻 TASK-643 — the CAP and its refusal (`DECLARED_ABSENCE_CAP`, §T-609-CAP) are OUT by the owner's ruling: the customer does
+      // not limit pre-start absences. 🔑 *A refusal for a rule that no longer exists is worse than no refusal.*
+      // ⚠️ What BOUNDS a pre-start course now is the expiry, not a count: `courseBornCeiling` stretches it by one week per declared
+      // absence (the customer's own Kavya rule, 8 + 3 = 11), unbounded by design. That is their model, and it is pinned by value.
+      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave
       // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave takes quota, decided by the SAME conditions as the increment
       // below: a course leave within quota that was not declared at creation. An over-quota leave (status set, `locked`) and a
       // voucher / single leave take none — and before 0058 nothing on the row said so.

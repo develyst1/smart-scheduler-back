@@ -56,8 +56,14 @@ describe("✅ CHECK IN — prompt · lines with a blank line between · success 
       expect(t("checkin_ok", lang, { line: checkinLine(two[0]) })).toBe("Checked in ✅\nFeen: Private BALLET / Teacher KK @ 10.00");
     }
   });
-  test("no class today", () => {
-    expect([t("empty_checkin", "EN"), t("empty_checkin", "TH")]).toEqual(["No class today", "วันนี้ไม่มีคลาส"]);
+  // 🔻 TASK-661 — REQ-107's "No class today" / "วันนี้ไม่มีคลาส" SUPERSEDED by the owner's 2026-10-04 approval (Draft A′), which is
+  // also `qr_none`'s text. Byte for byte, both keys and both languages — the approved strings, never re-derived from the dictionary.
+  test("no class today — the owner-approved A′ sentence, on BOTH check-in keys (TASK-661)", () => {
+    const A_PRIME = {
+      TH: "วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ หากน้องมีเรียนวันนี้ รบกวนติดต่อแอดมินเพื่อตรวจสอบก่อนเช็คอินนะคะ",
+      EN: "We couldn't find a confirmed class for today on this account. If your child has a class today, please contact the admin to check it before checking in.",
+    };
+    for (const key of ["empty_checkin", "qr_none"]) for (const lang of ["TH", "EN"] as const) expect({ key, lang, text: t(key, lang) }).toEqual({ key, lang, text: A_PRIME[lang] });
   });
 });
 

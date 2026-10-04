@@ -279,7 +279,9 @@ const TABLE: Record<string, Entry> = {
   // copied as written ("the sheet wins", "do not improve her phrasing") and flagged for the owner in TASK-470.
   pick_checkin: { TH: "กรุณาเลือกคลาส 👇", EN: "Pick class👇" },
   pick_leave: { TH: "Pick class to request leave 👇", EN: "Pick class to request leave 👇" },
-  empty_checkin: { TH: "วันนี้ไม่มีคลาส", EN: "No class today" },
+  // TASK-661 — the owner's approved sentence (Draft A′, 2026-10-04), the same for `qr_none`: true whether there is no class, it is
+  // not confirmed yet, or the child is not linked to this account — and it names none of those causes. 🚫 No branch (Draft B declined).
+  empty_checkin: { TH: "วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ หากน้องมีเรียนวันนี้ รบกวนติดต่อแอดมินเพื่อตรวจสอบก่อนเช็คอินนะคะ", EN: "We couldn't find a confirmed class for today on this account. If your child has a class today, please contact the admin to check it before checking in." },
   // TASK-135 (REQ-046) / TASK-145 (REQ-050): leave AND check-in are per SESSION — the pickers say which one.
   pick_leave_child: { TH: "กรุณาเลือกนักเรียนค่ะ", EN: "Which child? 👇" }, // TASK-470 — her sheet
   // 🔴 TASK-473 K4 (REQ-107 §7) — `Teacher <name>` in BOTH languages (was `ครู<name>` in TH and a bare name in EN). This
@@ -564,7 +566,7 @@ const TABLE: Record<string, Entry> = {
   lang_switched: { TH: "เปลี่ยนเป็นภาษาไทยแล้ว ✅", EN: "Switched to English ✅" },
 
   qr_line: { TH: "ลิงก์เช็คอิน {name} {time} น.\n{url}\n{window}", EN: "Check-in link for {name} {time}\n{url}\n{window}" },
-  qr_none: { TH: "วันนี้ไม่มีคาบที่ยืนยันแล้ว", EN: "No confirmed class today" },
+  qr_none: { TH: "วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ หากน้องมีเรียนวันนี้ รบกวนติดต่อแอดมินเพื่อตรวจสอบก่อนเช็คอินนะคะ", EN: "We couldn't find a confirmed class for today on this account. If your child has a class today, please contact the admin to check it before checking in." }, // TASK-661 — A′, as `empty_checkin`
   pick_qr: { TH: "รับลิงก์เช็คอินของคาบไหนคะ 👇", EN: "Which class do you want the check-in link for? 👇" },
 
   // Outbox push notifications (to teacher/admin) — formatOutboxMessage.
