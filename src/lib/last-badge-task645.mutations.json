@@ -1,0 +1,22 @@
+{
+  "task": "TASK-645",
+  "proves": "src/services/last-badge-seam-task645.test.ts",
+  "note": "🔴 REQ-113. The old 'live only' rule lived in THREE places, so L1/L2/L3 revert each ONE on its own — each must bite alone, which is the whole point: fixing (or breaking) one changes nothing visible at the other two. L4 is @Silver's trap: widening the SHARED function instead, which must bite on the plan-end pin. L5 is the hand-rolled list missing NO_SHOW.",
+  "tests": "src/services/last-badge-seam-task645.test.ts src/lib/course-last-badge-req089.test.ts src/lib/course-plan.test.ts src/lib/calendar-cancelled-tray-req089.test.ts",
+  "mutations": [
+    { "id": "L1", "what": "🔴 SITE 1 reverted: the badge's date rule back to LIVE only — a delivered last stops being a lesson",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "  const lessons = sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).map((s) => s.date);", "to": "  const lessons = sessions.filter((s) => COURSE_LIVE.has(s.status)).map((s) => s.date);" }]}]},
+    { "id": "L2", "what": "🔴 SITE 2 reverted: `isCourseLast` requires LIVE again — the date is right and no row is badged",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "  if (!COURSE_LIVE.has(row.status) && !COURSE_DELIVERED.has(row.status)) return false;", "to": "  if (!COURSE_LIVE.has(row.status)) return false;" }]}]},
+    { "id": "L3", "what": "🔴 SITE 3 reverted: the QUERY fetches live statuses only — ATTENDED rows are never read, so no date can include them",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "inArray(bookings.status, [...COURSE_LESSON_STATUSES])", "to": "inArray(bookings.status, [...COURSE_LIVE_STATUSES])" }]}]},
+    { "id": "L4", "what": "🔴 @Silver's TRAP: the SHARED `deriveLiveEndDate` is widened instead — the plan's displayed end moves for every course",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "  const live = sessions.filter((s) => COURSE_LIVE.has(s.status)).map((s) => s.date);", "to": "  const live = sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).map((s) => s.date);" }]}]},
+    { "id": "L5", "what": "a HAND-ROLLED status list missing NO_SHOW — the owner's ruling 2 breaks while ATTENDED still works",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "export const COURSE_LESSON_STATUSES = [...COURSE_LIVE_STATUSES, ...COURSE_DELIVERED_STATUSES] as const;", "to": "export const COURSE_LESSON_STATUSES = [\"PENDING\", \"CONFIRMED\", \"EXTENDED\", \"ATTENDED\"] as const;" }]}]},
+    { "id": "L6", "what": "a hand-rolled list in the PREDICATE missing NO_SHOW — the same ruling, broken at the other end",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "  if (!COURSE_LIVE.has(row.status) && !COURSE_DELIVERED.has(row.status)) return false;", "to": "  if (!COURSE_LIVE.has(row.status) && row.status !== \"ATTENDED\") return false;" }]}]},
+    { "id": "L7", "what": "a SICK_LEAVE dated last starts counting as a lesson — a leave is not a lesson and must never be badged",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "  const lessons = sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).map((s) => s.date);", "to": "  const lessons = sessions.filter((s) => s.status !== \"CANCELLED\").map((s) => s.date);" }]}]}
+  ]
+}

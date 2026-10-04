@@ -1,0 +1,98 @@
+{
+  "task": "TASK-644",
+  "proves": "src/validation.parent-phone-task644.test.ts",
+  "note": "Piece A — the three BOOKING acts refuse a new student with no phone-shaped (>= 9 digits) parent phone; the two IMPORT acts are exempt (owner). P2a/P2b prove the exemption is pinned; P4 proves { id } is. `tests` = the task file plus the three existing validation test files that build these schemas.",
+  "tests": "src/validation.parent-phone-task644.test.ts src/validation.test.ts src/validation.booking-refine.test.ts src/validation.import.test.ts",
+  "mutations": [
+    {
+      "id": "P1",
+      "what": "strict made optional — the refinement never fires",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "if (!(\"id\" in s) && !isPhoneShaped(s.phone ?? \"\")) ctx.addIssue(",
+              "to": "if (false) ctx.addIssue("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2a",
+      "what": "importCoursePackage made strict (the owner exemption lost)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const importCoursePackage = z.object({\n  student: studentInput,",
+              "to": "export const importCoursePackage = z.object({\n  student: studentInputStrict,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2b",
+      "what": "importVoucher made strict (the owner exemption lost)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const importVoucher = z.object({\n  student: studentInput,",
+              "to": "export const importVoucher = z.object({\n  student: studentInputStrict,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "the phone floor lowered to 1 digit (a junk `1` passes)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "!isPhoneShaped(s.phone ?? \"\")) ctx",
+              "to": "!isPhoneShaped(s.phone ?? \"\", 1)) ctx"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "{ id } broken — an existing student is asked for a phone too",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "if (!(\"id\" in s) && !isPhoneShaped",
+              "to": "if (!isPhoneShaped"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "createBooking alone loses the strict shape (per-ACT, not per-schema)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "student: studentInputStrict.optional(),",
+              "to": "student: studentInput.optional(),"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

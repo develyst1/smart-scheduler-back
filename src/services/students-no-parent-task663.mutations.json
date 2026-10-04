@@ -1,0 +1,83 @@
+{
+  "task": "TASK-663",
+  "proves": "src/services/students-no-parent-task663.test.ts",
+  "note": "TASK-644 piece B — GET /students?noParent=true lists ONLY the no-household children; absent/false is byte-identical. `tests` = the task file plus the two files whose pins read the same route line and the same WHERE (archive-student-req093, birth-month-req099).",
+  "tests": "src/services/students-no-parent-task663.test.ts src/lib/archive-student-req093.test.ts src/lib/birth-month-req099.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "the filter ignored — noParent adds nothing",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "...(noParent ? [isNull(students.parentId)] : []),",
+              "to": "...([] as any[]),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "the filter inverted — `parent_id is NOT null`",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "...(noParent ? [isNull(students.parentId)] : []),",
+              "to": "...(noParent ? [isNotNull(students.parentId)] : []),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3a",
+      "what": "the builder's default changed to true",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export function studentListWhere(q: string | undefined, archived: boolean, noParent = false)",
+              "to": "export function studentListWhere(q: string | undefined, archived: boolean, noParent = true)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3b",
+      "what": "the validator's default changed to true (absent ⇒ only the parentless)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "  noParent: z\n    .enum([\"true\", \"false\"])\n    .optional()\n    .transform((v) => v === \"true\"),",
+              "to": "  noParent: z\n    .enum([\"true\", \"false\"])\n    .optional()\n    .transform((v) => v !== \"false\"),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "the route drops the param",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "noDob }, noParent));",
+              "to": "noDob }));"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

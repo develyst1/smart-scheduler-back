@@ -106,7 +106,8 @@ import { leavesAwaitingReanswer,
   courseBornCeiling,
   makeupsToFlip,
   plannedRowCount,
-  liveEndDateByCourse,
+  lastLessonDateByCourse,
+  COURSE_LESSON_STATUSES, // 🔻 TASK-645 — the badge's union, named once; 🚫 never a hand-rolled status list
   isCourseLast,
   exceedsExtensionCeiling,
   isCoursePlanRow,
@@ -462,7 +463,7 @@ export async function loadBookingDTO(exec: any, id: string) { // TASK-492: expor
     with: withBookingRelations,
   });
   // TASK-366: one course, one read — the cell's modal opens on this and must agree with the calendar.
-  const lastByCourse = await liveEndDatesForCourses(row?.courseId ? [row.courseId] : [], exec);
+  const lastByCourse = await lastLessonDatesForCourses(row?.courseId ? [row.courseId] : [], exec);
   return toBookingDTO(row, { courseLast: row ? isCourseLast(row, lastByCourse) : false });
 }
 
@@ -472,19 +473,22 @@ export async function loadBookingDTO(exec: any, id: string) { // TASK-492: expor
 
 /**
  * TASK-366 (REQ-089 item 5) — the live end date of every course in `courseIds`, in ONE query: the live rows of
- * those courses (three columns, on the indexed `course_id`), grouped, `deriveLiveEndDate` per course. The
- * status pre-filter is `COURSE_LIVE_STATUSES` itself — the constant the function filters by — so it narrows the
- * read without being a second rule; the function still decides. A calendar week ≈ 90 rows ⇒ ~40 courses ⇒
- * ≈ 600 rows in one round trip, not one query per course.
+ * those courses (three columns, on the indexed `course_id`), grouped, `deriveLastLessonDate` per course. The status
+ * pre-filter is the SAME union the function filters by — so it narrows the read without being a second rule; the function
+ * still decides. A calendar week ≈ 90 rows ⇒ ~40 courses ⇒ ≈ 600 rows in one round trip, not one query per course.
+ *
+ * 🔻 TASK-645 — RENAMED from `liveEndDatesForCourses`, and the pre-filter widened with it. 🔴 This was the THIRD place the old
+ * "live only" rule was written: ATTENDED and NO_SHOW rows were never FETCHED, so no corrected date could have included them.
+ * 🔑 All three sites move together or the badge still vanishes — fixing one changes nothing.
  */
-export async function liveEndDatesForCourses(courseIds: string[], exec: any = db): Promise<Map<string, string | null>> {
+export async function lastLessonDatesForCourses(courseIds: string[], exec: any = db): Promise<Map<string, string | null>> {
   const ids = [...new Set(courseIds)];
   if (ids.length === 0) return new Map();
   const rows = await exec
     .select({ courseId: bookings.courseId, status: bookings.status, date: bookings.date })
     .from(bookings)
-    .where(and(inArray(bookings.courseId, ids), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
-  return liveEndDateByCourse(rows);
+    .where(and(inArray(bookings.courseId, ids), inArray(bookings.status, [...COURSE_LESSON_STATUSES])));
+  return lastLessonDateByCourse(rows);
 }
 
 // TASK-406 (REQ-097) — `scope` = the linked teacher's id (`scopeOf(user)`), `null` for an admin: every read below is
@@ -540,7 +544,7 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
 
   // TASK-366: one grouped read of the range's courses, resolved before the loop (TASK-190's shape; the rental
   // marker that used to be read here the same way is a RELATION since TASK-371 and rides in `withBookingRelations`).
-  const lastByCourse = await liveEndDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
+  const lastByCourse = await lastLessonDatesForCourses(bookingRows.map((b) => b.courseId).filter((id): id is string => !!id));
   // TASK-454 (REQ-105 §5) — the camp weeks are read ONCE, here: the banner below shows them, and every camp hour cell
   // carries its OWN WEEK's kid count for its date from the same numbers.
   //

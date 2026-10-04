@@ -5,6 +5,7 @@ import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
 import { END_REASONS, plannedRowExists } from "./lib/course-plan";
+import { isPhoneShaped } from "./lib/phone";
 
 // TASK-160: declared early so the sale schemas below can reference it.
 export const discountInput = z.object({
@@ -87,6 +88,12 @@ export const studentsQuery = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === "true"),
+  // TASK-663 (TASK-644 piece B) — `noParent=true` ⇒ ONLY the children with no household (`parent_id IS NULL`), so the ones an IMPORT
+  // may create are findable. Absent / `false` ⇒ today's list, byte-identical. Same enum→boolean as `archived`.
+  noParent: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
   // TASK-058 retired the `bookable` opt-in — suspended households are now excluded by default for every
   // consumer. Zod strips unknown keys, so an older client still sending `bookable=true` is simply ignored
   // (it asked for the behaviour that is now the default), which is what makes the FE/BE deploy order free.
@@ -147,11 +154,28 @@ const studentInput = z.union([
   }),
 ]);
 
+/**
+ * 🔴 TASK-644 (piece A) — the server refuses a NEW student with no usable parent phone on the three BOOKING acts
+ * (`createBooking` · `createCoursePackage` · `createVoucher`). An inline student without one is born with `parentId: null`
+ * (`resolveStudentId`), and a parentless child is cut off from every parent door (4 households, 21 children on uat).
+ * "A phone" is the LINE bot's own rule (`isPhoneShaped`, ≥ 9 digits, separators only) — a junk `1` would create a
+ * parent nobody can ever link, the same defect one step removed.
+ * ⚖️ The two IMPORT acts keep `studentInput` (the owner's ruling: an import may proceed without a household). The server
+ * is the authority per ACT, not per screen. `{ id }` is untouched.
+ * 🔑 The SAME union plus one refinement, so the refusal is ONE issue at `student.phone` — not zod's vague union error.
+ * ✅ Owner APPROVED verbatim 2026-10-05 — `COPY-DRAFT-parent-phone-required-teamB-2026-10-04.md` §2 · 🚫 do not improve an approved string.
+ * ⚠️ It travels in the 400's `details`, NOT its `message`: `lib/validate.ts` answers every refusal with one generic sentence.
+ */
+export const NEW_STUDENT_PHONE_REQUIRED = "นักเรียนใหม่ต้องมีเบอร์โทรผู้ปกครอง (อย่างน้อย 9 หลัก) — ถ้าเป็นนักเรียนที่มีอยู่แล้ว ให้เลือกจากรายชื่อแทน";
+const studentInputStrict = studentInput.superRefine((s, ctx) => {
+  if (!("id" in s) && !isPhoneShaped(s.phone ?? "")) ctx.addIssue({ code: "custom", path: ["phone"], message: NEW_STUDENT_PHONE_REQUIRED });
+});
+
 export const createBooking = z
   .object({
     // TASK-224: optional in the OBJECT so `OTHER` may omit them; the four lesson types still refuse the
     // absence in the refinements below (`isLessonType`). Relaxing the shape must not relax the contract.
-    student: studentInput.optional(),
+    student: studentInputStrict.optional(), // TASK-644 — strict; `.optional()` kept: an OTHER booking takes no student
     teacherId: ID,
     subjectId: ID.optional(),
     date: DATE,
@@ -291,7 +315,7 @@ export const recordBookingRental = z.object({
 
 export const createCoursePackage = z
   .object({
-    student: studentInput,
+    student: studentInputStrict, // TASK-644
     teacherId: ID,
     subjectId: ID,
     size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
@@ -377,7 +401,7 @@ export const slotAvailabilityQuery = z.object({
 
 // Issue a voucher (B.5): hours bucket only, no teacher/slot.
 export const createVoucher = z.object({
-  student: studentInput,
+  student: studentInputStrict, // TASK-644
   totalHours: z.union([z.literal(5), z.literal(10), z.literal(15)]),
   // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
   discount: discountInput.optional(),

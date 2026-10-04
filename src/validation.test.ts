@@ -8,7 +8,10 @@ const SUBJ_B = "22222222-2222-4222-8222-222222222222";
 const TEACHER = "33333333-3333-4333-8333-333333333333";
 
 const base = {
-  student: { name: "น้องเอ", parentPhone: "0812345678" },
+  // 🔻 TASK-644 — this said `parentPhone`, which is NOT a field of the inline student (that name belongs to `POST /students`), so zod
+  // stripped it and this fixture always sent a PHONELESS new student. The booking acts now refuse that; `phone` is what it meant
+  // (and what `StudentSelect` sends). The TASK-138/148 rules below are unchanged.
+  student: { name: "น้องเอ", phone: "0812345678" },
   teacherId: TEACHER,
   subjectId: SUBJ_A,
   size: 4 as const,

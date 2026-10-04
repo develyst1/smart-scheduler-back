@@ -6,7 +6,10 @@
 /** LIVE = still owed/scheduled; DELIVERED = the session happened (attended, or forfeited as NO_SHOW). */
 export const COURSE_LIVE_STATUSES = ["PENDING", "CONFIRMED", "EXTENDED"] as const;
 export const COURSE_LIVE = new Set<string>(COURSE_LIVE_STATUSES);
-export const COURSE_DELIVERED = new Set(["ATTENDED", "NO_SHOW"]);
+export const COURSE_DELIVERED_STATUSES = ["ATTENDED", "NO_SHOW"] as const; // 🔻 TASK-645 — the typed form, so a QUERY can name the same set the predicate uses
+export const COURSE_DELIVERED = new Set<string>(COURSE_DELIVERED_STATUSES);
+/** 🔻 TASK-645 — every status that IS a lesson (live or delivered). 🔑 The badge's rule and its query read THIS, so they cannot drift. */
+export const COURSE_LESSON_STATUSES = [...COURSE_LIVE_STATUSES, ...COURSE_DELIVERED_STATUSES] as const;
 // SICK_LEAVE earns a replacement (neither live nor delivered); CANCELLED is out of the plan.
 
 import { courseExpiry } from "./recurring";
@@ -64,13 +67,35 @@ export function deriveLiveEndDate(sessions: Array<{ status: string; date: string
   return live.length ? live.reduce((m, d) => (d > m ? d : m)) : null;
 }
 
-// ── TASK-366 (REQ-089 item 5) — the `Last` badge on the admin schedule ──
+// ── TASK-366 (REQ-089 item 5) — the `Last` badge on the admin schedule · 🔻 TASK-645 (REQ-113) — it STAYS after attendance ──
 //
-// A calendar row does not know its course; these two give it the answer from `deriveLiveEndDate` and nothing
-// else — no second "last" rule. Pure, so the DoD cases are pinned with rows, not a database.
+// A calendar row does not know its course; these give it the answer, and nothing else decides "last".
+// Pure, so the DoD cases are pinned with rows, not a database.
+//
+// 🔴 TASK-645 — the badge's rule is its OWN, and it is NOT `deriveLiveEndDate`. 🔑 Khwan's team reads the badge AT END OF DAY to
+// find who finished a course, and it vanished the moment the last session was checked in — *a flag correct all day and absent at
+// review time is worse than none, because the team believes the list is complete.*
+// ⚠️ THE TRAP (@Silver's finding): `deriveLiveEndDate` is the PLAN'S DISPLAYED END and feeds course history. Widening IT would
+// move the displayed end date of every course. 🔑 **Widening a function two features read is how one fix becomes two defects.**
+// ⇒ the badge gets `deriveLastLessonDate` over `COURSE_LIVE ∪ COURSE_DELIVERED`. 🚫 No hand-rolled status list: both sets already
+// exist, so the owner's NO_SHOW ruling (a no-show on the final date KEEPS the badge — the course has still ended) is satisfied
+// BY CONSTRUCTION — a rule built from a union of existing definitions cannot drift from them.
+// 📌 And a consequence, stated rather than discovered: a make-up added AFTER the last attended session MOVES the badge to the
+// make-up. That is correct — it is now the last lesson.
 
-/** `Map<courseId, deriveLiveEndDate(that course's rows)>` — one grouping pass over rows read in ONE query. */
-export function liveEndDateByCourse(
+/**
+ * 🔻 TASK-645 — the LAST LESSON's date: `max(date)` over LIVE **and** DELIVERED sessions. `null` when the course has neither.
+ * 🚫 Deliberately NOT `deriveLiveEndDate`, which answers a different question for a different reader (see above).
+ */
+export function deriveLastLessonDate(sessions: Array<{ status: string; date: string }>): string | null {
+  const lessons = sessions.filter((s) => COURSE_LIVE.has(s.status) || COURSE_DELIVERED.has(s.status)).map((s) => s.date);
+  return lessons.length ? lessons.reduce((m, d) => (d > m ? d : m)) : null;
+}
+
+/** 🔻 TASK-645 — `Map<courseId, deriveLastLessonDate(that course's rows)>`, one grouping pass over rows read in ONE query.
+ *  📌 RENAMED from `liveEndDateByCourse`: a function still called "live end" that no longer returns the live end is a lie
+ *  waiting for the next reader — and it would sit directly beside the one that still DOES. */
+export function lastLessonDateByCourse(
   rows: ReadonlyArray<{ courseId: string | null; status: string; date: string }>,
 ): Map<string, string | null> {
   const byCourse = new Map<string, Array<{ status: string; date: string }>>();
@@ -80,20 +105,23 @@ export function liveEndDateByCourse(
     list.push(r);
     byCourse.set(r.courseId, list);
   }
-  return new Map([...byCourse].map(([id, sessions]) => [id, deriveLiveEndDate(sessions)]));
+  return new Map([...byCourse].map(([id, sessions]) => [id, deriveLastLessonDate(sessions)]));
 }
 
 /**
- * Is this row its course's last session? A COURSE row, LIVE, dated on the course's live end. A `SICK_LEAVE`
- * dated last is never "last" — it is not a lesson, and the function above never names it; a delivered last
- * (ATTENDED) is not live, so once it is attended the course has no live end and NO row is last — the badge
- * leaves the past cell by construction.
+ * Is this row its course's last LESSON? A COURSE row, a lesson (LIVE **or** DELIVERED), dated on the course's last lesson.
+ * 🔻 TASK-645 — it used to require `COURSE_LIVE`, and the old comment here said *"once it is attended the course has no live end
+ * and NO row is last — the badge leaves the past cell by construction"*. 🔴 That is FALSE now, and it was never REQ-089's ask:
+ * TASK-366 added the reading and pinned it, and the owner has since ruled the other way (REQ-113) — **the badge STAYS after
+ * attendance, and becoming permanent on that cell is INTENDED.**
+ * 🚫 Still refused, because they are not lessons: a `SICK_LEAVE` or `CANCELLED` row dated last, and any non-course row.
  */
 export function isCourseLast(
   row: { bookingType: string; courseId: string | null; status: string; date: string },
   lastByCourse: ReadonlyMap<string, string | null>,
 ): boolean {
-  if (row.bookingType !== "COURSE_PACKAGE" || !row.courseId || !COURSE_LIVE.has(row.status)) return false;
+  if (row.bookingType !== "COURSE_PACKAGE" || !row.courseId) return false;
+  if (!COURSE_LIVE.has(row.status) && !COURSE_DELIVERED.has(row.status)) return false;
   const last = lastByCourse.get(row.courseId);
   return last != null && last === row.date;
 }

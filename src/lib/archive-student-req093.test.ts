@@ -116,13 +116,15 @@ describe("🔴 archive / unarchive — the rules by source; nothing else touched
 describe("🔴 the WORKING reads — hidden, each by name (the enumeration IS the list)", () => {
   test("1 · `searchStudents` (`GET /students`): `isNull(archived_at)` by default; `archived = true` ⇒ ONLY the archived (the restore view) with `archivedAt` on the rows", () => {
     const S = region(PARENT, "export async function searchStudents(", "\n}\n");
-    expect(S).toContain("archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),");
+    // 🔻 TASK-663 — the archived term MOVED (unchanged) into the pure `studentListWhere`, which `searchStudents` calls; read it THERE.
+    expect(S).toContain("const searchWhere = studentListWhere(q, archived, noParent);");
+    expect(region(PARENT, "export function studentListWhere(", "\n}\n")).toContain("archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),");
     expect(S).toContain("archivedAt: students.archivedAt,");
     expect(S).toContain("archivedAt: r.archivedAt ? new Date(r.archivedAt).toISOString() : null,");
     expect(v.studentsQuery.parse({}).archived).toBe(false);
     expect(v.studentsQuery.parse({ archived: "true" }).archived).toBe(true);
     expect(v.studentsQuery.safeParse({ archived: "yes" }).success).toBe(false);
-    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob }));"); // 🔻 TASK-414/416: + the birthday filter, the archived flag unchanged
+    expect(code(src("src/routes/api.ts"))).toContain("return c.json(await parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob }, noParent));"); // 🔻 TASK-663: + noParent (5th arg) // 🔻 TASK-414/416: + the birthday filter, the archived flag unchanged
   });
   test("2 · `getEligibleStudents` (`GET /students/eligible`): the archived id set excluded on BOTH branches, beside the suspended one", () => {
     const E = region(SCHED, "export async function getEligibleStudents(", "\n}\n");

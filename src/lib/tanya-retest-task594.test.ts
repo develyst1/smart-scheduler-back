@@ -100,7 +100,7 @@ describe("🔴 §4 — `campKidCount` is THIS week's children on that date, not 
     spies.push(spyOn(db.query.boItem, "findMany").mockImplementation((async () => []) as any)); // the freelance ceilings the calendar attaches — never the DB here
     spies.push(spyOn(db.query.appSettings, "findMany").mockImplementation((async () => []) as any)); // the settings read — never the DB here
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => [campRow("b1", W1, "wd1", "10:00:00"), campRow("b2", W2, "wd2", "11:00:00")]) as any));
-    spies.push(spyOn(sched, "liveEndDatesForCourses").mockImplementation((async () => new Map()) as any));
+    spies.push(spyOn(sched, "lastLessonDatesForCourses").mockImplementation((async () => new Map()) as any));
     spies.push(spyOn(camp, "weeksForCalendar").mockImplementation((async () => [
       { id: W1, name: "Camp A", startDate: DATE, endDate: DATE, status: "OPEN", teacherIds: [A], dayCounts: { [DATE]: 1 } },
       { id: W2, name: "Camp B", startDate: DATE, endDate: DATE, status: "OPEN", teacherIds: [A], dayCounts: { [DATE]: 6 } },

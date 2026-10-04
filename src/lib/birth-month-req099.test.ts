@@ -86,13 +86,14 @@ describe("🔴 the validator's two 400s; `birthDate` in the select and the DTO; 
     const S = region(code(src("src/services/parent.service.ts")), "export async function searchStudents(", "\n}\n");
     expect(S).toContain("birthDate: students.birthDate,");
     expect(S).toContain("birthDate: r.birthDate ?? null,");
-    expect(S).toContain("archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),"); // REQ-093 untouched
+    expect(S).toContain("const searchWhere = studentListWhere(q, archived, noParent);"); // 🔻 TASK-663 — the WHERE moved (unchanged) into `studentListWhere`
+    expect(region(code(src("src/services/parent.service.ts")), "export function studentListWhere(", "\n}\n")).toContain("archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),"); // REQ-093 untouched
     expect(S).toContain("const baseWhere = excluded.length ? and(searchWhere, notInArray(students.id, excluded))! : searchWhere!;"); // TASK-058 untouched
     expect(S).toContain(".where(withBirthdayFilter(baseWhere, birthday))");
     expect(S).toContain(".orderBy(...birthdayOrder(birthday))"); // 🔻 TASK-416: the order follows the ONE branch decision
     expect(S).toContain(".limit(Math.min(limit, 200));");
     expect(S).not.toMatch(/extract\(|birth_date/); // the SQL lives in the helper, not here
-    expect(code(src("src/routes/api.ts"))).toContain("parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob })"); // 🔻 TASK-416
+    expect(code(src("src/routes/api.ts"))).toContain("parent.searchStudents(q, limit, archived, { birthMonthFrom, birthMonthTo, birthYearFrom, birthYearTo, noDob }, noParent)"); // 🔻 TASK-663: + noParent // 🔻 TASK-416
     expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 // no migration of its own (🔻 TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055) · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
   });
   test("through the ROOT app (service spied): the range reaches the service; a lone month ⇒ 400 before the service; the contradiction ⇒ 400", async () => {
@@ -102,9 +103,9 @@ describe("🔴 the validator's two 400s; `birthDate` in the select and the DTO; 
     try {
       const get = (qs: string) => rootApp.fetch(new Request(`http://localhost/api/students${qs}`));
       expect((await get("?birthMonthFrom=11&birthMonthTo=2")).status).toBe(200);
-      expect(calls.at(-1)).toEqual([undefined, 50, false, { birthMonthFrom: 11, birthMonthTo: 2, birthYearFrom: undefined, birthYearTo: undefined, noDob: false }]);
+      expect(calls.at(-1)).toEqual([undefined, 50, false, { birthMonthFrom: 11, birthMonthTo: 2, birthYearFrom: undefined, birthYearTo: undefined, noDob: false }, false]); // 🔻 TASK-663: + noParent (5th, false by default)
       expect((await get("?noDob=true&q=a")).status).toBe(200);
-      expect(calls.at(-1)).toEqual(["a", 50, false, { birthMonthFrom: undefined, birthMonthTo: undefined, birthYearFrom: undefined, birthYearTo: undefined, noDob: true }]);
+      expect(calls.at(-1)).toEqual(["a", 50, false, { birthMonthFrom: undefined, birthMonthTo: undefined, birthYearFrom: undefined, birthYearTo: undefined, noDob: true }, false]); // 🔻 TASK-663
       expect(calls.length).toBe(2);
       expect((await get("?birthMonthFrom=11")).status).toBe(400);
       expect((await get("?noDob=true&birthMonthFrom=1&birthMonthTo=2")).status).toBe(400);

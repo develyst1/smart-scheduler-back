@@ -20,30 +20,10 @@ export const MAX_STUDENTS_PER_PARENT = 5;
 export type ParentRow = typeof parents.$inferSelect;
 export type StudentRow = typeof students.$inferSelect;
 
-/** Digits only — phone is the parent's identity, normalize before lookup/insert. */
-export function normalizePhone(input: string): string {
-  return (input ?? "").replace(/\D/g, "");
-}
-
-/**
- * 🔴 TASK-447 (REQ-105 §7) — is this message A PHONE NUMBER, typed on its own?
- *
- * The silence rule (AC-16) exists so an unlinked chat does not answer chatter; this is the ONE exception the
- * owner's report demands — the OA's own auto-greeting asks for a phone, and nothing in our code was listening.
- * So the test must be **tight**: only separators (space · dash · dot · brackets · a leading `+`) may keep the
- * digits company, and there must be at least nine of them — `linkFamilyByPhone`'s own floor (`phone.length < 9`
- * ⇒ `phone-invalid`) read off the SAME `normalizePhone` above, not a second rule that can drift from it.
- *
- * 🚫 Deliberately NOT "does it contain 9 digits": `สวัสดีค่ะ 0924912848`, a nickname, a date or an address stays
- * silent. A chat that types its number alone is answering a question; a chat that mentions one is talking.
- */
-// TASK-660 (F5) — the SAME shape test serves the student search, with its own floor (`PHONE_SEARCH_MIN_DIGITS`): one rule
-// for "is this a phone", two floors for two jobs. The chat's floor (9) is the default, so its callers are unchanged.
-export function isPhoneShaped(input: string, minDigits = 9): boolean {
-  const t = (input ?? "").trim();
-  if (!t || !/^\+?[\d\s().-]+$/.test(t)) return false;
-  return normalizePhone(t).length >= minDigits;
-}
+// TASK-644 — `normalizePhone` / `isPhoneShaped` now live in the pure `lib/phone.ts` (so `validation.ts` can share the rule without
+// this file's DB import); re-exported here so every existing caller is byte-unchanged.
+import { isPhoneShaped, normalizePhone } from "../lib/phone";
+export { isPhoneShaped, normalizePhone };
 
 export async function findParentByPhone(phone: string, exec: any = db): Promise<ParentRow | null> {
   const p = normalizePhone(phone);
@@ -686,12 +666,22 @@ export async function suspendedStudentIds(exec: any = db): Promise<Set<string>> 
 // TASK-414 (REQ-099) — `birthday`: a birth-MONTH range (wraps past December) or `noDob`, COMPOSED with the search, the
 // suspended exclusion and the archived default (never replacing them); a range orders from its first month around the
 // year, then the day, then the name.
-export async function searchStudents(q?: string, limit = 50, archived = false, birthday: BirthdayFilter = {}) {
-  const excluded = [...(await suspendedStudentIds())];
-  const searchWhere = and(
+/**
+ * TASK-663 — the student list's WHERE (before the suspended exclusion and the birthday filter), pure so its SQL can be pinned
+ * without a database. `noParent` ⇒ + `parent_id IS NULL` (the no-household children, TASK-644 piece B); absent/false ⇒ the
+ * exact two conditions this list always had — the default is byte-identical.
+ */
+export function studentListWhere(q: string | undefined, archived: boolean, noParent = false) {
+  return and(
     q && q.trim() ? or(...studentSearchConditions(q)) : sql`true`,
     archived ? isNotNull(students.archivedAt) : isNull(students.archivedAt),
+    ...(noParent ? [isNull(students.parentId)] : []),
   );
+}
+
+export async function searchStudents(q?: string, limit = 50, archived = false, birthday: BirthdayFilter = {}, noParent = false) {
+  const excluded = [...(await suspendedStudentIds())];
+  const searchWhere = studentListWhere(q, archived, noParent);
   const baseWhere = excluded.length ? and(searchWhere, notInArray(students.id, excluded))! : searchWhere!;
   const rows = await db
     .select({
