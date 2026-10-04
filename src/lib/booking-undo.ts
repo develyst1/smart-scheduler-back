@@ -19,7 +19,17 @@ export type UndoKind = "leave" | "checkin";
 export const UNDO_NOT_UNDOABLE = (status: string) => conflict("UNDO_NOT_UNDOABLE", `คาบนี้ย้อนกลับไม่ได้ — สถานะปัจจุบันคือ ${status} (ย้อนกลับได้เฉพาะการลา หรือการเช็คอินของผู้ปกครอง)`);
 export const UNDO_STAFF_ATTEND = () => conflict("UNDO_STAFF_ATTEND", "คาบนี้เจ้าหน้าที่เป็นผู้บันทึกการเข้าเรียน — การย้อนกลับใช้ได้กับการเช็คอินของผู้ปกครองเท่านั้น");
 export const UNDO_DAY_SETTLED = (date: string) => conflict("UNDO_DAY_SETTLED", `ปิดวันของวันที่ ${date} แล้ว — ย้อนกลับไม่ได้`);
-export const UNDO_LEAVE_CHARGE_UNKNOWN = () => conflict("UNDO_LEAVE_CHARGE_UNKNOWN", "ระบบไม่ทราบว่าการลานี้ใช้โควตาลาหรือไม่ (ลาก่อนมีการบันทึก) — กรุณาแก้ไขด้วยตนเอง");
+// ✅ §T-G (COPY-REVIEW, approved by the owner 2026-10-04 "1 ผ่านหมด") — the words are the owner's; what a placeholder RENDERS
+// as is @Sober's decision, recorded in his 10-04 note: `{course}` is `displayNameOf(row)` with UNDO_SLOT_TAKEN's own fallback
+// (the ONE name rule), and the EN half does NOT ship — every refusal in this file is Thai, the admin's language.
+// 🔑 Why it changed: the old sentence was honest and useless — *"fix it by hand"* without saying WHAT TO CHECK. This one names
+// the course, the date, and the one thing to look at. ⚠️ A course in this system has NO NAME, so what it prints is whose it is;
+// @Porter is telling the owner that, as information rather than as a question.
+export const UNDO_LEAVE_CHARGE_UNKNOWN = (course: string, date: string) =>
+  conflict(
+    "UNDO_LEAVE_CHARGE_UNKNOWN",
+    `ย้อนการลานี้ไม่ได้ เพราะเป็นการลาที่บันทึกไว้ก่อนระบบจะเก็บว่าใช้โควตาหรือไม่ — คอร์ส ${course} วันที่ ${date} · กรุณาเปิดคอร์สนี้แล้วตรวจว่ามีคาบชดเชยของวันนี้อยู่หรือไม่ ถ้ามี แปลว่าการลานี้ใช้โควตาไปแล้ว แล้วแก้ไขด้วยตนเอง`,
+  );
 export const UNDO_ALREADY_CHANGED = () => conflict("UNDO_ALREADY_CHANGED", "คาบนี้ถูกเปลี่ยนสถานะไปแล้ว — ไม่มีอะไรถูกย้อนกลับ");
 export const UNDO_SLOT_TAKEN = (hour: string, holder: string) => conflict("UNDO_SLOT_TAKEN", `ย้อนกลับไม่ได้ — ช่วงเวลา ${hour} ของครูมีคาบของ ${holder} อยู่แล้ว`);
 export const UNDO_PLAN_WOULD_CHANGE = () => conflict("UNDO_PLAN_WOULD_CHANGE", "ย้อนกลับแล้วแผนคอร์สจะเปลี่ยน (คาบขยายของการลาอื่นจะถูกยกเลิก/เพิ่ม) — กรุณาแก้ไขด้วยตนเอง");

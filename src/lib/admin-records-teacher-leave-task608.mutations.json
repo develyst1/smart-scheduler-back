@@ -1,0 +1,26 @@
+{
+  "task": "TASK-608",
+  "proves": "src/lib/admin-records-teacher-leave-task608.test.ts",
+  "note": "🔴 TASK-627 — the set that the verdicts in TASK-608's report were measured against. `tests` is the task's own test file plus the four pins that anchor on the SAME act (they are what H2/H3/H5/H6/H9 must be caught by, or silenced). Two further files also touch the act and are NOT in this set: src/lib/teacher-own-calendar-req097.test.ts and src/services/course-ended-writes.test.ts.",
+  "tests": "src/lib/admin-records-teacher-leave-task608.test.ts src/lib/teacher-leave-act-task582.test.ts src/lib/teacher-leave-admin-list-task587.test.ts src/lib/teacher-leave-day-task561.test.ts src/services/booking-undo-req108.test.ts",
+  "mutations": [
+ {"id":"H1","what":"a SECOND fork — the admin door compares the date itself instead of sharing the act's",
+  "files":[{"file":"src/routes/api.ts","edits":[{"from":"    const { teacherId, ...input } = c.req.valid(\"json\");\n    return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));","to":"    const { teacherId, ...input } = c.req.valid(\"json\");\n    if (input.date > new Date().toISOString().slice(0, 10)) return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));\n    return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));"}]}]},
+ {"id":"H2","what":"the fork asked a second time inside the service",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  if (isAdvanceLeave(input.date)) {","to":"  if (isAdvanceLeave(input.date) && isAdvanceLeave(input.date)) {"}]}]},
+ {"id":"H3","what":"the TEACHER is not told (the notice dropped)",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"    const notified = opts.onBehalf && !r.alreadyRecorded ? await notifyTeacherOfLeaveDay(me,","to":"    const notified = false && opts.onBehalf && !r.alreadyRecorded ? await notifyTeacherOfLeaveDay(me,"}]}]},
+ {"id":"H4","what":"a FAMILY is told about a day where nothing was cancelled",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });\n  await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: teacher?.lineUserId ?? null, payload });","to":"  const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });\n  await enqueueLine({ recipientType: \"parent\", recipientLineUserId: null, payload });\n  await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: teacher?.lineUserId ?? null, payload });"}]}]},
+ {"id":"H5","what":"the teacher told of their OWN act (onBehalf ignored)",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"    const notified = opts.onBehalf && !r.alreadyRecorded ?","to":"    const notified = !r.alreadyRecorded ?"}]}]},
+ {"id":"H6","what":"the LIFT stops notifying (a notice with no counterpart)",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"  const notified = opts.onBehalf ? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_lifted\"","to":"  const notified = false ? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_lifted\""}]}]},
+ {"id":"H7","what":"the admin door hangs off `/teachers/:id/leave` again — the wildcard sibling that revoked the coach's own door",
+  "files":[{"file":"src/lib/route-access.ts","edits":[{"from":"  \"POST /teacher-leave-days\": act(CAL_BOOK, \"action:calendar.status\"),","to":"  \"POST /teachers/:id/leave\": act(CAL_BOOK, \"action:calendar.status\"),\n  \"POST /teacher-leave-days\": act(CAL_BOOK, \"action:calendar.status\"),"}]}]},
+ {"id":"H8","what":"the admin door gated on the TEACHER's own key (one no admin holds)",
+  "files":[{"file":"src/lib/route-access.ts","edits":[{"from":"  \"POST /teacher-leave-days\": act(CAL_BOOK, \"action:calendar.status\"),","to":"  \"POST /teacher-leave-days\": act(CAL_BOOK, \"action:calendar.teacher-leave\"),"}]}]},
+ {"id":"H9","what":"recorded twice ⇒ the teacher pinged again",
+  "files":[{"file":"src/services/scheduler.service.ts","edits":[{"from":"const notified = opts.onBehalf && !r.alreadyRecorded ?","to":"const notified = opts.onBehalf ?"}]}]}
+  ]
+}

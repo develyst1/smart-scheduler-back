@@ -659,8 +659,14 @@ export const otherSeriesFromQuery = z.object({ fromDate: DATE.optional() });
 export const otherSeriesSwap = z
   .object({ from: ID, to: ID, fromDate: DATE.optional(), onDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() })
   .refine((d) => d.from !== d.to, { message: "ครูคนเดิม" })
-  .refine(oneScope, ONE_SCOPE)
-  .refine((d) => d.rateMinor === undefined || !!d.onDate, { message: "ค่าสอนของครูที่สอนแทนใช้กับ 'เฉพาะครั้งนี้' เท่านั้น", path: ["rateMinor"] }); // TASK-562
+  .refine(oneScope, ONE_SCOPE);
+  // 🔻 TASK-625 §8 — `rateMinor` is accepted with `fromDate` TOO. TASK-562 restricted it to `onDate` because only the
+  // per-session swap wrote a rate; now BOTH scopes do, and a from-here-on swap of a teacher the series has never paid would
+  // otherwise be refused with no way for the admin to answer the refusal.
+  // ⚠️ **This is a CONTRACT CHANGE even though nothing is rejected differently today:** a body that was a 400 is now accepted,
+  // so the door promises more than it did. 🚫 What did NOT change: with `onDate` the meaning of `rateMinor` is identical, and
+  // the key-59 gate on it (TASK-584's `assertMayEditCoachRate`) still applies to both scopes — a rate is still privileged.
+  // 📌 TASK-562's `onDate`-only refine stood here until TASK-625 §8 removed it.
 export const otherSeriesDates = z.object({ dates: z.array(DATE).min(1).max(60) }).refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] });
 export const otherSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), otherKind: z.enum(HUMAN_OTHER_KINDS).optional(), headCount: z.number().int().min(0).optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })

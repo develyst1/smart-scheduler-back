@@ -65,7 +65,9 @@ export type UndoPlan = {
  * writes (the reconcile is asked whether the plan balances). A preview can say "ok" where the act then refuses on that check.
  */
 export async function planUndo(tx: any, bookingId: string, today: string): Promise<UndoPlan> {
-    const row = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, bookingId), with: { course: true, voucher: true } });
+    // 🔻 §T-G — `student` + `coStudent` join the SAME `with`: `displayNameOf` reads them, and the refusal below names the
+    // course by whose it is. 🚫 No second query — the row was already being loaded with its relations.
+    const row = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, bookingId), with: { course: true, voucher: true, student: true, coStudent: true } });
     if (!row) throw notFound("ไม่พบคาบเรียน");
     assertNotCampRow(row); // a camp hour: camp has its own day undo
     const kind = undoKindOf(row);
@@ -82,7 +84,7 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
         ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.extendedFromId, row.id) })
         : [];
       const charge = leaveChargeOf(row, linkedAll.length > 0);
-      if (charge === "unknown") throw UNDO_LEAVE_CHARGE_UNKNOWN();
+      if (charge === "unknown") throw UNDO_LEAVE_CHARGE_UNKNOWN(displayNameOf(row) || "คาบอื่น", row.date); // §T-G — the ONE name rule, same fallback as UNDO_SLOT_TAKEN
       leaveRefunded = charge === "charged";
 
       const live = linkedAll.filter((m: any) => m.status !== "CANCELLED");

@@ -1,0 +1,162 @@
+{
+  "task": "TASK-625",
+  "proves": "src/lib/from-here-on-rate-task625.test.ts",
+  "note": "🔴 TASK-627's convention. R1 is the defect itself put back: the from-here-on swap writing no rate, so the incoming teacher is paid the outgoing one's. E7 and E8 came over from TASK-629's set when TASK-625 collapsed the two rate resolutions into one — the defects are the same, their home moved.",
+  "tests": "src/lib/from-here-on-rate-task625.test.ts src/lib/swap-any-teacher-task629.test.ts src/lib/other-series-req101.test.ts src/lib/cover-rate-key-task584.test.ts",
+  "mutations": [
+    {
+      "id": "R1",
+      "what": "🔴 THE DEFECT RESTORED: the from-here-on swap writes no rate, so the incoming teacher is paid at the OUTGOING teacher's stored rate",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "          await tx.update(bookings).set({ teacherId: input.to, teacherRateMinor: rate }).where(eq(bookings.id, r.id));",
+              "to": "          await tx.update(bookings).set(input.onDate ? { teacherId: input.to, teacherRateMinor: rate } : { teacherId: input.to }).where(eq(bookings.id, r.id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "the rate is resolved but never written on ANY scope — every swapped row keeps the old teacher's rate",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "await tx.update(bookings).set({ teacherId: input.to, teacherRateMinor: rate }).where(eq(bookings.id, r.id));",
+              "to": "await tx.update(bookings).set({ teacherId: input.to }).where(eq(bookings.id, r.id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "the refusal moves to INSIDE the loop — a twelve-row swap stops half-way and nobody can see where",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    if (rate == null) throw RATE_REQUIRED(targets[0].date);",
+              "to": ""
+            },
+            {
+              "from": "      if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);",
+              "to": "      if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);\n      if (rate == null) throw RATE_REQUIRED(r.date);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "no rate ⇒ written as NULL instead of refused (an unpaid teacher, silently)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    if (rate == null) throw RATE_REQUIRED(targets[0].date);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "a SECOND resolution site: the from-here-on scope resolves its own rate (the two scopes can now disagree)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const rate = input.rateMinor ?? seriesRateOf(rows, input.to);",
+              "to": "    const rate = input.onDate ? (input.rateMinor ?? seriesRateOf(rows, input.to)) : (seriesRateOf(rows, input.to) ?? input.rateMinor);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "the given `rateMinor` is ignored in the from-here-on scope — the admin's answer to the refusal does nothing",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const rate = input.rateMinor ?? seriesRateOf(rows, input.to);",
+              "to": "    const rate = input.onDate ? (input.rateMinor ?? seriesRateOf(rows, input.to)) : seriesRateOf(rows, input.to);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E7",
+      "what": "(from TASK-629's set) the incoming teacher is paid the OUTGOING teacher's rate as a fallback — the exact default TASK-562 refused",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const rate = input.rateMinor ?? seriesRateOf(rows, input.to);",
+              "to": "    const rate = input.rateMinor ?? seriesRateOf(rows, input.to) ?? seriesRateOf(rows, input.from);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E8",
+      "what": "(from TASK-629's set) the rate lands on the WRONG teacher's row — the extra path writes the primary's column instead of its own",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "          await attachAdditionalTeachers(tx, r.id, [input.to], { [input.to]: rate });",
+              "to": "          await tx.update(bookings).set({ teacherRateMinor: rate }).where(eq(bookings.id, r.id));\n          await attachAdditionalTeachers(tx, r.id, [input.to], {});"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "§8's widening undone — a from-here-on swap can no longer be given a rate, so the refusal it answers is unanswerable",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "  .refine((d) => d.from !== d.to, { message: \"ครูคนเดิม\" })\n  .refine(oneScope, ONE_SCOPE);",
+              "to": "  .refine((d) => d.from !== d.to, { message: \"ครูคนเดิม\" })\n  .refine(oneScope, ONE_SCOPE)\n  .refine((d) => d.rateMinor === undefined || !!d.onDate, { message: \"x\", path: [\"rateMinor\"] });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "what": "§8 widened too far — a rate with NO scope is accepted (the compulsory scope lost)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const otherSeriesSwap = z\n  .object({ from: ID, to: ID, fromDate: DATE.optional(), onDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() })\n  .refine((d) => d.from !== d.to, { message: \"ครูคนเดิม\" })\n  .refine(oneScope, ONE_SCOPE);",
+              "to": "export const otherSeriesSwap = z\n  .object({ from: ID, to: ID, fromDate: DATE.optional(), onDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() })\n  .refine((d) => d.from !== d.to, { message: \"ครูคนเดิม\" })\n  .refine((d) => !!d.rateMinor || oneScope(d), ONE_SCOPE);"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

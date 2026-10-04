@@ -1737,18 +1737,40 @@ export async function swapGroupTeacher(id: string, input: { teacherId: string; f
     where: (b, { and: a, eq: e, gte: g, inArray: inA }) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP"), inA(b.status, [...COURSE_LIVE_STATUSES]), input.fromHereOn ? g(b.date, current.date) : e(b.date, current.date)),
     orderBy: (b, { asc: o }) => [o(b.date)],
   });
+  // 🔴 TASK-632 (@Jason's finding on TASK-625, cut the same day) — THE SAME MONEY DEFECT WAS HERE: this swap wrote
+  // `{ teacherId }` and left `teacher_rate_minor` alone, so the incoming coach was paid the OUTGOING coach's stored rate,
+  // silently, on every date it moved. On a GROUP row that column is the primary teacher's rate, exactly as on an OTHER row.
+  // 🔑 REUSED, not re-derived: `seriesRateOf` + `RATE_REQUIRED` are TASK-562's rule and TASK-625's shape — resolved ONCE,
+  // before the transaction, so a swap we cannot rate moves NOTHING. 🚫 A second copy of this rule would be the defect it fixes,
+  // wearing the other path's name.
+  // ⚠️ ONE difference from the OTHER-series door, and it is a GAP, not a decision I made: that door lets an admin answer the
+  // refusal with `rateMinor` (TASK-625 §8). **This door has no such field**, so an incoming coach the group has never paid is
+  // refused with no way to answer. 📌 Reported to @Sober rather than fixed here: widening this door is FE work too.
+  // 🔑 The lookup needs the WHOLE key, not the from-here-on slice — a coach's rate may be recorded on a date already past.
+  const keyRows = await db.query.bookings.findMany({
+    where: (b, { and: a, eq: e }) => a(e(b.groupKey, groupKey), e(b.bookingType, "GROUP")),
+    with: { additionalTeachers: true },
+  });
+  const rate = seriesRateOf(keyRows as any, input.teacherId);
+  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);
   let moved = 0;
   await db.transaction(async (tx) => {
     for (const g of targets) {
       await assertTeacherBookable(tx, input.teacherId, g.date);
       try {
-        await tx.update(bookings).set({ teacherId: input.teacherId }).where(eq(bookings.id, g.id));
+        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id)); // 🔻 TASK-632 — the rate rides the swap
       } catch (e: any) {
         if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${g.date} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
         throw e;
       }
       await reconcileBookingHolds(tx, g.id, input.teacherId, g.status, false);
       // every live seat of this date follows its group row (a seat is outside the index — no clash possible)
+      // 🔴 TASK-632 — the SEAT write deliberately carries NO rate, and this is an answer, not an oversight. A seat is a
+      // COURSE_PACKAGE row, where `teacher_rate_minor` is an OVERRIDE of the course's own `class_rate_minor` — a different
+      // meaning from the group row's "this is what the primary is paid", and it IS read (`rateFacts` puts it on the DTO), so
+      // it is not an unread column. 🔑 Whether changing the coach should clear a course override is `TASK-633`, a PRODUCT
+      // question with the owner, and it is the same question for the plan edit and the Move popup. 🚫 Not answered here by
+      // a side effect of a group swap. **Pinned as an absence in the test.**
       await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
       moved++;
     }
@@ -3420,8 +3442,17 @@ async function preStartDeclaration(
   if (!current.courseId || !current.course) return null;
   const rows = await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) });
   if (!courseNotStarted(current.course, rows as any, bangkokNow().date)) return null;
-  // the row being declared now is not yet SICK_LEAVE, so it is not double-counted
-  const declared = (rows as any[]).filter((r) => r.id !== current.id && r.status === "SICK_LEAVE" && r.plannedAtCreation).length;
+  // 🔴 TASK-609 §3 (@Sober's leak, RULED) — the cap counts DECLARATIONS MADE, not declarations currently standing: every row that
+  // carries `plannedAtCreation`, **whatever its status now**.
+  // 🔑 Why not "status is SICK_LEAVE": a declared day that is later CANCELLED would stop counting, so the cap could be reset by
+  // cancel-and-re-declare, without limit. **A limit any later edit can reset is decorative** — which is the owner's own objection to a
+  // quota that does not hold.
+  // ⚠️ THE COST, stated rather than discovered: a declaration taken back — by a cancel OR by the Undo — still consumes one of the cap,
+  // because neither clears the flag. So a MISTAKEN declaration costs one. 🚫 I did not "fix" that by clearing `plannedAtCreation` on
+  // the Undo path: that flag is what `leaveChargeOf` reads to answer "was this leave free?", so clearing it would change what the Undo
+  // reports about a row it has already refunded. ⇒ **if the owner wants corrections to be free, that is his call and a separate line.**
+  // 📌 The row being declared NOW is excluded: it is not a prior declaration (mutation F10 holds this).
+  const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;
   return { declared, quota: courseLeaveQuota(current.course) };
 }
 

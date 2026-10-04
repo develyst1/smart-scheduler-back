@@ -129,7 +129,10 @@ describe("🔑 key 58, the access rows, the validators, the routes through the R
     expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3 }).success).toBe(false); // 🔻 TASK-562: no scope ⇒ refused
     expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12" }).success).toBe(true);
     expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 40000 }).success).toBe(true); // TASK-562 — a cover
-    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 40000 }).success).toBe(false); // the cover's rate is for ONE session
+    // 🔻 TASK-625 §8 — NARROWED, deliberately: TASK-562 refused `rateMinor` with `fromDate` because only the per-session swap
+    // wrote a rate. Now BOTH scopes write one, so a from-here-on swap of a teacher the series has never paid had no way for the
+    // admin to answer its refusal. 🔑 The claim that REPLACES it: the rate is accepted in both scopes and means the same thing.
+    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 40000 }).success).toBe(true);
     expect(v.otherSeriesDates.safeParse({ dates: ["2026-10-12", "2026-10-12"] }).success).toBe(false);
     expect(v.otherSeriesPatch.safeParse({}).success).toBe(false);
     expect(v.otherSeriesPatch.safeParse({ startTime: "16:00" } as any).success).toBe(false);
@@ -254,11 +257,20 @@ describe("🔴 the doors by VALUE through a fake tx — one tx; the first clash 
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any) => { notices.push(o); return { status: "queued" } as any; }) as any));
     spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async (...a: any[]) => { writes.push({ op: "holds", a: a.slice(1) }); }) as any));
-    expect(await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, fromDate: "2026-10-06" })).toEqual({ moved: 2 });
-    expect(writes.filter((w) => w.op === "update").map((w) => w.patch)).toEqual([{ teacherId: T3 }, { teacherId: T3 }]);
+    // 🔻 TASK-625 — this call used to move two rows and write NO rate, which was the money defect: T3 would have taught at T1's
+    // stored rate. T3 has no rate anywhere in this fixture, so the act is now REFUSED — and the admin can answer the refusal by
+    // naming one (§8), which is what the second call does. ⚠️ The refusal is asserted BY CODE, not by status: `RATE_REQUIRED` and
+    // the "not on this row" refusal are both 400.
+    await expect(series.swapOtherSeriesTeacher(K, { from: T1, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({ code: "RATE_REQUIRED" });
+    expect(writes).toEqual([]); // 🔴 nothing moved — a half-moved series is worse than a refusal, because nobody can see where it stopped
+    expect(await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, fromDate: "2026-10-06", rateMinor: 42000 })).toEqual({ moved: 2 });
+    expect(writes.filter((w) => w.op === "update").map((w) => w.patch)).toEqual([{ teacherId: T3, teacherRateMinor: 42000 }, { teacherId: T3, teacherRateMinor: 42000 }]);
     expect(writes.filter((w) => w.op === "holds").map((w) => w.a)).toEqual([["b2", T3, "CONFIRMED", false], ["b3", T3, "PENDING", false]]);
     expect(notices.map((n) => [n.payload.kind, n.bookingId])).toEqual([["teacher_unassigned", "b2"], ["teacher_assigned", "b2"], ["teacher_unassigned", "b3"], ["teacher_assigned", "b3"]]);
-    await expect(series.swapOtherSeriesTeacher(K, { from: T2, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({ status: 400 });
+    // 🔻 TASK-629 — `from: T2` is NO LONGER refused for being a non-primary: it is a valid extra swap now, and this call is
+    // refused only for want of a rate. ⚠️ Worth saying out loud: between TASK-629 and TASK-625 this line passed for a DIFFERENT
+    // reason than it was written for, and only the rate rule exposed it. The claim it still carries is in `swap-any-teacher-task629`.
+    await expect(series.swapOtherSeriesTeacher(K, { from: T2, to: T3, fromDate: "2026-10-06" })).rejects.toMatchObject({ code: "RATE_REQUIRED" });
     await expect(series.swapOtherSeriesTeacher(K, { from: T1, to: T2, fromDate: "2026-10-06" })).rejects.toMatchObject({ code: "ALREADY_ON_ROW" });
   });
   test("add dates: the template's facts + extras + rates copied through the ONE inserter, the key stamped; an existing live date ⇒ 409 DATE_EXISTS", async () => {
@@ -429,14 +441,19 @@ describe("🔴 TASK-579 — the cover act takes a rate for the coach it ADDS, an
     expect(await series.swapOtherSeriesTeacher(K, { from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 })).toEqual({ moved: 1 });
     expect(writes.filter((w) => w.op === "update").map((w) => [w.patch])).toEqual([[{ teacherId: T3, teacherRateMinor: 45000 }]]);
   });
-  test("🚫 half 2: the act has NO way to name anyone else's rate — the schema has one number (no map), a stray map is STRIPPED, and the number lives only with `onDate`", () => {
+  test("🚫 half 2: the act has NO way to name anyone ELSE's rate — one number, no map, a stray map STRIPPED (🔻 TASK-625: in BOTH scopes now)", () => {
     const p = v.otherSeriesSwap.safeParse({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000, teacherRates: { [T2]: 1 }, rates: { [T1]: 1 } });
     expect(p.success && p.data).toEqual({ from: T1, to: T3, onDate: "2026-10-12", rateMinor: 45000 }); // exactly the fields the door sends — nothing wider
-    expect(v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 45000 }).success).toBe(false);
+    // 🔻 TASK-625 §8 — NARROWED: "the number lives only with `onDate`" is retired (the from-here-on swap writes a rate too).
+    // 🔑 What is NOT narrowed, and is the half this test exists for: the number can only ever be the INCOMING coach's — there is
+    // still no way to name anybody else's rate in this act, in either scope, and a map is still stripped.
+    const q = v.otherSeriesSwap.safeParse({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 45000, teacherRates: { [T2]: 1 } });
+    expect(q.success && q.data).toEqual({ from: T1, to: T3, fromDate: "2026-10-12", rateMinor: 45000 });
     const S = region(code(src("src/services/other-series.service.ts")), "export async function swapOtherSeriesTeacher(", "\n}\n");
     // the ONE write pairs the rate with `input.to` — the coach this act puts on the row — and nothing else in the act writes a rate
-    expect(S).toContain("await tx.update(bookings).set(input.onDate ? { teacherId: input.to, teacherRateMinor: coverRate } : { teacherId: input.to }).where(eq(bookings.id, r.id));");
-    expect((S.match(/teacherRateMinor|rateMinor:|teacherRates/g) ?? []).length).toBe(1);
+    expect(S).toContain("await tx.update(bookings).set({ teacherId: input.to, teacherRateMinor: rate }).where(eq(bookings.id, r.id));");
+    expect(S).toContain("await attachAdditionalTeachers(tx, r.id, [input.to], { [input.to]: rate });"); // 🔻 TASK-629's extra path, same one number
+    expect((S.match(/teacherRateMinor|teacherRates/g) ?? []).length).toBe(1);
   });
   test("🚫 half 2: a rate for a coach NOT on the row and NOT being added is still refused — by the unchanged guard, at the header PATCH (Tanya's door)", () => {
     expect(() => assertRatesOnBooking({ [T3]: 45000 }, [T1, T2])).toThrow(ApiException);

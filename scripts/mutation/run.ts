@@ -58,13 +58,21 @@ export function runMutation(m: Mutation, tests: string, baseline: number): strin
 
 if (import.meta.main) {
   const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
-  const tests = arg("tests");
   const file = arg("mutations");
-  if (!tests || !file) {
-    console.error('usage: bun run mutation:run -- --tests "<test files>" --mutations <mutations.json> [--baseline N]');
+  if (!file) {
+    console.error('usage: bun run mutation:run -- --mutations <mutations.json> [--tests "<test files>"] [--baseline N]');
     process.exit(2);
   }
-  const mutations: Mutation[] = JSON.parse(readFileSync(resolve(file), "utf8"));
+  // 🔴 TASK-627 — the set may be an ARRAY (as before) or `{ tests, mutations }`. 🔑 The object form is the one to write: a set whose
+  // test list lives only in somebody's shell is a number nobody can re-measure — the same failure as keeping the runner in a
+  // scratchpad, one level up. `--tests` still wins when given, so an old set and a one-off subset both keep working.
+  const parsed = JSON.parse(readFileSync(resolve(file), "utf8")) as Mutation[] | { tests?: string; mutations: Mutation[] };
+  const mutations: Mutation[] = Array.isArray(parsed) ? parsed : parsed.mutations;
+  const tests = arg("tests") ?? (Array.isArray(parsed) ? undefined : parsed.tests);
+  if (!tests) {
+    console.error(`no test list: pass --tests, or give the set a "tests" field (${file})`);
+    process.exit(2);
+  }
   const before = treeChecksum();
   // The baseline is MEASURED unless given: an unmutated run that is not itself a clean SURVIVED is no baseline at all.
   const measured = runTests(tests, 0);

@@ -67,6 +67,10 @@ const KINDS: Row[] = [
   { kind: "camp_deduction", audiences: ["parent"], when: "Day-end camp credit cut — what is left. English only by the owner's ruling.", payload: () => ({ studentName: "Student A", date: D1, remainingDays: 1.5, totalDays: 5 }) },
   { kind: "makeup_far_out", audiences: ["admin"], when: "A make-up could only be placed very far out — admins are warned.", payload: () => ({ weeks: 26, replaces: D1, landedOn: "2027-04-15" }) },
   { kind: "daily_digest", audiences: ["admin"], when: "Every morning 08:00 (scheduled job) — the attention list for admins.", payload: () => ({ checks: ATTENTION_CHECKS.map((c) => ({ key: c.key, count: 1, items: [{ id: "x", label: "Student A" }] })) }) },
+  // TASK-623 — the producer (`notifyTeacherOfLeaveDay`) sends these only when an admin acts ON BEHALF of the coach; the lift carries no actor.
+  { kind: "teacher_leave_recorded", variant: "classes on that day", audiences: ["teacher"], when: "An admin records a leave day for the coach (not sent when the coach records it themselves) — classes already booked that day.", payload: () => ({ date: D2, classes: 2, actor: "Admin D" }) },
+  { kind: "teacher_leave_recorded", variant: "no classes that day", audiences: ["teacher"], when: "Same, when nothing is booked that day — the 'not cancelled' line is not printed.", payload: () => ({ date: D2, classes: 0, actor: "Admin D" }) },
+  { kind: "teacher_leave_lifted", audiences: ["teacher"], when: "An admin removes a leave day the coach had — bookings are open again.", payload: () => ({ date: D2, actor: null }) },
   { kind: "teacher_link_approved", audiences: ["teacher"], when: "An admin approves a coach's LINE link.", payload: (lang) => ({ text: t("verify_teacher_ok", lang, { nick: "Coach B" }) }) }, // the producer builds the text this way
   // Dead branches: rendered by the code, but nothing sends them today (no producer).
   { kind: "reschedule_requested", audiences: ["admin"], when: "NOT SENT TODAY — no producer (old reschedule flow).", payload: () => ({ to: slot(D2) }), flag: "NO PRODUCER" },

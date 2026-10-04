@@ -83,7 +83,14 @@ killed by the time limit ⇒ NO RESULT [KILLED] · no output ⇒ NO RESULT [NO S
 ## What was deliberately NOT moved here
 
 - **The ~100 per-task runners** (`mut364` … `mut507`, one per task). They were one task's scaffolding each: a hard-coded
-  test list and inline mutation list. The mutations themselves are recorded in each TASK's report, which is where they belong.
+  test list and inline mutation list.
+  - 🔴 **TASK-627 SUPERSEDES the second half of this bullet.** It used to read *"the mutations themselves are recorded in each TASK's
+    report, which is where they belong"*. **They do not belong only there.** @Sober's finding: *"we put the TOOL in the repo and left
+    the EVIDENCE in the scratchpad — the same failure, one level up."* A verdict nobody can re-run is a number taken on trust.
+  - ⇒ **A mutation SET is a FILE in the repo, beside the test it proves**, named `<test-file>.mutations.json`, and it **carries the
+    test list it is measured against** (`{ tests, mutations }`). **The report still names the verdicts; the file makes them re-runnable.**
+  - 📌 A NAMED SUBSET of tests is correct and expected — the runner refuses a dirty baseline, so the whole suite is often not usable.
+    What is not acceptable is a subset nobody can see.
 - **Their decision rules — on purpose.** Families of them read a missing summary as caught (`?` counts), read any `error:`
   or a SIGTERM as a bite, or read the first `N fail` in the output rather than the final summary. **Those are the defects
   this rule exists to end;** preserving them would preserve the defect.

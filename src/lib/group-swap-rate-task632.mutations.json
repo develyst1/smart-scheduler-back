@@ -1,0 +1,72 @@
+{
+  "task": "TASK-632",
+  "proves": "src/lib/group-swap-rate-task632.test.ts",
+  "note": "🔴 The four @Sober named: the defect restored · a second resolution site · the refusal moved inside the loop · the rate written where the SEATS are instead of (or as well as) the group row. G5–G7 cover the lookup's own mistakes.",
+  "tests": "src/lib/group-swap-rate-task632.test.ts src/lib/group-series-req104.test.ts src/lib/group-session-req095-2a.test.ts src/lib/camp-on-grid-req095-11.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "🔴 THE DEFECT RESTORED: the group swap writes no rate, so the incoming coach is paid the OUTGOING coach's stored rate",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id));",
+        "to": "        await tx.update(bookings).set({ teacherId: input.teacherId }).where(eq(bookings.id, g.id));"
+      }]}]
+    },
+    {
+      "id": "G2",
+      "what": "a SECOND resolution site: the group path derives its own rate instead of asking TASK-562's function",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  const rate = seriesRateOf(keyRows as any, input.teacherId);",
+        "to": "  const rate = (keyRows as any[]).find((r) => r.teacherId === input.teacherId)?.teacherRateMinor ?? null;"
+      }]}]
+    },
+    {
+      "id": "G3",
+      "what": "the refusal moves INSIDE the loop — a multi-date swap half-moves and nobody can see where it stopped",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [
+        { "from": "  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);", "to": "" },
+        { "from": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      try {\n        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })", "to": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      if (rate == null) throw RATE_REQUIRED(g.date);\n      try {\n        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })" }
+      ]}]
+    },
+    {
+      "id": "G4",
+      "what": "the rate is written onto the SEATS as well — a group swap silently answering TASK-633's product question by side effect",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
+        "to": "      await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
+      }]}]
+    },
+    {
+      "id": "G5",
+      "what": "the rate is looked up for the OUTGOING coach — the defect written deliberately instead of by omission",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  const rate = seriesRateOf(keyRows as any, input.teacherId);",
+        "to": "  const rate = seriesRateOf(keyRows as any, current.teacherId);"
+      }]}]
+    },
+    {
+      "id": "G6",
+      "what": "the lookup reads only the SLICE being moved, so a coach paid on a past date of this group is refused as unknown",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  const rate = seriesRateOf(keyRows as any, input.teacherId);",
+        "to": "  const rate = seriesRateOf(targets as any, input.teacherId);"
+      }]}]
+    },
+    {
+      "id": "G7",
+      "what": "no rate ⇒ written as NULL rather than refused (an unpaid coach, silently)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);",
+        "to": ""
+      }]}]
+    },
+    {
+      "id": "G8",
+      "what": "the PAST is touched: the from-here-on filter replaced by every live date of the key (E14's lesson, on this path)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
+        "from": "input.fromHereOn ? g(b.date, current.date) : e(b.date, current.date)),\n    orderBy: (b, { asc: o }) => [o(b.date)],",
+        "to": "input.fromHereOn ? g(b.date, \"1900-01-01\") : e(b.date, current.date)),\n    orderBy: (b, { asc: o }) => [o(b.date)],"
+      }]}]
+    }
+  ]
+}

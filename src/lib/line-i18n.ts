@@ -767,7 +767,8 @@ const TABLE: Record<string, Entry> = {
   cp_half_full: { TH: "เต็มวัน", EN: "Full day" },
   cp_half_am: { TH: "ช่วงเช้า", EN: "Morning (AM)" },
   cp_half_pm: { TH: "ช่วงบ่าย", EN: "Afternoon (PM)" },
-  // ⭐ TASK-608 (REQ-111 C) — an ADMIN blocked, or unblocked, a teacher's DAY. 📋 DRAFT (COPY §T-608), both languages.
+  // ⭐ TASK-608 (REQ-111 C) — an ADMIN blocked, or unblocked, a teacher's DAY. ✅ APPROVED by the owner 2026-10-04 ("1 ผ่านหมด"),
+  // as drafted — COPY §T-608, both languages. 🚫 No longer a draft: the words below are the owner's, not a proposal.
   // 🔑 The second line is the one that must be unmissable: **nothing was cancelled**, so the teacher keeps teaching the classes already
   // on that day until an admin says otherwise. ⚠️ A teacher who believes their classes were cancelled does not turn up.
   // 🚫 No family and no other coach receives either of these: nothing changed for them (TASK-587's closed defect).

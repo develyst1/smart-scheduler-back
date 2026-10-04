@@ -45,6 +45,11 @@ const isGroupKey = (k: SeriesKey) => keyOf(k).type === "GROUP";
 const LIVE = [...COURSE_LIVE_STATUSES];
 export const PRIMARY_TEACHER = () => conflict("PRIMARY_TEACHER", "ครูคนแรกของตารางนำออกไม่ได้ — ใช้สลับครูแทน");
 export const ALREADY_ON_ROW = (date: string) => conflict("ALREADY_ON_ROW", `วันที่ ${date} ครูคนนี้อยู่ในตารางแล้ว`);
+// 🔴 TASK-629 — `from` is not where the branch resolved it: the primary path met a row whose primary is someone else (the
+// sentence TASK-428 already used, kept WORD FOR WORD so an existing refusal does not change its wording), and the extra
+// path a row that teacher is not an extra on. 📋 DRAFT: the second sentence is new wording — @Sober's for this batch.
+export const NOT_ON_ROW = (date: string, onExtra: boolean) =>
+  badRequest(onExtra ? `วันที่ ${date} ครูคนนี้ไม่ได้อยู่ในตารางของวันนี้` : `วันที่ ${date} ครูคนแรกไม่ใช่คนที่ระบุ`);
 const NOT_FOUND = () => notFound("ไม่พบตารางชุดนี้");
 
 type SeriesRow = {
@@ -74,6 +79,13 @@ const today = () => bangkokNow().date;
 const isLive = (r: SeriesRow) => LIVE.includes(r.status as any);
 const templateOf = (rows: SeriesRow[]): SeriesRow | null => rows.find(isLive) ?? rows[0] ?? null;
 const extrasOf = (r: SeriesRow) => (r.additionalTeachers ?? []).map((a) => a.teacherId);
+// 🔴 TASK-629 — WHICH LOCATION a teacher occupies on this row: the primary COLUMN, a `booking_teachers` ROW, or neither.
+// 🔑 The whole of the widened swap turns on this one answer, so it is given in ONE place and asked ONCE per call. It reads
+// the row the series already loaded (`extrasOf`), never a second query — and it is the only thing in this file that may
+// decide 'primary or not'. ⚠️ Deliberately NOT `teachersOfBooking`: that answers WHO is on a session and flattens the two
+// locations into one list, which is exactly the distinction this task exists because of.
+const locationOf = (r: SeriesRow, teacherId: string): "primary" | "extra" | "absent" =>
+  r.teacherId === teacherId ? "primary" : extrasOf(r).includes(teacherId) ? "extra" : "absent";
 const ratesOf = (r: SeriesRow): Record<string, number> => {
   const out: Record<string, number> = {};
   if (r.teacherRateMinor != null) out[r.teacherId] = r.teacherRateMinor;
@@ -246,7 +258,22 @@ export async function removeTeacherFromOtherSeries(key: SeriesKey, teacherId: st
  * 🔴 TASK-562 (REQ-110 item 5) — or on ONE session (`onDate`): "ครั้งที่ 3 ครู A ไปแทนครู B". A COVER: `to` REPLACES `from` on
  * that row (not a co-teacher — "A covers for B", and only A is paid), at A's rate through the row's own override — the
  * given `rateMinor`, else the rate A already has in this series, else REFUSED (never B's rate by default). The rows after it
- * are untouched. The from-date swap is unchanged (§3: not this task).
+ * are untouched. 🔻 TASK-625 — the from-date swap is no longer "unchanged": it pays the INCOMING teacher too (see the rule
+ * below), which is the one thing this doc used to say it did not do.
+ *
+ * 🔻 TASK-629 (REQ-111 item E, back half — Khwan: "swap ได้แค่ครูที่เป็น primary ค่ะ ต้องการให้เลือกคนอื่นได้ค่ะ") — `from` may now
+ * name ANY teacher on the row, not only the primary. A WIDENING of this control, not a new act.
+ * 🔑 The one fact that shapes it: **"primary" is not a flag on a list of people — it is a different STORAGE LOCATION.**
+ * The primary lives in `bookings.teacher_id` (rate: `bookings.teacher_rate_minor`); every other teacher is a row in
+ * `booking_teachers` (rate: that row's own `rate_minor`). ⇒ taking the primary off is an UPDATE OF A COLUMN; taking an
+ * extra off is a DELETE AND AN INSERT ON ANOTHER TABLE.
+ * ⇒ **ONE branch, chosen ONCE by `locationOf` before the loop** — never a second idea of who is on this session, and
+ * never "is this the primary?" asked twice. Everything after the write (the refusals, the notices) is SHARED.
+ * ⚠️ **The extra path's guarantee is WEAKER than the primary path's, and that is not a detail to discover later:**
+ * `bookings_teacher_slot_uq` constrains `bookings.teacher_id` ONLY. An extra is kept out of two places at once by
+ * `assertAdditionalTeacherFree` — an APPLICATION check **two racing requests can both pass** (its own comment says so).
+ * The primary path's clash is caught by the DATABASE (`23505`); the extra path's by a READ. Same refusal, weaker promise.
+ * 🚫 Do not assume the index is holding this one.
  */
 export async function swapOtherSeriesTeacher(key: string, input: { from: string; to: string; fromDate?: string; onDate?: string; rateMinor?: number }) {
   if (isGroupKey(key)) throw badRequest("การสลับครูของกลุ่มใช้ swapGroupTeacher"); // TASK-441 — the OTHER swap never moves seats
@@ -256,21 +283,61 @@ export async function swapOtherSeriesTeacher(key: string, input: { from: string;
     // 📌 The SAME live filter as `addTeacherToOtherSeries`'s `onDate` (TASK-453) — "this date only", never a second idea.
     const targets = input.onDate ? rows.filter((r) => isLive(r) && r.date === input.onDate) : seriesRowsFrom(rows, input.fromDate ?? today());
     if (input.onDate && !targets.length) throw NOT_FOUND();
-    const coverRate = input.onDate ? (input.rateMinor ?? seriesRateOf(rows, input.to)) : undefined;
-    if (input.onDate && coverRate == null) throw RATE_REQUIRED(input.onDate);
+    // 🔴 TASK-629 — THE branch, resolved ONCE, from the only thing that decides it: which location `from` occupies.
+    // 🚫 Not re-asked per row: every target must agree, and a row where `from` sits somewhere else is REFUSED below rather
+    // than quietly handled the other way — a series where the same person is primary on one date and an extra on another is
+    // a real shape, and silently doing both inside one call is how an admin loses track of what they changed.
+    const onExtra = locationOf(targets[0], input.from) === "extra";
+    // 🔴 TASK-625 (@Sober's finding, the owner: "3 รอบนี้เลย") — THE RATE RULE, asked ONCE, for every scope and BOTH locations.
+    // **The defect it closes:** the from-here-on swap used to write `{ teacherId: input.to }` and leave `teacher_rate_minor`
+    // alone ⇒ **the incoming teacher was paid at the OUTGOING teacher's stored rate, silently, on every row it moved.** The
+    // owner's ruling — *the cover is paid at the COVERING teacher's rate* — held for ONE session and not for the rest.
+    // 🔑 ONE resolution site, not one per scope: `seriesRateOf` + `RATE_REQUIRED` already existed and were already right; a
+    // second resolution is how the two scopes start disagreeing about what a teacher is paid.
+    // 🔴 And it is resolved BEFORE the loop, so a swap we cannot rate moves NOTHING: the per-session case refuses one row, but
+    // a twelve-row swap that stops in the middle is WORSE than a refusal — **nobody can see where it stopped.**
+    const rate = input.rateMinor ?? seriesRateOf(rows, input.to);
+    if (rate == null) throw RATE_REQUIRED(targets[0].date);
+    // 🔑 TASK-629 §3 — the LOOKUP was already right (`seriesRateOf` finds the INCOMING teacher's rate whether they held it
+    // as a primary or as an extra anywhere in this series); only the DESTINATION differs — the primary's COLUMN, or the
+    // incoming extra's OWN `booking_teachers` row. 🔻 TASK-625 then made the RULE one rule: before it, the extra path
+    // required a rate in both scopes while the primary path required one only for `onDate`, which is the asymmetry that
+    // turned out to BE the money defect.
     let moved = 0;
     for (const r of targets) {
-      if (r.teacherId !== input.from) throw badRequest(`วันที่ ${r.date} ครูคนแรกไม่ใช่คนที่ระบุ`);
-      if (extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);
-      await assertTeacherBookable(tx, input.to, r.date); // ✅ TASK-561's leave block applies to a cover too
-      try {
-        await tx.update(bookings).set(input.onDate ? { teacherId: input.to, teacherRateMinor: coverRate } : { teacherId: input.to }).where(eq(bookings.id, r.id));
-      } catch (e: any) {
-        if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${r.date} ${hhmm(r.startTime)} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
-        throw e;
+      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date, onExtra);
+      if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);
+      await assertTeacherBookable(tx, input.to, r.date); // ✅ TASK-561's leave block applies to a cover too — and to an extra
+      if (onExtra) {
+        // 🔴 The extra path: the outgoing extra's row GONE, the incoming extra's row INSERTED carrying their OWN rate, and the
+        // insert goes THROUGH `attachAdditionalTeachers` — which runs `assertTeacherBookable` + `assertAdditionalTeacherFree`
+        // — rather than around it. 🚫 A non-primary swap NEVER writes `bookings.teacher_id` or `bookings.teacher_rate_minor`:
+        // that would re-rate a teacher nobody asked about. (Pinned as an ABSENCE in the test.)
+        try {
+          await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, r.id), eq(bookingTeachers.teacherId, input.from)));
+          await attachAdditionalTeachers(tx, r.id, [input.to], { [input.to]: rate });
+        } catch (e) {
+          if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${r.date} ${hhmm(r.startTime)} — ${e.message} — ไม่ได้ย้ายรายการใด`);
+          throw e;
+        }
+      } else {
+        try {
+          // 🔴 TASK-625 — the rate rides BOTH scopes now. The `input.onDate ? … : { teacherId: input.to }` fork that used to
+          // stand here IS the defect: the second arm left the outgoing teacher's rate on a row the incoming teacher now teaches.
+          await tx.update(bookings).set({ teacherId: input.to, teacherRateMinor: rate }).where(eq(bookings.id, r.id));
+        } catch (e: any) {
+          if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${r.date} ${hhmm(r.startTime)} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
+          throw e;
+        }
+        await reconcileBookingHolds(tx, r.id, input.to, r.status, false); // 🚫 not on the extra path: it reconciles the PRIMARY column's holds, which an extra never occupied
       }
-      await reconcileBookingHolds(tx, r.id, input.to, r.status, false);
-      // the existing per-row coach kinds (the course plan's shape): the old primary loses the row, the new one gains it
+      // 🔴 TASK-629 §4 — ONE pair, the SWAP's own: `teacher_unassigned` + `teacher_assigned`, SHARED by both paths.
+      // 🔑 Why this pair and not `other_teacher_removed` / `other_teacher_added`: **the message belongs to the ACT the admin
+      // performed, not to the table the act happened to touch.** The admin swapped one teacher for another on this session;
+      // the outgoing coach must learn they are off THIS row and the incoming one that they are on it — which is what this pair
+      // says, per row. The add/remove pair is a SERIES-shaped notice about joining or leaving a schedule, so sending it would
+      // tell both coaches that a different thing happened than did. 📌 That the extra path writes the add/remove TABLES is
+      // exactly the coincidence not to follow. (The four-kind duplication itself is TASK-614, next round — not fixed here.)
       const [oldT, newT] = await Promise.all([
         tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, input.from) }),
         tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, input.to) }),
@@ -279,6 +346,9 @@ export async function swapOtherSeriesTeacher(key: string, input: { from: string;
       await enqueueLine({ recipientType: "teacher", recipientLineUserId: newT?.lineUserId ?? null, bookingId: r.id, payload: { kind: "teacher_assigned", bookingId: r.id } }, tx);
       moved++;
     }
+    // 🚫 TASK-629 — the response shape is UNCHANGED (`{ moved }`). I had added a `swapped: "primary" | "extra"` field and took it
+    // back out: two shipped pins assert this object EXACTLY, and widening a response nobody asked for to say something the caller
+    // already knows (it chose `from`) is a contract change smuggled in beside a feature. The branch is pinned BY VALUE in the test.
     return { moved };
   });
 }

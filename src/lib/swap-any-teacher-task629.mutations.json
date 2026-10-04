@@ -1,0 +1,196 @@
+{
+  "task": "TASK-629",
+  "proves": "src/lib/swap-any-teacher-task629.test.ts",
+  "note": "🔴 TASK-627's convention. E1 is the one @Sober named: write the non-primary's rate onto the PRIMARY's column — it must bite. The set also runs the SHIPPED series suite (other-series-req101), because the widening's first risk is the primary path it rides on. ⚠️ 2026-10-04, after TASK-625: E7 and E8 were RETIRED FROM THIS SET and re-cut into `from-here-on-rate-task625.mutations.json`. They attacked the EXTRA path's own rate resolution, and TASK-625 collapsed that into ONE rule for every scope — so the lines they anchored on no longer exist. 🚫 Not deleted claims: the same two defects are E7/E8 there, against the rule's new single home.",
+  "tests": "src/lib/swap-any-teacher-task629.test.ts src/lib/other-series-req101.test.ts src/lib/cover-rate-key-task584.test.ts",
+  "mutations": [
+    {
+      "id": "E1",
+      "what": "🔴 @Sober's: a NON-PRIMARY swap writes the incoming extra's rate onto the PRIMARY's column — it re-rates a teacher nobody asked about",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "          await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, r.id), eq(bookingTeachers.teacherId, input.from)));",
+              "to": "          await tx.update(bookings).set({ teacherRateMinor: rate }).where(eq(bookings.id, r.id));\n          await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, r.id), eq(bookingTeachers.teacherId, input.from)));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "a NON-PRIMARY swap moves the PRIMARY instead — the extra path takes the primary branch (the whole defect this task fixes, inverted)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const onExtra = locationOf(targets[0], input.from) === \"extra\";",
+              "to": "    const onExtra = false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "what": "the branch is re-decided PER ROW — a series where the same person is primary on one date and an extra on another silently gets both writes",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const onExtra = locationOf(targets[0], input.from) === \"extra\";",
+              "to": "    let onExtra = locationOf(targets[0], input.from) === \"extra\";"
+            },
+            {
+              "from": "      if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date, onExtra);",
+              "to": "      onExtra = locationOf(r, input.from) === \"extra\";\n      if (locationOf(r, input.from) === \"absent\") throw NOT_ON_ROW(r.date, onExtra);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "what": "the outgoing extra is NOT removed — the session ends up with both teachers on it (an add, not a swap)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "          await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, r.id), eq(bookingTeachers.teacherId, input.from)));",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "what": "the DELETE is not scoped to the outgoing teacher — every extra on the row is removed",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, r.id), eq(bookingTeachers.teacherId, input.from)));",
+              "to": "await tx.delete(bookingTeachers).where(eq(bookingTeachers.bookingId, r.id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "what": "the incoming extra's row carries NO rate — an unpaid teacher, silently",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "await attachAdditionalTeachers(tx, r.id, [input.to], { [input.to]: rate });",
+              "to": "await attachAdditionalTeachers(tx, r.id, [input.to]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E9",
+      "what": "the insert goes AROUND the guards — `assertAdditionalTeacherFree` bypassed, so one teacher can be in two places at once",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "          await attachAdditionalTeachers(tx, r.id, [input.to], { [input.to]: rate });",
+              "to": "          await tx.insert(bookingTeachers).values([{ bookingId: r.id, teacherId: input.to, rateMinor: rate }]).onConflictDoNothing();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E10",
+      "what": "the extra path sends the ADD/REMOVE pair — the notice follows the TABLE the act touched instead of the ACT performed (§4)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "payload: { kind: \"teacher_unassigned\", bookingId: r.id } }, tx);",
+              "to": "payload: { kind: onExtra ? \"other_teacher_removed\" : \"teacher_unassigned\", bookingId: r.id } }, tx);"
+            },
+            {
+              "from": "payload: { kind: \"teacher_assigned\", bookingId: r.id } }, tx);",
+              "to": "payload: { kind: onExtra ? \"other_teacher_added\" : \"teacher_assigned\", bookingId: r.id } }, tx);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E11",
+      "what": "`to` already the PRIMARY of the row is accepted — one person in two locations on one session",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "      if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);",
+              "to": "      if (extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E12",
+      "what": "the PRIMARY path loses its holds reconciliation (the widening breaking what it rides on)",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "        await reconcileBookingHolds(tx, r.id, input.to, r.status, false);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E13",
+      "what": "the extra path also reconciles holds — a hold moved for a teacher who never occupied the primary column",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "      if (onExtra) {\n        // 🔴 The extra path",
+              "to": "      if (onExtra) {\n        await reconcileBookingHolds(tx, r.id, input.to, r.status, false);\n        // 🔴 The extra path"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E14",
+      "what": "the PAST is touched: the from-here-on filter replaced by every row of the key",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "    const targets = input.onDate ? rows.filter((r) => isLive(r) && r.date === input.onDate) : seriesRowsFrom(rows, input.fromDate ?? today());\n    if (input.onDate && !targets.length) throw NOT_FOUND();\n    // 🔴 TASK-629",
+              "to": "    const targets = input.onDate ? rows.filter((r) => isLive(r) && r.date === input.onDate) : rows;\n    if (input.onDate && !targets.length) throw NOT_FOUND();\n    // 🔴 TASK-629"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

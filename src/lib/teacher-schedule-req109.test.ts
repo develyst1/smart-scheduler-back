@@ -148,7 +148,12 @@ describe("✅ the two headers and the chat's language", () => {
     expect(t("tsched_empty", "TH")).toBe("ไม่มีคาบสอนในช่วงนี้");
   });
   test("⚠️ the REASON sits beside the English strings (so nobody 'fixes' them back to Thai)", () => {
-    const I = readFileSync(resolve(import.meta.dir, "line-i18n.ts"), "utf8"), S = readFileSync(resolve(import.meta.dir, "teacher-schedule.ts"), "utf8");
+    // 🔻 TASK-626 — line endings NORMALISED before comparing, the convention 43 other test files in this repo already use.
+    // 🔑 WHY: `core.autocrlf=true` on a Windows checkout, so the working copy is CRLF while HEAD is LF (332 of 333 `src/lib` files).
+    // A naked `readFileSync` is harmless until an expectation's own literal SPANS A NEWLINE — the one condition this assertion meets
+    // and its siblings here do not. 🚫 Not a `.gitattributes` change: the FILE is correct; the COMPARISON was wrong.
+    const read = (f: string) => readFileSync(resolve(import.meta.dir, f), "utf8").replace(/\r\n/g, "\n");
+    const I = read("line-i18n.ts"), S = read("teacher-schedule.ts");
     expect(I).toContain("her coaches read the English");
     expect(S).toContain("This is\n * the customer's own choice, not an oversight");
   });

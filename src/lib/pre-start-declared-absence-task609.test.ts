@@ -69,10 +69,26 @@ describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act 
       const before = S.slice(Math.max(0, m.index! - 400), m.index!);
       expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
     }
-    expect(S).toContain("const declared = (rows as any[]).filter((r) => r.id !== current.id && r.status === \"SICK_LEAVE\" && r.plannedAtCreation).length;");
+    expect(S).toContain("const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;");
   });
 });
 
+describe("⚖️ TASK-609 §3 — the cap counts DECLARATIONS MADE, so it cannot be reset (@Sober's leak, ruled)", () => {
+  test("by source: the count is by `plannedAtCreation` ALONE — a declared day that is later CANCELLED still counts", () => {
+    // 🔑 Counting only live `SICK_LEAVE` rows would let cancel-and-re-declare reset the cap without limit, and **a limit any later
+    // edit can reset is decorative** — the owner's own objection to a quota that does not hold.
+    expect(S).toContain("const declared = (rows as any[]).filter((r) => r.id !== current.id && r.plannedAtCreation).length;");
+    expect(S).not.toMatch(/r.status === "SICK_LEAVE" && r.plannedAtCreation/); // the status filter is GONE from the cap
+  });
+  test("⚠️ and the COST is pinned, not left to be discovered: neither a cancel nor the Undo clears the flag", () => {
+    // ⇒ a declaration taken back still consumes one of the cap. 🚫 Deliberately NOT fixed by clearing `plannedAtCreation` on the
+    // Undo: that flag is what `leaveChargeOf` reads to answer "was this leave free?" — clearing it would change what the Undo
+    // reports about a row it has already refunded. **If the owner wants corrections free, that is his call and a separate line.**
+    const U = code("src/services/undo.service.ts");
+    expect(U).not.toMatch(/plannedAtCreation/); // the Undo neither reads nor clears it
+    expect(code("src/lib/booking-undo.ts")).toContain("if (row.plannedAtCreation) return \"free\";"); // …it is the FREE answer, which is why
+  });
+});
 describe("🔴 TASK-609 — NO CONVERSION, both ways, and ACROSS A START-DATE CHANGE (the dangerous one)", () => {
   test("a declared day can never become charged: the only charge path excludes `plannedAtCreation`, on BOTH leave doors", () => {
     expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
