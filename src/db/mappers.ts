@@ -272,11 +272,12 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?
   // row is a relation in every reader's `withBookingRelations` (one batched query), so nothing is passed in;
   // a reader that did not load the relation gets `null`, which is honest for the row it did not ask for.
   rental: toRentalDTO(b.rental),
-  // TASK-366 (REQ-089 item 5) — is this row its course's LAST session? The `Last` badge on the admin schedule.
-  // Same shape as TASK-190's marker was: passed in, because the calendar answers it for the whole range in ONE grouped
-  // read (`liveEndDateByCourse` over `deriveLiveEndDate` — the plan's own end, no second rule). Computed on the
-  // calendar and the single-booking read; `false` on the paginated list and the create/pause/resume returns,
-  // where no screen draws the badge.
+  // TASK-366 (REQ-089 item 5) · 🔻 TASK-645 (REQ-113) — is this row its course's LAST LESSON? The `Last` badge on the admin
+  // schedule, which STAYS after attendance. Same shape as TASK-190's marker was: passed in, because the calendar answers it for
+  // the whole range in ONE grouped read (`lastLessonDateByCourse` over `deriveLastLessonDate` — the last lesson, live OR
+  // delivered). 🔴 That is the badge's OWN rule and deliberately NOT `deriveLiveEndDate`, the plan's displayed end, which course
+  // history reads and TASK-645 left untouched. Computed on the calendar and the single-booking read; `false` on the paginated
+  // list and the create/pause/resume returns, where no screen draws the badge.
   courseLast: opts.courseLast ?? false,
   // SPEC-059 / TASK-171 (REQ-063 req 8 / AC-10) — the discount captured at booking, so the record can answer
   // what/why/who. `null` — not a partly-filled object — when there is no discount: an absent discount and a
