@@ -1,0 +1,22 @@
+{
+  "task": "TASK-648",
+  "proves": "src/lib/admin-leave-future-only-task648.test.ts",
+  "note": "🔴 QA F1 (owner ruling). A1 removes the guard — the defect as @Tanya found it. A2 is the one @Sober named: moving the guard INTO the act, which must bite because it breaks the TEACHER's own same-day door.",
+  "tests": "src/lib/admin-leave-future-only-task648.test.ts src/lib/admin-records-teacher-leave-task608.test.ts src/lib/teacher-leave-act-task582.test.ts src/lib/teacher-leave-day-task561.test.ts",
+  "mutations": [
+    { "id": "A1", "what": "🔴 THE DEFECT AS QA FOUND IT: the route guard removed — the admin door accepts today and cancels the day's classes",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{ "from": "    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();\n", "to": "" }]}]},
+    { "id": "A2", "what": "🔴 the guard moved INSIDE the act — it must bite, because the TEACHER's own same-day door breaks with it",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{ "from": "    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();\n", "to": "" }] },
+                { "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  const me = teacherId;", "to": "  const me = teacherId;\n  if (!isAdvanceLeave(input.date)) throw badRequest(\"อดีต\");" }] }]},
+    { "id": "A3", "what": "the guard asks `onBehalf` inside the act instead — TASK-608's invariant broken: `onBehalf` would decide WHAT HAPPENS, not who is told",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{ "from": "    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();\n", "to": "" }] },
+                { "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  const me = teacherId;", "to": "  const me = teacherId;\n  if (opts.onBehalf && !isAdvanceLeave(input.date)) throw badRequest(\"อดีต\");" }] }]},
+    { "id": "A4", "what": "a SECOND date rule at the route — hand-rolled, so the door and the act can drift apart",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{ "from": "    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();", "to": "    if (input.date < new Date().toISOString().slice(0, 10)) throw ADMIN_LEAVE_FUTURE_ONLY();" }]}]},
+    { "id": "A5", "what": "the boundary slips by one — TODAY is accepted while only the past is refused (the exact case the owner ruled on)",
+      "files": [{ "file": "src/lib/teacher-leave.ts", "edits": [{ "from": "export const isAdvanceLeave = (date: string, today: string = bangkokNow().date): boolean => date > today;", "to": "export const isAdvanceLeave = (date: string, today: string = bangkokNow().date): boolean => date >= today;" }]}]},
+    { "id": "A6", "what": "the guard runs AFTER the act — the classes are cancelled and the families told, then the request is refused",
+      "files": [{ "file": "src/routes/api.ts", "edits": [{ "from": "    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();\n    return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));", "to": "    const out = await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true });\n    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();\n    return c.json(out);" }]}]}
+  ]
+}

@@ -150,12 +150,18 @@ describe("🔴 TASK-609 — NO CONVERSION, both ways, and ACROSS A START-DATE CH
 // @Sober: *removing a limit is the moment an unbounded loop shows itself; I want the NUMBER, not the reasoning.*
 // ✅ And the answer is the customer's own model, not a defect: the EXPIRY is the control, and it stretches one week per
 // declared absence (`courseBornCeiling` — the Kavya rule, 8 + 3 = 11), without limit, by design.
-describe("⚖️ TASK-643 §3b — with NO cap, the expiry is what bounds a pre-start course, BY VALUE", () => {
+// 🔴 RE-READ after TASK-646 (QA F3), and RENAMED for what it actually proves. ⚠️ This block proves the FUNCTION
+// `courseBornCeiling`, and nothing else. Its old name claimed the behaviour — "the expiry is what bounds a pre-start course" —
+// and @Sober accepted it as the PATH-level proof he had asked for. It was not: the declaration path never called the function
+// at all, and @Tanya found the make-ups landing past the expiry on sid.
+// 🔑 **A test named for the behaviour that exercises only a helper is how this got through.** The PATH proof lives in
+// `src/services/declared-absence-stretches-expiry-task646.test.ts`; this one stays because the arithmetic is still worth pinning.
+describe("⚖️ TASK-643 §3b — the FUNCTION `courseBornCeiling`'s arithmetic (🚫 NOT the path — see TASK-646)", () => {
   const WEEK = 7 * 24 * 3600 * 1000;
   const weeksBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / WEEK);
   const BASE = "2026-11-30"; // a size-4 course's base ceiling (start + size + quota weeks)
   const LAST = "2026-11-02"; // the plan's last session
-  test("🔑 the NUMBER: more declared absences than the quota stretches the ceiling by exactly that many weeks", () => {
+  test("🔑 the NUMBER, as the FUNCTION computes it: more absences than the quota ⇒ exactly that many weeks", () => {
     const quota = courseLeaveQuota({ size: 4 });
     expect(quota).toBeGreaterThan(0);
     const over = quota + 3; // 🔴 MORE than the course bought — impossible before TASK-643, ordinary now

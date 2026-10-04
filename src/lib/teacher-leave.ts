@@ -30,6 +30,17 @@ import { ownScopeWhere, teachersOfBooking } from "./own-scope";
  */
 export const isAdvanceLeave = (date: string, today: string = bangkokNow().date): boolean => date > today;
 
+// 🔴 TASK-648 (QA F1, owner ruling 2026-10-04) — the ADMIN's door takes FUTURE DAYS ONLY, and the refusal lives at that route.
+// 🔑 The owner's reason: a call that accepts today CANCELS that day's classes and NOTIFIES the families in the same call —
+// **one wrong call is irreversible, and the customer has already seen it.** *A door the screen refuses must not stand open behind it.*
+// 🚫 It is NOT inside the act, and that is binding both ways: the TEACHER's own door shares the act and must keep accepting
+// today (a coach's legitimate same-day cancel), and TASK-608's invariant is that `onBehalf` decides only WHO IS TOLD, never
+// WHAT HAPPENS — refusing inside the act on `onBehalf` would break it.
+// 📋 DRAFT (copy is @Sober's): the sentence names what to do instead, because a refusal that only says no sends the admin back
+// to the same button.
+export const ADMIN_LEAVE_FUTURE_ONLY = () =>
+  badRequest("บันทึกวันลาแทนครูได้เฉพาะวันถัดไปเป็นต้นไป — ถ้าต้องการยกเลิกคาบของวันนี้ กรุณาจัดการรายคาบในปฏิทิน");
+
 /** Pure: does a recorded leave day block a booking dated `bookingDate`? Only today or later — never history. */
 export const leaveFires = (bookingDate: string, today: string): boolean => bookingDate >= today;
 

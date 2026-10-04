@@ -1,0 +1,98 @@
+{
+  "task": "TASK-647",
+  "proves": "src/lib/notified-count-seam-task647.test.ts",
+  "note": "🔴 QA F2 (TEST-077). N1 is the defect exactly as shipped: the constant restored. N2 is the one @Sober named — re-deriving \"linked or not\" from the teacher row instead of reading the result, which is how the number and the outbox row start disagreeing. ⚠️ N5 was written wrong the first time (`1 && x` is `x` — a no-op that SURVIVED for the wrong reason) and re-cut to hard-code the lift's number. 🔑 A mutation that changes nothing is indistinguishable from a gap in the tests.",
+  "tests": "src/lib/notified-count-seam-task647.test.ts src/lib/admin-records-teacher-leave-task608.test.ts src/lib/teacher-leave-act-task582.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "🔴 THE DEFECT RESTORED: the count is a constant 1, so an unlinked coach is reported as told",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return sent.status === \"skipped\" ? 0 : 1;",
+              "to": "  return 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "the count is RE-DERIVED from the teacher row instead of read from the result (the two can then disagree)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return sent.status === \"skipped\" ? 0 : 1;",
+              "to": "  return teacher?.lineUserId ? 1 : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "`duplicate` is counted as NOT told — a coach whose message is already queued is reported unreachable",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return sent.status === \"skipped\" ? 0 : 1;",
+              "to": "  return sent.status === \"queued\" ? 1 : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "the count is inverted — told and not-told swap, which reads as a plausible screen either way",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return sent.status === \"skipped\" ? 0 : 1;",
+              "to": "  return sent.status === \"skipped\" ? 1 : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "the LIFT reports a CONSTANT again while the record door is fixed — half a fix, shipped",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const notified = opts.onBehalf ? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_lifted\", date, actor: null }) : 0;",
+              "to": "  const notified = opts.onBehalf ? (await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_lifted\", date, actor: null }), 1) : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "the teacher's OWN door starts notifying — `onBehalf` ignored, so a coach is messaged about their own act",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    const notified = opts.onBehalf && !r.alreadyRecorded ?",
+              "to": "    const notified = !r.alreadyRecorded ?"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -83,7 +83,11 @@ describe("🔑 ONE formula, and every path that sets a ceiling derives from it",
 
   test("the creation PREVIEW uses the same function too — preview and save agree on Kavya's week 11", () => {
     const SVC = code(src("src/services/scheduler.service.ts"));
-    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(2); // creation + preview, nothing else
+    // 🔻 TASK-646 — 2 ⇒ 3: the pre-start DECLARATION path now sets a ceiling too, through the same function.
+    // 🔑 Worth saying plainly: this census is the check that could have caught QA's F3 a week earlier. It counted the call
+    // sites correctly the whole time — what nobody asked was *why the declaration path was not one of them*.
+    // **A census answers the question you ask it; it cannot tell you that a path is MISSING from the list.**
+    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(3); // creation + preview, nothing else // 🔻 TASK-646: + the pre-start declaration
     expect(SVC).not.toMatch(/absences \* 7|absentWeeks\.size \* 7/); // no arithmetic outside the one function
   });
 });

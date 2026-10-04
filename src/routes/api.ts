@@ -19,6 +19,7 @@ import { crmLevelLadder } from "../lib/crm";
 import { isSettingKey } from "../lib/settings";
 import { postedSaleForBooking } from "../lib/sale-post";
 import { badRequest } from "../lib/http";
+import { ADMIN_LEAVE_FUTURE_ONLY, isAdvanceLeave } from "../lib/teacher-leave"; // TASK-648 — the SAME predicate the act forks on
 import { actorOf } from "../services/user.service";
 import { SCOPE_TEACHER, assertLinked, assertOwnBooking, assertScopedStatusAction, isScoped, scopeOf } from "../lib/own-scope";
 import * as undo from "../services/undo.service";
@@ -211,6 +212,11 @@ export const api = new Hono()
   // handler. (Caught by the suite before it shipped; `tsc` cannot see it.)
   .post("/teacher-leave-days", zValidator("json", v.adminTeacherLeave), async (c) => {
     const { teacherId, ...input } = c.req.valid("json");
+    // 🔴 TASK-648 — FUTURE DAYS ONLY, at the door, with the SAME predicate the act forks on (`isAdvanceLeave`). 🚫 Never a second
+    // date comparison, and 🚫 never inside the act: the teacher's own door shares it and must keep accepting today.
+    // 📌 How the door came to be open: TASK-608 gave this route the whole act, and TASK-611 made "future only" a rule of the
+    // DIALOG alone — a screen-only rule with the server standing open behind it. @Tanya's API call went straight past the screen.
+    if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();
     return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));
   })
   .delete("/teacher-leave-days/:teacherId/:date", zValidator("param", v.teacherLeaveDayParam), async (c) =>

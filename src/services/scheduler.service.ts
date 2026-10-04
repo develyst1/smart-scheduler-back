@@ -3417,10 +3417,16 @@ export async function reportTeacherLeave(
  * an admin recorded it. 🚫 Nobody else — no family (nothing is cancelled), no other coach (their classes are untouched).
  * An unlinked teacher yields a SKIPPED outbox row (TASK-152's loud absence), so a mis-set account is visible rather than silent.
  */
+// 🔴 TASK-647 (QA F2, TEST-077) — this returned a CONSTANT `1`, so an UNLINKED coach was reported to the admin as TOLD.
+// 🔑 `enqueueLine` already distinguishes them — it writes a SKIPPED row for a coach with no LINE link and returns that status —
+// and this function threw the answer away. ⇒ the admin read "told" and did not phone a coach who had been told nothing.
+// 🔴 The count is READ FROM THE RESULT, never re-derived from the teacher row: deciding "linked or not" a second time here is
+// how the number and the outbox row start disagreeing. 📌 `duplicate` counts as told — the message is already queued for them.
+// ⚠️ The LIFT (`teacher_leave_lifted`) comes through this same function, so it is fixed and pinned by the same line.
 async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; classes?: number; actor: string | null }): Promise<number> {
   const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });
-  await enqueueLine({ recipientType: "teacher", recipientLineUserId: teacher?.lineUserId ?? null, payload });
-  return 1;
+  const sent = await enqueueLine({ recipientType: "teacher", recipientLineUserId: teacher?.lineUserId ?? null, payload });
+  return sent.status === "skipped" ? 0 : 1;
 }
 
 /**
@@ -3434,8 +3440,9 @@ async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teac
  * ⚖️ **Same NUMBER, separate COUNTER still holds and still matters:** `leaveUsed` is incremented in exactly two places, both
  * guarded by `charges`, which excludes a declared day ⇒ a declaration cannot spend the post-start pool, and a started course
  * still has its full `leaveRemaining`. 🔑 That is why removing the cap did NOT touch the counter: nothing about a free day
- * was ever paid out of it. ⚠️ What bounds a pre-start course now is the EXPIRY (`courseBornCeiling` stretches it one week per
- * declared absence — the customer's Kavya rule), which is their model and is pinned by value, not a defect to fix.
+ * was ever paid out of it. ⚠️ What bounds a pre-start course is the EXPIRY — stretched on THIS path by TASK-646
+ * (`courseBornCeiling`, the customer's Kavya rule). 🔴 Until TASK-646 it was not: this path appended make-ups against a FIXED
+ * expiry, which the CAP had been silently hiding. The stretch is at the make-up write, and it is proven on the PATH.
  */
 async function preStartDeclaration(
   tx: any,
@@ -4033,8 +4040,10 @@ export async function updateBookingStatus(
       // (`plannedAtCreation` + `leaveCharged: false`, the make-up still appended).
       // 🔻 TASK-643 — the CAP and its refusal (`DECLARED_ABSENCE_CAP`, §T-609-CAP) are OUT by the owner's ruling: the customer does
       // not limit pre-start absences. 🔑 *A refusal for a rule that no longer exists is worse than no refusal.*
-      // ⚠️ What BOUNDS a pre-start course now is the expiry, not a count: `courseBornCeiling` stretches it by one week per declared
-      // absence (the customer's own Kavya rule, 8 + 3 = 11), unbounded by design. That is their model, and it is pinned by value.
+      // ⚠️ What BOUNDS a pre-start course is the EXPIRY, not a count — and TASK-646 is what made that true. 🔴 When this comment
+      // was first written it was FALSE: `courseBornCeiling` stretched the expiry at CREATION, and this path never called it, so a
+      // declared day appended a make-up against a FIXED expiry. @Tanya found it on sid (TEST-077 F3). The stretch is now written
+      // below, on this path, in this transaction. 🔑 The sentence that made the gap read as closed is the reason it survived review.
       const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave
       // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave takes quota, decided by the SAME conditions as the increment
       // below: a course leave within quota that was not declared at creation. An over-quota leave (status set, `locked`) and a
@@ -4096,6 +4105,38 @@ export async function updateBookingStatus(
           // 🔴 TASK-376 — the SECOND make-up writer, and the one TASK-373 missed: a rented course's leave make-up
           // inherits its paid rental row through the same ONE copy the reconcile calls. Found by @Tanya on `sid`.
           await inheritCourseRental(tx, current.courseId, ext.id);
+
+          // 🔴 TASK-646 (QA F3, TEST-077 — @Tanya found it on two fresh courses) — A DECLARED DAY MUST STRETCH THE EXPIRY.
+          // 🔑 What went wrong: TASK-609 copied HALF of the at-creation shape — the FREE half (`plannedAtCreation` +
+          // `leaveCharged: false`) — and not the STRETCH half. This path appended a make-up and left `expiryDate` where it was.
+          // ⚠️ Why it stayed invisible: the base expiry already carries the quota's weeks as slack (`maxWeekFor = size + quota`),
+          // so while the CAP existed at most `quota` make-ups fit exactly inside it. **The cap was load-bearing**, and removing
+          // it (TASK-643) is what exposed this. At `quota + 1` the first make-up spills past the expiry.
+          // 🔴 The consequence is worse than the cap we deleted: unlimited free absences against a FIXED expiry means a family
+          // declares days off and LOSES sessions they paid for — which undermines the ruling that *the expiry is the control*.
+          // 🔑 ONE rule, the one that already exists: recomputed creation's way, exactly as the start-date change recomputes it
+          // (`course-start-change.ts`) — `courseBornCeiling(courseExpiry(start, size), last PLANNED session, declared absences)`.
+          // 🚫 Not an increment and not a `+ 7`: recomputing from the course's own facts cannot drift, and it is idempotent if a
+          // declaration is somehow written twice. 📌 A make-up's own week is not part of creation's plan, so the plan end is read
+          // from the rows that carry no `extendedFromId` — the same exclusion the start-change makes.
+          if (declaredFree) {
+            const planRows = await tx.query.bookings.findMany({
+              where: (b: any, { and: a, eq: e, ne: n }: any) => a(e(b.courseId, current.courseId!), n(b.status, "CANCELLED")),
+            });
+            const lastPlanned = (planRows as any[]).filter((r) => !r.extendedFromId).reduce((m: string, r: any) => (r.date > m ? r.date : m), current.course.startDate);
+            const lastAny = (planRows as any[]).reduce((m: string, r: any) => (r.date > m ? r.date : m), extDate);
+            const declared = (planRows as any[]).filter((r) => r.status === "SICK_LEAVE" && r.plannedAtCreation).length;
+            const born = courseBornCeiling(courseExpiry(current.course.startDate, current.course.size), lastPlanned, declared);
+            const next = born > lastAny ? born : lastAny; // …and never before the course's own last session — the start-change's own guard
+            // ⚠️ DECIDED AND PINNED, not left to the function: **lifting or undoing a declaration does NOT give the week back.**
+            // 🔑 `courseBornCeiling` never shrinks, and this write keeps that property deliberately, because the expiry is a promise
+            // the family has already been shown: a make-up may have been placed inside the widened window, and a shrink could strand
+            // a session the family is holding. ⇒ the window only ever grows. 🚫 If the owner wants a lift to reclaim the week, that is
+            // his call and a separate line — it is not an accident of the arithmetic.
+            if (next > current.course.expiryDate) {
+              await tx.update(coursePackages).set({ expiryDate: next }).where(eq(coursePackages.id, current.courseId));
+            }
+          }
         } else {
           locked = true; // over quota — needs admin unlock
         }
