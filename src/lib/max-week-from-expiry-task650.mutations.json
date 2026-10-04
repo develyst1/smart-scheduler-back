@@ -1,0 +1,113 @@
+{
+  "task": "TASK-650",
+  "proves": "src/lib/max-week-from-expiry-task650.test.ts",
+  "note": "🔴 QA re-test item 1. W1 is the defect exactly as shipped (the capped rule back) and must bite on the STRETCHED case while leaving an ordinary course identical — which is why the ordinary-course pins at every size matter as much as the stretched one. W2/W3 are the off-by-one @Sober named, in both directions. ⚠️ W7 was MIS-AIMED first: it edited `MAX_WEEK_BY_SIZE`, which `maxWeekFor` does not read (the map is DERIVED from the quota table, not the other way round), so it SURVIVED while claiming to change the rule. 🔑 A mutation aimed at the wrong line survives for a reason that has nothing to do with the tests. Re-cut onto `maxWeekFor` itself.",
+  "tests": "src/lib/max-week-from-expiry-task650.test.ts src/lib/leave.test.ts src/lib/expiry-adds-leave-weeks-req089.test.ts src/services/declared-absence-stretches-expiry-task646.test.ts",
+  "mutations": [
+    {
+      "id": "W1",
+      "what": "🔴 THE DEFECT RESTORED: `maxWeek` is re-derived from `size + quota`, so a stretched expiry is understated on the card",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  const maxWeek = weekOfExpiry(c.startDate, c.expiryDate, maxWeekFor(c.size, quota));",
+              "to": "  const maxWeek = maxWeekFor(c.size, quota);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "what": "the inverse is off by one DOWN — every ordinary course reports a week early (4→4 instead of 5)",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
+              "to": "  return Math.max(fallback, Math.ceil(days / 7));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W3",
+      "what": "the inverse is off by one UP — the label promises a week the expiry does not reach",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
+              "to": "  return Math.max(fallback, Math.ceil(days / 7) + 2);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "what": "it rounds DOWN off a week boundary — the label advertises a ceiling the course has already passed",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
+              "to": "  return Math.max(fallback, Math.floor(days / 7) + 1);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W5",
+      "what": "the base-ceiling floor is dropped — a stored expiry behind the base makes the card report LESS than the course bought",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
+              "to": "  return Math.ceil(days / 7) + 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W6",
+      "what": "a missing expiry answers 1 instead of falling back — a course with no stored expiry reads \"week 1\"",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  if (!expiryDate) return fallback;",
+              "to": "  if (!expiryDate) return 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W7",
+      "what": "`maxWeekFor` itself is changed instead of its reader — which moves the BASE expiry at creation too, not just the label",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "export const maxWeekFor = (size: number, quota: number): number => size + quota;",
+              "to": "export const maxWeekFor = (size: number, quota: number): number => size + quota + 1;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

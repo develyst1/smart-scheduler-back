@@ -89,12 +89,35 @@ export interface CourseSummary {
 
 export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
 
+/**
+ * 🔴 TASK-650 — the WEEK NUMBER a stored expiry stands for: the inverse of `courseExpiry`, which is
+ * `expiry = start + (week − 1) × 7 days` ⇒ `week = days(start → expiry) / 7 + 1`.
+ * 🔑 Rounded UP, so an expiry that is not on a week boundary reports the week it falls INSIDE rather than the one before it —
+ * the label promises a ceiling, and a ceiling rounded down is a promise the system does not keep.
+ * 🚫 It never reports LESS than the course's own base ceiling (`fallback`): a stored expiry behind the base would be a data
+ * fault, and the label is not the place to surface one. ⚠️ A missing or unparseable expiry falls back for the same reason.
+ */
+export function weekOfExpiry(startDate: string, expiryDate: string | null | undefined, fallback: number): number {
+  if (!expiryDate) return fallback;
+  const days = (Date.parse(expiryDate) - Date.parse(startDate)) / 86_400_000;
+  if (!Number.isFinite(days)) return fallback;
+  return Math.max(fallback, Math.ceil(days / 7) + 1);
+}
+
 export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
   // TASK-213: the STORED quota wins (an off-card import carries its own), and `maxWeek` is derived from it —
   // so an off-card course no longer reports "0 leaves, expiry in week 0" by falling through two tables that
   // had never heard of its size.
   const quota = courseLeaveQuota(c);
-  const maxWeek = maxWeekFor(c.size, quota);
+  // 🔴 TASK-650 (QA re-test item 1) — the label *"ขยายได้ถึงสัปดาห์ที่ N"* is read from the course's OWN STORED EXPIRY, not
+  // re-derived from `size + quota`. 🔑 It used to be `maxWeekFor(c.size, quota)`, which is the CAPPED rule the owner deleted:
+  // since TASK-646 the expiry STRETCHES one week per declared pre-start day, so a 4-session course with 3 of them expires in
+  // week 8 while the card still said week 5. **The dates were right; the label understated them.**
+  // 🔑 This is TASK-646's own cause ONE LEVEL UP: the expiry rule changed and a second READER of the old rule was left behind.
+  // ⇒ fixed at the SOURCE, once. 🚫 Not on the card: the next screen that shows a week number would be wrong again.
+  // ✅ The SAME line also makes an admin-EXTENDED expiry honest — it was mislabelled before for exactly the same reason.
+  // 📌 `maxWeekFor` itself is untouched: `courseExpiry` still builds the BASE expiry from it at creation. Only this READER moved.
+  const maxWeek = weekOfExpiry(c.startDate, c.expiryDate, maxWeekFor(c.size, quota));
   const leaveRemaining = Math.max(0, quota - c.leaveUsed);
   const leaveLocked = c.leaveUsed >= quota && !c.adminUnlocked;
   return {

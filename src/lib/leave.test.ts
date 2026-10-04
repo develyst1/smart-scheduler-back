@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { canTakeLeave, leaveQuota, toCourseSummary } from "./leave";
+import { courseExpiry } from "./recurring"; // 🔻 TASK-650 — the expiry the label now reads, built by the real rule
 
 const base = { id: "x", startDate: "2025-10-01", usedSessions: 0, adminUnlocked: false, expiryDate: "2026-01-01" };
 
@@ -31,7 +32,15 @@ describe("leave quota rules", () => {
   });
 
   test("maxWeek ceilings", () => {
-    expect(toCourseSummary({ ...base, size: 4, leaveUsed: 0 }).maxWeek).toBe(5);
-    expect(toCourseSummary({ ...base, size: 10, leaveUsed: 0 }).maxWeek).toBe(13);
+    // 🔻 TASK-650 — `maxWeek` is now read from the course's STORED EXPIRY (it used to be re-derived from `size + quota`).
+    // ⚠️ So this test's shared `base` fixture matters where it never did: it carried an arbitrary `expiryDate` 13 weeks after
+    // its start, which now IS the answer. 🔑 The fixture was not wrong before — it was meaningless, and a meaningless value in a
+    // fixture becomes a wrong one the moment something starts reading it.
+    // ⇒ each case now carries the expiry its own size implies, through the real rule.
+    const at = (size: number) => ({ ...base, size, leaveUsed: 0, expiryDate: courseExpiry(base.startDate, size) });
+    expect(toCourseSummary(at(4)).maxWeek).toBe(5);
+    expect(toCourseSummary(at(10)).maxWeek).toBe(13);
+    // …and the claim that replaces the old one: a STRETCHED expiry is reported as the week it really reaches
+    expect(toCourseSummary({ ...at(4), expiryDate: courseExpiry(base.startDate, 4, 4) }).maxWeek).toBe(8);
   });
 });
