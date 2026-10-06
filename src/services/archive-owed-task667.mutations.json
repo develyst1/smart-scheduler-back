@@ -1,0 +1,98 @@
+{
+  "task": "TASK-667",
+  "proves": "src/services/archive-owed-task667.test.ts",
+  "note": "The archive refusal = 'does this record still OWE a class?' — live + PENDING_RESCHEDULE + PAUSED; SICK_LEAVE/CANCELLED allowed. By value through a fake db.select that evaluates the REAL built condition. `tests` = the task file plus the two granted pin files (archive-parent-req098:110, archive-student-req093:85).",
+  "tests": "src/services/archive-owed-task667.test.ts src/lib/archive-parent-req098.test.ts src/lib/archive-student-req093.test.ts",
+  "mutations": [
+    {
+      "id": "O1",
+      "what": "PENDING_RESCHEDULE dropped from the owed set",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PENDING_RESCHEDULE\", \"PAUSED\"] as const;",
+              "to": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PAUSED\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O2",
+      "what": "PAUSED dropped from the owed set",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PENDING_RESCHEDULE\", \"PAUSED\"] as const;",
+              "to": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PENDING_RESCHEDULE\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O3",
+      "what": "SICK_LEAVE added (\"not owed\" must stay out)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PENDING_RESCHEDULE\", \"PAUSED\"] as const;",
+              "to": "export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, \"PENDING_RESCHEDULE\", \"PAUSED\", \"SICK_LEAVE\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O4",
+      "what": "\"any future booking\" — the status filter removed from the count",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": ", sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])));",
+              "to": ", sql`${bookings.date} >= ${today}`));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O5",
+      "what": "COURSE_LIVE_STATUSES itself edited (+PAUSED) — the plan and the badge must not move",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": "export const COURSE_LIVE_STATUSES = [\"PENDING\", \"CONFIRMED\", \"EXTENDED\"] as const;",
+              "to": "export const COURSE_LIVE_STATUSES = [\"PENDING\", \"CONFIRMED\", \"EXTENDED\", \"PAUSED\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O6",
+      "what": "the count reverted to the OLD set (the defect itself)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])",
+              "to": "inArray(bookings.status, [...COURSE_LIVE_STATUSES])"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

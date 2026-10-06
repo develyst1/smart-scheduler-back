@@ -54,10 +54,16 @@ describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act 
     expect(LEAVE).toContain("leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {})");
     expect(LEAVE).toContain("const charges = !declaredFree && !!(");
   });
-  test("…and it still gets its MAKE-UP, and is never 'locked' — 🔻 TASK-643: now with NO gate at all above it", () => {
-    expect(LEAVE).toContain("if (canTakeLeave(current.course) || declaredFree) {");
-    const gate = region(LEAVE, "if (canTakeLeave(current.course) || declaredFree) {", "locked = true;");
-    expect(gate).toContain('status: "EXTENDED"'); // the make-up is appended inside the same branch
+  test("…and it still gets its MAKE-UP, and is never 'locked' — 🔻 TASK-656: now with NO GATE AT ALL, for any leave", () => {
+    // ⚠️ This asserted the gate's SHAPE (`canTakeLeave(...) || declaredFree`), which was how a declared day escaped the quota
+    // while an ordinary leave did not. 🔻 REQ-112 ruling 2 removes the gate entirely: the counter decides nothing, every leave
+    // earns its make-up. 🔑 The claim that survives — a declared day is never "locked" — is now true of EVERY leave, so it is
+    // asserted as the ABSENCE of the gate rather than the presence of an exception to it.
+    expect(LEAVE).not.toContain("canTakeLeave(");
+    expect(LEAVE).not.toContain("locked = true");
+    // 🔻 TASK-656 — the region used to be bounded by the GATE and the LOCKED branch, both of which are gone. The claim is
+    // unchanged — the make-up is appended on this path — so it is asserted directly instead of through a vanished frame.
+    expect(LEAVE).toContain('status: "EXTENDED"');
   });
   test("🔻 TASK-643 — INVERTED: there is NO cap, and a reintroduced one is now the defect", () => {
     // ⚠️ This asserted the at-cap refusal, with its count, thrown before any write. The owner abolished the rule, so the claim is
@@ -75,7 +81,10 @@ describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act 
     expect(increments).toHaveLength(2);
     for (const m of increments) {
       const before = S.slice(Math.max(0, m.index! - 400), m.index!);
-      expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
+      // 🔻 TASK-656 — door 2's increment is guarded by `charged` (it also needs the row to have just BECOME an absence), so the
+      // guard may be spelled `if (charges)` (door 1) or `if (charged)` (door 2). 🔑 The claim is unchanged: every increment of the
+      // counter sits behind a decision that excludes a free day.
+      expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /if \(charged\) \{/.test(before) || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
     }
     // 🔻 TASK-643 — the cap's own counting line is gone with the cap. 🔑 The claim this test exists for is UNCHANGED and is why
     // removing the cap did not touch the counter: a declared day was never paid out of `leaveUsed` in the first place.
@@ -102,12 +111,22 @@ describe("⚖️ TASK-609 §3 — 🔻 RETIRED by TASK-643: the leak it ruled on
 });
 describe("🔴 TASK-609 — NO CONVERSION, both ways, and ACROSS A START-DATE CHANGE (the dangerous one)", () => {
   test("a declared day can never become charged: the only charge path excludes `plannedAtCreation`, on BOTH leave doors", () => {
-    expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
-    expect(S).toContain('leaveCharged: !b.plannedAtCreation'); // the plan-editor door, unchanged
+    // 🔻 TASK-656 — `canTakeLeave` left this expression (REQ-112: the counter stops gating, `leaveUsed` is a plain count).
+    // 🔑 The claim is untouched and is about the ABSENCE that makes a declared day free: `!declaredFree` and `!plannedAtCreation`.
+    expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && !current.plannedAtCreation);");
+    // 🔻 TASK-656 — NARROWED, and the reason is the point. This asserted the plan-editor door's charge as `!b.plannedAtCreation` —
+    // which charged a PRE-START leave while door 1 marked it free (@Silver's two-doors-two-answers). Door 2 now asks the SAME
+    // predicate door 1 asks, AND only decides at all when the row just BECAME an absence. 🔑 The claim this test exists for is the
+    // same one: a declared day can never become charged, and the only charge path still excludes `plannedAtCreation`.
+    expect(S).toContain("const charged = becomesAbsence && !declaredFree && !b.plannedAtCreation;");
   });
   test("a charged leave can never become free: nothing clears `leaveCharged` or sets `plannedAtCreation` outside creation and the pre-start declaration", () => {
     const sets = [...S.matchAll(/plannedAtCreation: true/g)].length;
-    expect(sets).toBe(3); // the creation insert · the creation flip · 🔻 TASK-609's declaration — and nothing else
+    // 🔻 TASK-656 — 3 ⇒ 4. The fourth is the plan editor's own declaration (door 2), which now asks the SAME `preStartDeclaration`
+    // predicate as door 1 instead of charging. ⚠️ Worth the explicit line, because this is the pin that guards the dangerous
+    // conversion: that a CHARGED leave can become FREE. Door 2's write is gated on `becomesAbsence`, so a re-mark of an existing
+    // charged leave sets nothing — which is a VALUE test in `leave-week-triggers-task656`, not an inference from this count.
+    expect(sets).toBe(4); // the creation insert · the creation flip · door 1's declaration · door 2's declaration — nothing else
     // `leaveCharged: false` is written in exactly ONE place — the creation flip, where a free day is BORN beside
     // `plannedAtCreation: true`. 🔑 The claim is that it never appears ALONE, which is what "clearing a charge" would look like.
     const falses = [...S.matchAll(/.*leaveCharged: false.*/g)].map((m) => m[0]);

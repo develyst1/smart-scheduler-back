@@ -1066,7 +1066,10 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
     }
     return send(replyToken, [textReply(e?.message ?? tb("leave_err"), lang)]);
   }
-  const locked = result.locked ? t("leave_lockline", lang) : "";
+  // 🔻 TASK-656 (REQ-112 ruling 2) — the "quota full, needs an admin unlock" line is NEVER sent now: nothing locks a leave, so
+  // the sentence would describe a state the system no longer has. 🔑 `result.locked` can no longer be true — the service stopped
+  // setting it — and this keeps the composed body's shape unchanged rather than removing a placeholder the copy still names.
+  const locked = "";
   // 🔴 TASK-470 — the customer's success line. The make-up date (`leave_extline`) is NOT printed any more: her note is
   // "do not tell them about moving the class to the end". The make-up session itself is still created, exactly as before.
   // TASK-471 — the name stays (owner ruling over her sheet; reason and history on `leave_ok_session` in line-i18n.ts).

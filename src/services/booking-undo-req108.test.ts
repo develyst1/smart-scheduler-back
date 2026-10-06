@@ -13,7 +13,8 @@ import * as sched from "./scheduler.service";
 import * as salePost from "../lib/sale-post";
 import { undoBooking } from "./undo.service";
 import * as undo from "./undo.service"; // TASK-546 — previewUndo
-import { UNDO_CHECKIN_CHANNELS, expiryDecision, leaveChargeOf, makeupDecision, notUndoneAttendance, undoKindOf } from "../lib/booking-undo"; // TASK-497: renamed + widened
+import * as BU from "../lib/booking-undo"; // 🔻 TASK-657 §R — to ask what the module NO LONGER exports
+import { UNDO_CHECKIN_CHANNELS, leaveChargeOf, makeupDecision, notUndoneAttendance, undoKindOf } from "../lib/booking-undo"; // TASK-497: renamed + widened
 import { ACTION_KEYS } from "../lib/permissions";
 import { SCHEDULING_WITNESSES } from "../lib/migration-witness";
 import { readSrc } from "../lib/read-src";
@@ -38,13 +39,14 @@ describe("✅ the rules, by value (`lib/booking-undo.ts`)", () => {
     for (const s of ["CONFIRMED", "CANCELLED", "PAUSED", "NO_SHOW", "EXTENDED"]) expect(() => undoKindOf({ status: s })).toThrow(`สถานะปัจจุบันคือ ${s}`);
     expect(() => undoKindOf({ status: "ATTENDED", checkinChannel: "end-of-day" })).toThrow("สถานะปัจจุบันคือ ATTENDED");
   });
-  test("🔴 did this leave take quota? RECORDED wins; legacy inferred only where certain; else UNKNOWN (refused)", () => {
-    expect(leaveChargeOf({ leaveCharged: true, courseId: "c", plannedAtCreation: true }, false)).toBe("charged"); // the record wins
-    expect(leaveChargeOf({ leaveCharged: false, courseId: "c" }, true)).toBe("free"); // e.g. an over-quota leave, recorded
-    expect(leaveChargeOf({ leaveCharged: null, courseId: null }, false)).toBe("free"); // a voucher/single leave: no quota exists
-    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: true }, true)).toBe("free"); // declared at creation
-    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: false }, true)).toBe("charged"); // a make-up ⇒ charged
-    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: false }, false)).toBe("unknown"); // over-quota? undone attendance? — cannot tell
+  test("🔻 TASK-657 §R — was this leave COUNTED? RECORDED wins; a legacy row is free only where certain; the old \"unknown\" answer is GONE", () => {
+    expect(leaveChargeOf({ leaveCharged: true, courseId: "c", plannedAtCreation: true })).toBe("charged"); // the record wins
+    expect(leaveChargeOf({ leaveCharged: false, courseId: "c" })).toBe("free"); // a declared day, recorded: never counted
+    expect(leaveChargeOf({ leaveCharged: null, courseId: null })).toBe("free"); // a voucher/single leave: no course, nothing counted
+    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: true })).toBe("free"); // declared at creation
+    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: false })).toBe("charged"); // counted
+    // the case that USED to be "unknown" (no make-up to prove it) is now the common answer: counted — the decrement is floored, nothing refuses
+    expect(leaveChargeOf({ leaveCharged: null, courseId: "c", plannedAtCreation: false })).not.toBe("unknown");
   });
   test("the make-up: none · the ONE linked live row cancelled · taught / chained / settled / ambiguous / odd ⇒ refused, naming the date", () => {
     const never = () => false;
@@ -57,17 +59,23 @@ describe("✅ the rules, by value (`lib/booking-undo.ts`)", () => {
     expect(() => makeupDecision([{ id: "a", status: "EXTENDED", date: "2026-11-06" }, { id: "b", status: "EXTENDED", date: "2026-11-13" }], never)).toThrow("มากกว่าหนึ่งคาบ (2026-11-06, 2026-11-13)");
     expect(() => makeupDecision([{ id: "m", status: "PAUSED", date: "2026-11-06" }], never)).toThrow("มีสถานะ PAUSED");
   });
-  test("🔑 the expiry: keep when the make-up does not hold it; restore ONLY the system's stretch; otherwise STOP and say why", () => {
-    const sys = { fromDate: "2026-10-30", toDate: "2026-11-06", actor: null };
-    const PRE = { courseCreatedAt: new Date("2026-08-01T00:00:00Z"), recordingSince: new Date("2026-09-05T20:00:00Z") }; // TASK-556: born before recording
-    expect(expiryDecision({ expiry: "2026-11-20", makeupDate: "2026-11-06", otherDates: [], latest: sys, ...PRE })).toEqual({ action: "keep" });
-    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-11-06"], latest: null, ...PRE })).toEqual({ action: "keep" }); // still needed
-    expect(expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: ["2026-10-23"], latest: sys, ...PRE })).toEqual({ action: "restore", from: "2026-11-06", to: "2026-10-30" });
-    const stop = (latest: any, other = ["2026-10-23"]) => () => expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: other, latest, ...PRE });
-    expect(stop(null)).toThrow("เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ");
-    expect(stop({ ...sys, actor: "admin-dong" })).toThrow("เลื่อนโดย admin-dong");
-    expect(stop({ ...sys, toDate: "2026-11-13" })).toThrow("ไม่ใช่ของคาบขยายนี้");
-    expect(stop(sys, ["2026-11-02"])).toThrow("มีคาบหลังวันที่ 2026-10-30");
+  test("🔻 TASK-657 §R — the Undo has NO expiry rule: `expiryDecision`, the quota refusal and `UNDO_EXPIRY_UNRECOVERABLE` are deleted from the module", () => {
+    expect(Object.keys(BU)).not.toContain("expiryDecision");
+    expect(Object.keys(BU)).not.toContain("UNDO_LEAVE_CHARGE_UNKNOWN");
+    const U = src("src/lib/booking-undo.ts");
+    expect(U).not.toContain("UNDO_EXPIRY_UNRECOVERABLE"); // …nor either of its sentences
+    expect(U).not.toContain("UNDO_LEAVE_CHARGE_UNKNOWN");
+    expect(U).not.toMatch(/ExpiryDecision|ExpiryChangeRow/);
+    expect(src("src/services/undo.service.ts")).not.toMatch(/expiryDecision|recordExpiryChange|UNDO_EXPIRY|UNDO_LEAVE_CHARGE_UNKNOWN|courseExpiryChanges|expiryRecordingMarker/);
+  });
+  test("📋 DRAFT (TASK-657 §2 / REQ-114 (i)) — the chain refusal NAMES THE STEPS, and the second branch says STOP (Khwan's Peeta case), not a path", () => {
+    let e: any;
+    try { makeupDecision([{ id: "m", status: "SICK_LEAVE", date: "2026-11-06" }], () => false); } catch (x) { e = x; }
+    expect(e.code).toBe("UNDO_MAKEUP_CHAIN");
+    expect(e.message).toBe("คาบขยายของการลานี้ (2026-11-06) ถูกแจ้งลาต่อ — ย้อนกลับทีเดียวไม่ได้ · ถ้าวันที่ 2026-11-06 จะกลับมาเรียนด้วย: ย้อนการลาของวันที่ 2026-11-06 ก่อน แล้วค่อยย้อนการลานี้ · ถ้าวันที่ 2026-11-06 ยังลาอยู่จริง: อย่าเพิ่งย้อน ให้แจ้งผู้ดูแลระบบ");
+    expect(e.message.split("2026-11-06").length - 1).toBe(4);
+    expect(e.message).not.toContain("กรุณาแก้ไขด้วยตนเอง"); // the sentence that named no step is gone
+    expect(readFileSync(resolve(root, "src/lib/booking-undo.ts"), "utf8")).toContain("📋 DRAFT (REQ-114 (i)"); // marked as a draft at the line until @Sober says approved (read RAW: `src()` strips comments)
   });
 });
 
@@ -159,23 +167,36 @@ const run = (w: World, opts: { plan?: { appended: string[]; cancelled: string[] 
 };
 const row = (w: World, id: string) => w.bookings.find((b) => b.id === id);
 
-describe("🔴 a mistaken LEAVE — back to CONFIRMED, its quota refunded ONCE, ITS make-up removed, the expiry restored exactly", () => {
-  test("by value: status · leave_used 2 → 1 · m1 CANCELLED · expiry 11-06 → 10-30 (audited, with the actor) · holds · ONE record · no other write", async () => {
+describe("🔴 a mistaken LEAVE — back to CONFIRMED, its count given back ONCE, ITS make-up removed, the EXPIRY NEVER TOUCHED", () => {
+  test("by value: status · leave_used 2 → 1 · m1 CANCELLED · the expiry BYTE-IDENTICAL and NO expiry-change row · holds · ONE record · no other write", async () => {
     const h = run(leaveWorld());
     const out = await undoBooking("b1", { actor: "admin-dong", reason: "wrong child" });
-    expect(out as unknown).toEqual({ kind: "leave", leaveRefunded: true, makeupCancelledId: "m1", expiry: { from: "2026-11-06", to: "2026-10-30" }, booking: { id: "b1" } });
+    expect(out as unknown).toEqual({ kind: "leave", leaveRefunded: true, makeupCancelledId: "m1", booking: { id: "b1" } }); // 🔻 TASK-657 §R — no `expiry` in the answer
     expect([row(h.w, "b1").status, row(h.w, "b1").leaveCharged, row(h.w, "m1").status]).toEqual(["CONFIRMED", null, "CANCELLED"]);
-    expect([h.w.coursePackages[0].leaveUsed, h.w.coursePackages[0].expiryDate]).toEqual([1, "2026-10-30"]);
-    expect(h.expiry).toEqual([{ courseId: "c1", from: "2026-11-06", to: "2026-10-30", actor: "admin-dong" }]);
+    expect([h.w.coursePackages[0].leaveUsed, h.w.coursePackages[0].expiryDate]).toEqual([1, "2026-11-06"]); // 🔴 the expiry did NOT go back to 10-30
+    expect(h.expiry).toEqual([]); // …and no expiry change was recorded
+    expect(h.w.writes.filter((x) => /coursePackages:.*expiryDate/.test(x))).toEqual([]);
     expect(h.holds).toEqual([["m1", "CANCELLED"], ["b1", "CONFIRMED"]]);
-    expect(h.w.undos).toEqual([{ bookingId: "b1", kind: "leave", undoneBy: "admin-dong", reason: "wrong child", priorStatus: "SICK_LEAVE", priorCheckinChannel: null, priorCheckinActor: null, leaveRefunded: true, makeupCancelledId: "m1", expiryFrom: "2026-11-06", expiryTo: "2026-10-30" }]);
+    expect(h.w.undos).toEqual([{ bookingId: "b1", kind: "leave", undoneBy: "admin-dong", reason: "wrong child", priorStatus: "SICK_LEAVE", priorCheckinChannel: null, priorCheckinActor: null, leaveRefunded: true, makeupCancelledId: "m1", expiryFrom: null, expiryTo: null }]);
     // 🚫 nothing else touched: the inserts are the record — and, since TASK-508 (owner: yes), ONE message to the coach that the
-    // class is on again. (Was `["insert:undos"]`, "silent": the owner has since ruled the coach IS told; the family never is —
-    // pinned by value in TASK-508's block below.)
-    // 🔻 TASK-510 — and the make-up m1 it cancelled tells ITS coach the class is off (first), then b1's coach it is on again.
+    // class is on again. 🔻 TASK-510 — and the make-up m1 it cancelled tells ITS coach the class is off (first), then b1's coach it is on again.
     expect(h.w.writes.filter((x) => x.startsWith("insert:"))).toEqual(["insert:outbox", "insert:outbox", "insert:undos"]);
     expect(h.w.outbox.map((m) => [m.bookingId, m.payload.kind])).toEqual([["m1", "class_cancelled_teacher"], ["b1", "class_on_again_teacher"]]);
     expect(h.reversed).toEqual([]);
+  });
+  test("🔴 REQ-114 (ii), the SELF-BLOCK, gone by construction — two Undos in a row on ONE course both succeed, and the expiry never moves", async () => {
+    // Before: Undo A recorded its own expiry restore with the ADMIN as actor, and Undo B read that as a person's move and refused. There is no
+    // expiry reasoning left to block anything — pinned by value: both succeed, the counter moves twice, the expiry and its history are untouched.
+    const w = leaveWorld();
+    w.bookings.push(B("b5", "2026-10-30", "SICK_LEAVE", { leaveCharged: true }), B("m2", "2026-11-13", "EXTENDED", { extendedFromId: "b5" }));
+    w.coursePackages[0].expiryDate = "2026-11-13";
+    const h = run(w);
+    const a = await undoBooking("b5", { actor: "admin-dong", reason: null });
+    const b = await undoBooking("b1", { actor: "admin-dong", reason: null });
+    expect([a.kind, b.kind, a.makeupCancelledId, b.makeupCancelledId]).toEqual(["leave", "leave", "m2", "m1"]);
+    expect([h.w.coursePackages[0].leaveUsed, h.w.coursePackages[0].expiryDate]).toEqual([0, "2026-11-13"]); // counted twice, expiry untouched
+    expect(h.expiry).toEqual([]);
+    expect(h.w.changes).toHaveLength(1); // the history table is exactly what the fixture had — the Undo adds nothing to it
   });
   test("🔑 the guard: a SECOND Undo that read the row before the first committed (a double-click, two admins) touches ZERO rows and refunds NOTHING", async () => {
     const w = leaveWorld();
@@ -203,15 +224,15 @@ describe("🔴 a mistaken LEAVE — back to CONFIRMED, its quota refunded ONCE, 
       expect([out.leaveRefunded, h.w.coursePackages[0].leaveUsed, row(h.w, "b1").status]).toEqual([false, 2, "CONFIRMED"]);
     }
   });
-  test("a legacy leave with a linked make-up is refunded; one that cannot be told ⇒ REFUSED, nothing written", async () => {
+  test("🔻 TASK-657 §R — a legacy leave (NULL charge) is COUNTED whether or not a make-up proves it: refunded, never refused (`UNDO_LEAVE_CHARGE_UNKNOWN` dissolved)", async () => {
     const legacy = leaveWorld();
     legacy.bookings[0].leaveCharged = null;
     let h = run(legacy);
     expect((await undoBooking("b1", { actor: "a", reason: null })).leaveRefunded).toBe(true);
     for (const s of spies.splice(0)) s.mockRestore();
-    h = run(world({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: null })] }));
-    expect(await errOf(undoBooking("b1", { actor: "a", reason: null }))).toMatchObject({ code: "UNDO_LEAVE_CHARGE_UNKNOWN" });
-    expect([h.w.writes, row(h.w, "b1").status, h.w.coursePackages[0].leaveUsed]).toEqual([[], "SICK_LEAVE", 2]);
+    h = run(world({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: null })] })); // the shape that USED to be refused: no make-up to prove it
+    expect(await errOf(undoBooking("b1", { actor: "a", reason: null }))).toBeNull();
+    expect([row(h.w, "b1").status, h.w.coursePackages[0].leaveUsed]).toEqual(["CONFIRMED", 1]); // pre-0058 pre-start free days carry plannedAtCreation, so they never reach here
   });
   test("🔴 THIS leave's make-up — never another leave's, even when the other one is newer", async () => {
     const w = leaveWorld();
@@ -219,12 +240,11 @@ describe("🔴 a mistaken LEAVE — back to CONFIRMED, its quota refunded ONCE, 
     w.coursePackages[0].expiryDate = "2026-11-13";
     const h = run(w);
     const out = await undoBooking("b1", { actor: "a", reason: null });
-    expect([row(h.w, "m1").status, row(h.w, "m2").status, out.makeupCancelledId, out.expiry]).toEqual(["CANCELLED", "EXTENDED", "m1", null]); // m1 did not hold the expiry
+    expect([row(h.w, "m1").status, row(h.w, "m2").status, out.makeupCancelledId, h.w.coursePackages[0].expiryDate]).toEqual(["CANCELLED", "EXTENDED", "m1", "2026-11-13"]); // and the expiry stays
   });
-  test("refusals — each names what it refused, and writes NOTHING: a taught make-up · an admin-set expiry · the hour re-booked · the plan would change", async () => {
+  test("refusals — each names what it refused, and writes NOTHING: a taught make-up · the hour re-booked · the plan would change (an admin-set expiry no longer refuses: the Undo does not look at it)", async () => {
     const cases: Array<[string, (w: World) => void, string, string?]> = [
       ["taught", (w) => { row(w, "m1").status = "ATTENDED"; }, "UNDO_MAKEUP_TAUGHT", "2026-11-06"],
-      ["admin expiry", (w) => { w.changes[0].actor = "admin-dong"; }, "UNDO_EXPIRY_UNRECOVERABLE", "เลื่อนโดย admin-dong"],
       ["hour taken", (w) => { w.bookings.push(B("x9", "2026-10-02", "CONFIRMED", { studentId: "s2", courseId: null })); }, "UNDO_SLOT_TAKEN", "2026-10-02 10:00 ของครูมีคาบของ Mew"],
     ];
     for (const [, mutate, code_, words] of cases) {
@@ -275,7 +295,7 @@ describe("🔴 a FALSE CHECK-IN — back to CONFIRMED, the unit returned, SILENT
   test("by value: CONFIRMED · used_sessions 1 → 0 · the row's check-in columns cleared · the record keeps them · the sale reversed AFTER · no message", async () => {
     const h = run(checkedIn());
     const out = await undoBooking("b1", { actor: "admin-dong", reason: "tapped the wrong child" });
-    expect(out as unknown).toEqual({ kind: "checkin", leaveRefunded: false, makeupCancelledId: null, expiry: null, booking: { id: "b1" } });
+    expect(out as unknown).toEqual({ kind: "checkin", leaveRefunded: false, makeupCancelledId: null, booking: { id: "b1" } });
     expect([row(h.w, "b1").status, row(h.w, "b1").checkinChannel, row(h.w, "b1").checkinSource, h.w.coursePackages[0].usedSessions]).toEqual(["CONFIRMED", null, null, 0]);
     expect(h.w.undos[0]).toMatchObject({ kind: "checkin", priorStatus: "ATTENDED", priorCheckinChannel: "shopfront-qr", undoneBy: "admin-dong" });
     expect(h.reversed).toEqual(["b1"]);
@@ -306,10 +326,17 @@ describe("🔑 by source — the leave doors RECORD the charge; every counter mo
   const S = src("src/services/scheduler.service.ts");
   test("Door 1 · Door 2 · TASK-258 · the creation flip each write `leaveCharged`, and both increments are `sql` (no read-modify-write)", () => {
     // 🔻 TASK-540 — the note half moved into `leaveNoteWrite` (same `reason ?? note`, plus the record of what it replaced); the charge is unchanged
-    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), leaveCharged: !b.plannedAtCreation })');
+    // 🔻 TASK-656 — door 2's write changed shape twice: it asks the SAME free-ness predicate as door 1, and it records the charge
+    // ONLY when the row just BECAME an absence (`absenceFlags`), because a re-mark of an existing absence must not rewrite what the
+    // Undo reads. 🔑 The claim this file makes is unchanged and is the reason the second change matters: the door still RECORDS
+    // whether the leave took quota, in the same write as the status — and never overwrites a recorded charge.
+    expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), ...absenceFlags })');
+    expect(S).toContain("const absenceFlags = becomesAbsence ? { leaveCharged: charged, ...(declaredFree ? { plannedAtCreation: true } : {}) } : {};");
     // 🔻 TASK-609 — one term added: a PRE-START DECLARATION is free, so it must not record a charge. The claim is unchanged — the
     // door still RECORDS whether this leave took quota — and `declaredFree` is the only new way for the answer to be `false`.
-    expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);");
+    // 🔻 TASK-656 — `canTakeLeave` left this expression (REQ-112 ruling 2). The claim this file makes — the Undo refunds only a
+    // RECORDED charge — is untouched; what changed is that the counter no longer decides whether a leave may happen.
+    expect(S).toContain("const charges = !declaredFree && !!(current.courseId && current.course && !current.plannedAtCreation);");
     // 🔻 TASK-609 — and the row is BORN in the at-creation free shape when it is a declaration, so every existing reader of "free"
     // (`leaveChargeOf`, the undo, the start-date planner) sees it with no second flag to keep in step.
     expect(S).toContain('.set({ status: "SICK_LEAVE", ...leaveNoteWrite(reason, current.note), leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })');
@@ -621,7 +648,7 @@ describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the 
     run(w, plan ? { plan } : {});
     try {
       const r: any = await undoBooking(id, { actor: "admin-dong", reason: null });
-      return { ok: true, kind: r.kind, leaveRefunded: r.leaveRefunded, makeupCancelled: r.makeupCancelledId, expiry: r.expiry };
+      return { ok: true, kind: r.kind, leaveRefunded: r.leaveRefunded, makeupCancelled: r.makeupCancelledId };
     } catch (e: any) { return { ok: false, code: e.code, message: e.message }; }
   };
   const previewOn = async (w: World, id: string) => {
@@ -629,13 +656,13 @@ describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the 
     const p: any = await undo.previewUndo(id, await txOf());
     return { preview: p, writes: [...w.writes] };
   };
-  const same = (p: any) => (p.ok ? { ok: true, kind: p.kind, leaveRefunded: p.leaveRefunded, makeupCancelled: p.makeupCancelled?.id ?? null, expiry: p.expiry } : { ok: false, code: p.code, message: p.message });
+  const same = (p: any) => (p.ok ? { ok: true, kind: p.kind, leaveRefunded: p.leaveRefunded, makeupCancelled: p.makeupCancelled?.id ?? null } : { ok: false, code: p.code, message: p.message });
   const cases: Array<[string, () => World, string]> = [
-    ["a CHARGED leave with its make-up (the expiry restored)", () => leaveWorld(), "b1"],
+    ["a CHARGED leave with its make-up (the expiry NOT touched)", () => leaveWorld(), "b1"],
     ["a leave declared at CREATION — free, and no make-up of its own", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: false, plannedAtCreation: true }), B("b2", "2026-10-09", "CONFIRMED")] }), "b1"],
     ["a 1-HOUR leave — no course, no quota, no make-up", () => world({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { courseId: null, bookingType: "SINGLE_SESSION", leaveCharged: false })] }), "b1"],
     ["REFUSED: the make-up was already TAUGHT", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true }), B("m1", "2026-11-06", "ATTENDED", { extendedFromId: "b1" })] }), "b1"],
-    ["REFUSED: a legacy leave whose charge is UNKNOWN", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: null })] }), "b1"],
+    ["a legacy leave with NO recorded charge — counted, no longer refused", () => leaveWorld({ bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: null })] }), "b1"],
     ["REFUSED: a SETTLED day", () => world({ bookings: [B("b1", "2026-09-20", "SICK_LEAVE", { leaveCharged: true })] }), "b1"],
     ["a parent's CHECK-IN", () => world({ bookings: [B("b1", TODAY, "ATTENDED", { checkinChannel: "line", checkinSource: "line" })] }), "b1"],
   ];
@@ -662,7 +689,7 @@ describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the 
   test("by source: the act CALLS the planner (one decider); the preview's path has no write, no transaction, no send", () => {
     const U = src("src/services/undo.service.ts");
     const act = U.slice(U.indexOf("export async function undoBooking("));
-    expect(act).toContain("const { row, kind, leaveRefunded, makeup, expiry } = await planUndo(tx, bookingId, today);");
+    expect(act).toContain("const { row, kind, leaveRefunded, makeup } = await planUndo(tx, bookingId, today);");
     expect(act).not.toContain("makeupDecision("); // the decision is not re-made in the act
     const prev = U.slice(U.indexOf("export async function previewUndo("), U.indexOf("export async function undoBooking("));
     expect(prev).toContain("await planUndo(exec, bookingId, bangkokNow().date)");
@@ -700,38 +727,9 @@ describe("🔴 TASK-552 (B) — end to end: a leave whose make-up was cancelled 
   });
 });
 
-// ───────────────────────── TASK-556 (1b) — "no change record" is evidence ONLY for a course born after recording began ─────────────────────────
-describe("🔴 TASK-556 (1b) — no change record ⇒ keep ONLY for a course born after this box began recording; otherwise refused, telling the admin what to do", () => {
-  const SINCE = new Date("2026-09-05T20:00:00Z"); // = 2026-09-06 03:00 Bangkok — the message must say 09-06, not the UTC date
+// ───────────────────────── TASK-556 (1b) → TASK-657 §R — the Undo NEVER reasons about the expiry ─────────────────────────
+describe("🔴 TASK-556 (1b) → TASK-657 §R — the Undo never moves the expiry, whenever the course was born, whoever last moved it", () => {
   const AFTER = "2026-09-20T00:00:00Z", BEFORE = "2026-08-01T00:00:00Z";
-  const sys = { fromDate: "2026-10-30", toDate: "2026-11-06", actor: null };
-  const decide = (created: string, latest: any = null, since: Date | null = SINCE, other = ["2026-10-23"]) => () =>
-    expiryDecision({ expiry: "2026-11-06", makeupDate: "2026-11-06", otherDates: other, latest, courseCreatedAt: new Date(created), recordingSince: since });
-  const refusal = (f: () => unknown) => { try { f(); } catch (e: any) { return { code: e.code, message: e.message as string }; } return null; };
-
-  test("both directions: born AFTER ⇒ keep · born BEFORE, at the SAME instant, or NO marker ⇒ refused", () => {
-    expect(decide(AFTER)()).toEqual({ action: "keep" });
-    expect(refusal(decide(BEFORE))?.code).toBe("UNDO_EXPIRY_UNRECOVERABLE");
-    expect(refusal(decide(SINCE.toISOString()))?.code).toBe("UNDO_EXPIRY_UNRECOVERABLE"); // not provably after ⇒ not evidence
-    expect(refusal(decide(AFTER, null, null))?.message).toContain("ยังไม่เริ่ม"); // no marker row (only out-of-band) ⇒ safe
-  });
-  test("📋 DRAFT wording, pinned by SHAPE: what happened, since when (Bangkok date), both dates, and what the admin should DO", () => {
-    const m = refusal(decide(BEFORE))!.message;
-    expect(m).toContain("เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ");
-    expect(m).toContain("2026-09-06"); // Bangkok, not UTC's 09-05
-    expect(m).not.toContain("2026-09-05");
-    expect(m.split("2026-11-06").length - 1).toBe(2); // the expiry AND the make-up it may have been stretched for
-    expect(m).toContain("หน้าคอร์ส"); // where to look …
-    expect(m).toContain("แก้การลาและวันหมดอายุด้วยตนเอง"); // … and what to do — not merely "cannot be computed"
-    expect(m).not.toContain("คำนวณวันหมดอายุเดิมกลับไม่ได้");
-  });
-  test("🔑 born after recording does NOT soften any other refusal — a real unrecoverable case is never kept", () => {
-    expect(refusal(decide(AFTER, { ...sys, actor: "admin-dong" }))?.message).toContain("เลื่อนโดย admin-dong");
-    expect(refusal(decide(AFTER, { ...sys, toDate: "2026-11-13" }))?.message).toContain("ไม่ใช่ของคาบขยายนี้");
-    expect(refusal(decide(AFTER, sys, SINCE, ["2026-11-02"]))?.message).toContain("มีคาบหลังวันที่ 2026-10-30");
-    expect(decide(AFTER, sys)()).toEqual({ action: "restore", from: "2026-11-06", to: "2026-10-30" }); // and the system's stretch still RESTORES, never keeps
-  });
-
   /** Tanya's shape (item 6): a size-4 course's only leave; its make-up lands ON the born expiry — no stretch, no record. */
   const bornCeilingWorld = (createdAt: string) => world({
     bookings: [B("b1", "2026-10-02", "SICK_LEAVE", { leaveCharged: true }), B("b2", "2026-10-09", "CONFIRMED"), B("b3", "2026-10-16", "CONFIRMED"),
@@ -739,33 +737,32 @@ describe("🔴 TASK-556 (1b) — no change record ⇒ keep ONLY for a course bor
     coursePackages: [{ id: "c1", size: 4, leaveUsed: 1, usedSessions: 0, expiryDate: "2026-10-30", endedAt: null, droppedAt: null, createdAt: new Date(createdAt) }],
     changes: [],
   });
-  test("end to end (the REAL undoBooking + previewUndo): born AFTER ⇒ proceeds, m1 cancelled, the expiry UNTOUCHED and nothing recorded; preview agrees", async () => {
-    const h = run(bornCeilingWorld(AFTER));
-    const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
-    expect([p.ok, p.makeupCancelled?.id, p.expiry]).toEqual([true, "m1", null]);
-    for (const x of spies.splice(0)) x.mockRestore();
-    const h2 = run(bornCeilingWorld(AFTER));
-    const out = await undoBooking("b1", { actor: "admin-dong", reason: null });
-    expect([out.makeupCancelledId, out.expiry, row(h2.w, "b1").status, row(h2.w, "m1").status]).toEqual(["m1", null, "CONFIRMED", "CANCELLED"]);
-    expect([h2.w.coursePackages[0].expiryDate, h2.expiry]).toEqual(["2026-10-30", []]); // kept — and no invented change record
-    expect(h.w.writes).toEqual([]); // the preview wrote nothing
+  for (const [label, created] of [["born AFTER recording began", AFTER], ["born BEFORE recording began (the case the old rule REFUSED)", BEFORE]] as const) {
+    test(`end to end (the REAL undoBooking + previewUndo): ${label} ⇒ proceeds, m1 cancelled, the expiry UNTOUCHED and nothing recorded; the preview agrees and says nothing about the expiry`, async () => {
+      const h = run(bornCeilingWorld(created));
+      const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
+      expect([p.ok, p.makeupCancelled?.id, "expiry" in p]).toEqual([true, "m1", false]); // 🔻 the preview's expiry line is DROPPED
+      expect(h.w.writes).toEqual([]); // the preview wrote nothing
+      for (const x of spies.splice(0)) x.mockRestore();
+      const h2 = run(bornCeilingWorld(created));
+      const out = await undoBooking("b1", { actor: "admin-dong", reason: null });
+      expect([out.makeupCancelledId, "expiry" in out, row(h2.w, "b1").status, row(h2.w, "m1").status]).toEqual(["m1", false, "CONFIRMED", "CANCELLED"]);
+      expect([h2.w.coursePackages[0].expiryDate, h2.expiry]).toEqual(["2026-10-30", []]); // kept — and no invented change record
+    });
+  }
+  test("an ADMIN-set expiry (the old self-block's trigger) does not stop an Undo — nobody asks who moved it", async () => {
+    const w = leaveWorld();
+    w.changes[0].actor = "admin-dong";
+    const h = run(w);
+    expect((await undoBooking("b1", { actor: "admin-dong", reason: null })).kind).toBe("leave");
+    expect([h.w.coursePackages[0].expiryDate, h.expiry]).toEqual(["2026-11-06", []]);
   });
-  test("end to end: born BEFORE ⇒ the act REFUSES and writes NOTHING; the preview refuses with the SAME words", async () => {
-    const h = run(bornCeilingWorld(BEFORE));
-    const e = await errOf(undoBooking("b1", { actor: "admin-dong", reason: null }));
-    expect([e?.code, h.w.writes, row(h.w, "b1").status, row(h.w, "m1").status]).toEqual(["UNDO_EXPIRY_UNRECOVERABLE", [], "SICK_LEAVE", "EXTENDED"]);
-    for (const x of spies.splice(0)) x.mockRestore();
-    run(bornCeilingWorld(BEFORE));
-    const p: any = await undo.previewUndo("b1", await (db.transaction(async (t: any) => t) as Promise<any>));
-    expect({ ok: p.ok, code: p.code, message: p.message }).toEqual({ ok: false, code: "UNDO_EXPIRY_UNRECOVERABLE", message: e!.message });
-  });
-  test("the marker migration: written ONCE (never moves on a re-run), seeded from this box's first record, else now(); witnessed; one row", () => {
+  test("the marker migration is still written ONCE and witnessed (the table stays — only the Undo stopped reading it)", () => {
     const SQL = readFileSync(resolve(root, "drizzle/0061_expiry_recording_marker.sql"), "utf8");
     expect(SQL).toContain('COALESCE((SELECT min("changed_at") FROM "course_expiry_changes"), now())');
     expect(SQL).toContain('ON CONFLICT ("id") DO NOTHING');
     expect(SQL).toContain('CHECK ("id" = 1)');
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0061_expiry_recording_marker")).toMatchObject({ probe: { kind: "table", table: "expiry_recording_marker" }, rerunnable: true });
-    expect(src("src/services/undo.service.ts")).toContain("recordingSince: marker?.recordingSince ?? null");
   });
   test("🚫 the FIX-007 repair script is RETIRED: a refusing stub that writes nothing, and says why", () => {
     const S = readFileSync(resolve(root, "scripts/repair-course-expiry.ts"), "utf8");
@@ -782,7 +779,7 @@ describe("🔴 TASK-561 — the leave-Undo onto a coach's advance-leave day is R
     const h = run(onLeave());
     const e = await errOf(undoBooking("b1", { actor: "admin-dong", reason: null }));
     expect([e?.status, e?.code]).toEqual([409, "TEACHER_ON_LEAVE"]);
-    expect(e!.message).toContain("ครูCoach-t1 ลาวันที่ 2026-10-02");
+    expect(e!.message).toContain("ครู Coach-t1 ลาวันที่ 2026-10-02");
     expect(e!.message).toContain("เลือกครูอื่นหรือวันอื่น"); // what to do instead
     expect([h.w.writes, row(h.w, "b1").status]).toEqual([[], "SICK_LEAVE"]);
   });

@@ -117,6 +117,10 @@ import { leavesAwaitingReanswer,
   endableSessions,
   isEndReason,
   END_REASONS,
+  SESSION_CANCEL_REASONS, // 🔻 TASK-690
+  isSessionCancelReason, // 🔻 TASK-690
+  SCHOOL_ISSUE, // 🔻 TASK-656 — T3's lever
+  type LeaveWeekTrigger, // 🔻 TASK-656 — the closed list of three
   courseOwedTarget,
   isCourseDropped,
   isCourseEnded,
@@ -128,6 +132,7 @@ import { leavesAwaitingReanswer,
 } from "../lib/course-plan";
 import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
+import { t as tr } from "../lib/line-i18n"; // 🔻 TASK-659 — the EXISTING weekday names (`ob_dow_0..6`), not a second table
 import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import { assertKindForType, assertRatesOnBooking } from "../lib/other-kind";
 import {
@@ -1025,9 +1030,11 @@ export async function assertTeacherBookable(exec: any, teacherId: string, date: 
     where: (t: any, { eq }: any) => eq(t.id, teacherId),
   });
   if (!teacher) throw badRequest("ไม่พบครู");
-  if (teacher.archived) throw badRequest(`ครู${teacher.nickname} ถูกปิดการใช้งานแล้ว`);
+  if (teacher.archived) throw badRequest(`ครู ${teacher.nickname} ถูกปิดการใช้งานแล้ว`); // 🔻 TASK-659 — a space after ครู, always
   if (!teacherWorksOnDay(teacher.workDays, weekdayOf(date))) {
-    throw badRequest(`ครู${teacher.nickname} ไม่มาสอนวันนี้`);
+    // 🔻 TASK-659 (owner APPROVED 10-06) — «วันนี้» said "today" about a PICKED date. Names the weekday of that date instead, from the codebase's own
+    // weekday names (`ob_dow_*` — the same ones `line-leave.ts` renders), never a second table.
+    throw badRequest(`ครู ${teacher.nickname} ไม่ได้สอนวัน${tr(`ob_dow_${weekdayOf(date)}`, "TH")} — กรุณาเลือกครูอื่นหรือวันอื่น`);
   }
   // 🔴 TASK-561 (REQ-110 item 2) — an ADVANCE leave blocks the whole day for new work with this teacher (THE reader; only
   // today or later — a back-dated write passes). Seam A: every `insertBooking` caller + every move / swap / co-teacher door.
@@ -1035,7 +1042,7 @@ export async function assertTeacherBookable(exec: any, teacherId: string, date: 
   // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't be
   // booked (FT/PT are not gated — salary deferred).
   if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
-    throw badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`);
+    throw badRequest(`ครู ${teacher.nickname} ยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะจองได้`); // 🔻 TASK-659 — a space after ครู, always
   }
   return teacher;
 }
@@ -1878,13 +1885,21 @@ export async function resolveClashBySwappingCoach(id: string, input: { teacherId
  * the audit note, and the make-up re-owed by `reconcileCoursePlan` (SPEC-028 §11.3) — in the caller's transaction.
  * The coach is told ONCE, by the group row's own cancel (the caller); a seat sends no teacher notice of its own.
  */
-export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) { // TASK-441: exported — the group series cancel-all cascades through it
+export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger } = {}) { // TASK-441: exported — the group series cancel-all cascades through it
   const seats = await tx.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES])),
   });
   for (const s of seats) {
     await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));
-    if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }); // 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
+    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null; // 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
+    // 🔻 TASK-656 — DOOR 5 of 5: the SEATS of a group date. 🔴 Whether a seat earns its course a week is the CALLER's fact, passed in as
+    // `opts.weekTrigger` — never read back from a free-text note, and never assumed: this function is reached from THREE places and they
+    // disagree. A COACH's leave (T2 — each seat's course +1), a group-date cancel carrying `SCHOOL_ISSUE` (T3), and the series cancel-all
+    // (T3 only when its reason is `SCHOOL_ISSUE`). Every OTHER reason passes nothing ⇒ +0.
+    // 📌 Once per SEAT, because each seat is its own course and each re-owes its own session — not once per group row, which would give
+    // one course a week and the others none. The seats it acts on are the LIVE ones only, so a re-run finds none and earns nothing.
+    if (s.courseId && opts.weekTrigger) await addLeaveWeek(tx, s.courseId, opts.weekTrigger);
+    if (s.courseId) await flagMakeupsPastExpiry(tx, s.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
   }
   return seats.length;
 }
@@ -2870,6 +2885,35 @@ export function reowedForOf(row: { id: string; status: string; extendedFromId?: 
   return [];
 }
 
+/**
+ * 🔻 TASK-657 §3 (REQ-112 — her model's centre: «แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหม») — a make-up that lands PAST
+ * the course's expiry is CREATED and the expiry does NOT move (TASK-656); the ADMIN is told, once, and decides. 🔑 A NEW notice kind beside
+ * `makeup_far_out` (which fires when the SEARCH runs out): two different events — the expiry crossed vs the search exhausted — so one
+ * make-up can raise both, and each fires on its own condition alone. Same recipients and channel (`notifyAdmins`), inside the caller's
+ * transaction: the notice exists iff the make-up does. 🚫 Never the family.
+ * 📌 The comparison is against the expiry AS IT STANDS when asked, and EVERY caller asks AFTER its week decision — so a make-up the new week
+ * covers raises nothing. 🔑 It is asked by the CALLER, after `reconcileCoursePlan` returns, and not inside the re-plan: the re-plan runs BEFORE
+ * the door knows whether a trigger earns a week (door 4 cannot know until the re-plan says whether the make-up landed in the same slot), so a
+ * check inside it would shout about make-ups the week was about to cover. ⚠️ The cost is that a new re-plan caller must remember to ask —
+ * which is why the callers are pinned by name: the ones that ask (the four doors that re-plan + door 1's own insert) and the ones that
+ * deliberately do not (BIRTH: the expiry is born to cover its declared absences; the plan editor's *insert*: it only trims; the Undo: it
+ * REFUSES if the re-plan would append anything).
+ */
+async function flagMakeupsPastExpiry(tx: any, courseId: string, makeupIds: readonly string[]): Promise<number> {
+  if (!makeupIds.length) return 0;
+  const course = await tx.query.coursePackages.findFirst({ where: (c: any, { eq: e }: any) => e(c.id, courseId) });
+  if (!course?.expiryDate) return 0;
+  const wanted = new Set(makeupIds);
+  const rows = (await tx.query.bookings.findMany({ columns: { id: true, date: true }, where: (b: any, { inArray: inA }: any) => inA(b.id, [...makeupIds]) })).filter((r: any) => wanted.has(r.id));
+  let flagged = 0;
+  for (const r of rows) {
+    if (r.date <= course.expiryDate) continue; // inside the expiry — nothing to tell
+    await notifyAdmins({ kind: "makeup_past_expiry", bookingId: r.id, landedOn: r.date, expiry: course.expiryDate }, tx, r.id);
+    flagged++;
+  }
+  return flagged;
+}
+
 export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[] } = {}) {
   const course = await tx.query.coursePackages.findFirst({
     where: (c: any, { eq }: any) => eq(c.id, courseId),
@@ -2946,9 +2990,13 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       (m: string, r: any) => (r.date > m ? r.date : m),
       course.startDate,
     );
-    // 🔑 TASK-308 (b) — the furthest date the appends reach. Collected across the loop and written once,
-    // so a course that earns three make-ups records ONE expiry change rather than three.
-    let expiryAfterAppends: string = course.expiryDate;
+    // 🔻 TASK-656 (REQ-112 ruling 3) — `expiryAfterAppends` and the write it fed are GONE. **A make-up that lands past the
+    // expiry is CREATED, never held, never refused — and the expiry is NEVER silently stretched to fit it.**
+    // 🔑 Why the silent stretch had to go: it moved the expiry by however far the search happened to land, which is not a rule
+    // anybody could state. A week is earned ONLY by one of the three triggers (`LEAVE_WEEK_TRIGGERS`), decided at the door by
+    // `addLeaveWeek`, and a make-up beyond the expiry is a thing the ADMIN is told about (`TASK-657` §3) rather than something the
+    // system quietly papers over — her words: "แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหม".
+    // ⚠️ They ship together for exactly that reason: this removal alone would make the overrun silent again.
     for (const a of plan.append) {
       // Mirror the makeup's teacher/subject/time from the absence it replaces (or a live session).
       const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
@@ -2967,9 +3015,8 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // misreading. **It was a rule we invented for it**, and `SPEC-028 §5 #2`'s fear (*"a leave could extend a
       // course indefinitely"*) was already answered by the QUOTA: at most `quota` make-ups, ever.
       //
-      // 📌 The stretch is collected and written ONCE below, through `recordExpiryChange` — the same writer an
-      // admin edit and a re-plan use. 🚫 Not a second way to move an expiry.
-      if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;
+      // 🔻 TASK-656 (ruling 3) — nothing is collected here any more: the make-up is created wherever the search lands, and
+      // the expiry does not follow it. 📌 `TASK-657` §3 flags the overrun to the admin instead.
       // 🔴 TASK-309 §3 — the search gives up and answers anyway. Its comment used to say the caller's
       // ceiling refused that answer; §12 deleted the ceiling, so for one day a make-up could land half a
       // year out **in silence**.
@@ -3017,22 +3064,9 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       fromDate = extDate;
     }
 
-    // ✅ TASK-308 (b) — the expiry GROWS to cover what the leave earned. Never shrinks; identical in shape
-    // to `replanExpiry`, and it leans on TASK-282's guarantee that the expiry covers the plan.
-    // ⚠️ Through `recordExpiryChange`, so REQ-082's audit still answers *"why did this date move?"* — with a
-    // null actor, which is accurate: the system moved it, not a person.
-    if (expiryAfterAppends > course.expiryDate) {
-      await tx
-        .update(coursePackages)
-        .set({ expiryDate: expiryAfterAppends })
-        .where(eq(coursePackages.id, courseId));
-      await recordExpiryChange(tx, {
-        courseId,
-        from: course.expiryDate,
-        to: expiryAfterAppends,
-        actor: null,
-      });
-    }
+    // 🔻 TASK-656 (REQ-112 ruling 3) — TASK-308 (b)'s stretch-to-fit stood here and is REMOVED. The reconcile appends the
+    // make-up and does NOT touch the expiry. 🔑 The expiry moves in exactly ONE place for a trigger — `addLeaveWeek`, at the
+    // door — so "what moved this date?" has one answer instead of two that could both fire.
   }
 
   return { appended, cancelled };
@@ -3404,9 +3438,15 @@ export async function reportTeacherLeave(
   let familiesNotified = 0;
   await db.transaction(async (tx) => {
     for (const b of live) {
-      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);
+      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE" }); // 🔻 TASK-656 — T2 reaches each SEAT's course
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
       const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null; // 🔻 TASK-548 — its result is the notice's evidence · 🔻 TASK-552 (B)
+      // 🔻 TASK-656 — DOOR 3 of 5 = trigger T2: a COACH's leave, the coach's own cancel or an admin recording it on their behalf
+      // (`onBehalf`) — ONE path. Her number: a coach away twice on a 13-week course ⇒ "15 ค่ะ".
+      // 🔑 Once per CLASS cancelled, not once per leave DAY — two classes of one course on one day are two weeks. (A GROUP row has no
+      // course of its own: its seats are handled above, each through its own course.)
+      if (b.courseId) await addLeaveWeek(tx, b.courseId, "T2_COACH_LEAVE");
+      if (b.courseId) await flagMakeupsPastExpiry(tx, b.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
       await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);
       familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);
     }
@@ -3587,26 +3627,46 @@ export async function applyPlanChange(
               throw conflict("LEAVE_NOTICE_TOO_LATE", leaveNoticeMessage(cutoffHours, b.startTime));
           }
         }
-        // A plain sick-leave over quota stays LOCKED (needs adminUnlocked / override); a PLANNED absence
-        // bypasses the soft lock but is still MAX_WEEK-bound (enforced inside reconcileCoursePlan). SPEC §6.
-        if (!change.planned && !change.override && toCourseSummary(course).leaveLocked) {
-          throw conflict("LEAVE_LOCKED", "โควตาการลาเต็มแล้ว — ต้องปลดล็อกโดยแอดมินก่อน");
-        }
+        // 🔻 TASK-656 (REQ-112 ruling 2 + 4) — the `LEAVE_LOCKED` refusal that stood here is GONE. The counter no longer
+        // GATES anything: every leave is allowed and every leave earns its make-up and its week.
+        // 🔴 @Silver's find, and the reason this door is in the table at all: it REFUSED and CHARGED while the session's own
+        // *Record leave* button was free pre-start — **two doors, two answers for one act.**
+        // 🔴 TASK-656 (§3: "pin that both admin doors answer the SAME") — they DO now, and not before this edit: removing the
+        // `LEAVE_LOCKED` refusal above fixed the REFUSAL half, but this door still CHARGED a pre-start leave while door 1 marked
+        // it free. It asks the SAME predicate door 1 asks (`preStartDeclaration`), computed BEFORE the row is flipped, as door 1
+        // does — so the act cannot answer two ways depending on which button was pressed.
+        // 🔴 TASK-656 — **ONE ABSENCE, DECIDED ONCE.** This door deliberately accepts a RE-MARK of a row that is already absent
+        // (TASK-148), and it has no guard that the row is still LIVE. Found by a value test, not by reading: without this, every
+        // re-submit counted another leave — and, worse, the free-ness predicate says a course carrying a CHARGED leave with nothing
+        // delivered is still "not started", so a re-mark would have FLIPPED that charged leave to FREE. (Under the first, wrong model it
+        // also gave the course another WEEK per re-click; the week is T1-only now, but the re-mark still must not earn a second one.)
+        // ⇒ everything an absence EARNS — its charge flag, its free/charged decision, and a T1 week — happens only on the TRANSITION from
+        // a live lesson into an absence. A re-mark still updates the status and note it always did, and touches nothing else.
+        const becomesAbsence = (COURSE_LIVE_STATUSES as readonly string[]).includes(b.status);
+        const declaredFree = becomesAbsence && (await preStartDeclaration(tx, { courseId, course, id: b.id }));
+        const charged = becomesAbsence && !declaredFree && !b.plannedAtCreation;
+        const absenceFlags = becomesAbsence ? { leaveCharged: charged, ...(declaredFree ? { plannedAtCreation: true } : {}) } : {};
         // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave took quota (the Undo refunds only a recorded true).
         await tx
           .update(bookings)
-          .set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), leaveCharged: !b.plannedAtCreation }) // 🔻 TASK-540 — the note the leave replaced, recorded
+          .set({ status: "SICK_LEAVE", ...leaveNoteWrite(change.reason, b.note), ...absenceFlags }) // 🔻 TASK-540 — the note the leave replaced, recorded
           .where(eq(bookings.id, b.id));
         // TASK-148 (REQ-045 B): an absence DECLARED AT CREATION is free, so re-marking such a row must not
         // start charging quota for it. Every other mark-absence — including a later planned one — consumes.
+        // 🔻 TASK-656 — and a PRE-START declaration is free here too (the same predicate as door 1).
         // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write: two leaves at the same moment each read N and wrote N+1.
-        if (!b.plannedAtCreation) {
+        if (charged) {
           await tx
             .update(coursePackages)
             .set({ leaveUsed: sql`${coursePackages.leaveUsed} + 1` })
             .where(eq(coursePackages.id, courseId));
         }
-        const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup (MAX_WEEK enforced)
+        const moves = await reconcileCoursePlan(tx, courseId); // appends the makeup
+        // 🔻 TASK-656 — DOOR 2 of 5 = trigger T1, and ONLY T1: the plan editor's *Mark absence* adds a week when — and only when — the
+        // absence is a PRE-START DECLARATION (`declaredFree`, which already means the row just became an absence). An ordinary mark-absence
+        // on a started course is +0: still one make-up, still counted, no week. The SAME rule as door 1 for the same act.
+        if (declaredFree) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");
+        await flagMakeupsPastExpiry(tx, courseId, moves.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
         // 🔴 TASK-306 §1 — **the hole.** This cancels a FUTURE session exactly as the per-session action
         // does; an admin using the plan editor is doing the same thing by a different door, and the coach
@@ -3904,15 +3964,22 @@ export async function updateBookingStatus(
       // already carry the three values. Exactly the TASK-220 shape, and it means an อื่นๆ cancel is found by
       // the same `WHERE cancel_reason = 'ADMIN_ERROR'` as every other type, on day one.
       const REASON_ENUM_REQUIRED = new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"]); // TASK-397: a group date's cancel is audited like an OTHER's
-      const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType) ? reasonCode : undefined;
+      // 🔻 TASK-656 (T3) — a COURSE-session cancel used to IGNORE `reasonCode` entirely ("byte-identical to before"), so door 4 had nothing
+      // to read. It now carries ONLY `SCHOOL_ISSUE` (stored on the row, so the coach's notice reads "A problem on our side"); every other
+      // code on a course cancel is still ignored, which is why a course cancel stays byte-identical for every other reason.
+      const enumReason = REASON_ENUM_REQUIRED.has(current.bookingType)
+        ? reasonCode
+        : current.bookingType === "COURSE_PACKAGE" && reasonCode === SCHOOL_ISSUE
+          ? reasonCode
+          : undefined;
       if (REASON_ENUM_REQUIRED.has(current.bookingType)) {
         if (!enumReason) {
           throw new ApiException(400, "REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิก", {
-            allowed: END_REASONS,
+            allowed: SESSION_CANCEL_REASONS, // 🔻 TASK-690 — a SESSION cancel's closed set (END_REASONS + SCHOOL_ISSUE)
           });
         }
-        if (!isEndReason(enumReason)) {
-          throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: END_REASONS });
+        if (!isSessionCancelReason(enumReason)) {
+          throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: SESSION_CANCEL_REASONS });
         }
       }
 
@@ -3921,7 +3988,7 @@ export async function updateBookingStatus(
       // 🔴 TASK-516 addendum — the seats AS THEY WERE, read BEFORE the cascade cancels them: the family notice below tells the families
       // of the seats that were live (the one household rule drops CANCELLED seats — re-read after this line, it would drop them all).
       const seatsBefore = current.bookingType === "GROUP" ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }) : undefined;
-      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null);
+      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {}); // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
       await tx
         .update(bookings)
         .set({
@@ -3964,10 +4031,27 @@ export async function updateBookingStatus(
         // ✅ The reconcile still runs, and still re-owes the make-up: **every course-session cancel is a
         // reschedule, not a forfeit** (SPEC-028 §11.3). Only the refusal it could raise is gone.
         replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
+        // 🔻 TASK-656 — the school-cancel week (trigger T3) is decided BELOW, once `slot` is known: a week here depends on the REASON and on whether
+        // the class was really lost, and the same-slot answer does not exist until the re-plan has run.
       }
       // 🔴 TASK-551 §2 (owner ruling) — a cancelled MAKE-UP that the re-plan put back in the SAME slot changed nothing: ONE decider
       // (`sameSlotReplacement`) answers for both audiences — the family by date + time, the coach by date + time + the SAME coach set.
       const slot = current.status === "EXTENDED" ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT;
+      // 🔻 TASK-656 — DOOR 4 of 5 = trigger T3: *"ที่ขยายอายุคอร์สอัตโนมัติ 1 สัปดาห์ คือการที่เรากด cancel คลาส แล้วเลือก ปัญหาจากทางเรา"* — a
+      // class the SCHOOL cancels with the reason `SCHOOL_ISSUE` adds a week. **EVERY OTHER REASON IS +0** (the family's own reasons, an
+      // admin's mistake, a coach's leave handled at door 3).
+      // 🔴 Read from the REASON CODE the caller passed — never from the free-text note. And decided by THREE conditions, each a fact:
+      //   · the reason is `SCHOOL_ISSUE`;
+      //   · the row was a class that existed to be lost — a LIVE lesson or an ATTENDED one (a mis-marked check-in the school corrects). A row
+      //     that is already an absence, already cancelled, or a no-show is not a class the school just took from the family, so
+      //     cancelling it again earns nothing (found by a value test: a re-cancel used to add a second week);
+      //   · the re-plan did NOT put the make-up back in the SAME slot (`slot.family`) — TASK-551's owner ruling says that changed nothing,
+      //     and a week cannot be earned by a cancel that lost nobody a class. ⚠️ That third condition is my reading of "pin it anyway" in
+      //     @Sober's re-aim; stated in a test so it can be overruled.
+      if (current.courseId && reasonCode === SCHOOL_ISSUE && ([...COURSE_LIVE_STATUSES, "ATTENDED"] as readonly string[]).includes(current.status) && !slot.family) {
+        await addLeaveWeek(tx, current.courseId, "T3_SCHOOL_ISSUE");
+      }
+      if (current.courseId) await flagMakeupsPastExpiry(tx, current.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
       // TASK-370: the coach held this class only if it WAS confirmed — `current` is the pre-write row.
       // 🔻 TASK-551 — MOVED below the re-plan with the family notice (same transaction; its inputs are the pre-write snapshot — TASK-548's
       // accepted move), so the same-slot answer exists when it is built. Suppressed ONLY on an exact same-slot, same-coach re-add.
@@ -4052,7 +4136,10 @@ export async function updateBookingStatus(
       // 🔴 TASK-492 — `leave_charged` RECORDS whether this leave takes quota, decided by the SAME conditions as the increment
       // below: a course leave within quota that was not declared at creation. An over-quota leave (status set, `locked`) and a
       // voucher / single leave take none — and before 0058 nothing on the row said so.
-      const charges = !declaredFree && !!(current.courseId && current.course && canTakeLeave(current.course) && !current.plannedAtCreation);
+      // 🔻 TASK-656 (REQ-112 ruling 2) — `canTakeLeave` is GONE from this decision. `leaveUsed` is now a PLAIN COUNT of leaves
+      // taken, with no limit, so "does the course still have room?" stops being part of whether a leave is counted.
+      // 📌 What still decides it: a DECLARED/at-creation day is free and is not counted — the TASK-148 rule, unchanged.
+      const charges = !declaredFree && !!(current.courseId && current.course && !current.plannedAtCreation);
       await tx
         .update(bookings)
         // 🔻 TASK-609 — a pre-start declaration is born in the SAME shape as an at-creation one, so every reader that already knows
@@ -4061,9 +4148,11 @@ export async function updateBookingStatus(
         .where(eq(bookings.id, id));
 
       if (current.courseId && current.course) {
-        // 🔻 TASK-609 — a DECLARED day gets its make-up like any absence, and is never "locked": its cap is the declared count
-        // above, not `leaveRemaining`. 🔑 That is what makes it FREE rather than merely deferred.
-        if (canTakeLeave(current.course) || declaredFree) {
+        // 🔻 TASK-656 (REQ-112 ruling 2) — the `canTakeLeave(...) || declaredFree` GATE is gone: the counter no longer decides
+        // anything, so EVERY leave on a course row earns its make-up and its week. `locked` is never set here again.
+        // 📌 `declaredFree` still decides whether the day is FREE (the at-creation shape) — it just no longer decides whether
+        // the leave is ALLOWED, because nothing does.
+        {
           // TASK-148 (REQ-045 B): a row born `plannedAtCreation` is a free absence — taking leave on it again
           // must not start charging quota. A normal sick leave (the overwhelming case) is unaffected.
           // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write (a concurrent leave used to lose a count).
@@ -4110,41 +4199,27 @@ export async function updateBookingStatus(
           // inherits its paid rental row through the same ONE copy the reconcile calls. Found by @Tanya on `sid`.
           await inheritCourseRental(tx, current.courseId, ext.id);
 
-          // 🔴 TASK-646 (QA F3, TEST-077 — @Tanya found it on two fresh courses) — A DECLARED DAY MUST STRETCH THE EXPIRY.
-          // 🔑 What went wrong: TASK-609 copied HALF of the at-creation shape — the FREE half (`plannedAtCreation` +
-          // `leaveCharged: false`) — and not the STRETCH half. This path appended a make-up and left `expiryDate` where it was.
-          // ⚠️ Why it stayed invisible: the base expiry already carries the quota's weeks as slack (`maxWeekFor = size + quota`),
-          // so while the CAP existed at most `quota` make-ups fit exactly inside it. **The cap was load-bearing**, and removing
-          // it (TASK-643) is what exposed this. At `quota + 1` the first make-up spills past the expiry.
-          // 🔴 The consequence is worse than the cap we deleted: unlimited free absences against a FIXED expiry means a family
-          // declares days off and LOSES sessions they paid for — which undermines the ruling that *the expiry is the control*.
-          // 🔑 ONE rule, the one that already exists: recomputed creation's way, exactly as the start-date change recomputes it
-          // (`course-start-change.ts`) — `courseBornCeiling(courseExpiry(start, size), last PLANNED session, declared absences)`.
-          // 🚫 Not an increment and not a `+ 7`: recomputing from the course's own facts cannot drift, and it is idempotent if a
-          // declaration is somehow written twice. 📌 A make-up's own week is not part of creation's plan, so the plan end is read
-          // from the rows that carry no `extendedFromId` — the same exclusion the start-change makes.
-          if (declaredFree) {
-            const planRows = await tx.query.bookings.findMany({
-              where: (b: any, { and: a, eq: e, ne: n }: any) => a(e(b.courseId, current.courseId!), n(b.status, "CANCELLED")),
-            });
-            const lastPlanned = (planRows as any[]).filter((r) => !r.extendedFromId).reduce((m: string, r: any) => (r.date > m ? r.date : m), current.course.startDate);
-            const lastAny = (planRows as any[]).reduce((m: string, r: any) => (r.date > m ? r.date : m), extDate);
-            const declared = (planRows as any[]).filter((r) => r.status === "SICK_LEAVE" && r.plannedAtCreation).length;
-            const born = courseBornCeiling(courseExpiry(current.course.startDate, current.course.size), lastPlanned, declared);
-            const next = born > lastAny ? born : lastAny; // …and never before the course's own last session — the start-change's own guard
-            // ⚠️ DECIDED AND PINNED, not left to the function: **lifting or undoing a declaration does NOT give the week back.**
-            // 🔑 `courseBornCeiling` never shrinks, and this write keeps that property deliberately, because the expiry is a promise
-            // the family has already been shown: a make-up may have been placed inside the widened window, and a shrink could strand
-            // a session the family is holding. ⇒ the window only ever grows. 🚫 If the owner wants a lift to reclaim the week, that is
-            // his call and a separate line — it is not an accident of the arithmetic.
-            if (next > current.course.expiryDate) {
-              await tx.update(coursePackages).set({ expiryDate: next }).where(eq(coursePackages.id, current.courseId));
-            }
-          }
-        } else {
-          locked = true; // over quota — needs admin unlock
+          // 🔴 TASK-646 (QA F3) — a declared pre-start day must stretch the expiry: TASK-609 had copied the FREE half of the
+          // at-creation shape and not the STRETCH half, so make-ups landed past a fixed expiry. It recomputed creation's way
+          // (`courseBornCeiling` over the plan's last session and the declared count).
+          // 🔻 TASK-656 (REQ-112) — THAT RECOMPUTE IS REPLACED BY THE ONE HELPER, and the behaviour is the same number by a
+          // simpler route: the recompute produced +1 week per declared absence, which is exactly what `addLeaveWeek` adds (T1, her "6").
+          // 🔴 This is the ONE place where +14 was a real risk — the pre-start declaration is NOT a separate door, it is THIS
+          // door with `declaredFree`, so the recompute AND the helper would both have fired on one leave. One call, once, below.
+          // ⚠️ What went with it, deliberately: the recompute's `lastAny` term, which pulled the expiry out to cover a make-up
+          // that landed beyond it. **That is ruling 3's silent stretch-to-fit, in its second home** — the make-up is created and
+          // the ADMIN is flagged (`TASK-657` §3) rather than the date being moved to hide it.
+          // 📌 Unchanged and still deliberate: the expiry never SHRINKS here, so lifting or undoing a declaration does not give
+          // the week back by itself. That remains `TASK-657`'s question, not this task's.
         }
       }
+      // 🔻 TASK-656 — DOOR 1 of 5 = trigger T1, and ONLY T1: the session's *Record leave*, reached by the ADMIN's button and by the
+      // PARENT through LINE (`line-webhook.service.ts`). A week is added when — and only when — this is a PRE-START DECLARATION.
+      // 🔴 An ORDINARY leave here (any number of them, a started course or a not-yet-started one's later leave) is +0: it still gets its
+      // make-up and is still counted, and the expiry does not move. 🚫 Never +14 for one act — the TASK-646 recompute above had to go
+      // rather than sit beside this call.
+      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");
+      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)
       for (const sid of duoStudentIds(current)) await awardCrmPoints(sid, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx); // TASK-420 — both kids of a DUO row
       const student = await tx.query.students.findFirst({
         where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
@@ -5084,6 +5159,41 @@ export async function resumeBooking(id: string, input: { date: string; startTime
  * ⚠️ It records **from and to even when they are equal**? No — a no-op write is not a change, and an audit
  * full of rows saying nothing happened is how people stop reading it. The caller decides; see below.
  */
+/**
+ * 🔴 TASK-656 (REQ-112, the customer's model re-aimed 2026-10-06) — **ADD ONE WEEK (7 days) to a course's expiry, for ONE of exactly three
+ * triggers** (`LEAVE_WEEK_TRIGGERS`, `lib/course-plan.ts`): T1 a pre-start declared absence · T2 a coach's leave, per class · T3 a school
+ * cancel with the reason `SCHOOL_ISSUE`. An ORDINARY leave never reaches this function, at any door, however many there are.
+ * 🔑 The parameter is the CLOSED union, not a string: a caller cannot invent a fourth reason to add a week without the compiler refusing.
+ * ⚠️ Before the re-aim this helper was called on EVERY leave ("every door adds a week" — a sentence @Porter wrote that nothing downstream
+ * could tell from the customer's own words). Three of its five call sites are the same lines; what changed is WHICH ones are allowed to call.
+ *
+ * 🔑 ONE ARITHMETIC: `+7 days`, the same "+1 week per absence" that course creation (`courseBornCeiling`) and the start-date re-plan already
+ * state for a declared absence. **One rule in two spellings is what the LAST badge cost three days.**
+ * 📌 Written through `recordExpiryChange` — the same writer an admin edit and a re-plan use — with **no actor**, which is accurate: the
+ * system moved it, not a person. 🔴 It is the ONLY call with a LITERAL null actor, so "actor NULL, +7" in the history means one of the
+ * three triggers (pinned). The trigger is NOT written to the database: @Sober ruled no column, no migration, no sentinel in `actor`.
+ * 🔴 FORWARD-ONLY: this moves an expiry only when a NEW trigger fires. Nothing recomputes an existing course.
+ */
+export async function addLeaveWeek(
+  tx: any,
+  courseId: string,
+  trigger: LeaveWeekTrigger, // for the reader and the pin — deliberately not stored
+): Promise<{ from: string; to: string } | null> {
+  // 🔴 ONE STATEMENT, not read-then-write. 🔑 TASK-492's lesson on `leaveUsed`, which this is the expiry twin of: two leaves
+  // recorded at the same moment each read the old date and each wrote old+7, so the course gained ONE week instead of two.
+  // `+ interval '7 days'` is computed by the database on the row it locks, so concurrent leaves cannot lose one.
+  const [row] = await tx
+    .update(coursePackages)
+    .set({ expiryDate: sql`${coursePackages.expiryDate} + interval '7 days'` })
+    .where(eq(coursePackages.id, courseId))
+    .returning({ to: coursePackages.expiryDate });
+  if (!row?.to) return null;
+  const to = typeof row.to === "string" ? row.to : new Date(row.to).toISOString().slice(0, 10);
+  const from = addDays(to, -7); // exact by construction: the write added exactly 7 days to whatever was there
+  await recordExpiryChange(tx, { courseId, from, to, actor: null });
+  return { from, to };
+}
+
 export async function recordExpiryChange( // TASK-492: exported — the Undo's expiry restore is audited by the ONE writer
   exec: any,
   row: { courseId: string; from: string; to: string; actor?: string | null },

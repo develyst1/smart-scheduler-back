@@ -440,6 +440,45 @@ export const isEndReason = (v: unknown): v is EndReason =>
   typeof v === "string" && (END_REASONS as readonly string[]).includes(v);
 
 /**
+ * 🔴 TASK-690 (REQ-112, owner ruling 2026-10-06) — the reason a SESSION may be cancelled for: `END_REASONS` plus `SCHOOL_ISSUE`
+ * (TH `ปัญหาจากทางเรา`, EN "A problem on our side"). It is the ONLY thing that carries REQ-112's trigger T3 — *a class the school
+ * cancels for its own reason earns the course one more week* — and it is a CODE, never a reading of a free-text note.
+ * 🔑 A SIBLING set, not a sixth member of `END_REASONS`: that set is ALSO the closed set for ENDING a whole course
+ * (`course_packages_end_reason_chk`, 0023) and a voucher (`vouchers_end_reason_chk`, 0051), and "a problem on our side" is about ONE
+ * missed class — not a reason to end a purchase. Adding it to `END_REASONS` would have made `endCourse` accept it and Postgres refuse
+ * it (23514 ⇒ a 500). The course-end and voucher-end checks stay `isEndReason`, so the new code is REFUSED there at the door.
+ * 🔴 The database copy is `bookings_cancel_reason_chk` (migration `0065`); the suite pins its list ⇔ THIS set, in this order.
+ */
+export const SCHOOL_ISSUE = "SCHOOL_ISSUE" as const;
+
+/**
+ * 🔴 TASK-656 (REQ-112 — the customer's model, CONFIRMED BY HER IN WRITING 2026-10-06) — **THE ONLY THREE THINGS THAT ADD A WEEK TO A
+ * COURSE'S EXPIRY.** An EXPLICIT, CLOSED LIST. Nothing else moves an expiry, and an ordinary leave — any door, any number — adds NOTHING.
+ *
+ * Her own words (this is what gets quoted, never a restatement):
+ *   ไม่จำกัดจำนวน — ลาได้ไม่จำกัดภายในอายุคอร์ส และงอกไปสัปดาห์ถัดไปปกติค่ะ
+ *   ที่ขยายอายุคอร์สอัตโนมัติ 1 สัปดาห์ คือการที่เรากด cancel คลาส แล้วเลือก ปัญหาจากทางเรา ถึงจะเพิ่มให้นะคะ ถ้าลาปกติไม่เพิ่มให้นะคะ
+ * and, asked as CONSEQUENCES with numbers (a number reads one way only): a coach away twice on a 13-week course ⇒ "15 ค่ะ"; one absence
+ * declared before a 5-week course starts ⇒ "6 ค่ะ".
+ *
+ *   T1 — an absence DECLARED BEFORE THE COURSE STARTS      (the session button, the plan editor; TASK-646, live on uat)
+ *   T2 — a COACH's leave, PER CLASS                        (their own, or recorded by an admin — and the group SEATS it cancels)
+ *   T3 — a class the SCHOOL cancels with `SCHOOL_ISSUE`    (a course session, and a group-date cancel carrying that reason)
+ *
+ * 🔴 **NEVER derive this as a predicate over "whose fault" / "the family did not choose it".** That rule reads right and is WRONG: a
+ * pre-start declared absence IS the family's own choice and it still adds a week, so a derivation gets T1 BACKWARDS. The requirement
+ * says so in as many words. 🔑 *A tidy summary standing in for the list the customer actually gave is what produced a whole night of
+ * work on the wrong rule.* ⇒ the three are a LIST, pinned BY VALUE, and `addLeaveWeek` accepts only a member of it — so a fourth
+ * trigger, or a new caller with a trigger of its own, fails to COMPILE and then fails a test.
+ */
+export const LEAVE_WEEK_TRIGGERS = ["T1_PRE_START_DECLARATION", "T2_COACH_LEAVE", "T3_SCHOOL_ISSUE"] as const;
+export type LeaveWeekTrigger = (typeof LEAVE_WEEK_TRIGGERS)[number];
+export const SESSION_CANCEL_REASONS = [...END_REASONS, SCHOOL_ISSUE] as const;
+export type SessionCancelReason = (typeof SESSION_CANCEL_REASONS)[number];
+export const isSessionCancelReason = (v: unknown): v is SessionCancelReason =>
+  typeof v === "string" && (SESSION_CANCEL_REASONS as readonly string[]).includes(v);
+
+/**
  * Which of a course's sessions an early ending removes: **everything still LIVE**.
  *
  * 🔴 The set is `COURSE_LIVE_STATUSES` itself, not a second list — PENDING, CONFIRMED **and EXTENDED**. I first

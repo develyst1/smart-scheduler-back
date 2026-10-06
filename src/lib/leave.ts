@@ -47,6 +47,17 @@ export interface CourseLike {
   startDate: string;
   size: number;
   usedSessions: number;
+  /**
+   * 🔴 TASK-656 (REQ-112) — **THE MEANING OF THIS COLUMN CHANGED.** It was "leaves spent out of a LIMITED allowance"; it is now a
+   * plain COUNT of the leaves taken on the course, with NO limit — incremented once per COUNTED leave on every door, and never
+   * compared against anything that can refuse a leave. A pre-start declaration is FREE and is not counted (unchanged, TASK-609).
+   * ⚠️ It is NOT zero-sum with `leaveQuota`: `leaveUsed` may now exceed it, and `leaveRemaining` is then floored at 0.
+   * 🔑 What bounds a course now is its EXPIRY — and an ORDINARY leave does NOT move it (the customer: "ถ้าลาปกติไม่เพิ่มให้นะคะ"). Only the
+   * three triggers do (`LEAVE_WEEK_TRIGGERS`, `addLeaveWeek`): a pre-start declared absence, a coach's leave, a school cancel with
+   * `SCHOOL_ISSUE`. Anything that still reads "x of y" from these two numbers is reading a rule the owner has retired.
+   * 📌 The column's own definition is in `db/schema.ts`, which is outside this task's claim — so the statement lives HERE, on the
+   * type every reader goes through, and in SYSTEM-FACTS.
+   */
   leaveUsed: number;
   adminUnlocked: boolean;
   expiryDate: string;
@@ -119,7 +130,9 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
   // 📌 `maxWeekFor` itself is untouched: `courseExpiry` still builds the BASE expiry from it at creation. Only this READER moved.
   const maxWeek = weekOfExpiry(c.startDate, c.expiryDate, maxWeekFor(c.size, quota));
   const leaveRemaining = Math.max(0, quota - c.leaveUsed);
-  const leaveLocked = c.leaveUsed >= quota && !c.adminUnlocked;
+  // 🔻 TASK-656 (REQ-112) — leaves are UNLIMITED ("ไม่จำกัดจำนวน"), so a course is NEVER locked for leave. Kept as a field only so the
+  // DTO's shape does not change under the front; always `false`, pinned by value.
+  const leaveLocked = false;
   return {
     id: c.id,
     startDate: c.startDate,

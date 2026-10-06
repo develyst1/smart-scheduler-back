@@ -45,7 +45,7 @@ describe("🔴 TASK-327 — NO message emits an un-interpolated placeholder. ONE
     // 🔻 TASK-370 — SEVENTEEN: `class_cancelled_teacher` + `course_dropped_teacher` (the coach told a CONFIRMED
     // class is gone). The number moved because the walkers reached them — which is the point.
     // 🔻 TASK-375 — EIGHTEEN: `rental_added_teacher` (a rental added today after the reminder went).
-    expect(KINDS.length).toBe(31); // 🔻 TASK-608: +2 — `teacher_leave_recorded` + `teacher_leave_lifted` (an admin blocked / unblocked a teacher's DAY) // 🔻 TASK-537: +1 — `makeup_cancelled_parent` (a cancelled make-up, to the family) // 🔻 TASK-516: +2 — `class_moved_teacher` + `class_moved_parent` (a moved class, to the coaches and the family) // 🔻 TASK-508: +1 — `class_on_again_teacher` (a leave Undo: the coaches told the class is on again) // 🔻 TASK-443: +1 — `camp_deduction` (the day-end camp credit notice, ENGLISH ONLY) // 🔻 TASK-441: +1 — `weekly_schedule_teacher` (the Monday coach digest, ENGLISH ONLY) // 🔻 TASK-428: +3 — `other_teacher_added` / `other_teacher_removed` / `other_series_cancelled` // TASK-403: +1 — `camp_reminder`; TASK-406: +1 — `class_cancelled_parent`
+    expect(KINDS.length).toBe(32); // 🔻 TASK-657: +1 — `makeup_past_expiry` (a make-up past the course expiry, to the admin) // 🔻 TASK-608: +2 — `teacher_leave_recorded` + `teacher_leave_lifted` (an admin blocked / unblocked a teacher's DAY) // 🔻 TASK-537: +1 — `makeup_cancelled_parent` (a cancelled make-up, to the family) // 🔻 TASK-516: +2 — `class_moved_teacher` + `class_moved_parent` (a moved class, to the coaches and the family) // 🔻 TASK-508: +1 — `class_on_again_teacher` (a leave Undo: the coaches told the class is on again) // 🔻 TASK-443: +1 — `camp_deduction` (the day-end camp credit notice, ENGLISH ONLY) // 🔻 TASK-441: +1 — `weekly_schedule_teacher` (the Monday coach digest, ENGLISH ONLY) // 🔻 TASK-428: +3 — `other_teacher_added` / `other_teacher_removed` / `other_series_cancelled` // TASK-403: +1 — `camp_reminder`; TASK-406: +1 — `class_cancelled_parent`
     for (const k of ["booking_confirmed", "leave_notice", "sick_leave", "daily_digest"]) {
       expect({ k, present: KINDS.includes(k) }).toEqual({ k, present: true });
     }
@@ -120,13 +120,13 @@ describe("📌 TASK-327 — WHICH branches are safe, and HOW. Two mechanisms, an
     // 🔻 TASK-344 — **TWELVE became NINE**: three `date: ctx.date ?? "-"` became ternaries so the date could
     // be formatted. 📌 *The number moving is this assertion working, not breaking — it is what makes a
     // branch's fallback disappearing visible.*
-    expect(switchBody.match(/\?\? "-"/g)!.length).toBe(9);
+    expect(switchBody.match(/\?\? "-"/g)!.length).toBe(10); // 🔻 TASK-657: +1 — `makeup_past_expiry` reads `ctx.studentName ?? "-"`
   });
 
   test("🚫 ZERO product-code changes — the reason this is safe during a `uat` round", () => {
     // 📌 The property is asserted, not enforced. If a future branch breaks it, THIS test fails and the fix is
     // a decision someone makes then — rather than a `?? "-"` added today to code a tester is reading.
     expect(MSG).toContain("return buildOutboxMessage(payload, ctx, lang, recipientType).trimEnd();");
-    expect(switchBody.match(/case "/g)!.length).toBe(31); // 🔻 TASK-608: +2 (`teacher_leave_recorded` + `teacher_leave_lifted`, one `case` each) // 🔻 TASK-537: +1 (`makeup_cancelled_parent`) // 🔻 TASK-516: +2 (`class_moved_teacher` / `class_moved_parent`) // 🔻 TASK-508: +1 (`class_on_again_teacher`) // 🔻 TASK-443: +1 (`camp_deduction`) // 🔻 TASK-441: +1 (`weekly_schedule_teacher`) // 🔻 TASK-428: +3 (the OTHER SERIES notices) // TASK-403 +1, TASK-406 +1 (`class_cancelled_parent`) // TASK-370: +2, TASK-375: +1 — see the kind-list pin
+    expect(switchBody.match(/case "/g)!.length).toBe(32); // 🔻 TASK-657: +1 — `makeup_past_expiry` (a make-up past the course expiry, to the admin) // 🔻 TASK-608: +2 (`teacher_leave_recorded` + `teacher_leave_lifted`, one `case` each) // 🔻 TASK-537: +1 (`makeup_cancelled_parent`) // 🔻 TASK-516: +2 (`class_moved_teacher` / `class_moved_parent`) // 🔻 TASK-508: +1 (`class_on_again_teacher`) // 🔻 TASK-443: +1 (`camp_deduction`) // 🔻 TASK-441: +1 (`weekly_schedule_teacher`) // 🔻 TASK-428: +3 (the OTHER SERIES notices) // TASK-403 +1, TASK-406 +1 (`class_cancelled_parent`) // TASK-370: +2, TASK-375: +1 — see the kind-list pin
   });
 });

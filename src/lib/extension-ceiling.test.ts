@@ -123,7 +123,10 @@ describe("TASK-299 — the wiring, because the pure rule alone would not catch a
     // this line read the right boundary and TASK-301 made it name the right date — 🔑 **but an accurate
     // refusal is still a refusal, and the requirement was never a better one.**
     expect(SVC).not.toContain("exceedsExtensionCeiling(extDate,");
-    expect(SVC).toContain("if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;");
+    // 🔻 TASK-656 (REQ-112 ruling 3) — the stretch-to-fit is REMOVED and its ABSENCE is the claim: a make-up past the expiry is
+    // CREATED, and the expiry is never silently extended to fit it. The week is +7 at the door; the overrun is the ADMIN's flag
+    // (TASK-657 §3), not a date moved where nobody can explain it.
+    expect(SVC).not.toContain("expiryAfterAppends");
   });
 
   test("🔑 creation STORES the stretched ceiling — computed before the insert, from the plan", () => {
@@ -185,7 +188,10 @@ describe("🔻 TASK-308 (REQ-085 §12) — the ceiling may NEVER refuse a leave,
   test("✅ …and the expiry GROWS instead, through the one writer an admin edit uses", () => {
     // 🚫 Not a second way to move an expiry: REQ-082's audit still answers *"why did this date move?"*
     const SVC = code(readSrc(readFileSync(resolve(import.meta.dir, "..", "services", "scheduler.service.ts"), "utf8")));
-    expect(SVC).toContain("if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;");
+    // 🔻 TASK-656 (REQ-112 ruling 3) — the stretch-to-fit is REMOVED and its ABSENCE is the claim: a make-up past the expiry is
+    // CREATED, and the expiry is never silently extended to fit it. The week is +7 at the door; the overrun is the ADMIN's flag
+    // (TASK-657 §3), not a date moved where nobody can explain it.
+    expect(SVC).not.toContain("expiryAfterAppends");
     expect(SVC).toContain("await recordExpiryChange(tx, {");
   });
 
@@ -193,10 +199,15 @@ describe("🔻 TASK-308 (REQ-085 §12) — the ceiling may NEVER refuse a leave,
     // `SPEC-028 §5 #2` feared *"a leave could otherwise extend a course indefinitely"*. **It cannot: a course
     // earns at most `quota` make-ups, ever.** ⇒ the quota was always the real bound, and the ceiling was a
     // second answer to a question that already had one.
-    // ⚠️ Asserted as the gate that REMAINS, so *"no ceiling"* cannot quietly become *"no limit"*.
+    // ⚠️ It was asserted as the gate that REMAINS, so *"no ceiling"* could not quietly become *"no limit"*.
+    // 🔻 TASK-656 (REQ-112 rulings 2 + 4) — **it has now become exactly that, deliberately and by the owner's ruling**: the
+    // quota stops gating, every leave is allowed, and what bounds a course is the EXPIRY — which each leave moves by +7.
+    // 🔑 So the honest replacement is not a weaker version of the old claim but its inverse, stated as an absence: no leave
+    // path consults the counter to decide whether a leave may happen.
     const SVC = code(readSrc(readFileSync(resolve(import.meta.dir, "..", "services", "scheduler.service.ts"), "utf8")));
-    expect(SVC).toContain("toCourseSummary(course).leaveLocked");
-    expect(SVC).toContain("canTakeLeave(current.course)");
+    expect(SVC).not.toContain("toCourseSummary(course).leaveLocked");
+    expect(SVC).not.toContain("canTakeLeave(current.course)");
+    expect(SVC).toContain("await addLeaveWeek(tx,"); // …and the thing that replaced it
   });
 
   test("🚫 the predicate itself is NOT dead — one live caller, named", () => {
@@ -228,9 +239,13 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
   test("🔑 …AND the expiry MOVES to cover it — the other half, because either alone is the defect", () => {
     // ⚠️ *"The leave succeeding with a stale expiry is the same defect wearing a different face."* The append
     // collects the furthest date and the expiry grows to it, once, through `recordExpiryChange`.
-    expect(append).toContain("if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;");
-    expect(SVC).toContain("if (expiryAfterAppends > course.expiryDate) {");
-    expect(SVC).toContain(".set({ expiryDate: expiryAfterAppends })");
+    // 🔻 TASK-656 (REQ-112 ruling 3) — the owner's `มิลล่า` case had TWO halves: the make-up is created, AND the expiry moved
+    // to cover it. **He has since ruled the second half out**: a make-up past the expiry is created and the ADMIN is flagged
+    // (TASK-657 §3), because an expiry that silently follows wherever the search lands is not a rule anyone can state.
+    // 🔑 The half that remains is the one his screenshot was about — the make-up is CREATED, never refused — and it is asserted
+    // above. What moved instead is +7 per leave, at the door.
+    expect(SVC).not.toContain("expiryAfterAppends");
+    expect(SVC).toContain("await addLeaveWeek(tx,");
   });
 
   test("🔑 a STARTED course with NO quota left is STILL REFUSED — the gate that remains", () => {
@@ -240,7 +255,8 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     // `leaveRemaining` but the DECLARED-DAY CAP (`preStartDeclaration`, capped at the quota the customer bought). That is the owner's
     // ruling — a pre-start absence is FREE, so a pool it never spends cannot be what refuses it.
     // 🔑 The claim this test exists for is UNCHANGED for every STARTED course, and that is asserted here by value:
-    expect(SVC).toContain("if (canTakeLeave(current.course) || declaredFree) {");
+    // 🔻 TASK-656 — the gate is gone for every leave, started or not (REQ-112 ruling 2).
+    expect(SVC).not.toContain("canTakeLeave(current.course)");
     expect(SVC).toContain("const declaredFree = await preStartDeclaration(tx, current);"); // …and the bypass is reachable ONLY through it
     // 🔻 TASK-643 — RE-READ, as instructed, and the narrowing is now MORE exactly right, not less. When TASK-609 narrowed this
     // claim, "a pre-start course bypasses the quota" came with its own cap, so the bypass was bounded. The owner has abolished
@@ -249,8 +265,13 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     // ⚠️ What is NOT asserted here any more is a second gate above it, because there is none; it is pinned as an absence in
     // `pre-start-declared-absence-task609`, where the inverted F3 lives.
     expect(SVC).not.toContain("DECLARED_ABSENCE_CAP");
-    expect(SVC).toContain("toCourseSummary(course).leaveLocked");
-    expect(SVC).toContain('conflict("LEAVE_LOCKED"');
+    // 🔻 TASK-656 — and the gate this test called "the one that remains" is gone too (REQ-112 ruling 2). ⚠️ The NARROWING this
+    // test records is now complete: there is no quota gate for a started course either, so the sentence it was narrowed to
+    // protect — *"a started course with no quota left is still refused"* — is no longer true of anything.
+    // 🔑 Retired as an absence rather than deleted, because the sequence (ceiling → quota-only → nothing) is the history of a
+    // rule the owner changed twice, and a deleted assertion looks like it was never there.
+    expect(SVC).not.toContain("toCourseSummary(course).leaveLocked");
+    expect(SVC).not.toContain('conflict("LEAVE_LOCKED"');
   });
 
   test("🚫 `EXTENSION_CEILING` is gone from the service entirely — including its catch", () => {

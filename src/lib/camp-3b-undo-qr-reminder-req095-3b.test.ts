@@ -42,8 +42,8 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
   test("56 = 56: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");

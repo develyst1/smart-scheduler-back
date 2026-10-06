@@ -36,11 +36,14 @@ describe("🔻 §T-609-CAP — RETIRED by TASK-643: the refusal is GONE, and tha
     const upToWrite = LEAVE.slice(0, LEAVE.indexOf('.set({ status: "SICK_LEAVE"'));
     expect(upToWrite).not.toMatch(/throw |conflict\(/);
   });
-  test("✅ the OTHER unlock-bearing refusal is untouched — the contrast rule outlives its own subject", () => {
-    // 🔑 TASK-635's finding still holds in both directions: the refusal for a rule that CAN be unlocked must keep offering it.
-    const at = SCHED.indexOf('conflict("LEAVE_LOCKED"');
-    expect(at).toBeGreaterThan(0);
-    expect(SCHED.slice(at, at + 200)).toContain("ปลดล็อก");
+  test("🔻 TASK-656 — the OTHER unlock-bearing refusal is GONE TOO, and that is asserted, not merely unasserted", () => {
+    // ⚠️ TASK-635 pinned a CONTRAST: the cap's refusal must not offer an unlock, while `LEAVE_LOCKED` — a rule that really
+    // could be unlocked — must keep offering one. 🔻 REQ-112 ruling 2 abolished the rule itself: the leave counter stops
+    // gating, so nothing is ever locked and the sentence would describe a state the system no longer has.
+    // 🔑 The CONTRAST survives its own subject as a rule (*offer an unlock only where one exists*) — it is just that neither
+    // side of this particular pair exists any more, and an absent check and a check for absence are different things.
+    expect(SCHED).not.toContain('conflict("LEAVE_LOCKED"');
+    expect(SCHED).not.toContain("โควตาการลาเต็มแล้ว");
   });
   test("📌 what the rule WAS, kept as a record for whoever reinstates a limit one day", () => {
     // 🚫 A record, NOT a template: if a cap ever returns, its sentence is written from the rule then in force.

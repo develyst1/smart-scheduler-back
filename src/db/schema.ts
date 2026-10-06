@@ -362,6 +362,7 @@ export const coursePackages = pgTable(
     droppedAt: timestamp("dropped_at", { withTimezone: true }),
     droppedBy: text("dropped_by"),
     dropReason: text("drop_reason"),
+    // A plain count of leaves taken (REQ-112) — not a limit; nothing gates on it.
     leaveUsed: integer("leave_used").notNull().default(0),
     adminUnlocked: boolean("admin_unlocked").notNull().default(false),
     // TASK-390 (REQ-091 §14) `0038` — the rental was REMOVED from the remaining sessions: the DTO says `rental: null`

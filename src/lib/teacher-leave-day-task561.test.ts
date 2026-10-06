@@ -55,7 +55,7 @@ describe("🔴 Seam A — `assertTeacherBookable`, the ONE availability gate eve
     today();
     const e: any = await sched.assertTeacherBookable(exec([{ teacherId: "t1", date: "2026-10-21" }]), "t1", "2026-10-21").catch((x) => x);
     expect([e.status, e.code]).toEqual([409, "TEACHER_ON_LEAVE"]);
-    expect(e.message).toBe("ครูEk ลาวันที่ 2026-10-21 — เพิ่มคาบกับครูวันนี้ไม่ได้ กรุณาเลือกครูอื่นหรือวันอื่น"); // 📋 DRAFT (owner's copy batch)
+    expect(e.message).toBe("ครู Ek ลาวันที่ 2026-10-21 — เพิ่มคาบกับครูในวันนั้นไม่ได้ กรุณาเลือกครูอื่นหรือวันอื่น"); // 📋 DRAFT (owner's copy batch)
   });
   test("🚫 the SAME teacher on another day, or a back-dated write onto a past leave day, passes", async () => {
     today();
@@ -80,7 +80,7 @@ describe("🔴 a class put back WITHOUT an insert (revive · leave-Undo · a sea
     spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async () => [{ id: "t1", lineUserId: null }, { id: "t2", lineUserId: null }]) as any));
     const exec = (leave: any[]) => ({ query: { teacherLeaveDays: leaveTable(leave), teachers: { findFirst: async (q: any) => ({ nickname: whereOf(q).id === "t2" ? "Nok" : "Ek" }) } } });
     const e: any = await assertNoCoachOnLeave(exec([{ teacherId: "t2", date: "2026-10-21" }]), { id: "g1", date: "2026-10-21" }).catch((x) => x);
-    expect([e.code, e.message.startsWith("ครูNok ลาวันที่ 2026-10-21")]).toEqual(["TEACHER_ON_LEAVE", true]); // the CO-teacher
+    expect([e.code, e.message.startsWith("ครู Nok ลาวันที่ 2026-10-21")]).toEqual(["TEACHER_ON_LEAVE", true]); // the CO-teacher
     await expect(assertNoCoachOnLeave(exec([{ teacherId: "t3", date: "2026-10-21" }]), { id: "g1", date: "2026-10-21" })).resolves.toBeUndefined(); // someone else's leave
   });
 });

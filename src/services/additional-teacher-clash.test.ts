@@ -63,7 +63,7 @@ describe("🔴 ONE wording — the same sentence as the primary teacher's refusa
     expect(GUARD).toContain("clash.teacher?.nickname ?? clash.teacher?.name");
     // The sentence itself is already pinned in `slot-clash.test.ts`; this is the same composer.
     expect(slotClashMessage({ teacherName: "Bank", bookingName: "ประชุมทีม", time: "10:00-11:00" })).toContain(
-      "ครูBank",
+      "ครู Bank",
     );
   });
 

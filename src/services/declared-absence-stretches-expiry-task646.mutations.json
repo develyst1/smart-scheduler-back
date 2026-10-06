@@ -1,72 +1,53 @@
 {
   "task": "TASK-646",
   "proves": "src/services/declared-absence-stretches-expiry-task646.test.ts",
-  "note": "🔴 QA F3 (TEST-077). X1 is the defect exactly as @Tanya found it: the stretch removed from the PATH while the FUNCTION stays correct — which is why a function-level proof could not see it. X7 restores the CAP, because TASK-643's inverted F3 is still the rule.",
+  "note": "🔴 QA F3 (TEST-077). X1 is the defect exactly as @Tanya found it: the stretch removed from the PATH while the FUNCTION stays correct — which is why a function-level proof could not see it. X7 restores the CAP, because TASK-643's inverted F3 is still the rule. 🔻 2026-10-06, TASK-656 (REQ-112): X2–X6 are RETIRED — they attacked the `courseBornCeiling` RECOMPUTE on the declaration path (a second formula · make-ups counted as planned · `declared = 1` · the expiry shrinking · the stretch riding every leave), and REQ-112 REPLACED that recompute with the one helper `addLeaveWeek`, so none of those lines exist. X1 keeps its subject (the stretch must happen on this path) and was RE-ANCHORED onto door 1's helper call. X7/X8 are untouched. The triggers' own mutations live in `leave-week-triggers-task656.mutations.json`. 🔻 Second re-cut the same day (§R, the three-trigger model): X1 re-anchored onto door 1's `declaredFree` gate, and the describe that pinned the deleted recompute was retired. ⚠️ This set was UNGUARDED from the moment it was filed until today: `mutation-sets-task627.test.ts` scanned `src/lib` only and this set lives in `src/services`.",
   "tests": "src/services/declared-absence-stretches-expiry-task646.test.ts src/lib/pre-start-declared-absence-task609.test.ts src/lib/expiry-adds-leave-weeks-req089.test.ts src/lib/extension-ceiling.test.ts",
   "mutations": [
     {
       "id": "X1",
-      "what": "🔴 THE DEFECT AS QA FOUND IT: the stretch removed from the path — the make-up is appended and the expiry left where it was",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "            if (next > current.course.expiryDate) {\n              await tx.update(coursePackages).set({ expiryDate: next }).where(eq(coursePackages.id, current.courseId));\n            }",
-        "to": ""
-      }]}]
-    },
-    {
-      "id": "X2",
-      "what": "a SECOND stretch formula — the path adds a week itself instead of recomputing through `courseBornCeiling`",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "            const born = courseBornCeiling(courseExpiry(current.course.startDate, current.course.size), lastPlanned, declared);",
-        "to": "            const born = new Date(Date.parse(current.course.expiryDate) + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);"
-      }]}]
-    },
-    {
-      "id": "X3",
-      "what": "the stretch counts the MAKE-UPS as planned sessions, so the ceiling runs away by a week per declaration",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "            const lastPlanned = (planRows as any[]).filter((r) => !r.extendedFromId).reduce((m: string, r: any) => (r.date > m ? r.date : m), current.course.startDate);",
-        "to": "            const lastPlanned = (planRows as any[]).reduce((m: string, r: any) => (r.date > m ? r.date : m), current.course.startDate);"
-      }]}]
-    },
-    {
-      "id": "X4",
-      "what": "the declared count is read as ONE instead of all of them — every course stretches by a single week however many days are declared",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "            const declared = (planRows as any[]).filter((r) => r.status === \"SICK_LEAVE\" && r.plannedAtCreation).length;",
-        "to": "            const declared = 1;"
-      }]}]
-    },
-    {
-      "id": "X5",
-      "what": "the expiry may SHRINK — a later recompute pulls the window in under a family that already holds a session inside it",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "            if (next > current.course.expiryDate) {",
-        "to": "            if (next !== current.course.expiryDate) {"
-      }]}]
-    },
-    {
-      "id": "X6",
-      "what": "the stretch rides EVERY leave, not just a declaration — a started course's ordinary sick leave moves the expiry too",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "          if (declaredFree) {\n            const planRows = await tx.query.bookings.findMany({",
-        "to": "          if (true) {\n            const planRows = await tx.query.bookings.findMany({"
-      }]}]
+      "what": "🔴 THE DEFECT AS QA FOUND IT, re-cut for TASK-656: the pre-start path stops adding a week — the make-up is appended and the expiry left where it was",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "X7",
       "what": "the CAP is reintroduced (TASK-643's inverted F3, re-asserted here because this task is where a cap would look attractive again)",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave",
-        "to": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave\n      if (declaredFree && current.course && (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) })).filter((r: any) => r.id !== current.id && r.plannedAtCreation).length >= courseLeaveQuota(current.course)) throw conflict(\"DECLARED_ABSENCE_CAP\", \"ครบแล้ว\");"
-      }]}]
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave",
+              "to": "      const declaredFree = await preStartDeclaration(tx, current); // not started ⇒ this is a DECLARED day, not a leave\n      if (declaredFree && current.course && (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.courseId, current.courseId) })).filter((r: any) => r.id !== current.id && r.plannedAtCreation).length >= courseLeaveQuota(current.course)) throw conflict(\"DECLARED_ABSENCE_CAP\", \"ครบแล้ว\");"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "X8",
       "what": "the free SHAPE is dropped while the stretch stays — the day is charged and the expiry grows (the two halves split the other way)",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })",
-        "to": "leaveCharged: charges })"
-      }]}]
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "leaveCharged: charges, ...(declaredFree ? { plannedAtCreation: true } : {}) })",
+              "to": "leaveCharged: charges })"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

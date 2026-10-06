@@ -43,10 +43,10 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(j.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -211,13 +211,13 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   });
   test("the cancel CASCADE: a GROUP row's cancel first cancels every live seat (status + note + the course's make-up via `reconcileCoursePlan`) in the SAME tx, then the group row; GROUP joins the audited-reason set; a seat's own cancel is ordinary", () => {
     const U = region(SCHED, "export async function updateBookingStatus(", "\nexport async function bulkConfirm(");
-    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null);');
+    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {});');
     expect(U.indexOf('cancelSeatsOfGroup(tx, current.id')).toBeLessThan(U.indexOf('status: "CANCELLED",'));
     expect(U).toContain('new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"])');
     const C = region(SCHED, "async function cancelSeatsOfGroup(", "\n}\n");
     expect(C).toContain("a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES]))");
     expect(C).toContain('await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));');
-    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) });");
+    expect(C).toContain("const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null;");
     expect(C).not.toMatch(/enqueueLine|sendClassCancelledToTeacher/); // the coach is told ONCE, by the group row's own cancel
   });
   test("🔴 a SEAT draws no freelance hour — `reconcileBookingHolds` returns before the ledger read when the row has a `groupId` (the group row holds the hour)", () => {

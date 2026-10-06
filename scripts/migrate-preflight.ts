@@ -23,7 +23,7 @@
 import postgres from "postgres";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { migrationHash, missingMigrations, type LedgerRow, type OwnMigration } from "../src/lib/migration-ledger";
+import { migrationFingerprints, missingMigrations, type LedgerRow, type OwnMigration } from "../src/lib/migration-ledger";
 import { formatRefusal, scanBatch, type PendingMigration } from "../src/lib/migrate-preflight";
 
 const OWN = "__drizzle_migrations_scheduling"; // must match drizzle.config.ts
@@ -42,11 +42,13 @@ const journal = JSON.parse(readFileSync(resolve(dir, "meta/_journal.json"), "utf
 // Journal ORDER is the whole basis of "a LATER migration uses it" — read as written, never sorted by anything
 // else, and `readSql` is shared with the split runner so the two cannot disagree about a file's contents.
 const sqlOf = (tag: string) => readFileSync(resolve(dir, `${tag}.sql`), "utf8");
-const mine: OwnMigration[] = journal.entries.map((e) => ({
-  tag: e.tag,
-  when: e.when,
-  hash: migrationHash(sqlOf(e.tag)),
-}));
+// 🔻 TASK-655 — BOTH fingerprints, the same as `db:verify` and the seed. 🔑 Preflight and verify must mean ONE thing by
+// "pending": on a Windows box a single-fingerprint check named a migration that was already applied, and this script is the
+// one that decides whether a deploy goes ahead.
+const mine: OwnMigration[] = journal.entries.map((e) => {
+  const fp = migrationFingerprints(sqlOf(e.tag));
+  return { tag: e.tag, when: e.when, hash: fp.lf, hashes: fp.all };
+});
 
 const sql = postgres(url);
 try {

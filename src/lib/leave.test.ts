@@ -18,11 +18,11 @@ describe("leave quota rules", () => {
     expect(canTakeLeave({ ...base, size: 10, leaveUsed: 1 })).toBe(true);
   });
 
-  test("quota exhausted → locked, cannot take leave", () => {
+  test("🔻 TASK-656 — quota exhausted → NOT locked: leaves are unlimited, the counter is a plain count and `leaveLocked` is always false", () => {
     const s = toCourseSummary({ ...base, size: 4, leaveUsed: 1 });
-    expect(s.leaveRemaining).toBe(0);
-    expect(s.leaveLocked).toBe(true);
-    expect(canTakeLeave({ ...base, size: 4, leaveUsed: 1 })).toBe(false);
+    expect(s.leaveRemaining).toBe(0); // the old allowance still reads zero (the number is kept, it gates nothing)
+    expect(s.leaveLocked).toBe(false);
+    expect(toCourseSummary({ ...base, size: 4, leaveUsed: 99 }).leaveLocked).toBe(false);
   });
 
   test("admin unlock overrides the lock", () => {

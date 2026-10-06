@@ -170,13 +170,21 @@ export async function assertStudentActive(exec: any, studentId: string): Promise
  * `date >= today AND status IN COURSE_LIVE` across the ids. The parent's refusal number and the student's are the
  * same count.
  */
+/**
+ * 🔴 TASK-667 (Porter, 2026-10-06) — the archive refusal answers ONE question: "does this record still OWE somebody a class?"
+ * The live set, PLUS a move awaiting the parent (PENDING_RESCHEDULE, still on the coach's grid) and a hold (PAUSED, the family is
+ * coming back). SICK_LEAVE / CANCELLED are not owed ⇒ still allowed. 🚫 Not "any future booking" (that makes the button useless on
+ * exactly the rows it exists for). 🚫 `COURSE_LIVE_STATUSES` itself is untouched — it drives the course plan and the badge.
+ */
+export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, "PENDING_RESCHEDULE", "PAUSED"] as const;
+
 export async function liveFutureSessionCount(exec: any, studentIds: string[]): Promise<number> {
   if (!studentIds.length) return 0;
   const { date: today } = bangkokNow();
   const [live] = await exec
     .select({ n: count() })
     .from(bookings)
-    .where(and(or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES]))); // TASK-420 — a DUO row counts for its co-student's household too
+    .where(and(or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES]))); // TASK-667: the OWED set · TASK-420 — a DUO row counts for its co-student's household too
   return Number(live?.n ?? 0);
 }
 
@@ -260,6 +268,56 @@ export async function createStudentForParent(
     .returning();
 
   return { student, count: existingCount + 1 };
+}
+
+/**
+ * 🔴 TASK-668 (TASK-644 piece B's second half) — LINK a parent to a child that has NONE. Not a field on the student edit (its
+ * six-field allow-list stays as it is): its own act, and it may ONLY ever go from NO parent to one.
+ * That is enforced IN THE WRITE — `UPDATE students SET parent_id = $p WHERE id = $s AND parent_id IS NULL RETURNING id` — so the
+ * database decides in the same statement: zero rows ⇒ 409, there is no read-then-write gap, and the act takes NO "from" parameter.
+ * 🔑 Order: 404 (student, parent) ⇒ the archived-family refusal ⇒ the 5-per-family cap ⇒ the conditional write ⇒ 409. The two
+ * guards are `createStudentForParent`'s own, REUSED not copied: linking a 6th child is adding one.
+ * 🚫 It sends NO notice (no outbox row, no admin alert): the family starts receiving LINE notices from the child's next session on its
+ * own, and the confirm (below) says so. 🚫 Nothing un-links; a wrong link is a data fix by the owner.
+ * 🔑 `dryRun` = the CONFIRM's read: the same guards, NO write, then the family's children and the child's upcoming owed sessions
+ * ("upcoming" = `ARCHIVE_BLOCKING_STATUSES`, today or later — the archive refusal's own set, so the two agree). One route, so the
+ * preview and the act cannot drift apart (the product's `dryRun` precedent: `applyPlanChange`).
+ * 📋 DRAFT wording (owner approves with the next copy batch) — `COPY-DRAFT-teamB-week-to-10-11-2026-10-06.md` §C.
+ */
+export const STUDENT_ALREADY_HAS_PARENT = () => conflict("STUDENT_ALREADY_HAS_PARENT", "นักเรียนคนนี้ผูกกับผู้ปกครองแล้ว — รีเฟรชหน้าเพื่อดูข้อมูลล่าสุด");
+
+export async function linkParentToStudent(studentId: string, parentId: string, opts: { dryRun?: boolean } = {}, exec: any = db) {
+  const student = await exec.query.students.findFirst({ where: (s: any, { eq: e }: any) => e(s.id, studentId) });
+  if (!student) throw notFound("ไม่พบนักเรียน");
+  const family = await exec.query.parents.findFirst({ where: (p: any, { eq: e }: any) => e(p.id, parentId), columns: { id: true, name: true, phone: true } });
+  if (!family) throw notFound("ไม่พบผู้ปกครอง");
+  await assertParentActive(exec, parentId);
+  const familyCount = await assertCanAddStudent(parentId, exec);
+
+  if (opts.dryRun) {
+    if (student.parentId) throw STUDENT_ALREADY_HAS_PARENT(); // advisory only — the real write below stays the authority
+    const children = await listStudentsOfParent(parentId, exec);
+    const { date: today } = bangkokNow();
+    const owed: Array<{ date: string; startTime: string }> = await exec
+      .select({ date: bookings.date, startTime: bookings.startTime })
+      .from(bookings)
+      .where(and(or(eq(bookings.studentId, studentId), eq(bookings.coStudentId, studentId)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])))
+      .orderBy(asc(bookings.date), asc(bookings.startTime));
+    return {
+      dryRun: true as const,
+      parent: { id: family.id as string, name: (family.name ?? null) as string | null, phone: (family.phone ?? null) as string | null },
+      children: children.map((c) => ({ id: c.id, name: c.name, nickname: c.nickname ?? null })),
+      upcoming: { count: owed.length, next: owed[0]?.date ?? null },
+    };
+  }
+
+  const [linked] = await exec
+    .update(students)
+    .set({ parentId })
+    .where(and(eq(students.id, studentId), isNull(students.parentId)))
+    .returning({ id: students.id });
+  if (!linked) throw STUDENT_ALREADY_HAS_PARENT();
+  return { dryRun: false as const, linked: true as const, studentId, parentId, familyCount: familyCount + 1 };
 }
 
 /**

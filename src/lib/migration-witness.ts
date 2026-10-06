@@ -656,6 +656,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "panel reads it from the moment of the move. The column is the file's ONLY object. Rerunnable: IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0065_cancel_reason_school_issue",
+    probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "SCHOOL_ISSUE" },
+    why:
+      "TASK-690 (REQ-112, trigger T3). 0045's CHECK on cancel_reason is DROPPED and re-ADDED with the 5th code, `SCHOOL_ISSUE`: the " +
+      "constraint NAME exists before and after, so only its DEFINITION witnesses the change (the 0045 shape). NOT VALID + VALIDATE so the " +
+      "hot table's scan runs under SHARE UPDATE EXCLUSIVE; rerunnable. 0045's witness (`contains: TEACHER_LEAVE`) is deliberately NOT " +
+      "re-pointed: this definition still contains it, and re-running 0045 would REGRESS this constraint to four codes.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

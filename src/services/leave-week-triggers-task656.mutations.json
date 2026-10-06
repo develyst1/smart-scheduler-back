@@ -1,0 +1,443 @@
+{
+  "task": "TASK-656",
+  "proves": "src/services/leave-week-triggers-task656.test.ts",
+  "note": "🔴 REQ-112 §R — THE THREE-TRIGGER MODEL (T1 pre-start declaration · T2 coach's leave · T3 school cancel with SCHOOL_ISSUE; an ordinary leave adds NOTHING). T1a/T1b/T2a/T3a/T3b each remove ONE trigger's call and each must bite ALONE — which is the proof the list is complete and each is reachable. O1/O2 put the helper back on an ORDINARY leave (the first, wrong model). P1 is the 'whose fault' predicate replacing the list — it reads right and gets T1 BACKWARDS, so a pre-start declaration earns nothing and an ordinary leave earns a week. E1 lets ADMIN_ERROR earn at door 4; E2 reads the free-text note; E3 drops the same-slot rule; E4 drops ATTENDED; E5 drops the live/ATTENDED guard (a re-cancel earns twice); E6 stores EVERY code on a course cancel (no longer byte-identical). X1 adds a fourth trigger to the list. W1/W2 the arithmetic and the +14 risk; L1 re-introduces LEAVE_LOCKED and L2 makes `leaveLocked` true again; S1 restores stretch-to-fit; C1/C2 make the plan editor charge a pre-start leave; R1/R2 the atomicity and the actor; F1 forward-only; G1 the counter charging a declared day; I1/I2 the re-mark defects found by value tests. 🔻 This set REPLACES `every-leave-adds-a-week-task656.mutations.json` (the first, wrong model); its ids D1–D5 are retired with it.",
+  "tests": "src/services/leave-week-triggers-task656.test.ts src/services/declared-absence-stretches-expiry-task646.test.ts src/lib/pre-start-declared-absence-task609.test.ts src/lib/extension-ceiling.test.ts src/lib/makeup-placement.test.ts src/services/cancel-reason.test.ts src/lib/group-series-req104.test.ts src/lib/group-session-req095-2a.test.ts src/lib/teacher-own-calendar-req097.test.ts",
+  "mutations": [
+    {
+      "id": "T1a",
+      "what": "🔴 T1 at door 1 (a declared absence on the session button) stops adding a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T1b",
+      "what": "🔴 T1 at door 2 (a declared absence in the plan editor) stops adding a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        if (declaredFree) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2a",
+      "what": "🔴 T2 — a coach's leave stops adding a week per class",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (b.courseId) await addLeaveWeek(tx, b.courseId, \"T2_COACH_LEAVE\");\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2b",
+      "what": "🔴 T2/T3 at the SEATS — a group's cancel no longer reaches each seat's course (the helper call inside `cancelSeatsOfGroup` removed)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (s.courseId && opts.weekTrigger) await addLeaveWeek(tx, s.courseId, opts.weekTrigger);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3a",
+      "what": "🔴 T3 at door 4 — a school cancel with SCHOOL_ISSUE stops adding a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (current.courseId && reasonCode === SCHOOL_ISSUE && ([...COURSE_LIVE_STATUSES, \"ATTENDED\"] as readonly string[]).includes(current.status) && !slot.family) {\n        await addLeaveWeek(tx, current.courseId, \"T3_SCHOOL_ISSUE\");\n      }\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3b",
+      "what": "🔴 T3 at door 5's CALLER — the group-date cancel stops passing its trigger",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "enumReason === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" } : {}); // 🔻 TASK-656 — T3 reaches each SEAT",
+              "to": "{}); // 🔻 TASK-656 — T3 reaches each SEAT"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O1",
+      "what": "🔴 the helper is called on EVERY door-1 leave again (the `declaredFree` gate removed) — the first, wrong model",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": "      if (current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O2",
+      "what": "🔴 door 2 earns on every absence (`becomesAbsence`, not `declaredFree`) — the plan editor adds a week for an ORDINARY leave",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        if (declaredFree) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": "        if (becomesAbsence) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "what": "🔴 THE 'WHOSE FAULT' PREDICATE replaces the list at door 1: it reads right and gets T1 BACKWARDS — a pre-start declaration (the family's own choice) earns NOTHING and an ordinary leave earns a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": "      if (!declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "what": "🔴 door 4 earns a week for ADMIN_ERROR too — a wrong reason picked ⇒ a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "reasonCode === SCHOOL_ISSUE && ([...COURSE_LIVE_STATUSES, \"ATTENDED\"]",
+              "to": "(reasonCode === SCHOOL_ISSUE || reasonCode === \"ADMIN_ERROR\") && ([...COURSE_LIVE_STATUSES, \"ATTENDED\"]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "🔴 door 4 reads the FREE-TEXT note — typing «ปัญหาจากทางเรา» into the note earns a week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "reasonCode === SCHOOL_ISSUE && ([...COURSE_LIVE_STATUSES, \"ATTENDED\"]",
+              "to": "(reasonCode === SCHOOL_ISSUE || reason === \"ปัญหาจากทางเรา\") && ([...COURSE_LIVE_STATUSES, \"ATTENDED\"]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "what": "TASK-551's same-slot rule is dropped from door 4 — a make-up cancelled and put straight back earns a week for a class nobody lost",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".includes(current.status) && !slot.family) {",
+              "to": ".includes(current.status)) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "what": "door 4 stops counting a cancelled ATTENDED row (a mis-marked check-in the school corrects)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "([...COURSE_LIVE_STATUSES, \"ATTENDED\"] as readonly string[])",
+              "to": "([...COURSE_LIVE_STATUSES] as readonly string[])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "what": "🔴 FOUND BY A VALUE TEST: door 4's status guard removed — cancelling the SAME row twice earns a second week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "([...COURSE_LIVE_STATUSES, \"ATTENDED\"] as readonly string[]).includes(current.status) && !slot.family",
+              "to": "true && !slot.family"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "what": "a course cancel stores EVERY reason code (not only SCHOOL_ISSUE) — a course cancel is no longer byte-identical for the other reasons",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "current.bookingType === \"COURSE_PACKAGE\" && reasonCode === SCHOOL_ISSUE\n          ? reasonCode",
+              "to": "current.bookingType === \"COURSE_PACKAGE\" && reasonCode\n          ? reasonCode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X1",
+      "what": "🔴 a FOURTH trigger joins the list — anything that adds a week must be named by the customer first",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": "[\"T1_PRE_START_DECLARATION\", \"T2_COACH_LEAVE\", \"T3_SCHOOL_ISSUE\"] as const",
+              "to": "[\"T1_PRE_START_DECLARATION\", \"T2_COACH_LEAVE\", \"T3_SCHOOL_ISSUE\", \"T4_ANY_LEAVE\"] as const"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W1",
+      "what": "🔴 the helper adds FOURTEEN days instead of seven",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "+ interval '7 days'` })",
+              "to": "+ interval '14 days'` })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "what": "🔴 THE +14 RISK at door 1: a second call fires beside the first for one declared leave",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L1",
+      "what": "🔴 `LEAVE_LOCKED` is re-introduced at the plan editor — the counter gates a leave again",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        const declaredFree = becomesAbsence && (await preStartDeclaration(tx, { courseId, course, id: b.id }));",
+              "to": "        if (toCourseSummary(course).leaveLocked) throw conflict(\"LEAVE_LOCKED\", \"x\");\n        const declaredFree = becomesAbsence && (await preStartDeclaration(tx, { courseId, course, id: b.id }));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "🔴 `leaveLocked` is computed from the counter again — a course reads LOCKED past the old quota",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  const leaveLocked = false;",
+              "to": "  const leaveLocked = c.leaveUsed >= quota && !c.adminUnlocked;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S1",
+      "what": "🔴 the STRETCH-TO-FIT is restored: the expiry follows the make-up wherever the search lands (ruling 3 undone)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      // 🔻 TASK-656 (ruling 3) — nothing is collected here any more: the make-up is created wherever the search lands, and",
+              "to": "      if (extDate > course.expiryDate) { await tx.update(coursePackages).set({ expiryDate: extDate }).where(eq(coursePackages.id, courseId)); }\n      // 🔻 TASK-656 (ruling 3) — nothing is collected here any more: the make-up is created wherever the search lands, and"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "what": "🔴 the plan editor CHARGES a pre-start leave again — the two admin doors answer differently for one act",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const charged = becomesAbsence && !declaredFree && !b.plannedAtCreation;",
+              "to": "const charged = becomesAbsence && !b.plannedAtCreation;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "the plan editor never marks a declaration free — plannedAtCreation never set",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const absenceFlags = becomesAbsence ? { leaveCharged: charged, ...(declaredFree ? { plannedAtCreation: true } : {}) } : {};",
+              "to": "const absenceFlags = becomesAbsence ? { leaveCharged: charged } : {};"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "what": "the helper becomes read-then-write — the race TASK-492 fixed for leaveUsed, in its expiry twin",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    .set({ expiryDate: sql`${coursePackages.expiryDate} + interval '7 days'` })",
+              "to": "    .set({ expiryDate: addDays((await tx.query.coursePackages.findFirst({ where: (c: any, { eq: e }: any) => e(c.id, courseId) })).expiryDate, 7) })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "the helper records the expiry change WITH an actor — 'actor NULL, +7' stops being a trigger's signature",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await recordExpiryChange(tx, { courseId, from, to, actor: null });",
+              "to": "  await recordExpiryChange(tx, { courseId, from, to, actor: \"system\" });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F1",
+      "what": "FORWARD-ONLY broken: the summary builder moves the expiry as it builds",
+      "files": [
+        {
+          "file": "src/lib/leave.ts",
+          "edits": [
+            {
+              "from": "  const leaveRemaining = Math.max(0, quota - c.leaveUsed);",
+              "to": "  (c as any).expiryDate = new Date(Date.parse(c.expiryDate) + 7 * 86_400_000).toISOString().slice(0, 10);\n  const leaveRemaining = Math.max(0, quota - c.leaveUsed);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G1",
+      "what": "the counter charges a pre-start declaration at door 1 again — a declared day is no longer free",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const charges = !declaredFree && !!(current.courseId && current.course && !current.plannedAtCreation);",
+              "to": "const charges = !!(current.courseId && current.course && !current.plannedAtCreation);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "I1",
+      "what": "🔴 FOUND BY A VALUE TEST: door 2 declared-free ignores `becomesAbsence` — a RE-MARK of a pre-start declaration earns a second week",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const declaredFree = becomesAbsence && (await preStartDeclaration(tx, { courseId, course, id: b.id }));",
+              "to": "const declaredFree = await preStartDeclaration(tx, { courseId, course, id: b.id });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "I2",
+      "what": "🔴 FOUND BY A VALUE TEST: door 2 rewrites the charge flags on a RE-MARK — a CHARGED leave on a not-started course is flipped to FREE",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const absenceFlags = becomesAbsence ? { leaveCharged: charged, ...(declaredFree ? { plannedAtCreation: true } : {}) } : {};",
+              "to": "const absenceFlags = { leaveCharged: !becomesAbsence ? !(await preStartDeclaration(tx, { courseId, course, id: b.id })) : charged, ...(!becomesAbsence && (await preStartDeclaration(tx, { courseId, course, id: b.id })) ? { plannedAtCreation: true } : {}) };"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

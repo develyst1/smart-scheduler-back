@@ -6,7 +6,7 @@ import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
 import { ddmmyyyy } from "./time";
 import { slotLine, type Slot } from "./class-move"; // TASK-516
-import { isEndReason } from "./course-plan";
+import { isSessionCancelReason } from "./course-plan"; // 🔻 TASK-690 — a cancel notice's reason is a SESSION cancel's closed code
 import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
 import { renderWeeklySchedule, type WeekRow } from "./weekly-digest";
@@ -113,7 +113,7 @@ const fieldValue = (v: unknown): string | undefined => {
  */
 export function cancelReasonText(code: unknown, note: unknown, lang: Lang): string {
   const c = fieldValue(code);
-  if (c && isEndReason(c)) return t(`ob_reason_${c}`, lang);
+  if (c && isSessionCancelReason(c)) return t(`ob_reason_${c}`, lang);
   return fieldValue(note) ?? TEMPLATE_NONE;
 }
 
@@ -684,6 +684,14 @@ function buildOutboxMessage(
         }) +
         (ctx.studentName ? `\n${t("ob_l_student", lang)}: ${ctx.studentName}` : "")
       );
+    // 🔻 TASK-657 §3 (REQ-112) — a make-up that landed PAST the course's expiry. A NEW kind BESIDE `makeup_far_out`, not instead of it.
+    // 🚫 The family is not told (they asked for a leave and got one); the admin decides whether to extend the expiry — nothing here does.
+    case "makeup_past_expiry":
+      return t("ob_makeup_past_expiry", lang, {
+        student: ctx.studentName ?? "-",
+        date: (payload.landedOn as string) ? ddmmyyyy(payload.landedOn as string) : "-",
+        expiry: (payload.expiry as string) ? ddmmyyyy(payload.expiry as string) : "-",
+      });
     case "sick_leave":
       return (
         t("ob_sick_title", lang) + "\n" +

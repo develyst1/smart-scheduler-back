@@ -17,6 +17,14 @@ import * as sched from "../services/scheduler.service";
 import { db } from "../db";
 import { campWeekDayTeachers, campWeekDays } from "../db/schema";
 import { readSrc } from "./read-src";
+import { bangkokNow } from "./bangkok-time";
+
+// 🔻 TASK-666 — the DATE BOMB defused. The camp day was the literal `2026-10-05`, and the camp sync SKIPS a past day by design
+// (`camp.service.ts`, TASK-445), so this file went red the day after. It is now computed from Bangkok TODAY (the same `bangkokNow()`
+// the code reads): the first MONDAY at least 30 days ahead — always in the future, and the same weekday as the old literal, so
+// nothing that reads the day of the week moves. Its neighbours and its DD-MM-YYYY form are DERIVED from it, never typed.
+const isoPlus = (iso: string, days: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+const CAMP_DAY = ((d) => isoPlus(d, (8 - new Date(`${d}T00:00:00Z`).getUTCDay()) % 7))(isoPlus(bangkokNow().date, 30));
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -34,7 +42,7 @@ const W1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", D1 = "bbbbbbbb-bbbb-4bbb-8bbb
 const A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc", B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); delete process.env.SKIP_AUTH; });
-const day = (over: any = {}) => ({ id: D1, campWeekId: W1, date: "2026-10-05", startTime: "10:00:00", endTime: "15:00:00", editedAt: null, teachers: [], ...over });
+const day = (over: any = {}) => ({ id: D1, campWeekId: W1, date: CAMP_DAY, startTime: "10:00:00", endTime: "15:00:00", editedAt: null, teachers: [], ...over });
 const coach = (teacherId: string, over: any = {}) => ({ campWeekDayId: D1, teacherId, startTime: null, endTime: null, rateMinor: 0, ...over });
 
 describe("🔴 the migration — 0053, counted; the merge, the backfill and BOTH drops in one file; the table is the witness", () => {
@@ -42,8 +50,8 @@ describe("🔴 the migration — 0053, counted; the merge, the backfill and BOTH
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0053_camp_day_teachers.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0053_camp_day_teachers` is the 54th file, idx 53, the last; 'expects 54'; the four statements in THIS order", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[53]).toBe("0053_camp_day_teachers.sql");
     expect(journal.entries[53]).toMatchObject({ idx: 53, tag: "0053_camp_day_teachers" });
     expect(sql).toContain("`db:verify` expects 54");
@@ -138,13 +146,13 @@ describe("🔴 each coach's OWN window — by value", () => {
       select: () => ({ from: () => ({ where: async () => [] }) }),
     };
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
-    spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => ({ id: W1, name: "Camp A", status: "OPEN", startDate: "2026-10-05", endDate: "2026-10-05", capacity: null, teacherIds: [A], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() })) as any));
+    spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => ({ id: W1, name: "Camp A", status: "OPEN", startDate: CAMP_DAY, endDate: CAMP_DAY, capacity: null, teacherIds: [A], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() })) as any));
     spies.push(spyOn(db.query.campWeekDays, "findFirst").mockImplementation((async () => day({ teachers: [coach(A)] })) as any));
     // a coach OUTSIDE the day's 10–15 default: allowed, on purpose (the default is a default, not a clamp)
-    await camp.updateWeekDay(W1, "2026-10-05", { teachers: [{ teacherId: A, startTime: "08:00", endTime: "10:00" }, { teacherId: B }] });
+    await camp.updateWeekDay(W1, CAMP_DAY, { teachers: [{ teacherId: A, startTime: "08:00", endTime: "10:00" }, { teacherId: B }] });
     expect(writes.filter((w) => w[0] === "upsert").map((w) => [w[1], w[2].teacherId, w[2].startTime, w[2].endTime])).toEqual([["teachers", A, "08:00", "10:00"], ["teachers", B, null, null]]);
     expect(writes.filter((w) => w[0] === "delete")).toEqual([["delete", "teachers"]]); // whoever is no longer listed
-    await expect(camp.updateWeekDay(W1, "2026-10-05", { teachers: [{ teacherId: A, startTime: "08:00" }] })).rejects.toMatchObject({ status: 400 });
+    await expect(camp.updateWeekDay(W1, CAMP_DAY, { teachers: [{ teacherId: A, startTime: "08:00" }] })).rejects.toMatchObject({ status: 400 });
     expect(v.updateCampWeekDay.safeParse({ teachers: [{ teacherId: A, startTime: "08:00", endTime: "10:00", rateMinor: 50000 }] }).success).toBe(true);
     expect(v.updateCampWeekDay.safeParse({ teachers: [{ teacherId: A, rateMinor: -1 }] }).success).toBe(false);
     expect(v.updateCampWeekDay.safeParse({ teacherIds: [A] }).success).toBe(true); // 🔻 the old shape, one deploy
@@ -168,7 +176,7 @@ describe("🔴 each coach's OWN window — by value", () => {
 
 describe("🔴 the DTO — the new shape, the two derived views, and the kid count on the hour cell", () => {
   test("`weekDays` carries `teachers` (resolved) and derives `teacherIds` / `teacherRates` from it — one deploy only", async () => {
-    spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => ({ id: W1, name: "Camp A", status: "OPEN", startDate: "2026-10-05", endDate: "2026-10-05", capacity: 10, teacherIds: [A], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() })) as any));
+    spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => ({ id: W1, name: "Camp A", status: "OPEN", startDate: CAMP_DAY, endDate: CAMP_DAY, capacity: 10, teacherIds: [A], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() })) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
     spies.push(spyOn(db.query.campWeekDays, "findMany").mockImplementation((async () => [day({ teachers: [coach(A, { startTime: "10:00:00", endTime: "12:00:00", rateMinor: 50000 }), coach(B)] })]) as any));
     const d = (await camp.weekDays(W1)).days[0]!;
@@ -185,7 +193,7 @@ describe("🔴 the DTO — the new shape, the two derived views, and the kid cou
   // on one date pooled (Tanya: "7 คน" on a week with one child). 🔑 A source pin could not see that — the VALUE test that can lives
   // in `tanya-retest-task594.test.ts`, where the two candidate meanings disagree.
   test("🔴 the hour cell carries ITS WEEK's kid count for that date — the same number on every block of that day in that week (children on the day, not children with this coach)", () => {
-    const row = { id: "b1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", status: "CONFIRMED", bookingType: "OTHER", otherKind: "CAMP", teacherId: A, teacher: { id: A, name: "Ek" }, student: null, subject: null, additionalTeachers: [], campWeekDayId: D1 };
+    const row = { id: "b1", date: CAMP_DAY, startTime: "10:00:00", endTime: "11:00:00", status: "CONFIRMED", bookingType: "OTHER", otherKind: "CAMP", teacherId: A, teacher: { id: A, name: "Ek" }, student: null, subject: null, additionalTeachers: [], campWeekDayId: D1 };
     expect(toBookingDTO(row, { campKidCount: 7 }).campKidCount).toBe(7);
     expect(toBookingDTO(row).campKidCount).toBeNull(); // a reader that did not ask gets null, never a guess
     const CAL = region(code(src("src/services/scheduler.service.ts")), "export async function getCalendar(", "export async function getBookings(");

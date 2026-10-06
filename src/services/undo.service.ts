@@ -8,7 +8,7 @@
 // 🚫 Silent to the FAMILY, always, and to everyone on a check-in Undo (owner ruling 2). 🔔 A LEAVE Undo tells the COACHES — the
 // primary and every additional teacher — that the class is on again (TASK-508, owner: yes, never the family) — and, when it
 // cancels the leave's make-up, every coach of THAT class that it is off (TASK-510).
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, SLOT_INACTIVE_STATUSES } from "../db/schema"; // TASK-497: `bookingUndos` / `vouchers` now written by the shared `attendance-revert.service`
 import { ApiException, notFound } from "../lib/http";
@@ -18,14 +18,14 @@ import { hhmm } from "../lib/time";
 import { enqueueLine } from "../lib/line";
 import { teachersOfBooking } from "../lib/own-scope";
 import {
-  UNDO_ALREADY_CHANGED, UNDO_DAY_SETTLED, UNDO_LEAVE_CHARGE_UNKNOWN, UNDO_PLAN_WOULD_CHANGE, UNDO_SLOT_TAKEN,
-  expiryDecision, leaveChargeOf, makeupDecision, undoKindOf, type ExpiryDecision, type UndoKind,
+  UNDO_ALREADY_CHANGED, UNDO_DAY_SETTLED, UNDO_PLAN_WOULD_CHANGE, UNDO_SLOT_TAKEN,
+  leaveChargeOf, makeupDecision, undoKindOf, type UndoKind,
 } from "../lib/booking-undo";
 import { displayNameOf } from "../db/mappers";
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared writes
 import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
-import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches } from "./scheduler.service";
+import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
 const MAKEUP_UNDONE_NOTE = "ยกเลิกคาบขยาย — ย้อนกลับการลา";
@@ -47,15 +47,13 @@ export type UndoResult = {
   kind: UndoKind;
   leaveRefunded: boolean;
   makeupCancelledId: string | null;
-  expiry: { from: string; to: string } | null;
-};
+}; // 🔻 TASK-657 §R — no `expiry`: the Undo never moves it (the field was read by nobody — the front's UndoControl only mentions it in a comment)
 
 export type UndoPlan = {
   row: any;
   kind: UndoKind;
   leaveRefunded: boolean;
   makeup: { id: string; status: string; date: string; teacherId: string } | null;
-  expiry: ExpiryDecision;
 };
 
 /**
@@ -77,15 +75,13 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
     // ── the READS that decide everything (no write yet) ──
     let leaveRefunded = false;
     let makeup: { id: string; status: string; date: string; teacherId: string } | null = null;
-    let expiry: ExpiryDecision = { action: "keep" };
     if (kind === "leave") {
       await assertNoCoachOnLeave(tx, row); // TASK-561 — the class does not come back onto its coach's advance-leave day
       const linkedAll = row.courseId
         ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.extendedFromId, row.id) })
         : [];
-      const charge = leaveChargeOf(row, linkedAll.length > 0);
-      if (charge === "unknown") throw UNDO_LEAVE_CHARGE_UNKNOWN(displayNameOf(row) || "คาบอื่น", row.date); // §T-G — the ONE name rule, same fallback as UNDO_SLOT_TAKEN
-      leaveRefunded = charge === "charged";
+      // 🔻 TASK-657 §R — one COUNT given back when the leave was counted (a plain count now); the "unknown" refusal dissolved with the quota.
+      leaveRefunded = leaveChargeOf(row) === "charged";
 
       const live = linkedAll.filter((m: any) => m.status !== "CANCELLED");
       const settled = new Map<string, boolean>();
@@ -93,24 +89,8 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
       const d = makeupDecision(live.map((m: any) => ({ id: m.id, status: m.status, date: m.date })), (date) => settled.get(date) === true);
       if (d.action === "cancel") makeup = live.find((m: any) => m.id === d.makeup.id);
 
-      if (makeup && row.course) {
-        const rows = await tx.query.bookings.findMany({
-          where: (b: any, { and: a, eq: e, ne: n }: any) => a(e(b.courseId, row.courseId), e(b.bookingType, "COURSE_PACKAGE"), n(b.status, "CANCELLED")),
-        });
-        const latest = await tx.query.courseExpiryChanges.findFirst({
-          where: (c: any, { eq: e }: any) => e(c.courseId, row.courseId),
-          orderBy: (c: any) => [desc(c.changedAt)],
-        });
-        const marker = await tx.query.expiryRecordingMarker.findFirst(); // TASK-556 (1b): since when this box records expiry moves
-        expiry = expiryDecision({
-          expiry: row.course.expiryDate,
-          makeupDate: makeup.date,
-          otherDates: rows.filter((r: any) => r.id !== makeup!.id).map((r: any) => r.date),
-          latest: latest ? { fromDate: latest.fromDate, toDate: latest.toDate, actor: latest.actor ?? null } : null,
-          courseCreatedAt: row.course.createdAt,
-          recordingSince: marker?.recordingSince ?? null,
-        });
-      }
+      // 🔻 TASK-657 §R (REQ-112) — the EXPIRY block that stood here (read the course's rows, the latest expiry change and the recording marker, then
+      // decide whether to hand a week back) is DELETED. The Undo never changes `expiryDate` and writes no expiry-change row.
 
       // The coach's HOUR: a leave freed it (UC-004), so someone may hold it now. Asked with the unique index's OWN predicate
       // (`SLOT_INACTIVE_STATUSES`, no seat, not yielded) — the one answer to "is this hour free?". A seat holds no slot.
@@ -124,7 +104,7 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
         if (holder) throw UNDO_SLOT_TAKEN(`${row.date} ${hhmm(row.startTime)}`, displayNameOf(holder) || "คาบอื่น"); // the ONE name rule
       }
     }
-    return { row, kind, leaveRefunded, makeup, expiry };
+    return { row, kind, leaveRefunded, makeup };
 }
 
 /**
@@ -140,8 +120,7 @@ export async function previewUndo(bookingId: string, exec: any = db) {
       kind: p.kind,
       leaveRefunded: p.leaveRefunded,
       makeupCancelled: p.makeup ? { id: p.makeup.id, date: p.makeup.date } : null,
-      expiry: p.expiry.action === "restore" ? { from: p.expiry.from, to: p.expiry.to } : null,
-    };
+    }; // 🔻 TASK-657 §R — the expiry line is DROPPED from the preview (nothing to say: the Undo never moves it)
   } catch (e) {
     if (e instanceof ApiException && e.status !== 404) return { ok: false as const, code: e.code, message: e.message };
     throw e;
@@ -152,7 +131,7 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
   const today = bangkokNow().date;
   const result: UndoResult = await db.transaction(async (tx: any) => {
     // 🔻 TASK-546 — the READS that decide everything, lifted VERBATIM into `planUndo` (the preview runs the same function).
-    const { row, kind, leaveRefunded, makeup, expiry } = await planUndo(tx, bookingId, today);
+    const { row, kind, leaveRefunded, makeup } = await planUndo(tx, bookingId, today);
 
     // ── 🔑 THE GUARD: one conditional update on the status the row was read with (a check-in's is the shared `revertAttendance`) ──
     if (kind === "leave") {
@@ -174,10 +153,6 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
           .returning({ id: bookings.id });
         if (!cancelled.length) throw UNDO_ALREADY_CHANGED();
         await reconcileBookingHolds(tx, makeup.id, makeup.teacherId, "CANCELLED", false); // its freelance hour back
-      }
-      if (expiry.action === "restore") {
-        await tx.update(coursePackages).set({ expiryDate: expiry.to }).where(eq(coursePackages.id, row.courseId));
-        await recordExpiryChange(tx, { courseId: row.courseId, from: expiry.from, to: expiry.to, actor: opts.actor });
       }
       // The plan must now balance on its own: the reconcile is asked, and must do NOTHING. If it would append or cancel (e.g.
       // this leave's make-up was already trimmed, so undoing it over-plans the course), the Undo is refused — the reconcile
@@ -221,10 +196,8 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       reason: opts.reason,
       leaveRefunded,
       makeupCancelledId: makeup?.id ?? null,
-      expiryFrom: expiry.action === "restore" ? expiry.from : null,
-      expiryTo: expiry.action === "restore" ? expiry.to : null,
-    });
-    return { kind, leaveRefunded, makeupCancelledId: makeup?.id ?? null, expiry: expiry.action === "restore" ? { from: expiry.from, to: expiry.to } : null };
+    }); // 🔻 TASK-657 §R — `expiryFrom`/`expiryTo` are no longer written (the columns stay, null — the history of the old rule is not rewritten)
+    return { kind, leaveRefunded, makeupCancelledId: makeup?.id ?? null };
   });
 
   // A posted sale for the false attendance is reversed AFTER the commit: `reverseBookingSale` writes through `db`, outside any

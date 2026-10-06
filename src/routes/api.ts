@@ -99,6 +99,7 @@ export const api = new Hono()
   // else touched; refused with live future sessions (409 with the count). One key for both directions.
   .post("/students/:id/archive", async (c) => c.json({ student: await parent.archiveStudent(c.req.param("id"), actorOf(c)) }))
   .post("/students/:id/unarchive", async (c) => c.json({ student: await parent.unarchiveStudent(c.req.param("id")) }))
+  .post("/students/:id/parent", zValidator("json", v.linkStudentParent), async (c) => c.json(await parent.linkParentToStudent(c.req.param("id"), c.req.valid("json").parentId, { dryRun: c.req.valid("json").dryRun }))) // TASK-668: link a parent to a child with none (dryRun = the confirm's read)
   // REQ-023: what needs attention right now + when the digest last ran (same producer as the LINE digest).
   .get("/attention", async (c) => c.json(await attention.getAttention(viewerOf(c)))) // TASK-426: the near-cap label drops its number without the key
   // REQ-020 Stage 2 (TASK-075) — teacher LINE link requests. Approval is the ONLY path that grants a link.

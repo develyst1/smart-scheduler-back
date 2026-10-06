@@ -35,10 +35,10 @@ describe("🔴 the migration — 0039, counted, witnessed, the `students` lock +
   const SQL = readFileSync(resolve(root, "drizzle/0039_student_archive.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (0040 … 0055 added since): `0039_student_archive` is the 40th file, idx 39", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[39]).toBe("0039_student_archive.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(j.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(j.entries[39]).toMatchObject({ idx: 39, tag: "0039_student_archive" });
     expect(j.entries[38]).toMatchObject({ idx: 38, tag: "0038_course_rental_marker" }); // the order the one run applies
   });
@@ -82,7 +82,7 @@ describe("🔴 archive / unarchive — the rules by source; nothing else touched
     // 🔻 TASK-411 lifted the count and the write into `liveFutureSessionCount` / `markStudentArchived` so the parent's cascade shares them — the rule is unchanged
     const C = region(PARENT, "export async function liveFutureSessionCount(", "\n}\n");
     expect(C).toContain("const { date: today } = bangkokNow();");
-    expect(C).toContain("or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    expect(C).toContain("or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])"); expect(PARENT).toContain('export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, "PENDING_RESCHEDULE", "PAUSED"] as const;'); // 🔻 TASK-667 — the SAME claim (the refusal = the real "still owed" set): live + a move awaiting the parent + a hold; SICK_LEAVE / CANCELLED stay out
     expect(A).toContain("const n = await liveFutureSessionCount(db, [id]);");
     expect(A).toContain('if (n > 0) throw conflict("STUDENT_HAS_LIVE_SESSIONS", `มีคาบเรียนข้างหน้า ${n} คาบ — ยกเลิก/ย้ายก่อน`);');
     expect(A).toContain("return markStudentArchived(db, id, actor);");

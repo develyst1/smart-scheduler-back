@@ -50,13 +50,18 @@ describe("🔴 BOTH make-up writers call it — and nothing else copies (source)
     expect(S).toContain('note: "คาบขยายอัตโนมัติจากการลา"');
     expect(S).toContain("await inheritCourseRental(tx, current.courseId, ext.id);");
     expect(S.indexOf("inheritCourseRental(")).toBeGreaterThan(S.indexOf("extendedId = ext.id;"));
-    expect(S.indexOf("inheritCourseRental(")).toBeLessThan(S.indexOf("locked = true;"));
+    // 🔻 TASK-656 (REQ-112 ruling 2) — this used to anchor on `locked = true;`, the over-quota branch, as the END of the
+    // append region. That branch is GONE: nothing locks a leave any more. 🔑 The claim is unchanged and is about ORDER —
+    // the rental copy follows the make-up's own insert — so it is anchored on the thing it is actually about.
+    expect(S.indexOf("inheritCourseRental(")).toBeGreaterThan(S.indexOf('status: "EXTENDED"'));
   });
 
-  test("a LOCKED (over-quota) leave appends nothing — and therefore copies nothing", () => {
+  test("🔻 TASK-656 — RETIRED: there is no LOCKED leave any more, so there is no append-free branch to prove copies nothing", () => {
+    // ⚠️ This asserted that an over-quota leave appended nothing and therefore copied nothing. REQ-112 ruling 2 abolished the
+    // over-quota state: every leave appends its make-up. 🔑 Kept as a record and asserted as an ABSENCE, because the rule it
+    // protected — *nothing copies a rental except a real make-up insert* — is still the file's subject and is pinned below.
     const S = SICK();
-    const locked = S.slice(S.indexOf("} else {\n          locked = true;"));
-    expect(locked).not.toMatch(/insert\(bookings\)|inheritCourseRental/);
+    expect(S).not.toContain("locked = true;");
   });
 
   test("🔑 exactly TWO call sites in the scheduler, and no other `insert(bookingRentals)` on a make-up anywhere", () => {

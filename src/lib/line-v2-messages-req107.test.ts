@@ -97,10 +97,12 @@ describe("✅ REQUEST LEAVE — which child · the list · the success line (her
     expect(I18N).toContain("the OWNER ruled on 2026-09-25 (via Sober, TASK-471) that");
     expect(I18N).toContain("a parent with three children must see WHICH child was excused");
   });
-  test("the QUOTA warning survives — a conditional line her normal-case example never shows", () => {
-    expect(t("leave_ok_session", "EN", { name: "Feen", line: leaveLine(two[0]), locked: t("leave_lockline", "EN") })).toBe(
-      "Record Leave: Feen — FRI 25/09 @ 16:00 : Private BALLET / Teacher KK\n⚠️ Leave quota used up — needs admin unlock",
+  test("🔻 TASK-656 — the QUOTA warning is GONE: leaves are unlimited, so there is no 'quota used up' line to send (REQ-112)", () => {
+    // The key was deleted with its only sender (`locked = ""` in the LINE webhook). A leave reply is the normal-case line and nothing more.
+    expect(t("leave_ok_session", "EN", { name: "Feen", line: leaveLine(two[0]), locked: "" })).toBe(
+      "Record Leave: Feen — FRI 25/09 @ 16:00 : Private BALLET / Teacher KK",
     );
+    expect(readFileSync(resolve(root, "src/lib/line-i18n.ts"), "utf8")).not.toMatch(/^\s*leave_lockline\s*:/m);
   });
 });
 

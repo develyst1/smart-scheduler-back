@@ -1,0 +1,173 @@
+{
+  "task": "TASK-668",
+  "proves": "src/services/link-parent-task668.test.ts",
+  "note": "Link a parent to a child that has none. The guard is IN THE WRITE (`AND parent_id IS NULL`); the order is 404 ⇒ archived ⇒ cap ⇒ write ⇒ 409; the dryRun is the confirm's read (same guards, no write, the archive refusal's owed set); the key is the existing `action:people.parent-students`; and every writer of `students.parent_id` is derived from the source. `tests` = the task file plus the write-route census and the three archive files whose pins read the same file.",
+  "tests": "src/services/link-parent-task668.test.ts src/services/course-ended-writes.test.ts src/lib/archive-student-req093.test.ts src/lib/archive-parent-req098.test.ts src/services/archive-owed-task667.test.ts",
+  "mutations": [
+    {
+      "id": "L1",
+      "what": "`AND parent_id IS NULL` dropped from the write — a link could MOVE a child",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": ".where(and(eq(students.id, studentId), isNull(students.parentId)))",
+              "to": ".where(eq(students.id, studentId))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "the 5-per-family cap skipped",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "const familyCount = await assertCanAddStudent(parentId, exec);",
+              "to": "const familyCount = 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "what": "the archived-family guard skipped",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "  await assertParentActive(exec, parentId);\n  const familyCount",
+              "to": "  const familyCount"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "what": "the route's key changed (not the existing `parent-students`)",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"POST /students/:id/parent\": act(PEOPLE, \"action:people.parent-students\")",
+              "to": "\"POST /students/:id/parent\": act(PEOPLE, \"action:people.parent-create\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "what": "dryRun ignored — the confirm's read WRITES",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "if (opts.dryRun) {",
+              "to": "if (false) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "what": "the preview counts the OLD live set (it would disagree with the archive refusal)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])))\n      .orderBy(asc(bookings.date), asc(bookings.startTime));",
+              "to": "inArray(bookings.status, [...COURSE_LIVE_STATUSES])))\n      .orderBy(asc(bookings.date), asc(bookings.startTime));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L7",
+      "what": "a SECOND write after the link (a notice / an outbox row would look like this)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "return { dryRun: false as const, linked: true as const",
+              "to": "await exec.insert(bookings).values({}); return { dryRun: false as const, linked: true as const"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L8",
+      "what": "the missing-parent 404 removed",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "if (!family) throw notFound(\"ไม่พบผู้ปกครอง\");",
+              "to": "if (false) throw notFound(\"ไม่พบผู้ปกครอง\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L9",
+      "what": "the student EDIT's allow-list gains `parentId` — an edit could move a child",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "[\"name\", \"nickname\", \"gender\", \"birthDate\", \"nationality\", \"note\"] as const",
+              "to": "[\"name\", \"nickname\", \"gender\", \"birthDate\", \"nationality\", \"note\", \"parentId\"] as const"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L10",
+      "what": "a NEW writer: the archive write also clears `parentId` (a future 'unlink' wearing another act)",
+      "files": [
+        {
+          "file": "src/services/parent.service.ts",
+          "edits": [
+            {
+              "from": "exec.update(students).set({ archivedAt: new Date(), archivedBy: by })",
+              "to": "exec.update(students).set({ archivedAt: new Date(), archivedBy: by, parentId: null })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L11",
+      "what": "the route drops `dryRun` (the confirm could never be asked for)",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "{ dryRun: c.req.valid(\"json\").dryRun }",
+              "to": "{}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,16 @@ import { db } from "../db";
 import { bookings, campDays, campWeekDayTeachers, campWeekDays } from "../db/schema";
 import { DEV_USER } from "../middleware/auth";
 import { readSrc } from "./read-src";
+import { bangkokNow } from "./bangkok-time";
+import { ddmmyyyy } from "./time";
+
+// 🔻 TASK-666 — the DATE BOMB defused. The camp day was the literal `2026-10-05`, and the camp sync SKIPS a past day by design
+// (`camp.service.ts`, TASK-445), so this file went red the day after. It is now computed from Bangkok TODAY (the same `bangkokNow()`
+// the code reads): the first MONDAY at least 30 days ahead — always in the future, and the same weekday as the old literal, so
+// nothing that reads the day of the week moves. Its neighbours and its DD-MM-YYYY form are DERIVED from it, never typed.
+const isoPlus = (iso: string, days: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+const CAMP_DAY = ((d) => isoPlus(d, (8 - new Date(`${d}T00:00:00Z`).getUTCDay()) % 7))(isoPlus(bangkokNow().date, 30));
+const CAMP_DAY_BEFORE = isoPlus(CAMP_DAY, -1); // was `2026-10-04` — a day already consumed, before the camp day
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -45,15 +55,15 @@ const setUser = (u: { isSuperAdmin: boolean; grants?: Iterable<string>; teacherI
   (DEV_USER as any).isSuperAdmin = u.isSuperAdmin; (DEV_USER as any).grants = new Set(u.grants ?? []); (DEV_USER as any).teacherId = u.teacherId ?? null;
 };
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); delete process.env.SKIP_AUTH; Object.assign(DEV_USER as any, savedUser); });
-const week = { id: W1, name: "Camp A", status: "OPEN", startDate: "2026-10-05", endDate: "2026-10-05", capacity: 10, teacherIds: [T1, T2], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() };
+const week = { id: W1, name: "Camp A", status: "OPEN", startDate: CAMP_DAY, endDate: CAMP_DAY, capacity: 10, teacherIds: [T1, T2], windowStart: null, windowEnd: null, openedAt: new Date(), createdAt: new Date() };
 
 describe("🔴 the migration — 0052, counted; the stamp column then the rates TABLE = the witness (LAST); the schema", () => {
   const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0052_camp_day_rates.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0052_camp_day_rates` is the 53rd file, idx 52 (TASK-454 added 0053 after it); 'expects 53'; the two statements", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[52]).toBe("0052_camp_day_rates.sql");
     expect(journal.entries[52]).toMatchObject({ idx: 52, tag: "0052_camp_day_rates" });
     expect(sql).toContain("`db:verify` expects 53");
@@ -86,9 +96,9 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
   test("`weekDays` by value: `teacherRates` for every coach ON the day, 0 when none was set (🔻 TASK-454: the ROW is the membership, so a rate for a coach not on the day can no longer exist at all)", async () => {
     spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => week) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
-    spies.push(spyOn(db.query.campWeekDays, "findMany").mockImplementation((async () => [{ id: D1, campWeekId: W1, date: "2026-10-05", startTime: "10:00:00", endTime: "15:00:00", editedAt: null, teachers: [{ campWeekDayId: D1, teacherId: T1, startTime: null, endTime: null, rateMinor: 50000 }, { campWeekDayId: D1, teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] }]) as any));
+    spies.push(spyOn(db.query.campWeekDays, "findMany").mockImplementation((async () => [{ id: D1, campWeekId: W1, date: CAMP_DAY, startTime: "10:00:00", endTime: "15:00:00", editedAt: null, teachers: [{ campWeekDayId: D1, teacherId: T1, startTime: null, endTime: null, rateMinor: 50000 }, { campWeekDayId: D1, teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] }]) as any));
     const out = await camp.weekDays(W1);
-    expect(out.days[0]).toMatchObject({ date: "2026-10-05", campWeekDayId: D1, teacherIds: [T1, T2], teacherRates: { [T1]: 50000, [T2]: 0 } });
+    expect(out.days[0]).toMatchObject({ date: CAMP_DAY, campWeekDayId: D1, teacherIds: [T1, T2], teacherRates: { [T1]: 50000, [T2]: 0 } });
     expect(out.days[0]!.teacherRates).not.toHaveProperty(T3);
     // …and the new shape the old two are derived FROM: each coach's resolved window + rate
     expect(out.days[0]!.teachers).toEqual([
@@ -99,7 +109,7 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
     expect(v.updateCampWeekDay.safeParse({ teacherRates: { [T1]: -1 } }).success).toBe(false);
   });
   test("`updateWeekDay` by value through a fake tx: the upsert per coach (ON CONFLICT ⇒ update), then the sync inserts WITH the rate and re-stamps the KEPT rows; a coach off the day ⇒ 400 before any write", async () => {
-    const day = { id: D1, campWeekId: W1, date: "2026-10-05", startTime: "10:00:00", endTime: "12:00:00", editedAt: null, teachers: [{ teacherId: T1, startTime: null, endTime: null, rateMinor: 0 }, { teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] };
+    const day = { id: D1, campWeekId: W1, date: CAMP_DAY, startTime: "10:00:00", endTime: "12:00:00", editedAt: null, teachers: [{ teacherId: T1, startTime: null, endTime: null, rateMinor: 0 }, { teacherId: T2, startTime: null, endTime: null, rateMinor: 0 }] };
     spies.push(spyOn(db.query.campWeeks, "findFirst").mockImplementation((async () => week) as any));
     // 🔻 TASK-454 — the re-read after the tx sees the coach ROWS as they were just upserted (the DTO is built from them)
     spies.push(spyOn(db.query.campWeekDays, "findFirst").mockImplementation((async () => ({ ...day, teachers: upserted.length ? upserted : day.teachers })) as any));
@@ -120,38 +130,38 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
     const inserts: any[] = [];
     spies.push(spyOn(sched, "insertBooking").mockImplementation((async (_tx: any, _s: any, input: any) => { inserts.push(input); return `new-${inserts.length}`; }) as any));
-    const out = await camp.updateWeekDay(W1, "2026-10-05", { teacherRates: { [T1]: 50000, [T2]: 30000 } });
+    const out = await camp.updateWeekDay(W1, CAMP_DAY, { teacherRates: { [T1]: 50000, [T2]: 30000 } });
     expect(writes.filter((w) => w[0] === "upsert")).toEqual([["upsert", { campWeekDayId: D1, teacherId: T1, startTime: null, endTime: null, rateMinor: 50000 }, ["startTime", "endTime", "rateMinor"]], ["upsert", { campWeekDayId: D1, teacherId: T2, startTime: null, endTime: null, rateMinor: 30000 }, ["startTime", "endTime", "rateMinor"]]]);
     expect(inserts.map((i) => [i.teacherId, i.startTime, i.teacherRates])).toEqual([[T1, "11:00", { [T1]: 50000 }], [T2, "11:00", { [T2]: 30000 }]]);
     expect(writes.filter((w) => w[0] === "update" && w[1] === "bookings" && "teacherRateMinor" in w[2]).map((w) => w[2])).toEqual([{ teacherRateMinor: 50000 }, { teacherRateMinor: 30000 }]); // the KEPT 10:00 rows
     expect(writes.findIndex((w) => w[0] === "upsert")).toBeLessThan(inserts.length ? writes.findIndex((w) => w[0] === "update" && w[1] === "bookings") : Infinity); // the upsert BEFORE the sync
     // 🔻 TASK-454 — the DTO is re-read from the coach ROWS, so it now shows what was just written for BOTH coaches
     // (before the merge the fixture could only answer with the one rate it was seeded with).
-    expect(out).toMatchObject({ day: { date: "2026-10-05", teacherRates: { [T1]: 50000, [T2]: 30000 } }, inserted: 2, deleted: 0 });
+    expect(out).toMatchObject({ day: { date: CAMP_DAY, teacherRates: { [T1]: 50000, [T2]: 30000 } }, inserted: 2, deleted: 0 });
     // a coach not on the day ⇒ 400, and the sync never ran
     writes.length = 0; inserts.length = 0;
-    await expect(camp.updateWeekDay(W1, "2026-10-05", { teacherRates: { [T3]: 1000 } })).rejects.toMatchObject({ status: 400, message: "ตั้งค่าเรทได้เฉพาะครูที่อยู่ในวันนี้" });
+    await expect(camp.updateWeekDay(W1, CAMP_DAY, { teacherRates: { [T3]: 1000 } })).rejects.toMatchObject({ status: 400, message: "ตั้งค่าเรทได้เฉพาะครูที่อยู่ในวันนี้" });
     expect(writes.filter((w) => w[0] === "upsert")).toEqual([]);
     expect(inserts).toEqual([]);
     // the coaches the body sets are the ones the upsert checks against
-    await expect(camp.updateWeekDay(W1, "2026-10-05", { teacherIds: [T3], teacherRates: { [T3]: 1000 } })).resolves.toBeTruthy();
+    await expect(camp.updateWeekDay(W1, CAMP_DAY, { teacherIds: [T3], teacherRates: { [T3]: 1000 } })).resolves.toBeTruthy();
     expect(writes.filter((w) => w[0] === "upsert").map((w) => w[1].teacherId)).toEqual([T3]);
   });
   test("🔴 key 59 through the ROOT app: the field without 59 ⇒ 403 (the service never reached); teachers alone pass; the READ masks `teacherRates` without 59 and shows it with", async () => {
     process.env.SKIP_AUTH = "true";
     const calls: any[] = [];
     spies.push(spyOn(camp, "updateWeekDay").mockImplementation((async (...a: any[]) => { calls.push(a); return { day: {} }; }) as any));
-    spies.push(spyOn(camp, "weekDays").mockImplementation((async () => ({ week: {}, days: [{ date: "2026-10-05", teacherIds: [T1], teacherRates: { [T1]: 50000 }, startTime: "10:00" }] })) as any));
+    spies.push(spyOn(camp, "weekDays").mockImplementation((async () => ({ week: {}, days: [{ date: CAMP_DAY, teacherIds: [T1], teacherRates: { [T1]: 50000 }, startTime: "10:00" }] })) as any));
     setUser({ isSuperAdmin: false, grants: ["menu:camp", "action:camp.week-open"] });
-    expect((await json("PATCH", `/camp/weeks/${W1}/days/2026-10-05`, { teacherRates: { [T1]: 50000 } })).status).toBe(403);
+    expect((await json("PATCH", `/camp/weeks/${W1}/days/${CAMP_DAY}`, { teacherRates: { [T1]: 50000 } })).status).toBe(403);
     expect(calls).toEqual([]);
-    expect((await json("PATCH", `/camp/weeks/${W1}/days/2026-10-05`, { teacherIds: [T1] })).status).toBe(200);
+    expect((await json("PATCH", `/camp/weeks/${W1}/days/${CAMP_DAY}`, { teacherIds: [T1] })).status).toBe(200);
     expect(calls).toHaveLength(1);
     const masked = await (await json("GET", `/camp/weeks/${W1}/days`)).json() as any;
     expect(masked.days[0].teacherRates).toBeNull(); // the ONE mask nulls the key by name (TASK-431's shape)
     expect(masked.days[0]).toMatchObject({ teacherIds: [T1], startTime: "10:00" });
     setUser({ isSuperAdmin: false, grants: ["menu:camp", "action:camp.week-open", "action:bookings.coach-rate"] });
-    expect((await json("PATCH", `/camp/weeks/${W1}/days/2026-10-05`, { teacherRates: { [T1]: 50000 } })).status).toBe(200);
+    expect((await json("PATCH", `/camp/weeks/${W1}/days/${CAMP_DAY}`, { teacherRates: { [T1]: 50000 } })).status).toBe(200);
     expect((await (await json("GET", `/camp/weeks/${W1}/days`)).json() as any).days[0].teacherRates).toEqual({ [T1]: 50000 });
     expect(code(src("src/routes/camp.ts"))).toContain("assertMayEditCoachRate(c.req.valid(\"json\"), viewerOf(c));");
   });
@@ -159,16 +169,16 @@ describe("🔴 the rate — the day DTO (0 by absence), the PATCH's upsert (off-
 
 describe("🔴 the two scans carry what is left — camp `credit` in DAYS (half-day ⇒ 3.5), Private `remaining` course / voucher / null; no mask", () => {
   test("`checkinCampByToken` (already) ⇒ `credit: { remainingDays, totalDays }` = (total − used) / 2", async () => {
-    spies.push(spyOn(db.query.campDays, "findFirst").mockImplementation((async () => ({ id: "d1", campWeekId: W1, campPackageId: P1, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null })) as any));
+    spies.push(spyOn(db.query.campDays, "findFirst").mockImplementation((async () => ({ id: "d1", campWeekId: W1, campPackageId: P1, date: CAMP_DAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null })) as any));
     spies.push(spyOn(db.query.campPackages, "findFirst").mockImplementation((async () => ({ id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, createdAt: new Date() })) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
     // TASK-502 — both scan paths answer ONE 8-key shape (Sober's ruling): "already" now carries `weekName` too — null here, the fake package has no days
-    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { studentName: null /* 🔻 TASK-515: the 9th key — this fixture's day carries no package student */, dayId: "d1", weekId: W1, weekName: null, date: "2026-10-05", half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
+    expect(await camp.checkinCampByToken("tok-12345678")).toEqual({ already: true, day: { studentName: null /* 🔻 TASK-515: the 9th key — this fixture's day carries no package student */, dayId: "d1", weekId: W1, weekName: null, date: CAMP_DAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null }, credit: { remainingDays: 3.5, totalDays: 5 } });
     expect(unitsToDays(8)).toBe(4);
     expect(region(SVC, "export async function checkinCampByToken(", "const dayDTO")).toContain("credit: creditDTO(pkg)"); // the attend path too
   });
   test("`checkinByToken` (already) ⇒ `remaining` from the course, ONE voucher read for a voucher row, null on a trial", async () => {
-    const base = { id: "b1", status: "ATTENDED", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", teacherId: T1, studentId: S1, student: { id: S1, name: "Aiwa" }, teacher: { id: T1, name: "Ek" }, subject: { name: "Freeskate" }, additionalTeachers: [], rental: null };
+    const base = { id: "b1", status: "ATTENDED", date: CAMP_DAY, startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", teacherId: T1, studentId: S1, student: { id: S1, name: "Aiwa" }, teacher: { id: T1, name: "Ek" }, subject: { name: "Freeskate" }, additionalTeachers: [], rental: null };
     let row: any = { ...base, courseId: "c1", course: { id: "c1", size: 10, usedSessions: 4, startDate: "2026-09-01", startTime: "10:00:00", weekday: 1, expiryDate: "2027-01-01", usedSessions_: 0 } };
     spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => row) as any));
     // 🔴 TASK-504 — `checkinByToken` runs the suspension guard (TASK-476/489) BEFORE it computes `remaining`, and the guard reads
@@ -195,22 +205,22 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     const writes: any[] = [];
     const tx: any = {
       query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ campDays: { findMany: async ({ where, with: w }: any) => { const p: any[] = []; try { where({ status: "status", date: "date", deductionNotifiedAt: "stamp" }, { and: (...a: any[]) => a, inArray: (c: any, val: any) => { p.push(["in", c, val]); return val; }, lte: (c: any, val: any) => { p.push(["lte", c, val]); return val; }, isNull: (c: any) => { p.push(["isNull", c]); return c; } }); } catch {} probes.push({ p, w }); return [
-        { id: "d1", campPackageId: P1, date: "2026-10-05", status: "ATTENDED", package: pkg },
-        { id: "d2", campPackageId: P1, date: "2026-10-04", status: "ABSENT", package: { ...pkg, studentId: "s-none", student: { name: "Bam", nickname: null } } },
+        { id: "d1", campPackageId: P1, date: CAMP_DAY, status: "ATTENDED", package: pkg },
+        { id: "d2", campPackageId: P1, date: CAMP_DAY_BEFORE, status: "ABSENT", package: { ...pkg, studentId: "s-none", student: { name: "Bam", nickname: null } } },
       ]; } } },
       update: (table: any) => ({ set: (patch: any) => ({ where: async () => { writes.push([table === campDays ? "campDays" : "other", patch]); } }) }),
     };
     spies.push(spyOn(familyLink, "householdLineUserIds").mockImplementation((async (_e: any, ids: any[]) => (ids[0] === S1 ? ["Ua", "Ub"] : [])) as any));
     const sends: any[] = [];
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any, exec: any) => { sends.push([o, exec === tx]); return { status: "queued" } as any; }) as any));
-    expect(await camp.notifyCampDeductions(tx, "2026-10-05")).toBe(2);
-    expect(probes[0].p).toEqual([["in", "status", ["ATTENDED", "ABSENT"]], ["lte", "date", "2026-10-05"], ["isNull", "stamp"]]);
+    expect(await camp.notifyCampDeductions(tx, CAMP_DAY)).toBe(2);
+    expect(probes[0].p).toEqual([["in", "status", ["ATTENDED", "ABSENT"]], ["lte", "date", CAMP_DAY], ["isNull", "stamp"]]);
     expect(probes[0].w).toEqual({ package: { with: { student: true } } });
-    const payload = { kind: "camp_deduction", studentName: "Aiwa", date: "2026-10-05", remainingDays: 3.5, totalDays: 5 };
+    const payload = { kind: "camp_deduction", studentName: "Aiwa", date: CAMP_DAY, remainingDays: 3.5, totalDays: 5 };
     expect(sends).toEqual([
       [{ recipientType: "parent", recipientLineUserId: "Ua", payload }, true],
       [{ recipientType: "parent", recipientLineUserId: "Ub", payload }, true],
-      [{ recipientType: "parent", recipientLineUserId: null, payload: { ...payload, studentName: "Bam", date: "2026-10-04" } }, true], // no account ⇒ ONE skipped row (the Private shape)
+      [{ recipientType: "parent", recipientLineUserId: null, payload: { ...payload, studentName: "Bam", date: CAMP_DAY_BEFORE } }, true], // no account ⇒ ONE skipped row (the Private shape)
     ]);
     expect(writes.map((w) => [w[0], Object.keys(w[1])])).toEqual([["campDays", ["deductionNotifiedAt"]], ["campDays", ["deductionNotifiedAt"]]]);
     expect(writes[0]![1].deductionNotifiedAt).toBeInstanceOf(Date);
@@ -231,12 +241,12 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     expect(SVC).not.toMatch(/camp_deduction_enabled|getSetting\("camp_deduction/);
   });
   test("🔴 the bytes — REQ-104 §3, ENGLISH ONLY: identical under TH and EN, no Thai code point, DD-MM-YYYY, `3.5` and `4` (never `4.0`); an empty payload renders; the branch has no `t()`/`lang`", () => {
-    const expected = "🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: 05-10-2026\nRemaining: 3.5 / 5 days"; // 🔻 TASK-558: Khwan's format (REQ-110 item 12)
-    expect(renderCampDeduction({ studentName: "Aiwa", date: "2026-10-05", remainingDays: 3.5, totalDays: 5 })).toBe(expected);
-    expect(renderCampDeduction({ studentName: "Aiwa", date: "2026-10-05", remainingDays: 4, totalDays: 5 })).toBe("🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: 05-10-2026\nRemaining: 4 / 5 days");
+    const expected = `🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 3.5 / 5 days`; // 🔻 TASK-558: Khwan's format (REQ-110 item 12)
+    expect(renderCampDeduction({ studentName: "Aiwa", date: CAMP_DAY, remainingDays: 3.5, totalDays: 5 })).toBe(expected);
+    expect(renderCampDeduction({ studentName: "Aiwa", date: CAMP_DAY, remainingDays: 4, totalDays: 5 })).toBe(`🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 4 / 5 days`);
     expect(CAMP_DEDUCTION_TITLE).toBe("🏕️ BALANCE CAMP");
     for (const lang of ["TH", "EN"] as const) {
-      const out = formatOutboxMessage({ kind: "camp_deduction", studentName: "Aiwa", date: "2026-10-05", remainingDays: 3.5, totalDays: 5 } as any, { studentName: "น้องเอ" } as any, lang, "parent");
+      const out = formatOutboxMessage({ kind: "camp_deduction", studentName: "Aiwa", date: CAMP_DAY, remainingDays: 3.5, totalDays: 5 } as any, { studentName: "น้องเอ" } as any, lang, "parent");
       expect(out).toBe(expected);
       expect(out).not.toMatch(/[฀-๿]/);
       expect(out).not.toMatch(/\d{4}-\d{2}-\d{2}/);

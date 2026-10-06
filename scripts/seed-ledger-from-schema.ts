@@ -17,7 +17,7 @@
 import postgres from "postgres";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { migrationHash } from "../src/lib/migration-ledger";
+import { isRecorded, migrationFingerprints, type OwnMigration } from "../src/lib/migration-ledger";
 import {
   SCHEDULING_WITNESSES as WITNESSES,
   appliedTags,
@@ -106,16 +106,20 @@ const present = new Set(
     : [],
 );
 
-const toInsert = applied
+// 🔻 TASK-655 — "already present" means EITHER fingerprint, so the seed stops adding a second row for a migration this
+// machine merely hashes differently. ⚠️ Stated no wider than the evidence: this single-fingerprint check is ONE way a
+// migration gains a second row, and it no longer does. 🚫 It is NOT established as the source of the 48 / 21 doubles — the
+// read is confirmed on every count and ONE pair of 69, not row by row, and a Windows-run `migrate` writes the other ending
+// too. 🔑 A code comment outlives the evidence it was written on; it must not claim more than that evidence.
+// 🔑 And when it DOES insert, it writes the LF fingerprint: the one every machine produces once `drizzle/*.sql text eol=lf`
+// is in effect, so new rows are the same on every box. 🚫 Never this machine's own ending — that is the bug, recorded.
+const toInsert: OwnMigration[] = applied
   .map((tag) => {
     const entry = byTag.get(tag)!;
-    return {
-      tag,
-      when: entry.when,
-      hash: migrationHash(readFileSync(resolve(dir, `${tag}.sql`), "utf8")),
-    };
+    const fp = migrationFingerprints(readFileSync(resolve(dir, `${tag}.sql`), "utf8"));
+    return { tag, when: entry.when, hash: fp.lf, hashes: fp.all };
   })
-  .filter((m) => !present.has(m.hash));
+  .filter((m) => !isRecorded(m, present));
 
 console.log(`\nLedger ${SCHEMA}.${OWN}: ${present.size} row(s) present · ${toInsert.length} to insert`);
 

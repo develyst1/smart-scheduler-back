@@ -5,7 +5,7 @@
 // cancel path is one transaction with no pure seam and because "no money moved" is provable by absence.
 import { describe, expect, test } from "bun:test";
 import { readSrc } from "../lib/read-src";
-import { END_REASONS, isEndReason } from "../lib/course-plan";
+import { END_REASONS, isEndReason, SESSION_CANCEL_REASONS } from "../lib/course-plan"; // 🔻 TASK-690
 
 const SRC = readSrc(await Bun.file(new URL("./scheduler.service.ts", import.meta.url)).text());
 const FN = SRC.slice(SRC.indexOf("export async function updateBookingStatus"));
@@ -13,11 +13,17 @@ const BODY = FN.slice(0, FN.indexOf("\n}\n") + 2);
 const CANCEL = BODY.slice(BODY.indexOf('} else if (action === "cancel")'), BODY.indexOf('} else if (action === "sick-leave"'));
 
 describe("the reason is the SAME enum as a course ending (TASK-211)", () => {
-  test("🔴 one vocabulary, not two — the enum is imported, never re-declared", () => {
+  test("🔴 one vocabulary, not two — the enum is imported, never re-declared", async () => {
     // A parallel reason-set would split "find every admin-error cancellation" into two queries that drift.
-    expect(CANCEL).toContain("END_REASONS");
-    expect(CANCEL).toContain("isEndReason");
+    // 🔻 TASK-690 — NARROWED, and the principle is KEPT: a SESSION cancel now takes `SESSION_CANCEL_REASONS` (END_REASONS +
+    // `SCHOOL_ISSUE`, REQ-112's trigger T3). That is NOT a parallel vocabulary — it is built BY SPREAD from `END_REASONS` in
+    // `lib/course-plan.ts`, so "every admin-error cancellation" is still ONE query over ONE set of codes. What the claim forbids is a
+    // second LITERAL list, and that is asserted: no list of codes appears in the service, and the sibling is derived.
+    expect(CANCEL).toContain("SESSION_CANCEL_REASONS");
+    expect(CANCEL).toContain("isSessionCancelReason");
     expect(CANCEL).not.toMatch(/\["ADMIN_ERROR"/); // no second literal list here
+    const PLAN = await Bun.file(new URL("../lib/course-plan.ts", import.meta.url)).text();
+    expect(PLAN).toContain("export const SESSION_CANCEL_REASONS = [...END_REASONS, SCHOOL_ISSUE] as const;"); // derived, never re-typed
   });
 
   test("the four values: REQ-036's three + TASK-406's TEACHER_LEAVE", () => {
@@ -59,14 +65,20 @@ describe("required for the NON-COURSE types — and ONLY those", () => {
   test("🔑 a COURSE_PACKAGE cancel is byte-identical to before — it is a reschedule, not a forfeit", () => {
     // A course session's cancel re-owes a make-up (SPEC-028 §11.3): a different act, with its own rules.
     // Forcing an enum onto it here would change a path REQ-074 never asked about.
-    expect(CANCEL).not.toContain('"COURSE_PACKAGE"');
+    // 🔻 TASK-656 — one exception, stated: a course session now carries the code `SCHOOL_ISSUE` (REQ-112 trigger T3) and ONLY that code.
+    // Still never REQUIRED (the set below does not list it) and every other code is still ignored ⇒ byte-identical for all other reasons.
+    expect(CANCEL).not.toMatch(/REASON_ENUM_REQUIRED = new Set\(\[[^\]]*COURSE_PACKAGE/);
+    expect(CANCEL.split('"COURSE_PACKAGE"').length - 1).toBe(1);
+    expect(CANCEL).toContain('current.bookingType === "COURSE_PACKAGE" && reasonCode === SCHOOL_ISSUE');
     // …and the write only sets the column when the enum applies.
     expect(CANCEL).toContain("...(enumReason ? { cancelReason: enumReason } : {})");
   });
 
   test("an unknown code is refused with the allowed list, not silently stored", () => {
     expect(CANCEL).toContain('"INVALID_REASON"');
-    expect(CANCEL).toContain("allowed: END_REASONS");
+    // 🔻 TASK-690 — the allowed list a session cancel returns is the SESSION set; the claim (a refusal NAMES what is allowed rather
+    // than silently storing the unknown) is unchanged.
+    expect(CANCEL).toContain("allowed: SESSION_CANCEL_REASONS");
   });
 });
 

@@ -148,6 +148,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /parents/:id": read(PEOPLE),
   "PATCH /parents/:id": act(PEOPLE, "action:people.parent-edit"),
   "POST /parents/:id/students": act(PEOPLE, "action:people.parent-students"),
+  "POST /students/:id/parent": act(PEOPLE, "action:people.parent-students"), // TASK-668 — the SAME key as adding a child to a family (owner/Porter: reuse)
   "POST /parents/:id/suspend": act(PEOPLE, "action:people.parent-suspend"),
   "POST /parents/:id/unsuspend": act(PEOPLE, "action:people.parent-suspend"),
   "POST /parents/:id/archive": act(PEOPLE, "action:people.parent-archive"), // TASK-411

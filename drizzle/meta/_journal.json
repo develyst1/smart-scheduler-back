@@ -456,6 +456,13 @@
       "when": 1783000000060,
       "tag": "0064_course_reconfirm_needed",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1783000000061,
+      "tag": "0065_cancel_reason_school_issue",
+      "breakpoints": true
     }
   ]
 }

@@ -22,7 +22,7 @@ describe("🔴 AC-24 — the sentence, verbatim from the REQ", () => {
   test("it names the teacher, the clashing booking and the time", () => {
     expect(
       slotClashMessage({ teacherName: "หนึ่ง", bookingName: "น้องเอ", time: "10:00-11:00" }),
-    ).toBe("ครูหนึ่ง มีคาบสอนช่วงเวลานี้อยู่แล้ว (น้องเอ 10:00-11:00) กรุณาเลือกเวลาอื่น");
+    ).toBe("ครู หนึ่ง มีคาบสอนช่วงเวลานี้อยู่แล้ว (น้องเอ 10:00-11:00) กรุณาเลือกเวลาอื่น");
   });
 
   test("🔴 an อื่นๆ blocking another booking names the admin's TITLE, never the word อื่นๆ", () => {

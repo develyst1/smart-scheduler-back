@@ -81,7 +81,16 @@ function world(baseExpiry: string) {
       const rows = ((w as any)[KEY[getTableName(t)] ?? "__other"] ?? []) as any[];
       const hits = rows.filter((r) => conds.every((c) => r[c.col] === c.val));
       for (const r of hits) for (const [k, v] of Object.entries(set)) {
-        if (v && typeof v === "object" && "queryChunks" in (v as object)) { r[k] = (r[k] ?? 0) + 1; continue; }
+        if (v && typeof v === "object" && "queryChunks" in (v as object)) {
+          // 🔻 TASK-656 — the fake must model the write the code actually makes. `addLeaveWeek` sets the expiry with
+          // `expiry_date + interval '7 days'` (one statement, so two concurrent leaves cannot lose a week), and a fake that
+          // treated every SQL value as "+1" turned the date into NaN. 🔑 A harness that cannot read the write under test
+          // reports a defect in itself.
+          const q = dialect.sqlToQuery(v as any).sql;
+          if (/interval '7 days'/.test(q)) { r[k] = new Date(Date.parse(r[k]) + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10); continue; }
+          r[k] = (r[k] ?? 0) + 1;
+          continue;
+        }
         r[k] = v;
       }
       const out = hits.map((r) => ({ id: r.id }));
@@ -159,50 +168,38 @@ describe("🔴 TASK-646 — ON THE PATH: declaring a pre-start day stretches the
     // could strand a session the family is holding. 🚫 If a lift should reclaim the week, that is the owner's call, not arithmetic.
   });
 
-  test("🚫 a STARTED course is untouched by any of this — the stretch rides the DECLARATION, not every leave", async () => {
+  test("🔻 TASK-656 §R — a STARTED course's ordinary leave does NOT stretch the expiry (the customer: «ถ้าลาปกติไม่เพิ่มให้นะคะ»)", async () => {
+    // ⚠️ History of this test, kept because it is the whole lesson: 646 asserted `expiry === BASE` (right). 656's first build "corrected"
+    // it to +1 week ("every leave adds a week") on the strength of a summary sentence — wrong, and the customer's own words say so.
+    // It asserts 646's original claim again: only the PRE-START declaration stretches (T1); an ordinary leave is counted and adds nothing.
     const w = world(BASE);
     w.bookings[0]!.status = "ATTENDED"; // one session delivered ⇒ the course has started
     await declare("b2");
-    expect(expiry(w)).toBe(BASE); // no stretch…
-    expect(w.bookings[1]).toMatchObject({ status: "SICK_LEAVE", plannedAtCreation: false }); // …because it is an ordinary leave
-    expect(w.courses[0].leaveUsed).toBe(1); // …and THAT one is paid out of the counter
+    expect(weeksBetween(BASE, expiry(w))).toBe(0); // ⇐ by value: byte-identical
+    expect(w.bookings[1]).toMatchObject({ status: "SICK_LEAVE", plannedAtCreation: false }); // an ordinary leave
+    expect(w.courses[0].leaveUsed).toBe(1); // counted
   });
 });
 
-describe("🔑 TASK-646 — ONE formula, in the same transaction, and the comment that lied is gone", () => {
-  const SRC = readSrc();
-  function readSrc() {
+describe("🔑 TASK-646 → TASK-656 — ONE place moves the expiry for a declaration, and the recompute that used to is GONE", () => {
+  const SRC = (() => {
     const { readFileSync } = require("node:fs") as typeof import("node:fs");
     const { resolve } = require("node:path") as typeof import("node:path");
     return readFileSync(resolve(import.meta.dir, "scheduler.service.ts"), "utf8").replace(/\r\n/g, "\n");
-  }
-  const REGION = (() => {
-    const at = SRC.indexOf("if (declaredFree) {");
-    if (at < 0) throw new Error("the stretch block is missing"); // 🔑 the anchor is checked before it is sliced on
-    return SRC.slice(at, at + 2000);
   })();
-  test("it is `courseBornCeiling` — 🚫 no second formula and no inline `+ 7`", () => {
-    expect(REGION).toContain("courseBornCeiling(courseExpiry(current.course.startDate, current.course.size), lastPlanned, declared)");
-    expect(REGION).not.toMatch(/\+ 7|setDate\(|\* WEEK/);
-    // the plan end EXCLUDES make-ups, exactly as the start-date change computes it — one shape, two callers
-    expect(REGION).toContain("filter((r) => !r.extendedFromId)");
+  const code = SRC.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+  // ⚠️ History: this block pinned the recompute TASK-646 wrote at door 1 (`courseBornCeiling` over the plan, written inline). TASK-656
+  // replaced it with the ONE helper (T1) — the same +1 week per declared absence by a simpler route — so those pins were asking about
+  // code that no longer exists. They are retired with it, and what they protected (ONE formula, never +14, never a second writer) is
+  // now pinned at its new home: the by-value tests above and `leave-week-triggers-task656.test.ts`.
+  test("the inline recompute is gone — no second formula beside the helper (asked of the CODE, not of comments)", () => {
+    expect(code).not.toContain("const next = born > lastAny ? born : lastAny;");
+    expect(code).not.toContain("set({ expiryDate: next })");
+    expect(code).not.toContain('r.status === "SICK_LEAVE" && r.plannedAtCreation).length');
   });
-  test("⚠️ the DECLARED COUNT is pinned at the SOURCE, because it cannot be told apart by value on this path — and that is said, not hidden", () => {
-    // 🔑 Mutation X4 (`const declared = 1`) SURVIVED every value assertion above. The reason is worth writing down: the ceiling is
-    // `max(born, last row)`, and each declaration appends a make-up a week after the last row — so the MAKE-UP CHAIN produces the
-    // same date as the declared term in every scenario this path can reach. **Two different rules, one observable number.**
-    // 🚫 I did not invent a scenario to force them apart: the honest statement is that at the path level they are indistinguishable,
-    // so the term is pinned where it IS distinguishable — its own line — and X4 bites on this assertion rather than on a value.
-    expect(REGION).toContain('const declared = (planRows as any[]).filter((r) => r.status === "SICK_LEAVE" && r.plannedAtCreation).length;');
-    // …and the two terms it is combined with, so a change to either is visible here
-    expect(REGION).toContain("const next = born > lastAny ? born : lastAny;");
-  });
-  test("🔴 the write is INSIDE the declaration's transaction — same `tx`, not a follow-up", () => {
-    expect(REGION).toContain("await tx.update(coursePackages).set({ expiryDate: next }).where(eq(coursePackages.id, current.courseId));");
-  });
-  test("⚠️ the never-shrink decision is STATED at the line, not left as an accident of the function", () => {
-    expect(REGION).toContain("if (next > current.course.expiryDate) {");
-    expect(REGION).toContain("lifting or undoing a declaration does NOT give the week back");
+  test("the declaration's week is the helper's, once, in the same transaction (`tx`)", () => {
+    const calls = [...code.matchAll(/await addLeaveWeek\(tx, [^,]+, "T1_PRE_START_DECLARATION"\)/g)];
+    expect(calls).toHaveLength(2); // door 1 and door 2 — one rule for one act
   });
   test("🚫 and TASK-643's FALSE comment is gone — it is the sentence that made this gap read as closed", () => {
     expect(SRC).not.toContain("⚠️ What BOUNDS a pre-start course now is the expiry, not a count: `courseBornCeiling` stretches it by one week per declared");

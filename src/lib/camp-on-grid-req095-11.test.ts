@@ -17,6 +17,15 @@ import * as v from "../validation";
 import * as camp from "../services/camp.service";
 import * as sched from "../services/scheduler.service";
 import { readSrc } from "./read-src";
+import { bangkokNow } from "./bangkok-time";
+
+// 🔻 TASK-666 — the DATE BOMB defused. The camp day was the literal `2026-10-05`, and the camp sync SKIPS a past day by design
+// (`camp.service.ts`, TASK-445), so this file went red the day after. It is now computed from Bangkok TODAY (the same `bangkokNow()`
+// the code reads): the first MONDAY at least 30 days ahead — always in the future, and the same weekday as the old literal, so
+// nothing that reads the day of the week moves. Its neighbours and its DD-MM-YYYY form are DERIVED from it, never typed.
+const isoPlus = (iso: string, days: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+const CAMP_DAY = ((d) => isoPlus(d, (8 - new Date(`${d}T00:00:00Z`).getUTCDay()) % 7))(isoPlus(bangkokNow().date, 30));
+const CAMP_FRIDAY = isoPlus(CAMP_DAY, 4); // was `2026-10-09` — the week's Friday
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
@@ -41,8 +50,8 @@ describe("🔴 the migration — 0047, counted, the day table + the window + the
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0047_camp_week_days.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0047_camp_week_days` is the 48th file, idx 47 (TASK-420 added 0048 after it); 'expects 48'", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[47]).toBe("0047_camp_week_days.sql");
     expect(journal.entries[47]).toMatchObject({ idx: 47, tag: "0047_camp_week_days" });
     expect(sql).toContain("`db:verify` expects 48");
@@ -81,7 +90,7 @@ describe("🔴 the kinds — CAMP is the 4th; the type ⇔ kind pin knows it; th
     expect(() => assertKindForType("OTHER", "CAMP")).not.toThrow();
     expect(thrown(() => assertKindForType("GROUP", "CAMP"))).toMatchObject({ status: 400 });
     for (const shape of [v.otherSeries, v.editOtherBooking]) {
-      const ok = (shape as any).safeParse({ title: "x", otherKind: "CAMP", headCount: 1, teacherId: T1, startTime: "10:00", dates: ["2026-10-05"] });
+      const ok = (shape as any).safeParse({ title: "x", otherKind: "CAMP", headCount: 1, teacherId: T1, startTime: "10:00", dates: [CAMP_DAY] });
       expect(ok.success).toBe(false);
     }
     expect(v.editOtherBooking.safeParse({ otherKind: "ECA" }).success).toBe(true);
@@ -124,7 +133,7 @@ describe("🔴 the pure rules — the window, the wanted set, the diff, the remi
     expect(rows[0]!.endTime).toBe("13:00"); // the fold copies, never mutates the input (the first camp row is the seed's clone)
   });
   test("through `groupReminders`: five CONFIRMED camp hours ⇒ ONE coach row `Camp A` 10:00-15:00; a PENDING one is out first (REQ-096)", () => {
-    const S = (startTime: string, status = "CONFIRMED"): ReminderSession => ({ id: startTime, date: "2026-10-05", startTime, endTime: `${String(Number(startTime.slice(0, 2)) + 1).padStart(2, "0")}:00`, status, bookingType: "OTHER", title: "Camp A", otherKind: "CAMP", campWeekDayId: D1, teacherId: T1, teacherLineUserId: "Ut1", studentId: null, studentName: "Camp A", parentId: null, parentLineUserId: null, subjectName: null });
+    const S = (startTime: string, status = "CONFIRMED"): ReminderSession => ({ id: startTime, date: CAMP_DAY, startTime, endTime: `${String(Number(startTime.slice(0, 2)) + 1).padStart(2, "0")}:00`, status, bookingType: "OTHER", title: "Camp A", otherKind: "CAMP", campWeekDayId: D1, teacherId: T1, teacherLineUserId: "Ut1", studentId: null, studentName: "Camp A", parentId: null, parentLineUserId: null, subjectName: null });
     const groups = groupReminders([S("10:00"), S("11:00"), S("12:00"), S("13:00"), S("14:00"), S("15:00", "PENDING")]);
     expect(groups.length).toBe(1);
     expect(groups[0]!.recipientType).toBe("teacher");
@@ -158,27 +167,27 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
   };
   const week = { id: W1, name: "Camp A", status: "OPEN" };
   test("insert what is missing, delete what is surplus — each new row CONFIRMED, OTHER/CAMP, the week's name, no student, then linked to the day", async () => {
-    const f = fakeTx({ week, day: { id: D1, date: "2026-10-05", teacherIds: [T1], startTime: "10:00:00", endTime: "13:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }, { id: "old-2", teacherId: T2, startTime: "10:00:00" }] });
+    const f = fakeTx({ week, day: { id: D1, date: CAMP_DAY, teacherIds: [T1], startTime: "10:00:00", endTime: "13:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }, { id: "old-2", teacherId: T2, startTime: "10:00:00" }] });
     try {
       const r = await camp.syncCampDayRows(f.tx, D1);
       expect(r).toEqual({ inserted: 2, deleted: 1, onLeave: [] });
       const inserts = f.log.filter((l) => l[0] === "insert");
       expect(inserts.map((l) => l[2].startTime)).toEqual(["11:00", "12:00"]);
-      for (const [, studentId, input] of inserts) { expect(studentId).toBeNull(); expect(input).toMatchObject({ teacherId: T1, subjectId: null, date: "2026-10-05", bookingType: "OTHER", otherTitle: "Camp A", otherKind: "CAMP", status: "CONFIRMED" }); expect(input.headCount).toBeUndefined(); expect(input.teacherRates).toEqual({ [T1]: 0 }); } // 🔻 TASK-443: the coach's DAY rate rides the row (0 = no rate row)
+      for (const [, studentId, input] of inserts) { expect(studentId).toBeNull(); expect(input).toMatchObject({ teacherId: T1, subjectId: null, date: CAMP_DAY, bookingType: "OTHER", otherTitle: "Camp A", otherKind: "CAMP", status: "CONFIRMED" }); expect(input.headCount).toBeUndefined(); expect(input.teacherRates).toEqual({ [T1]: 0 }); } // 🔻 TASK-443: the coach's DAY rate rides the row (0 = no rate row)
       expect(f.log.filter((l) => l[0] === "update" && l[1].campWeekDayId).map((l) => l[1].campWeekDayId)).toEqual([D1, D1]);
       expect(f.log.filter((l) => l[0] === "update" && "teacherRateMinor" in l[1]).map((l) => l[1])).toEqual([{ teacherRateMinor: 0 }]); // 🔻 TASK-443: the kept rows re-stamped, one update per coach on the day
       expect(f.log.filter((l) => l[0] === "delete").length).toBe(1);
     } finally { f.restore(); }
   });
   test("a clash ⇒ 409 SLOT_TAKEN naming the date, the hour and the teacher's nickname — the error propagates so the CALLER's tx rolls back", async () => {
-    const f = fakeTx({ week, day: { id: D1, date: "2026-10-05", teacherIds: [T1], startTime: "10:00:00", endTime: "12:00:00" }, existing: [], clashAt: "11:00" });
+    const f = fakeTx({ week, day: { id: D1, date: CAMP_DAY, teacherIds: [T1], startTime: "10:00:00", endTime: "12:00:00" }, existing: [], clashAt: "11:00" });
     try {
       const e = await camp.syncCampDayRows(f.tx, D1).then(() => null, (e) => ({ status: e.status, code: e.code, message: e.message }));
-      expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: "วันที่ 2026-10-05 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร" });
+      expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${CAMP_DAY} 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` });
     } finally { f.restore(); }
   });
   test("🔻 TASK-581: a CLOSED week syncs EXACTLY as an open one (its coaches keep their blocks — Close gates new bookings only); no teacher ⇒ every row deleted", async () => {
-    const at = (status: string) => fakeTx({ week: { ...week, status }, day: { id: D1, date: "2026-10-05", teacherIds: [T1], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
+    const at = (status: string) => fakeTx({ week: { ...week, status }, day: { id: D1, date: CAMP_DAY, teacherIds: [T1], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
     const results: any[] = [];
     for (const status of ["OPEN", "CLOSED"]) {
       const f = at(status);
@@ -187,7 +196,7 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
     for (const r of results) r[1] = JSON.parse(JSON.stringify(r[1], function (k, v) { return this[k] instanceof Date ? "<now>" : v; })); // a write's `new Date()` differs by ms
     expect(results[1]).toEqual(results[0]); // by value: the same result and the same writes
     expect(results[1][0]).toMatchObject({ deleted: 0 }); // the existing block KEPT on a closed week
-    const g = fakeTx({ week, day: { id: D1, date: "2026-10-05", teacherIds: [], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
+    const g = fakeTx({ week, day: { id: D1, date: CAMP_DAY, teacherIds: [], startTime: "10:00:00", endTime: "15:00:00" }, existing: [{ id: "old-1", teacherId: T1, startTime: "10:00:00" }] });
     try { expect(await camp.syncCampDayRows(g.tx, D1)).toEqual({ inserted: 0, deleted: 1, onLeave: [] }); } finally { g.restore(); }
   });
 });
@@ -210,9 +219,9 @@ describe("🔴 the lifecycle by source — ONE sync, its callers, `edited_at`, t
     expect(U).toContain("if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {");
     expect(U).toContain("a(e(d.campWeekId, id), nul(d.editedAt))");
     expect(U).toContain("for (const teacherId of (await syncCampDayRows(tx, d.id)).onLeave) onLeave.push({ date: d.date, teacherId });"); // 🔻 TASK-561
-    expect(v.updateCampWeek.safeParse({ startDate: "2026-10-05" }).success).toBe(false); // Finding B — no dates edit
+    expect(v.updateCampWeek.safeParse({ startDate: CAMP_DAY }).success).toBe(false); // Finding B — no dates edit
     expect(v.updateCampWeek.safeParse({ windowStart: "09:00", windowEnd: "16:00" }).success).toBe(true);
-    expect(v.createCampWeek.safeParse({ name: "A", startDate: "2026-10-05", endDate: "2026-10-09", windowStart: "9:00" }).success).toBe(false); // HH:MM
+    expect(v.createCampWeek.safeParse({ name: "A", startDate: CAMP_DAY, endDate: CAMP_FRIDAY, windowStart: "9:00" }).success).toBe(false); // HH:MM
   });
   test("the per-day swap: 🔻 TASK-581 a CLOSED week is swapped like an open one (no 409), a date outside 404, the window validated, `edited_at` stamped, the ONE sync; the route + its access row; not in TEACHER_ALLOWED", () => {
     const P = region(SVC, "export async function updateWeekDay(", "export async function listPackages(");

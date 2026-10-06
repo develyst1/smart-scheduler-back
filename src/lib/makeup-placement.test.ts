@@ -146,8 +146,13 @@ describe("TASK-300 — the two cases the fix must NOT break", () => {
     const SVC = src("src/services/scheduler.service.ts");
     // The make-up still mirrors teacher/subject/time from the absence it replaces…
     expect(SVC).toContain("const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null)");
-    // 🔻 TASK-308 — it is no longer BOUNDED at all: §12 deleted the refusal and the expiry stretches to fit.
-    // The MIRRORING is what this test is about, and that is unchanged.
-    expect(SVC).toContain("if (extDate > expiryAfterAppends) expiryAfterAppends = extDate;");
+    // 🔻 TASK-308 — it is no longer BOUNDED at all: §12 deleted the refusal.
+    // 🔻 TASK-656 (REQ-112 ruling 3) — and the expiry no longer stretches to fit it either. The MIRRORING is what this test is
+    // about, and THAT is unchanged; the line asserting the stretch is retired with its subject.
+    // ⚠️ Asserted against the COMMENT-STRIPPED source, deliberately: the service's own comment NAMES the removed variable where
+    // it explains why it went, and a raw-text absence check would read that explanation as the thing it forbids.
+    // 🔑 An absence claim about CODE has to be asked of code — otherwise the only way to keep it true is to stop explaining.
+    const CODE_ONLY = SVC.split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join(" ");
+    expect(CODE_ONLY).not.toContain("expiryAfterAppends");
   });
 });

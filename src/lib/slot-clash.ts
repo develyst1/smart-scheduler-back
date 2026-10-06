@@ -29,7 +29,7 @@ export interface SlotClash {
  * the admin's typed title, which is the entire reason they are asked to type it (REQ-078 📌).
  */
 export const slotClashMessage = (c: SlotClash): string =>
-  `ครู${c.teacherName} มีคาบสอนช่วงเวลานี้อยู่แล้ว (${c.bookingName} ${c.time}) กรุณาเลือกเวลาอื่น`;
+  `ครู ${c.teacherName} มีคาบสอนช่วงเวลานี้อยู่แล้ว (${c.bookingName} ${c.time}) กรุณาเลือกเวลาอื่น`;
 
 /**
  * The generic refusal, kept for the case where the clash cannot be identified.

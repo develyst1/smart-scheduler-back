@@ -1,0 +1,297 @@
+{
+  "task": "TASK-657",
+  "proves": "src/services/makeup-past-expiry-task657.test.ts",
+  "note": "🔴 REQ-112 §R. TWO halves. (1) THE UNDO NEVER TOUCHES THE EXPIRY: U1 gives a week back · U2 records an expiry change · U4 re-introduces the actor check (the REQ-114 (ii) self-block) · U3 re-introduces the `UNDO_LEAVE_CHARGE_UNKNOWN` refusal · U5 refunds a free declared day · U6 never gives the count back · U7/U8 the chain refusal loses its steps / turns its STOP branch into a path (Khwan's Peeta case). (2) THE ADMIN IS TOLD when a make-up lands past the expiry, once per make-up: N1 warns about EVERY make-up · N2 sends twice · N3–N7 each re-plan caller stops asking (each bites ALONE — the proof the callers' list is complete) · N8 asks BEFORE the week (a false alarm the week already covers) · N9 replaces `makeup_far_out` instead of sitting beside it · N10 the check stretches the expiry again (the silent stretch-to-fit, in its third home) · N11 the Thai copy is paraphrased.",
+  "tests": "src/services/makeup-past-expiry-task657.test.ts src/services/booking-undo-req108.test.ts src/lib/undo-charge-unknown-retired-task657.test.ts src/services/leave-week-triggers-task656.test.ts src/lib/makeup-far-out.test.ts src/lib/pre-start-declared-absence-task609.test.ts",
+  "mutations": [
+    {
+      "id": "U1",
+      "what": "🔴 the Undo gives a week back (the expiry is rewritten when a make-up is cancelled)",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "      // The plan must now balance on its own: the reconcile is asked, and must do NOTHING.",
+              "to": "      if (makeup) await tx.update(coursePackages).set({ expiryDate: \"2026-10-30\" }).where(eq(coursePackages.id, row.courseId));\n      // The plan must now balance on its own: the reconcile is asked, and must do NOTHING."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U2",
+      "what": "🔴 the Undo records an expiry change again (the history gains a row it has no business writing)",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "reconcileCoursePlan, sendClassCancelledToCoaches } from \"./scheduler.service\";",
+              "to": "reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches } from \"./scheduler.service\";"
+            },
+            {
+              "from": "      // The plan must now balance on its own: the reconcile is asked, and must do NOTHING.",
+              "to": "      await recordExpiryChange(tx, { courseId: row.courseId, from: \"2026-11-06\", to: \"2026-10-30\", actor: opts.actor });\n      // The plan must now balance on its own: the reconcile is asked, and must do NOTHING."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U3",
+      "what": "🔴 `UNDO_LEAVE_CHARGE_UNKNOWN` comes back — a legacy leave with no make-up to prove it is refused again",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "      leaveRefunded = leaveChargeOf(row) === \"charged\";\n",
+              "to": "      leaveRefunded = leaveChargeOf(row) === \"charged\";\n      if (row.leaveCharged == null && !linkedAll.length) throw new ApiException(409, \"UNDO_LEAVE_CHARGE_UNKNOWN\", \"x\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U4",
+      "what": "🔴 THE SELF-BLOCK RETURNS (REQ-114 (ii)): the Undo reads who last moved the expiry and refuses when it was a person",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "      leaveRefunded = leaveChargeOf(row) === \"charged\";\n",
+              "to": "      leaveRefunded = leaveChargeOf(row) === \"charged\";\n      const latestMove = await tx.query.courseExpiryChanges.findFirst({ where: (c: any, { eq: e }: any) => e(c.courseId, row.courseId) });\n      if (latestMove?.actor) throw new ApiException(409, \"UNDO_EXPIRY_UNRECOVERABLE\", \"x\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U5",
+      "what": "a FREE declared-at-creation leave is refunded — the count goes down for a day that never went up",
+      "files": [
+        {
+          "file": "src/lib/booking-undo.ts",
+          "edits": [
+            {
+              "from": "  if (row.plannedAtCreation) return \"free\";\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U6",
+      "what": "the count is NEVER given back — a mistaken leave stays counted",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "      leaveRefunded = leaveChargeOf(row) === \"charged\";\n",
+              "to": "      leaveRefunded = false;\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U7",
+      "what": "🔴 the chain refusal loses its STEPS — back to the sentence that named none",
+      "files": [
+        {
+          "file": "src/lib/booking-undo.ts",
+          "edits": [
+            {
+              "from": "ย้อนกลับทีเดียวไม่ได้ · ถ้าวันที่ ${m.date} จะกลับมาเรียนด้วย: ย้อนการลาของวันที่ ${m.date} ก่อน แล้วค่อยย้อนการลานี้ · ถ้าวันที่ ${m.date} ยังลาอยู่จริง: อย่าเพิ่งย้อน ให้แจ้งผู้ดูแลระบบ",
+              "to": "ย้อนกลับไม่ได้ กรุณาแก้ไขด้วยตนเอง"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U8",
+      "what": "🔴 the STOP branch turns into a path — Khwan's case: the two-step route removes a leave she meant to keep",
+      "files": [
+        {
+          "file": "src/lib/booking-undo.ts",
+          "edits": [
+            {
+              "from": "อย่าเพิ่งย้อน ให้แจ้งผู้ดูแลระบบ",
+              "to": "ย้อนต่อได้เลย"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N1",
+      "what": "🔴 the notice fires for EVERY make-up — a warning that fires every time is not a warning",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (r.date <= course.expiryDate) continue; // inside the expiry — nothing to tell\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "🔴 the notice is sent TWICE for one make-up",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    await notifyAdmins({ kind: \"makeup_past_expiry\", bookingId: r.id, landedOn: r.date, expiry: course.expiryDate }, tx, r.id);\n",
+              "to": "    await notifyAdmins({ kind: \"makeup_past_expiry\", bookingId: r.id, landedOn: r.date, expiry: course.expiryDate }, tx, r.id);\n    await notifyAdmins({ kind: \"makeup_past_expiry\", bookingId: r.id, landedOn: r.date, expiry: course.expiryDate }, tx, r.id);\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "🔴 door 4 (a school cancel) stops asking",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (current.courseId) await flagMakeupsPastExpiry(tx, current.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "🔴 door 3 (a coach's leave) stops asking",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (b.courseId) await flagMakeupsPastExpiry(tx, b.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "🔴 door 2 (the plan editor) stops asking",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        await flagMakeupsPastExpiry(tx, courseId, moves.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "🔴 door 5 (the seats of a group date) stops asking",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (s.courseId) await flagMakeupsPastExpiry(tx, s.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "🔴 door 1 (the session's own make-up) stops asking",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N8",
+      "what": "🔴 door 1 asks BEFORE its week decision — a make-up the new week already covers raises a false alarm",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n",
+              "to": "      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N9",
+      "what": "🔴 the new notice REPLACES `makeup_far_out` instead of sitting beside it — the search-exhausted event goes silent",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "            kind: \"makeup_far_out\",",
+              "to": "            kind: \"makeup_past_expiry\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N10",
+      "what": "🔴 the check STRETCHES the expiry to cover the make-up — the silent stretch-to-fit, in its third home",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    flagged++;\n",
+              "to": "    await tx.update(coursePackages).set({ expiryDate: r.date }).where(eq(coursePackages.id, courseId));\n    flagged++;\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N11",
+      "what": "the Thai copy is paraphrased — the draft the owner will approve is no longer what ships",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "เรียนได้ตามปกติ กรุณาตรวจสอบและขยายวันหมดอายุถ้าต้องการ",
+              "to": "เรียนได้ตามปกติ"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

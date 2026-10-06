@@ -1,0 +1,128 @@
+{
+  "task": "TASK-659",
+  "proves": "src/lib/copy-kru-space-task659.test.ts",
+  "note": "🔴 COPY, verbatim (owner APPROVED 10-06). S1–S5 each drop the space after ครู at ONE of the five sites — each must bite ALONE (a helper that 'decides by script' is exactly what the ruling forbids). D1/D2 put «วันนี้» back into the two sentences that were about a PICKED date. D3 hard-codes the weekday (a second table / a wrong name).",
+  "tests": "src/lib/copy-kru-space-task659.test.ts src/services/slot-clash.test.ts src/lib/teacher-leave-day-task561.test.ts",
+  "mutations": [
+    {
+      "id": "S1",
+      "what": "slot-clash drops the space after ครู",
+      "files": [
+        {
+          "file": "src/lib/slot-clash.ts",
+          "edits": [
+            {
+              "from": "`ครู ${c.teacherName} มีคาบสอน",
+              "to": "`ครู${c.teacherName} มีคาบสอน"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "TEACHER_ON_LEAVE drops the space after ครู",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "`ครู ${teacherName} ลาวันที่",
+              "to": "`ครู${teacherName} ลาวันที่"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "the archived-teacher refusal drops the space",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "badRequest(`ครู ${teacher.nickname} ถูกปิดการใช้งานแล้ว`)",
+              "to": "badRequest(`ครู${teacher.nickname} ถูกปิดการใช้งานแล้ว`)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "the not-a-working-day refusal drops the space",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "badRequest(`ครู ${teacher.nickname} ไม่ได้สอนวัน",
+              "to": "badRequest(`ครู${teacher.nickname} ไม่ได้สอนวัน"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "what": "the freelance-no-budget refusal drops the space",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "badRequest(`ครู ${teacher.nickname} ยังไม่ได้ตั้งงบ",
+              "to": "badRequest(`ครู${teacher.nickname} ยังไม่ได้ตั้งงบ"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D1",
+      "what": "«วันนี้» is restored in the not-a-working-day sentence — it says 'today' about a PICKED date",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "ไม่ได้สอนวัน${tr(`ob_dow_${weekdayOf(date)}`, \"TH\")} — กรุณาเลือกครูอื่นหรือวันอื่น",
+              "to": "ไม่มาสอนวันนี้"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "what": "«วันนี้» is restored in the TEACHER_ON_LEAVE sentence",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "เพิ่มคาบกับครูในวันนั้นไม่ได้",
+              "to": "เพิ่มคาบกับครูวันนี้ไม่ได้"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "what": "the weekday is hard-coded instead of read from the picked date",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "${tr(`ob_dow_${weekdayOf(date)}`, \"TH\")}",
+              "to": "จันทร์"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

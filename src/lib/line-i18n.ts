@@ -486,7 +486,6 @@ const TABLE: Record<string, Entry> = {
     EN: "Record Leave: {name} — {line}{locked}",
   },
   leave_extline: { TH: "\nคาบขยาย: {date} {time}", EN: "\nMake-up class: {date} {time}" },
-  leave_lockline: { TH: "\n⚠️ โควตาลาครบแล้ว — ต้องปลดล็อกโดยแอดมิน", EN: "\n⚠️ Leave quota used up — needs admin unlock" },
   num_notfound: { TH: "ไม่พบคาบตามหมายเลขที่เลือก", EN: "No class for that number" },
 
   teacher_linked: { TH: "บัญชีครูผูกแล้ว — รอรับแจ้งเตือนตารางจากระบบ", EN: "Teacher account linked — you'll get schedule notifications" },
@@ -585,6 +584,14 @@ const TABLE: Record<string, Entry> = {
   // customer's messages.
   // ⚠️ **The wording is mine and the NUMBER is not.** §3 asked for the FACT reported and the threshold left
   // to @Porter — so the sentence states how far, and decides nothing.
+  // 🔻 TASK-657 §3 (REQ-112 — the centre of the customer's model) — a make-up whose date is PAST the course's expiry. 📋 DRAFT: owner
+  // approval pending in @Porter's copy set. Her words: «แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหมค่ะ» — the system
+  // tells the admin and decides NOTHING. 🔑 A DIFFERENT event from `ob_makeup_far` below (that one fires when the SEARCH runs out;
+  // this one fires when the EXPIRY is crossed) — which is why this is a new key and not a reuse.
+  ob_makeup_past_expiry: {
+    TH: "คาบชดเชยของ {student} ถูกสร้างวันที่ {date} ซึ่งเลยวันหมดอายุคอร์ส ({expiry}) — เรียนได้ตามปกติ กรุณาตรวจสอบและขยายวันหมดอายุถ้าต้องการ",
+    EN: "{student}'s make-up was created on {date}, past the course expiry ({expiry}) — the class stands; please check and extend the expiry if you want to.",
+  },
   ob_makeup_far: {
     TH: "⚠️ คาบชดเชยถูกจัดไปไกลกว่าปกติ: {weeks} สัปดาห์หลังคาบที่ลา ({replaces} → {landedOn}) — ตารางครูช่วงนี้เต็ม",
     EN: "⚠️ A make-up landed further out than usual: {weeks} weeks after the session it replaces ({replaces} → {landedOn}) — that coach's slot is fully booked.",
@@ -695,6 +702,9 @@ const TABLE: Record<string, Entry> = {
   ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },
   ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
   ob_reason_TEACHER_LEAVE: { TH: "ครูลา", EN: "Teacher leave" }, // TASK-406 (REQ-097) — the 4th code
+  // 🔻 TASK-690 (REQ-112, owner ruling 2026-10-06) — the 5th, a SESSION cancel only: *a problem on our side*. TH is the customer's own
+  // words, verbatim. 📋 DRAFT — both ride the round's one copy set via @Porter and stay marked until @Sober says approved.
+  ob_reason_SCHOOL_ISSUE: { TH: "ปัญหาจากทางเรา", EN: "A problem on our side" },
   // TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice (`class_cancelled_parent`), THE OWNER'S WORDS via @Porter
   // (2026-09-19): the title, the four lines (`ob_f_*`), `Reason` ONLY for a teacher's leave, then the system's `Note`
   // by shape — a course session gets its make-up, a 1-hour/voucher keeps its hour. Both producers (the admin's cancel
@@ -812,7 +822,7 @@ export function t(key: string, lang: Lang = "TH", vars?: Record<string, string |
  * ## 🔑 Why `both()` takes a BUILDER and not a key
  * A per-key `tb(key)` would be wrong for most of this bot's messages, and the reason is in the copy itself:
  * **several keys are SUFFIX FRAGMENTS that begin with a newline** — `verify_parent_children_count`,
- * `verify_parent_found`, `leave_extline`, `leave_lockline` — and many bodies are composed from two or three
+ * `verify_parent_found`, `leave_extline` — and many bodies are composed from two or three
  * keys plus data (`add_cancelled` + `menu_body`, `children_title` + a count, a summary head + rows +
  * a confirm line). Rendering each key as `TH\nEN` and then concatenating gives **TH/EN/TH/EN interleaved
  * down the message**, and on `children_title` it puts the count on the English line only.

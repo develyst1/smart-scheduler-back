@@ -7,12 +7,18 @@
 //    🚫 This does not re-run the mutations — it proves the recorded verdicts are still RE-RUNNABLE, which is the whole point.
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..", "..");
-const sets = readdirSync(resolve(root, "src", "lib"))
-  .filter((f) => f.endsWith(".mutations.json"))
-  .map((f) => `src/lib/${f}`);
+// 🔴 TASK-656 — this used to scan `src/lib` ONLY. A set is filed "beside the test it proves", and tests live in `src/services`
+// too, so SIX sets (TASK-646's among them) were sitting where this check could not see them: *unguarded*, while the convention
+// said every filed set was kept honest. 🔑 A guard that scans one folder protects the folder, not the rule — and the only reason
+// it surfaced is that a NEW set was filed outside it and the question "why is this one not in the list?" finally got asked.
+const walk = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(resolve(dir, e.name)) : e.name.endsWith(".mutations.json") ? [relative(root, resolve(dir, e.name)).replace(/\\/g, "/")] : [],
+  );
+const sets = walk(resolve(root, "src")).sort();
 
 describe("🔴 TASK-627 — every filed mutation set is still re-runnable", () => {
   test("there is at least one filed set (the convention is live, not just written down)", () => {

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cancelReasonText, formatOutboxMessage } from "./line-message";
 import { TEMPLATE_FIELDS, TEMPLATE_NONE } from "./line-message-fields";
-import { END_REASONS } from "./course-plan";
+import { SESSION_CANCEL_REASONS } from "./course-plan"; // 🔻 TASK-690
 import { t } from "./line-i18n";
 import { readSrc } from "./read-src";
 
@@ -25,11 +25,17 @@ const CTX = { studentName: "มะขิด", subject: "Freeskate", date: "2026-
 
 describe("🔑 `cancelReasonText` — the ONE reason rule: code label → note → (-)", () => {
   test("each closed code has a label in both languages, and the two languages differ", () => {
-    for (const c of END_REASONS) {
+    // 🔻 TASK-690 — over a SESSION cancel's set (the codes a cancel notice can carry), so the new `SCHOOL_ISSUE` is held to the same bar:
+    // a label in both languages, the two different, and never the raw code.
+    for (const c of SESSION_CANCEL_REASONS) {
       const th = cancelReasonText(c, "ignored", "TH");
       const en = cancelReasonText(c, "ignored", "EN");
       expect({ c, th: th.length > 0, en: en.length > 0, differ: th !== en, rawCode: th === c || en === c }).toEqual({ c, th: true, en: true, differ: true, rawCode: false });
     }
+  });
+  test("🔻 TASK-690 — `SCHOOL_ISSUE` reads the customer's OWN words in Thai, verbatim, and a plain English sentence", () => {
+    expect(cancelReasonText("SCHOOL_ISSUE", "ignored", "TH")).toBe("ปัญหาจากทางเรา"); // 📋 DRAFT until @Sober says approved
+    expect(cancelReasonText("SCHOOL_ISSUE", "ignored", "EN")).toBe("A problem on our side");
   });
   test("no code ⇒ the note; blank note ⇒ the house (-); an unknown code is not a label", () => {
     expect(cancelReasonText(null, "พักคอร์สชั่วคราว", "TH")).toBe("พักคอร์สชั่วคราว");
@@ -196,7 +202,10 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
     const I18N = src("src/lib/line-i18n.ts");
     expect(I18N).toContain("APPROVED by the owner as drafted (`§6.1`), END path kept (`§6.2`)");
     expect(I18N).not.toMatch(/PLACEHOLDERS? — MINE[^\n]*TASK-370/);
-    for (const c of END_REASONS) expect(I18N).toContain(`ob_reason_${c}:`);
-    expect((I18N.match(/ob_reason_[A-Z_]+:/g) ?? []).length).toBe(END_REASONS.length);
+    // 🔻 TASK-690 — the labels now cover a SESSION cancel's set (END_REASONS + SCHOOL_ISSUE), because `cancelReasonText` reads that set: a
+    // cancel notice carrying `SCHOOL_ISSUE` must read "A problem on our side", not fall through to the note. 🔑 Still "exactly the set":
+    // a code with no label, or a label with no code, fails here — which is the claim, just over the set a notice can actually carry.
+    for (const c of SESSION_CANCEL_REASONS) expect(I18N).toContain(`ob_reason_${c}:`);
+    expect((I18N.match(/ob_reason_[A-Z_]+:/g) ?? []).length).toBe(SESSION_CANCEL_REASONS.length);
   });
 });

@@ -13,7 +13,7 @@ import { and, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import { db } from "../db";
 import { bookingTeachers, bookings } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { COURSE_LIVE_STATUSES, isEndReason } from "../lib/course-plan";
+import { COURSE_LIVE_STATUSES, SCHOOL_ISSUE, isSessionCancelReason } from "../lib/course-plan"; // 🔻 TASK-690 — the series cancel-all is a SESSION cancel
 import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { enqueueLine } from "../lib/line";
@@ -171,7 +171,7 @@ export async function confirmAllOtherSeries(key: SeriesKey) {
  * dates, so a cancel-all must tell them those dates are gone. The per-row cancel keeps its CONFIRMED-only rule.
  */
 export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: string; note?: string }, actor: string | null) {
-  if (!isEndReason(input.reasonCode)) throw badRequest("เหตุผลไม่ถูกต้อง");
+  if (!isSessionCancelReason(input.reasonCode)) throw badRequest("เหตุผลไม่ถูกต้อง");
   const group = isGroupKey(key);
   return db.transaction(async (tx) => {
     const rows = await seriesRows(tx, key);
@@ -186,7 +186,8 @@ export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: 
         // TASK-441 — the CASCADE, the per-row status cancel's own path (`:3453` + `:3471`): every live seat CANCELLED and its
         // course re-owed (`reconcileCoursePlan`), then each seat's household told `class_cancelled_parent` (a CONFIRMED row only —
         // the family rule). The seats send no teacher notice; the coach is told ONCE below with the group's name.
-        seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null);
+        // 🔻 TASK-656 — T3 reaches each seat's course ONLY when the series is cancelled for `SCHOOL_ISSUE`; every other reason is +0.
+        seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null, input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {});
         const accounts = (await classCancelledFamilyAccounts(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode)) ?? []; // TASK-445: siblings once per row
         familyNotices += accounts.length;
         for (const a of accounts) households.add(a);

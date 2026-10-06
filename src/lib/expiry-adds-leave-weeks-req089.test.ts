@@ -87,7 +87,10 @@ describe("🔑 ONE formula, and every path that sets a ceiling derives from it",
     // 🔑 Worth saying plainly: this census is the check that could have caught QA's F3 a week earlier. It counted the call
     // sites correctly the whole time — what nobody asked was *why the declaration path was not one of them*.
     // **A census answers the question you ask it; it cannot tell you that a path is MISSING from the list.**
-    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(3); // creation + preview, nothing else // 🔻 TASK-646: + the pre-start declaration
+    // 🔻 TASK-656 — 3 ⇒ 2: the pre-start declaration's own recompute is GONE, replaced by the ONE helper (`addLeaveWeek`),
+    // because that path is not a separate door — it is the session's leave door with `declaredFree`, and a recompute BESIDE
+    // a +7 would have moved the expiry twice for one act. 🔑 The census still answers what it always did: who may set a ceiling.
+    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(2); // creation + preview
     expect(SVC).not.toMatch(/absences \* 7|absentWeeks\.size \* 7/); // no arithmetic outside the one function
   });
 });

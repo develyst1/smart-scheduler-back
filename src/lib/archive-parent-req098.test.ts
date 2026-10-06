@@ -41,8 +41,8 @@ describe("🔴 the migration — 0046, counted, three NULLABLE adds on `parents`
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0046_parent_archive.sql"), "utf8");
   test("56 = 56: `0046_parent_archive` is the 47th file, idx 46 (TASK-418 added 0047 after it); 'expects 47' in the header", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[46]).toBe("0046_parent_archive.sql");
     expect(journal.entries[46]).toMatchObject({ idx: 46, tag: "0046_parent_archive" });
     expect(sql).toContain("`db:verify` expects 47");
@@ -107,7 +107,7 @@ describe("🔴 the archive / restore by VALUE through fake reads (no DB) — the
   test("the household's live-future count is ONE grouped statement shared with REQ-093's `archiveStudent`", () => {
     const C = region(PS, "export async function liveFutureSessionCount(", "\n}\n");
     expect(C).toContain("if (!studentIds.length) return 0;");
-    expect(C).toContain("or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...COURSE_LIVE_STATUSES])");
+    expect(C).toContain("or(inArray(bookings.studentId, studentIds), inArray(bookings.coStudentId, studentIds)), sql`${bookings.date} >= ${today}`, inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])"); expect(PS).toContain('export const ARCHIVE_BLOCKING_STATUSES = [...COURSE_LIVE_STATUSES, "PENDING_RESCHEDULE", "PAUSED"] as const;'); // 🔻 TASK-667 — the SAME claim (the refusal = the real "still owed" set): live + a move awaiting the parent + a hold; SICK_LEAVE / CANCELLED stay out
     expect(region(PS, "export async function archiveStudent(", "\n}\n")).toContain("const n = await liveFutureSessionCount(db, [id]);");
     expect((PS.match(/liveFutureSessionCount\(/g) ?? []).length).toBe(3); // the definition, the student's, the parent's
   });

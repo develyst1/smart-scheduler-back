@@ -53,9 +53,9 @@ export async function teacherLeaveOn(exec: any, teacherId: string, date: string,
   return row ?? null;
 }
 
-/** 📋 DRAFT wording (owner's copy batch), pinned by shape: who, which day, and what to do instead. */
+/** ✅ TASK-659 (owner APPROVED 10-06, "1-5 ตามแนะนำ") — a space ALWAYS after ครู, and «วันนี้» is gone: the day is the PICKED date, not today. */
 export const TEACHER_ON_LEAVE = (teacherName: string, date: string) =>
-  conflict("TEACHER_ON_LEAVE", `ครู${teacherName} ลาวันที่ ${date} — เพิ่มคาบกับครูวันนี้ไม่ได้ กรุณาเลือกครูอื่นหรือวันอื่น`);
+  conflict("TEACHER_ON_LEAVE", `ครู ${teacherName} ลาวันที่ ${date} — เพิ่มคาบกับครูในวันนั้นไม่ได้ กรุณาเลือกครูอื่นหรือวันอื่น`);
 
 /**
  * A class put (back) on the calendar WITHOUT a new insert — a reviving transition (`confirm` / `attend`), a leave's Undo, a

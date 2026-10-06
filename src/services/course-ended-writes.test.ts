@@ -72,6 +72,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // live, so it neither reaches nor is reached by an ended course. Classified deliberately, not by default.
   "POST /students/:id/archive": "unrelated",
   "POST /students/:id/unarchive": "unrelated",
+  // TASK-668 — link a parent to a child that has none: writes `students.parent_id` only (no booking, course or voucher row moves). Classified deliberately, not by default.
+  "POST /students/:id/parent": "unrelated",
   // TASK-371 — a rental row on a SESSION: no session is added, revived or billed for tuition; the rental money
   // posts through `recordRental` on the paid press, which an ended course's remaining rows (all CANCELLED, hence
   // BOOKING_NOT_LIVE) cannot reach. `allowed` on a delivered row of an ended course: the cash was collected.

@@ -78,17 +78,17 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     // named, so a THIRD one still has to come through this line.
     expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
-    expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger } = {}) {");
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
     expect(C).toContain('await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));');
-    expect(C).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) });");
+    expect(C).toContain("const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null;");
     expect(C).not.toContain("enqueueLine"); // a seat sends no teacher notice of its own
     const X = region(SVC, "export async function cancelAllOtherSeries(", "\n}\n");
-    expect(X).toContain("seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null);");
+    expect(X).toContain("seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null, input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" } : {});");
     expect(X).toContain('const accounts = (await classCancelledFamilyAccounts(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode)) ?? [];'); // 🔻 TASK-445
     expect(X.indexOf("cancelSeatsOfGroup")).toBeGreaterThan(X.indexOf('status: "CANCELLED", cancelReason: input.reasonCode')); // the row first, then its seats
     expect(X.indexOf('notifySeriesTeachers(tx, "other_series_cancelled"')).toBeGreaterThan(X.indexOf("classCancelledFamilyAccounts")); // the coach once, after the loop

@@ -1,7 +1,8 @@
 // TASK-492 (SPEC-094) — the admin UNDO's rules, PURE where they can be (each pinned by value); the transaction that applies
 // them is `services/undo.service.ts`. The contract and Sober's ruling are in the TASK file — the short version:
-//  · a SICK_LEAVE row ⇒ back to CONFIRMED, its quota refunded ONLY if it took quota (`leaveChargeOf`), its make-up removed
-//    (`makeupDecision`), the expiry restored only when exactly recoverable (`expiryDecision`);
+//  · a SICK_LEAVE row ⇒ back to CONFIRMED, its COUNT given back ONLY if the leave was counted (`leaveChargeOf`), its make-up removed
+//    (`makeupDecision`). 🔻 TASK-657 §R (REQ-112): the Undo NEVER touches the expiry — `expiryDecision` and its refusals are GONE (an ordinary
+//    leave never added a week; a declared day's week is not returned — the owner's 10-04 ruling; a coach's leave is lifted, not undone);
 //  · an ATTENDED row from a PARENT's check-in ⇒ back to CONFIRMED, the unit returned, silently; the day-end then leaves it
 //    alone (`notUndoneAttendance`, TASK-497). A STAFF attend is out (TASK-258 is its own, separate finding);
 //  · a SETTLED day ⇒ refused, hard (owner, Q1). Settled = before today, OR the day-end ran for that date.
@@ -19,17 +20,8 @@ export type UndoKind = "leave" | "checkin";
 export const UNDO_NOT_UNDOABLE = (status: string) => conflict("UNDO_NOT_UNDOABLE", `คาบนี้ย้อนกลับไม่ได้ — สถานะปัจจุบันคือ ${status} (ย้อนกลับได้เฉพาะการลา หรือการเช็คอินของผู้ปกครอง)`);
 export const UNDO_STAFF_ATTEND = () => conflict("UNDO_STAFF_ATTEND", "คาบนี้เจ้าหน้าที่เป็นผู้บันทึกการเข้าเรียน — การย้อนกลับใช้ได้กับการเช็คอินของผู้ปกครองเท่านั้น");
 export const UNDO_DAY_SETTLED = (date: string) => conflict("UNDO_DAY_SETTLED", `ปิดวันของวันที่ ${date} แล้ว — ย้อนกลับไม่ได้`);
-// ✅ §T-G (COPY-REVIEW, approved by the owner 2026-10-04 "1 ผ่านหมด") — the words are the owner's; what a placeholder RENDERS
-// as is @Sober's decision, recorded in his 10-04 note: `{course}` is `displayNameOf(row)` with UNDO_SLOT_TAKEN's own fallback
-// (the ONE name rule), and the EN half does NOT ship — every refusal in this file is Thai, the admin's language.
-// 🔑 Why it changed: the old sentence was honest and useless — *"fix it by hand"* without saying WHAT TO CHECK. This one names
-// the course, the date, and the one thing to look at. ⚠️ A course in this system has NO NAME, so what it prints is whose it is;
-// @Porter is telling the owner that, as information rather than as a question.
-export const UNDO_LEAVE_CHARGE_UNKNOWN = (course: string, date: string) =>
-  conflict(
-    "UNDO_LEAVE_CHARGE_UNKNOWN",
-    `ย้อนการลานี้ไม่ได้ เพราะเป็นการลาที่บันทึกไว้ก่อนระบบจะเก็บว่าใช้โควตาหรือไม่ — คอร์ส ${course} วันที่ ${date} · กรุณาเปิดคอร์สนี้แล้วตรวจว่ามีคาบชดเชยของวันนี้อยู่หรือไม่ ถ้ามี แปลว่าการลานี้ใช้โควตาไปแล้ว แล้วแก้ไขด้วยตนเอง`,
-  );
+// 🔻 TASK-657 §R (REQ-112) — `UNDO_LEAVE_CHARGE_UNKNOWN` is GONE: it asked "did this leave use quota?", and no leave consumes a quota any more, so the
+// question has no subject. Its §T-G sentence (owner-approved 10-04) ships nowhere else — it simply stops being reachable.
 export const UNDO_ALREADY_CHANGED = () => conflict("UNDO_ALREADY_CHANGED", "คาบนี้ถูกเปลี่ยนสถานะไปแล้ว — ไม่มีอะไรถูกย้อนกลับ");
 export const UNDO_SLOT_TAKEN = (hour: string, holder: string) => conflict("UNDO_SLOT_TAKEN", `ย้อนกลับไม่ได้ — ช่วงเวลา ${hour} ของครูมีคาบของ ${holder} อยู่แล้ว`);
 export const UNDO_PLAN_WOULD_CHANGE = () => conflict("UNDO_PLAN_WOULD_CHANGE", "ย้อนกลับแล้วแผนคอร์สจะเปลี่ยน (คาบขยายของการลาอื่นจะถูกยกเลิก/เพิ่ม) — กรุณาแก้ไขด้วยตนเอง");
@@ -48,18 +40,19 @@ export function undoKindOf(row: { status: string; checkinChannel?: string | null
 }
 
 /**
- * 🔴 Did this leave take quota? A RECORDED answer wins (`leave_charged`, 0058). A legacy row (NULL) is inferred ONLY where
- * certain: no course ⇒ no quota exists; declared at creation ⇒ free (owner decision B); a make-up linked to it ⇒ charged (both
- * doors create one exactly when they charge). Anything else ⇒ "unknown" ⇒ REFUSED — an escalated refusal is cheap, a wrong
- * refund is invisible.
+ * 🔻 TASK-657 §R (REQ-112) — was this leave COUNTED? `leaveUsed` is a plain count now (it gates nothing), so this decides whether the Undo gives
+ * ONE count back, and only that. A RECORDED answer wins (`leave_charged`, 0058). A legacy row (NULL): no course ⇒ nothing counted; declared at
+ * creation ⇒ free (never counted — owner decision B); anything else ⇒ counted. ⚠️ The old third answer, "unknown" (a pre-0058 row with no make-up
+ * to prove it), is GONE with the refusal it fed: it existed because a wrong refund of a QUOTA was invisible and costly; a wrong count is
+ * neither — the decrement is floored at 0 — so the common case (a counted leave) is the answer. 🔑 Free days are still NOT refunded: they never
+ * incremented the counter, so giving one back would take it from ANOTHER leave.
  */
-export function leaveChargeOf(row: { leaveCharged?: boolean | null; courseId?: string | null; plannedAtCreation?: boolean | null }, hasLinkedMakeup: boolean): "charged" | "free" | "unknown" {
+export function leaveChargeOf(row: { leaveCharged?: boolean | null; courseId?: string | null; plannedAtCreation?: boolean | null }): "charged" | "free" {
   if (row.leaveCharged === true) return "charged";
   if (row.leaveCharged === false) return "free";
   if (!row.courseId) return "free";
   if (row.plannedAtCreation) return "free";
-  if (hasLinkedMakeup) return "charged";
-  return "unknown";
+  return "charged";
 }
 
 export type LinkedRow = { id: string; status: string; date: string };
@@ -74,51 +67,20 @@ export function makeupDecision(linked: LinkedRow[], isSettled: (date: string) =>
   if (linked.length > 1) throw conflict("UNDO_MAKEUP_AMBIGUOUS", `การลานี้มีคาบขยายมากกว่าหนึ่งคาบ (${linked.map((m) => m.date).join(", ")}) — กรุณาแก้ไขด้วยตนเอง`);
   const m = linked[0]!;
   if (m.status === "ATTENDED" || m.status === "NO_SHOW") throw conflict("UNDO_MAKEUP_TAUGHT", `คาบขยายของการลานี้ (${m.date}) เรียนไปแล้ว — ย้อนกลับไม่ได้ กรุณาแก้ไขด้วยตนเอง`);
-  if (m.status === "SICK_LEAVE") throw conflict("UNDO_MAKEUP_CHAIN", `คาบขยายของการลานี้ (${m.date}) ถูกแจ้งลาต่อ — ย้อนกลับไม่ได้ กรุณาแก้ไขด้วยตนเอง`);
+  // 📋 DRAFT (REQ-114 (i), TASK-657 §2 — owner approval pending in @Porter's copy set; marked until @Sober says approved). It NAMES THE STEPS, and the
+  // second branch says STOP rather than a path: Khwan's Peeta case — the two-step path removes a leave she meant to keep. Until the one-click
+  // chain undo (REQ-114 (iii), NEXT week) ships, the honest instruction for that case is "ask". EN (reading only; refusals are Thai-only): "This leave's
+  // make-up ({date}) is itself on leave — it can't be undone in one step. If {date} is coming back too: undo {date}'s leave first, then this one. If the
+  // family is really still away on {date}: don't undo yet — tell the system owner."
+  if (m.status === "SICK_LEAVE") throw conflict("UNDO_MAKEUP_CHAIN", `คาบขยายของการลานี้ (${m.date}) ถูกแจ้งลาต่อ — ย้อนกลับทีเดียวไม่ได้ · ถ้าวันที่ ${m.date} จะกลับมาเรียนด้วย: ย้อนการลาของวันที่ ${m.date} ก่อน แล้วค่อยย้อนการลานี้ · ถ้าวันที่ ${m.date} ยังลาอยู่จริง: อย่าเพิ่งย้อน ให้แจ้งผู้ดูแลระบบ`);
   if (m.status !== "EXTENDED" && m.status !== "CONFIRMED" && m.status !== "PENDING") throw conflict("UNDO_MAKEUP_STATE", `คาบขยายของการลานี้ (${m.date}) มีสถานะ ${m.status} — ย้อนกลับไม่ได้`);
   if (isSettled(m.date)) throw conflict("UNDO_MAKEUP_SETTLED", `คาบขยายของการลานี้ (${m.date}) อยู่ในวันที่ปิดแล้ว — ย้อนกลับไม่ได้`);
   return { action: "cancel", makeup: m };
 }
 
-export type ExpiryChangeRow = { fromDate: string; toDate: string; actor: string | null };
-export type ExpiryDecision = { action: "keep" } | { action: "restore"; from: string; to: string };
-
-/**
- * 🔑 The expiry: restored ONLY when it can be computed back exactly, else STOP (a silently wrong expiry ends a course early).
- *  · the make-up does not sit ON the expiry ⇒ it does not hold it ⇒ keep;
- *  · another live row of the course sits on/after it ⇒ still needed ⇒ keep;
- *  · else restore to the latest change's `from` — only if that change is the SYSTEM's stretch (actor null) TO this date and
- *    every remaining row fits under its `from`. Anything else ⇒ refused, naming why.
- *  · 🔑 TASK-556 (1b): NO change record ⇒ keep, but ONLY for a course born after this box began recording (`recordingSince`,
- *    the 0061 marker). Then "no record" is evidence of "never moved" — the commonest case: the last in-quota leave's make-up lands
- *    ON the born ceiling. Born before (or no marker) ⇒ a stretch may have gone unrecorded, and `keep` would leave it silently
- *    LATE ⇒ refused, telling the admin what to check.
- */
-export function expiryDecision(input: {
-  expiry: string; makeupDate: string; otherDates: string[]; latest: ExpiryChangeRow | null;
-  courseCreatedAt: Date; recordingSince: Date | null;
-}): ExpiryDecision {
-  const { expiry, makeupDate, otherDates, latest, courseCreatedAt, recordingSince } = input;
-  if (makeupDate !== expiry) return { action: "keep" };
-  if (otherDates.some((d) => d >= makeupDate)) return { action: "keep" };
-  if (!latest) {
-    if (recordingSince && courseCreatedAt > recordingSince) return { action: "keep" };
-    // 📋 DRAFT wording (owner approves with the next copy batch) — pinned by SHAPE, not by value.
-    const since = recordingSince ? new Date(recordingSince.getTime() + 7 * 3600_000).toISOString().slice(0, 10) : "ยังไม่เริ่ม";
-    throw conflict("UNDO_EXPIRY_UNRECOVERABLE",
-      `ย้อนกลับการลานี้อัตโนมัติไม่ได้: คอร์สนี้เปิดก่อนระบบเริ่มบันทึกการเลื่อนวันหมดอายุ (เริ่มบันทึก ${since}) จึงบอกไม่ได้ว่าวันหมดอายุ ${expiry} ` +
-      `ถูกเลื่อนเพราะคาบขยาย ${makeupDate} หรือไม่ — กรุณาเปิดหน้าคอร์ส ตรวจวันหมดอายุกับประวัติการลา แล้วแก้การลาและวันหมดอายุด้วยตนเอง`);
-  }
-  const why = latest.toDate !== expiry
-      ? `บันทึกการเลื่อนล่าสุดไม่ใช่ของคาบขยายนี้ (${latest.fromDate} → ${latest.toDate})`
-      : latest.actor != null
-        ? `เลื่อนโดย ${latest.actor}`
-        : otherDates.some((d) => d > latest.fromDate)
-          ? `มีคาบหลังวันที่ ${latest.fromDate}`
-          : null;
-  if (why) throw conflict("UNDO_EXPIRY_UNRECOVERABLE", `คำนวณวันหมดอายุเดิมกลับไม่ได้ (ปัจจุบัน ${expiry}: ${why}) — ย้อนกลับไม่ได้ กรุณาแก้ไขด้วยตนเอง`);
-  return { action: "restore", from: expiry, to: latest!.fromDate };
-}
+// 🔻 TASK-657 §R (REQ-112) — `expiryDecision`, `ExpiryDecision`, `ExpiryChangeRow` and `UNDO_EXPIRY_UNRECOVERABLE` (both its sentences) are DELETED. The Undo does
+// not move the expiry, so there is nothing to decide and nothing to refuse — which also ends REQ-114 (ii) (the self-block: an Undo recorded its own expiry
+// restore with the ADMIN as actor and the NEXT Undo read that as a person's move and refused) BY CONSTRUCTION. Nothing is left to block.
 
 /**
  * 🔴 The day-end's exclusion (Sober ❓2): a session whose ATTENDANCE an admin UNDID is not auto-attended — otherwise the Undo is

@@ -98,12 +98,12 @@ describe("the status reaches the DTO from the one builder", () => {
     expect(toCourseSummary(base, TODAY).status).toBe("ACTIVE");
   });
 
-  test("lifecycle status is orthogonal to the leave lock — a locked course is still ACTIVE", () => {
-    // Folding one into the other would make "can this family take another leave?" and "is this course over?"
-    // the same question, and they are not.
-    const locked = toCourseSummary({ ...base, leaveUsed: 3 }, TODAY);
-    expect(locked.leaveLocked).toBe(true);
-    expect(locked.status).toBe("ACTIVE");
+  test("lifecycle status is orthogonal to the leave counter — a course far past its old quota is still ACTIVE and never locked", () => {
+    // 🔻 TASK-656 (REQ-112) — there is no leave lock any more ("ไม่จำกัดจำนวน"), so `leaveLocked` is always false; the orthogonality it
+    // protected still holds: "can this family take another leave?" (always yes) and "is this course over?" are different questions.
+    const over = toCourseSummary({ ...base, leaveUsed: 3 }, TODAY);
+    expect(over.leaveLocked).toBe(false);
+    expect(over.status).toBe("ACTIVE");
   });
 });
 

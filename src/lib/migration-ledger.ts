@@ -22,11 +22,53 @@ import { createHash } from "node:crypto";
 export const migrationHash = (sqlText: string): string =>
   createHash("sha256").update(sqlText).digest("hex");
 
+/**
+ * 🔴 TASK-655 — ONE migration, TWO fingerprints.
+ *
+ * The ledger stores sha256 of the `.sql` file's TEXT, and the text differs by LINE ENDING: the repo stores LF, a Windows
+ * checkout has CRLF. ⇒ **the same migration hashes differently depending on the machine that applied it**, and `db:verify`
+ * hashes the file on the machine RUNNING it — so a migration recorded under the other ending reads MISSING and goes RED, and
+ * `seed-ledger` "repairs" it by adding a second row. **sid went red with 48 doubles, uat green with 21; what decides it is the
+ * running machine's ending, not the count.**
+ * 🔑 It never makes drizzle SKIP anything — drizzle decides by the newest `created_at`, and both rows of a pair share one. A
+ * red of this kind is ledger-only.
+ *
+ * ⚠️ **Normalise to LF BEFORE hashing**, then derive the CRLF form from that normalised text. A file with MIXED endings then
+ * still yields exactly the two fingerprints drizzle could have written — hashing the raw text first would give a third that
+ * matches nothing.
+ */
+export function migrationFingerprints(sqlText: string): { lf: string; crlf: string; all: readonly string[] } {
+  const lfText = sqlText.replace(/\r\n/g, "\n");
+  const lf = migrationHash(lfText);
+  const crlf = migrationHash(lfText.replace(/\n/g, "\r\n"));
+  return { lf, crlf, all: lf === crlf ? [lf] : [lf, crlf] };
+}
+
 export interface OwnMigration {
   tag: string;
   when: number;
+  /** 🔑 TASK-655 — the LF fingerprint: the one every machine produces after `drizzle/*.sql text eol=lf`, and the one the seed WRITES. */
   hash: string;
+  /**
+   * 🔴 TASK-655 — BOTH fingerprints of this migration (LF and CRLF). 🚫 Not a second parallel list: it is built with `hash`
+   * from the same text, by `migrationFingerprints`, so the two cannot drift.
+   * ⚠️ It was OPTIONAL for one round, while `scripts/migrate-preflight.ts` sat outside the claim and still built a
+   * single-hash `OwnMigration`. @Sober claimed that script and it now fills this too, so the field is REQUIRED:
+   * 🔑 **an optional field that every caller fills is a trap for the next caller who does not.** The compiler is now the
+   * thing that stops a fourth comparison being written on one fingerprint.
+   */
+  hashes: readonly string[];
 }
+
+/**
+ * 🔴 TASK-655 — THE predicate every ledger comparison asks: is this migration recorded, under EITHER line ending?
+ * 🔑 One rule, used by `missingMigrations`, by `verify`'s `ledgerLies` and by the seed's "already present" — because fixing
+ * `missing` and leaving `ledgerLies` behind would silence the DANGEROUS case: a migration recorded under the other ending
+ * whose schema is ABSENT would stop being flagged.
+ * ✅ The legacy tag-as-hash rule is unchanged and still answers here.
+ */
+export const isRecorded = (m: OwnMigration, present: ReadonlySet<string>): boolean =>
+  m.hashes.some((h) => present.has(h)) || present.has(m.tag);
 
 export interface LedgerRow {
   hash: string;
@@ -51,7 +93,8 @@ export interface Attribution {
  * (`via: "legacy-tag"`) so the operator can see they were matched by a different rule.
  */
 export function attributeLedger(rows: LedgerRow[], mine: OwnMigration[]): Attribution {
-  const byHash = new Map(mine.map((m) => [m.hash, m.tag]));
+  // 🔻 TASK-655 — EVERY fingerprint of each migration maps to its tag, so a row written under the other ending is still OURS.
+  const byHash = new Map(mine.flatMap((m) => m.hashes.map((h) => [h, m.tag] as const)));
   const byTag = new Map(mine.map((m) => [m.tag, m.tag]));
   const out: Attribution = { mine: [], foreign: [] };
 
@@ -88,7 +131,8 @@ export function rowsToInsert(
  */
 export function missingMigrations(mine: OwnMigration[], ledgerHashes: Iterable<string>): OwnMigration[] {
   const present = new Set(ledgerHashes);
-  return mine.filter((m) => !present.has(m.hash) && !present.has(m.tag));
+  // 🔻 TASK-655 — missing only if NEITHER fingerprint is there. One predicate, shared with `verify`'s `ledgerLies`.
+  return mine.filter((m) => !isRecorded(m, present));
 }
 
 /**

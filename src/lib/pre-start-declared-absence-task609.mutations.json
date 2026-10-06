@@ -1,8 +1,8 @@
 {
   "task": "TASK-609",
   "proves": "src/lib/pre-start-declared-absence-task609.test.ts",
-  "note": "🔴 TASK-627 — the set TASK-609's verdicts were measured against. ⚠️ F10's anchor was RE-CUT when §3 changed the count: the cap now counts `plannedAtCreation` ALONE (a cancelled declaration still counts), so the old anchor carrying `r.status === \"SICK_LEAVE\" &&` no longer exists. F11 is §3's own mutation — putting the status filter BACK, which is the cap-reset leak. ⚠️ 2026-10-04, after TASK-635: F9 was RE-ANCHORED on §T-609-CAP's approved sentence. Its claim is unchanged — strip the count out of the refusal and it must bite. 🔻 2026-10-04, TASK-643 (owner abolished the pre-start CAP): F4, F9, F10 and F11 are RETIRED — their subject is gone, and a mutation left in a set to \"survive\" is indistinguishable from one that should have bitten. F3 is INVERTED: it now puts a cap BACK, which must bite. F5 and F6 were RE-ANCHORED, not retired — @Sober predicted they keep their subject and they do; what they lost was the anchor, because the helper now RETURNS the predicate instead of guarding on it.",
-  "tests": "src/lib/pre-start-declared-absence-task609.test.ts src/lib/course-start-change-task570.test.ts src/lib/planned-at-creation-dto-task542.test.ts src/lib/advance-leave-on-extended-req089.test.ts src/services/booking-undo-req108.test.ts",
+  "note": "🔴 TASK-627 — the set TASK-609's verdicts were measured against. ⚠️ F10's anchor was RE-CUT when §3 changed the count: the cap now counts `plannedAtCreation` ALONE (a cancelled declaration still counts), so the old anchor carrying `r.status === \"SICK_LEAVE\" &&` no longer exists. F11 is §3's own mutation — putting the status filter BACK, which is the cap-reset leak. ⚠️ 2026-10-04, after TASK-635: F9 was RE-ANCHORED on §T-609-CAP's approved sentence. Its claim is unchanged — strip the count out of the refusal and it must bite. 🔻 2026-10-04, TASK-643 (owner abolished the pre-start CAP): F4, F9, F10 and F11 are RETIRED — their subject is gone, and a mutation left in a set to \"survive\" is indistinguishable from one that should have bitten. F3 is INVERTED: it now puts a cap BACK, which must bite. F5 and F6 were RE-ANCHORED, not retired — @Sober predicted they keep their subject and they do; what they lost was the anchor, because the helper now RETURNS the predicate instead of guarding on it. ⚠️ 2026-10-06, TASK-656: F7 re-cut — it anchored on the `canTakeLeave(...) || declaredFree` GATE, which REQ-112 ruling 2 removed. Its CLAIM (a declared day must still get its make-up) is unchanged; the line that can break it moved.",
+  "tests": "src/lib/pre-start-declared-absence-task609.test.ts src/lib/course-start-change-task570.test.ts src/lib/planned-at-creation-dto-task542.test.ts src/lib/advance-leave-on-extended-req089.test.ts src/services/booking-undo-req108.test.ts src/services/leave-week-triggers-task656.test.ts",
   "mutations": [
     {
       "id": "F1",
@@ -81,14 +81,14 @@
     },
     {
       "id": "F7",
-      "what": "a declared day is LOCKED instead of free (its gate back on leaveRemaining)",
+      "what": "🔻 re-cut by TASK-656 — a DECLARED day gets NO make-up (its branch skipped): the same defect the old gate-shaped mutation attacked, on the line that can now cause it",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "        if (canTakeLeave(current.course) || declaredFree) {",
-              "to": "        if (canTakeLeave(current.course)) {"
+              "from": "      if (current.courseId && current.course) {\n        // 🔻 TASK-656 (REQ-112 ruling 2) — the `canTakeLeave(...) || declaredFree` GATE is gone: the counter no longer decides",
+              "to": "      if (current.courseId && current.course && !declaredFree) {\n        // 🔻 TASK-656 (REQ-112 ruling 2) — the `canTakeLeave(...) || declaredFree` GATE is gone: the counter no longer decides"
             }
           ]
         }

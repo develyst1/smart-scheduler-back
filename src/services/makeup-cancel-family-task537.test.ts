@@ -40,7 +40,7 @@ function run(row: Record<string, unknown>, replan: { appended?: string[]; rows?:
   };
   const withRels = (r: any) => r && ({ ...r, course: w.courses.find((c) => c.id === r.courseId) ?? null, voucher: null });
   const tx: any = {
-    query: { bookings: { findFirst: async () => withRels(w.bookings[0]), findMany: async () => replan.rows ?? [] } },
+    query: { bookings: { findFirst: async () => withRels(w.bookings[0]), findMany: async () => replan.rows ?? [] }, coursePackages: { findFirst: async () => ({ expiryDate: "2099-12-31" }) } }, // 🔻 TASK-657 — the overflow check reads the course expiry (far future here: nothing overflows)
     update: (t: any) => ({ set: (set: Record<string, unknown>) => ({ where: (cond: any) => {
       const { sql, params } = dialect.sqlToQuery(cond);
       const conds = [...sql.matchAll(/"(\w+)"\."(\w+)" = \$(\d+)/g)].map((m) => ({ col: camel(m[2]!), val: params[Number(m[3]) - 1] }));

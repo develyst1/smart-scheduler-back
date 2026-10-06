@@ -1,0 +1,143 @@
+{
+  "task": "TASK-690",
+  "proves": "src/lib/school-issue-reason-task690.test.ts",
+  "note": "🔴 REQ-112 trigger T3's lever. M1–M3 are the three @Sober named: the code missing from the validator, missing from the DB CHECK, and accepted on a course END. The rest guard the design — a SIBLING set, so END_REASONS (also the course-end and voucher-end set) never moves.",
+  "tests": "src/lib/school-issue-reason-task690.test.ts src/lib/teacher-own-calendar-req097.test.ts src/services/cancel-reason.test.ts src/lib/teacher-told-on-cancel-req089.test.ts src/lib/witness-observability-req105.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "🔴 the code is MISSING FROM THE VALIDATOR — the status route refuses it at the door (so the screen can never send the T3 trigger)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "  reasonCode: z.enum(SESSION_CANCEL_REASONS).optional(),",
+              "to": "  reasonCode: z.enum(END_REASONS).optional(),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "🔴 the code is MISSING FROM THE DATABASE CHECK — the migration lists four codes, so a SCHOOL_ISSUE cancel is Postgres 23514 ⇒ a 500 on live (the 0045 incident, again)",
+      "files": [
+        {
+          "file": "drizzle/0065_cancel_reason_school_issue.sql",
+          "edits": [
+            {
+              "from": "IN ('PROGRAM_CHANGED', 'CUSTOMER_CANCELLED', 'ADMIN_ERROR', 'TEACHER_LEAVE', 'SCHOOL_ISSUE')",
+              "to": "IN ('PROGRAM_CHANGED', 'CUSTOMER_CANCELLED', 'ADMIN_ERROR', 'TEACHER_LEAVE')"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "🔴 the code is ACCEPTED ON A COURSE END — `endCourse` asks the session predicate, so Postgres refuses it on `course_packages_end_reason_chk` (a 500, not a 400)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (!isEndReason(input.reason))\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);",
+              "to": "  if (!isSessionCancelReason(input.reason))\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "the code is added to `END_REASONS` ITSELF instead of a sibling — the course-end and voucher-end sets silently grow, and Postgres refuses it there",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": "export const END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", \"TEACHER_LEAVE\"] as const;",
+              "to": "export const END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", \"TEACHER_LEAVE\", \"SCHOOL_ISSUE\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "the series cancel-all drops back to END_REASONS — a whole series cannot be cancelled for 'our side', and no test of the status route would notice",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(SESSION_CANCEL_REASONS),",
+              "to": "export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(END_REASONS),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "the cancel NOTICE's reader asks `isEndReason` — a coach and a family read the free-text note instead of 'A problem on our side'",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "  if (c && isSessionCancelReason(c)) return t(`ob_reason_${c}`, lang);",
+              "to": "  if (c && (c === \"PROGRAM_CHANGED\" || c === \"CUSTOMER_CANCELLED\" || c === \"ADMIN_ERROR\" || c === \"TEACHER_LEAVE\")) return t(`ob_reason_${c}`, lang);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "the Thai label is paraphrased — the customer's OWN words stop being verbatim",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "  ob_reason_SCHOOL_ISSUE: { TH: \"ปัญหาจากทางเรา\", EN: \"A problem on our side\" },",
+              "to": "  ob_reason_SCHOOL_ISSUE: { TH: \"มีปัญหาจากโรงเรียน\", EN: \"A problem on our side\" },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "the migration's witness probes a DIFFERENT code — a box still on the four-code CHECK would read 'applied'",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "    probe: { kind: \"constraint-def\", constraint: \"bookings_cancel_reason_chk\", contains: \"SCHOOL_ISSUE\" },",
+              "to": "    probe: { kind: \"constraint-def\", constraint: \"bookings_cancel_reason_chk\", contains: \"TEACHER_LEAVE\" },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "the new migration also redefines the COURSE-END constraint — `course_packages_end_reason_chk` gains the code, which the owner ruled OUT",
+      "files": [
+        {
+          "file": "drizzle/0065_cancel_reason_school_issue.sql",
+          "edits": [
+            {
+              "from": "ALTER TABLE \"bookings\" VALIDATE CONSTRAINT \"bookings_cancel_reason_chk\";",
+              "to": "ALTER TABLE \"bookings\" VALIDATE CONSTRAINT \"bookings_cancel_reason_chk\";\n--> statement-breakpoint\nALTER TABLE \"course_packages\" DROP CONSTRAINT IF EXISTS \"course_packages_end_reason_chk\";"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -136,6 +136,6 @@ describe("🔴 THE SCAN — every OA-writing script is guarded, and the guard ru
     expect(G).toContain("✓ writing to ${decision.account} (named with --account, on the allow-list)");
     expect(G).toContain('const decision = decideOaWrite(await getBotIdentity(), accountArg(argv), oaWriteAllowList());');
     expect(G).toContain('if (!res.ok) return null;'); // an unreadable identity is a null, which the decision refuses
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(65); // TASK-497: +0059 // no migration (🔻 TASK-475 added 0056, TASK-488 added 0057, TASK-492 added 0058) · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(66); // TASK-497: +0059 // no migration (🔻 TASK-475 added 0056, TASK-488 added 0057, TASK-492 added 0058) · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
   });
 });

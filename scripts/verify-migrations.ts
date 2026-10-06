@@ -18,7 +18,8 @@ import postgres from "postgres";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  migrationHash,
+  isRecorded,
+  migrationFingerprints,
   missingMigrations,
   newestCreatedAt,
   wouldApply,
@@ -57,11 +58,11 @@ if (through) {
   }
   console.log(`db:verify — scoped to the ${scoped.length} migration(s) through ${through}.`);
 }
-const mine: OwnMigration[] = scoped.map((e) => ({
-  tag: e.tag,
-  when: e.when,
-  hash: migrationHash(readFileSync(resolve(dir, `${e.tag}.sql`), "utf8")),
-}));
+const mine: OwnMigration[] = scoped.map((e) => {
+  // 🔻 TASK-655 — BOTH fingerprints, so a migration applied from a machine with the other line ending is still recognised.
+  const fp = migrationFingerprints(readFileSync(resolve(dir, `${e.tag}.sql`), "utf8"));
+  return { tag: e.tag, when: e.when, hash: fp.lf, hashes: fp.all };
+});
 const scopedTags = new Set(scoped.map((e) => e.tag));
 
 const exists = await sql`
@@ -85,9 +86,15 @@ await sql.end();
 
 const notInSchema = witnessed.filter((w) => w.verdict !== "applied");
 const ledgerHashes = new Set(rows.map((r) => r.hash));
-const hashOf = new Map(mine.map((m) => [m.tag, m.hash]));
+const mineByTag = new Map(mine.map((m) => [m.tag, m]));
 // 🔴 The dangerous disagreement: the ledger says applied, the database says it isn't.
-const ledgerLies = notInSchema.filter((w) => ledgerHashes.has(hashOf.get(w.tag) ?? ""));
+// 🔻 TASK-655 — asked through the SAME `isRecorded` as `missing`. It used to look up ONE hash, so a migration recorded under
+// the other ending with its schema ABSENT was not flagged at all: 🔑 fixing `missing` alone would have turned the loudest
+// failure we have into a silent one.
+const ledgerLies = notInSchema.filter((w) => {
+  const m = mineByTag.get(w.tag);
+  return !!m && isRecorded(m, ledgerHashes);
+});
 
 console.log(`Journal: ${mine.length} migration(s) · ledger ${SCHEMA}.${OWN}: ${rows.length} row(s)`);
 console.log(`Schema witnesses: ${witnessed.filter((w) => w.verdict === "applied").length} applied`);

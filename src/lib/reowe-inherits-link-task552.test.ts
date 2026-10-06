@@ -60,7 +60,7 @@ describe("the inheritance comes ONLY from the row's own written link", () => {
     expect((SVC.match(/reowedFor: reowedForOf\(/g) ?? []).length).toBe(3);
     expect(SVC).toContain("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) });");
     expect(SVC).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null;");
-    expect(SVC).toContain("if (s.courseId) await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) });");
+    expect(SVC).toContain("const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null;");
   });
   test("🚫 pause → resume and the plan editor's insert / mark-absence are UNCHANGED (no inheritance on those paths) — the gap stays visible", () => {
     const resume = SVC.slice(SVC.indexOf("export async function resumeCourse("), SVC.indexOf("export async function endCourse("));

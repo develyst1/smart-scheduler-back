@@ -4,7 +4,7 @@ import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATU
 import { bookingStatus } from "./db/schema";
 import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
-import { END_REASONS, plannedRowExists } from "./lib/course-plan";
+import { END_REASONS, SESSION_CANCEL_REASONS, plannedRowExists } from "./lib/course-plan";
 import { isPhoneShaped } from "./lib/phone";
 
 // TASK-160: declared early so the sale schemas below can reference it.
@@ -416,7 +416,7 @@ export const updateStatus = z.object({
   /** SPEC-067 / TASK-211 (REQ-074) — the closed-set cancel reason, beside `reason`'s free text. Optional here
    *  and REQUIRED by the service for 1HR / voucher cancels: the rule lives in one place, and zod holding a
    *  second copy of a domain rule is how the two drift. */
-  reasonCode: z.enum(END_REASONS).optional(), // TASK-406: the ONE set (`lib/course-plan.ts`), no second copy here
+  reasonCode: z.enum(SESSION_CANCEL_REASONS).optional(), // TASK-406: the ONE set (`lib/course-plan.ts`), no second copy here · 🔻 TASK-690: + SCHOOL_ISSUE (a SESSION cancel only)
   // Admin override for the advance-notice leave rule (UC-029).
   override: z.boolean().optional(),
 });
@@ -466,6 +466,13 @@ export const createParentStudent = z.object({
   gender: z.string().trim().max(32).nullish(),
   birthDate: DATE.nullish(),
   nationality: z.string().trim().max(64).nullish(),
+});
+
+// TASK-668 — `POST /students/:id/parent`: set a household on a child that has none. The student is the PATH id; the body names ONLY the
+// family (no "from", no student id). `dryRun: true` = the confirm's read (same guards, no write).
+export const linkStudentParent = z.object({
+  parentId: ID,
+  dryRun: z.boolean().optional(),
 });
 
 export const updateStudent = z.object({
@@ -670,7 +677,7 @@ export const updateUser = z.object({
 // TASK-428 (REQ-101) — the OTHER SERIES Manage-plan bodies. `fromDate` (add / remove / swap) defaults to TODAY in the
 // service (the owner's ruling 2: past rows are history). No `startTime` on the header PATCH — a time change is N moves.
 export const otherSeriesQuery = z.object({ from: DATE, to: DATE }).refine((d) => d.from <= d.to, { message: "ช่วงวันที่กลับด้าน" });
-export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(END_REASONS), note: z.string().trim().max(500).optional() });
+export const otherSeriesCancelAll = z.object({ reasonCode: z.enum(SESSION_CANCEL_REASONS), note: z.string().trim().max(500).optional() }); // 🔻 TASK-690: SESSION_CANCEL_REASONS, not END_REASONS
 // TASK-453 — `onDate` = ONE session (a cover coach for one week); mutually exclusive with `fromDate`, refused rather than ranked.
 // 🔴 TASK-562 (REQ-110 item 5) — the door must ASK: THIS session (`onDate`) or THIS AND THE REST (`fromDate`), exactly one.
 // 🚫 Neither = the old silent "every remaining session" — Khwan's complaint — refused, not defaulted.

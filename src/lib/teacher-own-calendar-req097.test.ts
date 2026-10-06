@@ -10,7 +10,7 @@ import { ApiException } from "./http";
 import { SCOPE_TEACHER, assertLinked, assertOwnBooking, assertScopedStatusAction, isOwnBooking, isScoped, ownScopeWhere, scopeOf } from "./own-scope";
 import { ROUTE_ACCESS, TEACHER_ALLOWED } from "./route-access";
 import { ACTION_KEYS, ACTION_REGISTRY, MENU_KEYS } from "./permissions";
-import { END_REASONS, isEndReason } from "./course-plan";
+import { END_REASONS, isEndReason, SESSION_CANCEL_REASONS } from "./course-plan"; // 🔻 TASK-690
 import { formatOutboxMessage } from "./line-message";
 import { t } from "./line-i18n";
 import { SCHEDULING_WITNESSES } from "./migration-witness";
@@ -48,8 +48,8 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("56 = 56: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
-    expect(journal.entries.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -307,7 +307,9 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(isEndReason("TEACHER_LEAVE")).toBe(true);
     expect(v.updateStatus.safeParse({ action: "cancel", reasonCode: "TEACHER_LEAVE" }).success).toBe(true);
     expect(v.updateStatus.safeParse({ action: "cancel", reasonCode: "SOMETHING" }).success).toBe(false);
-    expect(code(src("src/validation.ts"))).toContain("reasonCode: z.enum(END_REASONS).optional(),");
+    // 🔻 TASK-690 — the status route's `reasonCode` is the SESSION set (END_REASONS + SCHOOL_ISSUE); END_REASONS itself is UNCHANGED
+    // above (still four), because it is also the closed set for ending a COURSE and a VOUCHER.
+    expect(code(src("src/validation.ts"))).toContain("reasonCode: z.enum(SESSION_CANCEL_REASONS).optional(),");
     expect(code(src("src/validation.ts"))).not.toContain('z.enum(["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"])');
     expect(t("ob_reason_TEACHER_LEAVE", "TH")).toBe("ครูลา");
     expect(t("ob_reason_TEACHER_LEAVE", "EN")).toBe("Teacher leave");
@@ -330,7 +332,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(L).toContain('if (delivered) throw conflict("SESSION_DELIVERED", `คาบ ${hhmm(delivered.startTime)} สอนไปแล้ว — แจ้งลาไม่ได้`);');
     expect(L.indexOf("SESSION_DELIVERED")).toBeLessThan(L.indexOf("db.transaction(")); // pre-checked, nothing written
     expect((L.match(/db\.transaction\(/g) ?? []).length).toBe(1);
-    expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason);');
+    expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE" });'); // 🔻 TASK-656 — T2 reaches each seat
     expect(L).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
     expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null;");
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
@@ -398,10 +400,13 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
   test("🔴 TASK-410 — the DB's CHECK on cancel_reason ⇔ END_REASONS: the LAST migration touching `bookings_cancel_reason_chk` lists EXACTLY the set (a 5th code fails here until a migration carries it); 0045 by text", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
     const touching = files.filter((f) => readFileSync(resolve(root, "drizzle", f), "utf8").includes("bookings_cancel_reason_chk"));
-    expect(touching).toEqual(["0025_booking_cancel_reason.sql", "0045_cancel_reason_teacher_leave.sql"]);
-    const last = readFileSync(resolve(root, "drizzle", touching.at(-1)!), "utf8");
+    // 🔻 TASK-690 — a THIRD migration now touches the constraint: `0065` adds `SCHOOL_ISSUE`. 🔑 The pin's own contract fired exactly as
+    // written (*a 5th code fails here until a migration carries it*): it was the migration that had to catch up with the code.
+    expect(touching).toEqual(["0025_booking_cancel_reason.sql", "0045_cancel_reason_teacher_leave.sql", "0065_cancel_reason_school_issue.sql"]);
+    const last = readFileSync(resolve(root, "drizzle", touching.at(-1)!), "utf8").replace(/\r\n/g, "\n");
     const list = last.match(/"cancel_reason" IN \(([^)]*)\)/)![1]!.split(",").map((x) => x.trim().replace(/^'|'$/g, ""));
-    expect(list).toEqual([...END_REASONS]);
+    expect(list).toEqual([...SESSION_CANCEL_REASONS]); // the DB's closed set ⇔ a SESSION cancel's set, in order
+    expect(list).toEqual([...END_REASONS, "SCHOOL_ISSUE"]);
     // the leave writes only a member of the set (the third copy is the DB's; the code's two agree with it)
     const L = region(SCHED, "export async function reportTeacherLeave(", "async function sendCourseDroppedToTeachers(");
     const written = [...L.matchAll(/cancelReason: "([A-Z_]+)"/g)].map((m) => m[1]);
@@ -411,11 +416,13 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     const stmts = last.split("\n").filter((l) => !l.startsWith("--") && l.trim()).join("\n").split(";").map((x) => x.trim()).filter(Boolean);
     expect(stmts.length).toBe(3);
     expect(stmts[0]).toBe('ALTER TABLE "bookings" DROP CONSTRAINT IF EXISTS "bookings_cancel_reason_chk"');
-    expect(stmts[1]!.replace(/\s+/g, " ")).toBe(`ALTER TABLE "bookings" ADD CONSTRAINT "bookings_cancel_reason_chk" CHECK ("cancel_reason" IS NULL OR "cancel_reason" IN ('PROGRAM_CHANGED', 'CUSTOMER_CANCELLED', 'ADMIN_ERROR', 'TEACHER_LEAVE')) NOT VALID`);
+    expect(stmts[1]!.replace(/\s+/g, " ")).toBe(`ALTER TABLE "bookings" ADD CONSTRAINT "bookings_cancel_reason_chk" CHECK ("cancel_reason" IS NULL OR "cancel_reason" IN ('PROGRAM_CHANGED', 'CUSTOMER_CANCELLED', 'ADMIN_ERROR', 'TEACHER_LEAVE', 'SCHOOL_ISSUE')) NOT VALID`);
     expect(stmts[2]).toBe('ALTER TABLE "bookings" VALIDATE CONSTRAINT "bookings_cancel_reason_chk"');
     expect(last).toContain("SHARE UPDATE EXCLUSIVE");
-    expect(last).toContain("`db:verify` expects 46");
-    expect(files.length).toBe(65); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064
+    // 🔻 TASK-690 — the migration pinned here is now `0065`, whose own file states ITS count (66); the "expects 46" it used to
+    // assert was 0045's. The statement shape below (DROP · ADD … NOT VALID · VALIDATE) is the SAME on purpose.
+    expect(last).toContain("`db:verify` expects 66");
+    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");

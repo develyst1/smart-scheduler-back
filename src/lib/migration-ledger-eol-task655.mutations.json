@@ -1,0 +1,128 @@
+{
+  "task": "TASK-655",
+  "proves": "src/lib/migration-ledger.test.ts",
+  "note": "🔴 The five @Sober named. E2 is the dangerous one: reverting `ledgerLies` ALONE, which is how a fix to `missing` turns the loudest failure we have into a silent one. The runner cannot import a script, so E2's claim is also pinned at source in the test list's own file. ⚠️ E4/E6 were written with REAL control characters where the source has the literal two-character `\r\n` text — they matched nothing until re-escaped. 🔑 The integrity test caught it before the set was ever run, which is the third time it has paid for itself. 🔻 10-06 follow-up: E8 added for `migrate-preflight.ts` (claimed by @Sober and handed over), and E3's wording softened to match the seed's comment — the evidence is confirmed on every count and ONE pair of 69, not row by row, and a Windows-run `migrate` writes the other ending too. ⚠️ E2/E7 re-anchored when `hashes` became REQUIRED (the `?? [m.hash]` fallback they anchored on is gone). 🔑 The RUNNER did not complain — TASK-627's integrity test is what caught it.",
+  "tests": "src/lib/migration-ledger.test.ts src/lib/migration-witness.test.ts src/lib/migrate-preflight.test.ts",
+  "mutations": [
+    {
+      "id": "E1",
+      "what": "🔴 `missingMigrations` reverted to ONE fingerprint — the case that went RED on sid comes back",
+      "files": [
+        {
+          "file": "src/lib/migration-ledger.ts",
+          "edits": [
+            {
+              "from": "  return mine.filter((m) => !isRecorded(m, present));",
+              "to": "  return mine.filter((m) => !present.has(m.hash) && !present.has(m.tag));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "🔴 THE SILENT ONE: `isRecorded` answers on the LF fingerprint only, so a schema-absent migration recorded under the other ending stops being flagged as a ledger lie",
+      "files": [
+        {
+          "file": "src/lib/migration-ledger.ts",
+          "edits": [
+            {
+              "from": "  m.hashes.some((h) => present.has(h)) || present.has(m.tag);",
+              "to": "  present.has(m.hash) || present.has(m.tag);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "what": "the SEED counts only one fingerprint as present — it starts adding a second row for a migration this machine merely hashes differently (ONE way a double is created; 🚫 not established as the source of the 48 / 21)",
+      "files": [
+        {
+          "file": "scripts/seed-ledger-from-schema.ts",
+          "edits": [
+            {
+              "from": "  .filter((m) => !isRecorded(m, present));",
+              "to": "  .filter((m) => !present.has(m.hash));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "what": "the LF normalisation before hashing is dropped — a MIXED-ending file yields a third fingerprint that matches nothing in any ledger",
+      "files": [
+        {
+          "file": "src/lib/migration-ledger.ts",
+          "edits": [
+            {
+              "from": "  const lfText = sqlText.replace(/\\r\\n/g, \"\\n\");\n  const lf = migrationHash(lfText);",
+              "to": "  const lfText = sqlText;\n  const lf = migrationHash(lfText);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "what": "the seed WRITES the CRLF fingerprint — new rows differ per machine again, which is the bug being recorded rather than fixed",
+      "files": [
+        {
+          "file": "scripts/seed-ledger-from-schema.ts",
+          "edits": [
+            {
+              "from": "    return { tag, when: entry.when, hash: fp.lf, hashes: fp.all };",
+              "to": "    return { tag, when: entry.when, hash: fp.crlf, hashes: fp.all };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "what": "the CRLF form is derived from the RAW text instead of the normalised one — a mixed file's second fingerprint is wrong too",
+      "files": [
+        {
+          "file": "src/lib/migration-ledger.ts",
+          "edits": [
+            {
+              "from": "  const crlf = migrationHash(lfText.replace(/\\n/g, \"\\r\\n\"));",
+              "to": "  const crlf = migrationHash(sqlText.replace(/\\n/g, \"\\r\\n\"));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E7",
+      "what": "attribution reads only one fingerprint — a row written under the other ending is called FOREIGN and never copied across",
+      "files": [
+        {
+          "file": "src/lib/migration-ledger.ts",
+          "edits": [
+            {
+              "from": "  const byHash = new Map(mine.flatMap((m) => m.hashes.map((h) => [h, m.tag] as const)));",
+              "to": "  const byHash = new Map(mine.map((m) => [m.hash, m.tag]));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E8",
+      "what": "🔴 `migrate-preflight` reverted to ONE fingerprint — on a Windows box it names a migration as PENDING that is already applied, and it is the script that decides whether a deploy goes ahead",
+      "files": [
+        {
+          "file": "scripts/migrate-preflight.ts",
+          "edits": [
+            {
+              "from": "const mine: OwnMigration[] = journal.entries.map((e) => {\n  const fp = migrationFingerprints(sqlOf(e.tag));\n  return { tag: e.tag, when: e.when, hash: fp.lf, hashes: fp.all };\n});",
+              "to": "const mine: OwnMigration[] = journal.entries.map((e) => {\n  const fp = migrationFingerprints(sqlOf(e.tag));\n  return { tag: e.tag, when: e.when, hash: fp.lf, hashes: [fp.lf] };\n});"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
