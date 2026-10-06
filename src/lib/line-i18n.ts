@@ -605,6 +605,13 @@ const TABLE: Record<string, Entry> = {
     TH: "คาบชดเชยของ {student} ถูกสร้างวันที่ {date} ซึ่งเลยวันหมดอายุคอร์ส ({expiry}) — เรียนได้ตามปกติ กรุณาตรวจสอบและขยายวันหมดอายุถ้าต้องการ",
     EN: "{student}'s make-up was created on {date}, past the course expiry ({expiry}) — the class stands; please check and extend the expiry if you want to.",
   },
+  // 🔻 TASK-699 (REQ-112, owner ruling 2026-10-07 via @Porter) — the FAMILY is told when an ADMIN changes a course's expiry, LONGER or SHORTER (same notice, no direction
+  // branch). Khwan asked for it herself («นี่ถ้าผปคทำเอง เราก็ต้องเป็นคนแจ้ง manual อยู่ดีไหมคะ»). 📋 DRAFT: owner approval pending in @Porter's copy set — if the owner
+  // changes the words, these two strings change and nothing else.
+  ob_course_expiry_changed: {
+    TH: "แจ้งเปลี่ยนวันหมดอายุคอร์สค่ะ: คอร์ส {program} ของ {student} ใช้ได้ถึงวันที่ {to} (จากเดิม {from}) หากมีข้อสงสัย กรุณาติดต่อแอดมินค่ะ",
+    EN: "Course expiry date changed: {student}'s {program} course is now valid until {to} (previously {from}). Please contact Admin if you have any questions.",
+  },
   ob_makeup_far: {
     TH: "⚠️ คาบชดเชยถูกจัดไปไกลกว่าปกติ: {weeks} สัปดาห์หลังคาบที่ลา ({replaces} → {landedOn}) — ตารางครูช่วงนี้เต็ม",
     EN: "⚠️ A make-up landed further out than usual: {weeks} weeks after the session it replaces ({replaces} → {landedOn}) — that coach's slot is fully booked.",

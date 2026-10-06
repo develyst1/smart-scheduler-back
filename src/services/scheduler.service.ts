@@ -5312,6 +5312,18 @@ export async function updateCourseExpiry(
     // an audit that can be committed without its subject, or vice versa, is not a record of anything.
     await tx.update(coursePackages).set({ expiryDate: input.expiryDate }).where(eq(coursePackages.id, id));
     await recordExpiryChange(tx, { courseId: id, from, to: input.expiryDate, actor });
+    // 🔻 TASK-699 (REQ-112, owner ruling 2026-10-07) — the FAMILY is told, in THIS transaction (the notice exists iff the write committed). ONE writer, and only this one:
+    // 🚫 not `addLeaveWeek` (the automatic weeks ride an event the family already hears about), not `changeCourseStart` / `resumeCourse` (a by-product of a re-plan), not a voucher.
+    // 🚫 No notice for a no-op (`from === to` — `recordExpiryChange`'s own rule) or for an ENDED course (no classes left: a validity date would tell the family something
+    // false — Sober's ruling, Porter may overturn). A DROPPED (paused) course IS told: that is exactly when an admin extends before resuming. Longer and shorter are ONE notice.
+    // 🚫 Family accounts only — no coach, no admin. The snapshot (`from`/`to`) is taken here, so two quick edits send two TRUE messages.
+    if (from !== input.expiryDate && !course.endedAt) {
+      const anyRow = await tx.query.bookings.findFirst({ where: (b: any, { and: a, eq: e }: any) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")) }); // the enriched row the worker reads the student / program from
+      await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {
+        ...(anyRow ? { bookingId: anyRow.id } : {}),
+        payload: { kind: "course_expiry_changed", courseId: id, from, to: input.expiryDate, size: course.size },
+      });
+    }
   });
 
   const updated = await db.query.coursePackages.findFirst({

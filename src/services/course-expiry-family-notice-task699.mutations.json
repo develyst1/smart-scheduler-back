@@ -1,0 +1,158 @@
+{
+  "task": "TASK-699",
+  "proves": "src/services/course-expiry-family-notice-task699.test.ts",
+  "note": "🔴 REQ-112 / owner ruling 2026-10-07: the family is told when an ADMIN changes a course's expiry (longer or shorter). N1 sends on a no-op · N2 sends on an ENDED course · N3 does NOT send when shortened (a direction branch) · N4 sent from `addLeaveWeek` · N5 sent to the COACH · N6 enqueued OUTSIDE the transaction (after it) · N7 re-uses `course_confirmed` instead of the new kind · N8 the Thai words paraphrased · N9 a DROPPED course is not told · N10 sent to the ADMINS too.",
+  "tests": "src/services/course-expiry-family-notice-task699.test.ts src/services/course-expiry-edit.test.ts src/lib/expiry-preview.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "🔴 the notice is sent on a NO-OP (from === to) — the family is told nothing changed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
+              "to": "    if (!course.endedAt) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "🔴 the notice is sent on an ENDED course — a validity date on a finished course tells the family something false",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
+              "to": "    if (from !== input.expiryDate) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "🔴 a direction branch — a date moved EARLIER is NOT told (the owner ruled it is)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
+              "to": "    if (from !== input.expiryDate && !course.endedAt && input.expiryDate > from) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "🔴 the notice is raised from `addLeaveWeek` too — the automatic week the family already hears about is told twice",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await recordExpiryChange(tx, { courseId, from, to, actor: null });",
+              "to": "  await recordExpiryChange(tx, { courseId, from, to, actor: null });\n  await enqueueParentCopies(tx, [\"U-x\"], { payload: { kind: \"course_expiry_changed\", courseId, from, to } });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "🔴 the notice goes to the COACH too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {",
+              "to": "      await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: null, payload: { kind: \"course_expiry_changed\", courseId: id } }, tx);\n      await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "🔴 the notice is enqueued OUTSIDE the transaction (after the commit) — a rolled-back write leaves a notice behind",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const updated = await db.query.coursePackages.findFirst({\n    where: (c, { eq: e }) => e(c.id, id),\n    with: { student: true },\n  });\n  return { course: toCourseWithStudent(updated), expiryWarning: impact, previousExpiryDate: from };",
+              "to": "  const updated = await db.query.coursePackages.findFirst({\n    where: (c, { eq: e }) => e(c.id, id),\n    with: { student: true },\n  });\n  await enqueueParentCopies(db, [\"U-late\"], { payload: { kind: \"course_expiry_changed\", courseId: id, from, to: input.expiryDate } });\n  return { course: toCourseWithStudent(updated), expiryWarning: impact, previousExpiryDate: from };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "🔴 `course_confirmed` (CONFIRMED SCHEDULE) is re-used instead of the new kind",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "payload: { kind: \"course_expiry_changed\", courseId: id, from, to: input.expiryDate, size: course.size },",
+              "to": "payload: { kind: \"course_confirmed\", courseId: id, from, to: input.expiryDate, size: course.size },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N8",
+      "what": "the Thai words are paraphrased — the draft the owner will approve is no longer what ships",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "ใช้ได้ถึงวันที่ {to} (จากเดิม {from}) หากมีข้อสงสัย",
+              "to": "ใช้ได้ถึง {to} (เดิม {from}) ถ้ามีข้อสงสัย"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N9",
+      "what": "a DROPPED (paused) course is NOT told — but that is exactly when an admin extends before resuming",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
+              "to": "    if (from !== input.expiryDate && !course.endedAt && !course.droppedAt) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N10",
+      "what": "the ADMINS are told too — Khwan's team already did the edit",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {",
+              "to": "      await notifyAdmins({ kind: \"course_expiry_changed\", courseId: id, from, to: input.expiryDate }, tx);\n      await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

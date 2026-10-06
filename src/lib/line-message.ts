@@ -693,6 +693,15 @@ function buildOutboxMessage(
         student: ctx.studentName ?? "-",
         date: ctx.date ? ddmmyyyy(ctx.date) : "-",
       });
+    // 🔻 TASK-699 (REQ-112) — an ADMIN changed a course's expiry (longer OR shorter — ONE notice, no direction branch). A NEW kind, NOT `course_confirmed` / CONFIRMED SCHEDULE.
+    // The student and program come from the SAME enriched booking every parent notice reads (the ONE name rule, the ONE program label); dates through `ddmmyyyy`.
+    case "course_expiry_changed":
+      return t("ob_course_expiry_changed", lang, {
+        program: programLabel("COURSE", { subject: ctx.subject, size: payload.size as number }) ?? "-",
+        student: ctx.studentName ?? "-",
+        to: typeof payload.to === "string" ? ddmmyyyy(payload.to) : "-", // a string only — other kinds carry `to` as a slot object
+        from: typeof payload.from === "string" ? ddmmyyyy(payload.from) : "-",
+      });
     case "makeup_past_expiry":
       return t("ob_makeup_past_expiry", lang, {
         student: ctx.studentName ?? "-",
