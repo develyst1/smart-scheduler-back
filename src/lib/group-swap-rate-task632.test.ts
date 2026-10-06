@@ -140,7 +140,8 @@ describe("🔑 TASK-632 — the rule is REUSED, and the seat answer is written d
     expect(RAW).not.toContain("This door has no such field");
     expect(RAW).toContain("TASK-634 — the refusal can now be ANSWERED");
     const V = code("src/validation.ts");
-    expect(V).toContain("export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() });");
+    // 🔻 TASK-672 — the SAME claim (the exact accepted shape: `to` + optional `fromDate` + optional `rateMinor`), now with the one field that can NEVER be valid: `onDate` is refused, so a one-session swap can no longer move the whole group and pay the one-session rate from today. Quoted VERBATIM so any drift fails here.
+    expect(V).toContain("export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional(), onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() });");
     expect(V).toContain("export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(), rateMinor: z.number().int().min(0).optional() });");
   });
 });

@@ -1,7 +1,7 @@
 {
   "task": "TASK-650",
   "proves": "src/lib/max-week-from-expiry-task650.test.ts",
-  "note": "🔴 QA re-test item 1. W1 is the defect exactly as shipped (the capped rule back) and must bite on the STRETCHED case while leaving an ordinary course identical — which is why the ordinary-course pins at every size matter as much as the stretched one. W2/W3 are the off-by-one @Sober named, in both directions. ⚠️ W7 was MIS-AIMED first: it edited `MAX_WEEK_BY_SIZE`, which `maxWeekFor` does not read (the map is DERIVED from the quota table, not the other way round), so it SURVIVED while claiming to change the rule. 🔑 A mutation aimed at the wrong line survives for a reason that has nothing to do with the tests. Re-cut onto `maxWeekFor` itself.",
+  "note": "🔴 QA re-test item 1. W1 is the defect exactly as shipped (the capped rule back) and must bite on the STRETCHED case while leaving an ordinary course identical — which is why the ordinary-course pins at every size matter as much as the stretched one. W2/W3 are the off-by-one @Sober named, in both directions. ⚠️ W7 was MIS-AIMED first: it edited `MAX_WEEK_BY_SIZE`, which `maxWeekFor` does not read (the map is DERIVED from the quota table, not the other way round), so it SURVIVED while claiming to change the rule. 🔑 A mutation aimed at the wrong line survives for a reason that has nothing to do with the tests. Re-cut onto `maxWeekFor` itself. 🔻 2026-10-06 (week-label floor): W2–W4 re-anchored onto the floor-less line; W5 INVERTED — it now RESTORES the floor and must bite.",
   "tests": "src/lib/max-week-from-expiry-task650.test.ts src/lib/leave.test.ts src/lib/expiry-adds-leave-weeks-req089.test.ts src/services/declared-absence-stretches-expiry-task646.test.ts",
   "mutations": [
     {
@@ -27,8 +27,8 @@
           "file": "src/lib/leave.ts",
           "edits": [
             {
-              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
-              "to": "  return Math.max(fallback, Math.ceil(days / 7));"
+              "from": "  return Math.ceil(days / 7) + 1;",
+              "to": "  return Math.ceil(days / 7);"
             }
           ]
         }
@@ -42,8 +42,8 @@
           "file": "src/lib/leave.ts",
           "edits": [
             {
-              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
-              "to": "  return Math.max(fallback, Math.ceil(days / 7) + 2);"
+              "from": "  return Math.ceil(days / 7) + 1;",
+              "to": "  return Math.ceil(days / 7) + 2;"
             }
           ]
         }
@@ -57,8 +57,8 @@
           "file": "src/lib/leave.ts",
           "edits": [
             {
-              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
-              "to": "  return Math.max(fallback, Math.floor(days / 7) + 1);"
+              "from": "  return Math.ceil(days / 7) + 1;",
+              "to": "  return Math.floor(days / 7) + 1;"
             }
           ]
         }
@@ -66,14 +66,14 @@
     },
     {
       "id": "W5",
-      "what": "the base-ceiling floor is dropped — a stored expiry behind the base makes the card report LESS than the course bought",
+      "what": "🔻 INVERTED (the floor was REMOVED by owner ruling, via Sober, 2026-10-06 — «ใช้ได้ถึงสัปดาห์ที่ {week}» is \"valid until\"): the base-ceiling FLOOR is RESTORED — a course whose expiry was moved earlier is told it is valid until a week it will never reach",
       "files": [
         {
           "file": "src/lib/leave.ts",
           "edits": [
             {
-              "from": "  return Math.max(fallback, Math.ceil(days / 7) + 1);",
-              "to": "  return Math.ceil(days / 7) + 1;"
+              "from": "  return Math.ceil(days / 7) + 1;",
+              "to": "  return Math.max(fallback, Math.ceil(days / 7) + 1);"
             }
           ]
         }

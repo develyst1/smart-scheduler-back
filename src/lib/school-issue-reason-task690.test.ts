@@ -117,11 +117,14 @@ describe("📋 the label — the customer's own words in Thai, verbatim, DRAFT u
     expect(cancelReasonText("SCHOOL_ISSUE", "free text that must be ignored", "TH")).toBe("ปัญหาจากทางเรา"); // the CODE wins over the note
     expect(readSrc(readFileSync(resolve(root, "src/lib/line-i18n.ts"), "utf8"))).toContain("📋 DRAFT — both ride the round's one copy set via @Porter");
   });
-  test("the OpenAPI document still lists THREE codes — a stale FOURTH copy, OUTSIDE this task's claim, pinned as what it is", () => {
-    // ⚠️ `openapi/document.ts` `UpdateStatusRequest.reasonCode.enum` was ALREADY stale (it misses TEACHER_LEAVE since TASK-406). It is not in
-    // 690's claim, so it is left alone — and pinned here so it cannot drift further unnoticed and so the next person finds the list.
-    const doc = readFileSync(resolve(root, "src/openapi/document.ts"), "utf8").replace(/\r\n/g, "\n");
-    expect(doc).toContain('enum: ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"],');
-    expect(doc).not.toContain("SCHOOL_ISSUE");
+  test("🔻 the OpenAPI document's `reasonCode` enum IS the session set — by VALUE (it was a stale fourth copy: three codes, missing TEACHER_LEAVE since TASK-406)", async () => {
+    // Granted by @Sober after 690 (one line, `UpdateStatusRequest.reasonCode.enum` only). Derived by SPREAD from `SESSION_CANCEL_REASONS`, so it cannot drift again.
+    const { openApiDocument } = await import("../openapi/document");
+    const e = (openApiDocument as any).components.schemas.UpdateStatusRequest.properties.reasonCode.enum;
+    expect(e).toEqual([...SESSION_CANCEL_REASONS]);
+    expect(e).toHaveLength(5);
+    expect(e).toContain("SCHOOL_ISSUE");
+    expect(e).toContain("TEACHER_LEAVE");
+    expect(readFileSync(resolve(root, "src/openapi/document.ts"), "utf8")).toContain("enum: [...SESSION_CANCEL_REASONS]");
   });
 });

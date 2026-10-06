@@ -20,14 +20,14 @@ import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
 import { displayNameOf, duoCourseFacts, studentNamesOf, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { alias } from "drizzle-orm/pg-core";
-import { canTakeLeave, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
+import { LEAVE_NO_VALIDITY, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { leaveNoteWrite } from "../lib/leave-note"; // TASK-540
 import { NOT_SAME_SLOT, sameSlotReplacement, type SameSlot } from "../lib/same-slot"; // TASK-551 §2
 // TASK-264 (REQ-082 AC-4 + ข) — ONE answer to "is this expiry a problem, and for which sessions?".
 // 🔻 TASK-282 §7 left ONE caller: the expiry EDIT's warning. The resume's warning and its `EXPIRY_REQUIRED`
 // gate are both gone — a re-plan DERIVES the expiry from the sessions it lays out, so there is nothing to warn
 // about. 📌 This sentence outlived its mechanism by a day, which is the week's own lesson inverted.
-import { expiryImpact, expiryLeaveRoom } from "../lib/course-expiry-impact";
+import { expiryImpact } from "../lib/course-expiry-impact";
 import { holdsSlot, slotHolderWhere } from "../lib/slot-holder";
 import { isGroupSlotClash, takesYieldedSlot } from "../lib/group-clash";
 import { firstFreeWeeklySlot, searchExhausted, weeksBetween } from "../lib/extension-slot";
@@ -2899,6 +2899,22 @@ export function reowedForOf(row: { id: string; status: string; extendedFromId?: 
  * deliberately do not (BIRTH: the expiry is born to cover its declared absences; the plan editor's *insert*: it only trims; the Undo: it
  * REFUSES if the re-plan would append anything).
  */
+/**
+ * 🔴 TASK-692 §RE-CUT (REQ-112, owner ruling) — the FAMILY-leave doors REFUSE instead of flagging: if the make-up this leave just placed lands AFTER the
+ * course's expiry, THROW `LEAVE_NO_VALIDITY` — the caller's transaction rolls back, so NOTHING is recorded (no status, no make-up, no count, no coach notice).
+ * 🔑 Asked AFTER the week decision (a pre-start declaration's +1 week that makes room is honoured — 657's `N8` ordering), by exactly TWO callers: door 1
+ * (Record leave — the admin's button AND the parent via LINE) and door 2 (the plan editor's Mark absence). 🚫 A coach's leave (T2) and a school cancel (T3)
+ * NEVER refuse — the class is lost whatever we answer — they keep `flagMakeupsPastExpiry` (657 as built). 🚫 It writes nothing and moves nothing.
+ */
+async function assertRoomForLeave(tx: any, courseId: string, makeupIds: readonly string[]): Promise<void> {
+  if (!makeupIds.length) return;
+  const course = await tx.query.coursePackages.findFirst({ where: (c: any, { eq: e }: any) => e(c.id, courseId) });
+  if (!course?.expiryDate) return;
+  const rows = await tx.query.bookings.findMany({ columns: { id: true, date: true }, where: (b: any, { inArray: inA }: any) => inA(b.id, [...makeupIds]) });
+  const wanted = new Set(makeupIds);
+  if (rows.filter((r: any) => wanted.has(r.id)).some((r: any) => r.date > course.expiryDate)) throw LEAVE_NO_VALIDITY();
+}
+
 async function flagMakeupsPastExpiry(tx: any, courseId: string, makeupIds: readonly string[]): Promise<number> {
   if (!makeupIds.length) return 0;
   const course = await tx.query.coursePackages.findFirst({ where: (c: any, { eq: e }: any) => e(c.id, courseId) });
@@ -3666,7 +3682,7 @@ export async function applyPlanChange(
         // absence is a PRE-START DECLARATION (`declaredFree`, which already means the row just became an absence). An ordinary mark-absence
         // on a started course is +0: still one make-up, still counted, no week. The SAME rule as door 1 for the same act.
         if (declaredFree) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");
-        await flagMakeupsPastExpiry(tx, courseId, moves.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
+        await assertRoomForLeave(tx, courseId, moves.appended ?? []); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), asked AFTER the week decision
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
         // 🔴 TASK-306 §1 — **the hole.** This cancels a FUTURE session exactly as the per-session action
         // does; an admin using the plan editor is doing the same thing by a different door, and the coach
@@ -4219,7 +4235,7 @@ export async function updateBookingStatus(
       // make-up and is still counted, and the expiry does not move. 🚫 Never +14 for one act — the TASK-646 recompute above had to go
       // rather than sit beside this call.
       if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");
-      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)
+      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)
       for (const sid of duoStudentIds(current)) await awardCrmPoints(sid, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx); // TASK-420 — both kids of a DUO row
       const student = await tx.query.students.findFirst({
         where: (s: any, { eq: e }: any) => e(s.id, current.studentId),
@@ -5231,13 +5247,9 @@ async function expiryDecision(id: string, expiryDate: string) {
   return {
     course,
     impact: expiryImpact(expiryDate, candidates),
-    // 🔴 §5 — the SAME rows and the SAME course row answer both questions, which is why this folds in here
-    // instead of becoming its own task: the leave room needs nothing the session impact had not already loaded.
-    leaveRoom: expiryLeaveRoom(
-      expiryDate,
-      candidates,
-      Math.max(0, courseLeaveQuota(course) - course.leaveUsed),
-    ),
+    // 🔻 TASK-656 follow-up (REQ-112) — `leaveRoom` is GONE: it measured "how many of the REMAINING LEAVES this date leaves room for",
+    // and there is no remaining leave any more (a second reader of the deleted allowance). The IMPACT — the classes that fall outside
+    // a new date — is still true and stays.
   };
 }
 
@@ -5256,8 +5268,8 @@ async function expiryDecision(id: string, expiryDate: string) {
  * legitimately does.
  */
 export async function previewCourseExpiry(id: string, input: { expiryDate: string }) {
-  const { impact, leaveRoom } = await expiryDecision(id, input.expiryDate);
-  return { expiryWarning: impact, leaveRoom };
+  const { impact } = await expiryDecision(id, input.expiryDate);
+  return { expiryWarning: impact };
 }
 
 /**

@@ -70,7 +70,7 @@ describe("🔴 §1 the 500 — the clash's 23505 aborts the tx; the catch no lon
   test("by value: the sync on TODAY's day with a clash at 11:00 ⇒ 409 SLOT_TAKEN with the coach's name — even though every read on the tx now throws 25P02", async () => {
     const f = campTx({ week, day: { id: D1, date: TODAY, teacherIds: [T1], startTime: "10:00:00", endTime: "12:00:00" }, clashAt: "11:00" });
     const e = await camp.syncCampDayRows(f.tx, D1).then(() => null, (e) => ({ status: e.status, code: e.code, message: e.message }));
-    expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${TODAY} 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` });
+    expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${TODAY} 11:00 ครู เอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` }); // 🔻 TASK-671 — owner: a space ALWAYS, `ครู เอก`
   });
   test("by source: the names are read BEFORE the insert loop, from the wanted set; the catch touches nothing on the tx", () => {
     const S = region(CAMP, "export async function syncCampDayRows(", "export async function updateWeekDay("); // 🔻 TASK-581: `deleteCampDayRows` removed
@@ -92,7 +92,7 @@ describe("🔴 §1 the 500 — the clash's 23505 aborts the tx; the catch no lon
     spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => { try { const r = await fn(f.tx); seen.outcome = "committed"; return r; } catch (e) { seen.outcome = "rolled back"; throw e; } }) as any));
     const res = await json("POST", "/camp/weeks", { name: "Camp A", startDate: TODAY, endDate: TODAY, teacherIds: [T1] });
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: { code: "SLOT_TAKEN", message: `วันที่ ${TODAY} 13:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` } });
+    expect(await res.json()).toMatchObject({ error: { code: "SLOT_TAKEN", message: `วันที่ ${TODAY} 13:00 ครู เอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` } }); // 🔻 TASK-671
     expect(seen.outcome).toBe("rolled back");
     expect(f.log.filter((l) => l[0] === "booking").map((l) => l[2].startTime)).toEqual(["10:00", "11:00", "12:00"]); // the rows before the clash were attempted inside the tx — and rolled back with it
   });

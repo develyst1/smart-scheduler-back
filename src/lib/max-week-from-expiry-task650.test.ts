@@ -69,10 +69,15 @@ describe("🔑 TASK-650 — the inverse itself, and what it refuses to do", () =
     const threeAndAHalf = new Date(Date.parse(START) + 3.5 * WEEK).toISOString().slice(0, 10);
     expect(weekOfExpiry(START, threeAndAHalf, 0)).toBe(5); // inside week 5, not the end of week 4
   });
-  test("🚫 it never reports LESS than the course's own base ceiling, and a missing expiry falls back", () => {
-    expect(weekOfExpiry(START, plus(START, 0), 5)).toBe(5); // an expiry BEHIND the base is a data fault, not a label's job
-    expect(weekOfExpiry(START, null, 5)).toBe(5);
-    expect(weekOfExpiry(START, "not-a-date", 5)).toBe(5);
+  test("🔻 the label is the STORED expiry's week, ALWAYS — the FLOOR is gone; the base is only the fallback for a missing / unparseable expiry", () => {
+    // CORRECTED, not deleted. The old claim: "🚫 it never reports LESS than the course's own base ceiling" (an expiry behind the base was "a data fault, not
+    // a label's job"). It changed because the owner APPROVED «ใช้ได้ถึงสัปดาห์ที่ {week}» — "VALID until" — which makes the floor FALSE: a course whose expiry
+    // was moved EARLIER (or an import with its own) was told it is valid until a week it will never reach (Tanya's "six courses still reading 13").
+    expect(weekOfExpiry(START, plus(START, 0), 5)).toBe(1); // an expiry EARLIER than the base ⇒ the earlier week (week 1 = the start itself)
+    expect(weekOfExpiry(START, plus(START, 2), 5)).toBe(3); // …and a middling one reads its own week, not the base
+    expect(weekOfExpiry(START, courseExpiry(START, 4), 5)).toBe(5); // an ordinary course ⇒ unchanged
+    expect(weekOfExpiry(START, null, 5)).toBe(5); // a missing expiry ⇒ the base
+    expect(weekOfExpiry(START, "not-a-date", 5)).toBe(5); // an unparseable one ⇒ the base
   });
   test("🚫 `maxWeekFor` itself is untouched — `courseExpiry` still builds the BASE from it at creation", () => {
     expect(maxWeekFor(4, 1)).toBe(5);

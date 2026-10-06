@@ -1,0 +1,113 @@
+{
+  "task": "TASK-656-follow-ups-2",
+  "proves": "src/lib/expiry-preview.test.ts",
+  "note": "🔴 The small grants after 656/657/659 (Sober, 2026-10-06): `leaveRoom` removed from the expiry-edit preview (L1 returns it · L2 restores `expiryLeaveRoom`'s export) · `openapi` reasonCode enum = the session set (O1 reverts it to three literal codes) · the parent's course row carries no leave count and `ครู {teacher}` (C1 restores the leave clause, C2 drops the space in the course row, C3 in the leave notice, C4 passes `leaveRemaining` again). The week-label floor's mutation lives in `max-week-from-expiry-task650.mutations.json` (W5, inverted).",
+  "tests": "src/lib/expiry-preview.test.ts src/lib/school-issue-reason-task690.test.ts src/lib/copy-kru-space-task659.test.ts src/lib/leave.test.ts",
+  "mutations": [
+    {
+      "id": "L1",
+      "what": "🔴 `leaveRoom` is returned by the preview again — the screen reads a rule that no longer exists",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const { impact } = await expiryDecision(id, input.expiryDate);\n  return { expiryWarning: impact };",
+              "to": "  const { impact } = await expiryDecision(id, input.expiryDate);\n  return { expiryWarning: impact, leaveRoom: { remainingLeave: 0, roomForAll: true } };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "`expiryLeaveRoom` is exported again from the impact module",
+      "files": [
+        {
+          "file": "src/lib/course-expiry-impact.ts",
+          "edits": [
+            {
+              "from": "// 🔻 TASK-656 follow-up (REQ-112) — `expiryLeaveRoom`",
+              "to": "export const expiryLeaveRoom = () => ({ roomForAll: true });\n// 🔻 TASK-656 follow-up (REQ-112) — `expiryLeaveRoom`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O1",
+      "what": "🔴 the OpenAPI `reasonCode` enum is typed out again as THREE codes — the fourth copy drifts",
+      "files": [
+        {
+          "file": "src/openapi/document.ts",
+          "edits": [
+            {
+              "from": "enum: [...SESSION_CANCEL_REASONS],",
+              "to": "enum: [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\"],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "what": "🔴 the parent's course row prints the leave clause again (TH)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "· เหลือ {remaining}/{total} · หมดอายุ {expiry}\",",
+              "to": "· เหลือ {remaining}/{total} · สิทธิ์ลาเหลือ {leave} · หมดอายุ {expiry}\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "the course row loses the space after ครู",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "· ครู {teacher} · เหลือ",
+              "to": "· ครู{teacher} · เหลือ"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "what": "the leave notice loses the space after ครู",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "น. · ครู {teacher} · {program}",
+              "to": "น. · ครู{teacher} · {program}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "what": "the webhook passes `leaveRemaining` into the course row again",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "      expiryDate: s.expiryDate,",
+              "to": "      leaveRemaining: s.leaveRemaining,\n      expiryDate: s.expiryDate,"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

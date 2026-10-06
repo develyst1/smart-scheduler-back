@@ -1,0 +1,188 @@
+{
+  "task": "TASK-692",
+  "proves": "src/services/leave-refused-no-validity-task692.test.ts",
+  "note": "🔴 REQ-112 re-cut: a FAMILY leave with no room before the expiry is REFUSED (parent's LINE door with her sentence; admin Record leave + Mark absence with the admin wording). R1 the refusal removed at door 1 / at door 2 (each bites ALONE) · R2 asked BEFORE the T1 week (the week that makes room is ignored) · R3 a coach's leave refused too · R4 a school cancel refused too · R5 the refusal writes the leave anyway (returns instead of throwing) · R6 the boundary becomes exclusive · P1 her sentence paraphrased · P2 her sentence printed for EVERY refusal · P3 the admin notice sent on an ADMIN refusal (from the service) · P4 the parent's admin notice dropped · P5 the admin notice sent after the reply.",
+  "tests": "src/services/leave-refused-no-validity-task692.test.ts src/services/makeup-past-expiry-task657.test.ts src/services/leave-week-triggers-task656.test.ts",
+  "mutations": [
+    {
+      "id": "R1",
+      "what": "🔴 door 1 (Record leave / the parent) stops refusing — a family leave with no room is booked past the expiry",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "🔴 door 2 (the plan editor) stops refusing",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        await assertRoomForLeave(tx, courseId, moves.appended ?? []); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), asked AFTER the week decision\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "🔴 the T1 week is decided AFTER the refusal is asked — a week that makes room is ignored and a fitting declaration is refused",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n",
+              "to": "      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "🔴 a COACH's leave is refused too — the class is lost whatever we answer, so refusing it leaves the family short",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (b.courseId) await flagMakeupsPastExpiry(tx, b.courseId, replanned?.appended ?? []);",
+              "to": "      if (b.courseId) await assertRoomForLeave(tx, b.courseId, replanned?.appended ?? []);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "🔴 a school cancel is refused too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      if (current.courseId) await flagMakeupsPastExpiry(tx, current.courseId, replanned?.appended ?? []);",
+              "to": "      if (current.courseId) await assertRoomForLeave(tx, current.courseId, replanned?.appended ?? []);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "🔴 the refusal does NOT throw — it returns, so the leave is written anyway (the transaction commits)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "throw LEAVE_NO_VALIDITY();",
+              "to": "return;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "the boundary becomes EXCLUSIVE — a make-up landing ON the expiry is refused",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "r.date > course.expiryDate)) throw LEAVE_NO_VALIDITY();",
+              "to": "r.date >= course.expiryDate)) throw LEAVE_NO_VALIDITY();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "what": "her sentence is paraphrased — the customer's own words stop being verbatim",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "ไม่สามารถแจ้งลาได้ เนื่องจากวันหมดอายุไม่เพียงพอค่ะ กรุณาติดต่อแอดมินค่ะ",
+              "to": "ไม่สามารถแจ้งลาได้ เพราะคอร์สหมดอายุแล้วค่ะ"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "🔴 her sentence is printed for EVERY leave refusal — a too-late refusal reads 'not enough validity'",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "    return send(replyToken, [textReply(e?.message ?? tb(\"leave_err\"), lang)]);",
+              "to": "    return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "🔴 the ADMIN notice is sent from the service on a refusal — an admin refused at their own door is told about their own action",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "throw LEAVE_NO_VALIDITY();",
+              "to": "await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: makeupIds[0] }, tx); throw LEAVE_NO_VALIDITY();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "the admins are NOT told when a PARENT is refused (her «แจ้งแอดมิน»)",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "the admin notice is sent AFTER the parent's reply is returned — it never runs",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });\n      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);",
+              "to": "      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);\n      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,18 @@
 
 import { courseStatus, type CourseStatus } from "./course-status";
 import { bangkokNow } from "./bangkok-time";
+import { conflict } from "./http";
+
+/**
+ * 🔴 TASK-692 §RE-CUT (REQ-112, owner ruling) — a FAMILY leave whose make-up cannot land on or before the course's expiry is REFUSED, at the parent's LINE
+ * door AND the admin's two doors (Record leave, Mark absence): *"parent refused, admin allowed" is two rules for one act*. The admin is not stuck — they
+ * extend the expiry first, then record. 🚫 No held state, no retry, no re-plan on extend: recording the leave AGAIN simply works once there is room.
+ * A DISTINCT code so the parent's reply can print HER sentence (`leave_no_validity`, TH+EN, verbatim from her edited sheet) ONLY on this code.
+ * 📋 DRAFT admin wording (owner approves with the one copy set): «อายุคอร์สไม่พอสำหรับคาบชดเชย — ขยายวันหมดอายุก่อน แล้วค่อยบันทึกลา».
+ * EN reading: "Not enough course validity for a make-up — extend the expiry first, then record the leave."
+ */
+export const LEAVE_NO_VALIDITY_CODE = "LEAVE_NO_VALIDITY";
+export const LEAVE_NO_VALIDITY = () => conflict(LEAVE_NO_VALIDITY_CODE, "อายุคอร์สไม่พอสำหรับคาบชดเชย — ขยายวันหมดอายุก่อน แล้วค่อยบันทึกลา");
 
 export type PackageSize = 4 | 6 | 10;
 
@@ -105,14 +117,16 @@ export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
  * `expiry = start + (week − 1) × 7 days` ⇒ `week = days(start → expiry) / 7 + 1`.
  * 🔑 Rounded UP, so an expiry that is not on a week boundary reports the week it falls INSIDE rather than the one before it —
  * the label promises a ceiling, and a ceiling rounded down is a promise the system does not keep.
- * 🚫 It never reports LESS than the course's own base ceiling (`fallback`): a stored expiry behind the base would be a data
- * fault, and the label is not the place to surface one. ⚠️ A missing or unparseable expiry falls back for the same reason.
+ * 🔻 The label is the STORED expiry's week, ALWAYS (owner approved «ใช้ได้ถึงสัปดาห์ที่ {week}» — "VALID until"). It used to be floored at the course's base
+ * ceiling ("a stored expiry behind the base is a data fault"), which made a course whose expiry was moved EARLIER, or an import with its own, claim a week
+ * it will never reach (Tanya's "six courses still reading 13"). The approved wording made that floor false. `fallback` is kept ONLY for a missing or
+ * unparseable expiry.
  */
 export function weekOfExpiry(startDate: string, expiryDate: string | null | undefined, fallback: number): number {
   if (!expiryDate) return fallback;
   const days = (Date.parse(expiryDate) - Date.parse(startDate)) / 86_400_000;
   if (!Number.isFinite(days)) return fallback;
-  return Math.max(fallback, Math.ceil(days / 7) + 1);
+  return Math.ceil(days / 7) + 1;
 }
 
 export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
@@ -166,9 +180,4 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
     status: courseStatus({ ...c, endedAt: c.endedAt ?? null, droppedAt: c.droppedAt ?? null }, today ?? bangkokNow().date),
     expiryDate: c.expiryDate,
   };
-}
-
-/** true = may still take leave / extend the schedule. */
-export function canTakeLeave(c: CourseLike): boolean {
-  return toCourseSummary(c).leaveRemaining > 0 || c.adminUnlocked;
 }

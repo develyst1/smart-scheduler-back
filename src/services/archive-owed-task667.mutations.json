@@ -81,14 +81,14 @@
     },
     {
       "id": "O6",
-      "what": "the count reverted to the OLD set (the defect itself)",
+      "what": "the count reverted to the OLD set (the defect itself) (anchored on the COUNT query: TASK-668 reuses the same expression in its dry run)",
       "files": [
         {
           "file": "src/services/parent.service.ts",
           "edits": [
             {
-              "from": "inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES])",
-              "to": "inArray(bookings.status, [...COURSE_LIVE_STATUSES])"
+              "from": "inArray(bookings.status, [...ARCHIVE_BLOCKING_STATUSES]))); // TASK-667: the OWED set",
+              "to": "inArray(bookings.status, [...COURSE_LIVE_STATUSES]))); // TASK-667: the OWED set"
             }
           ]
         }

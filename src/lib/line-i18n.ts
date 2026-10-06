@@ -303,8 +303,10 @@ const TABLE: Record<string, Entry> = {
   course_title: { TH: "คอร์สของฉัน :", EN: "My Course:" }, // TASK-470 — her sheet
   course_none: { TH: "ยังไม่มีคอร์สที่ใช้งานอยู่ค่ะ", EN: "No active courses." },
   course_row: {
-    TH: "· {course} · ครู{teacher} · เหลือ {remaining}/{total} · สิทธิ์ลาเหลือ {leave} · หมดอายุ {expiry}",
-    EN: "· {course} · {teacher} · {remaining}/{total} left · {leave} leave left · expires {expiry}",
+    // 🔻 TASK-656 follow-up (REQ-112 + ruling 5) — the leave clause is DELETED in both languages (there is no allowance to show; a deletion, nothing new is
+    // said) and the template carries `ครู {teacher}` — a space after ครู, always.
+    TH: "· {course} · ครู {teacher} · เหลือ {remaining}/{total} · หมดอายุ {expiry}",
+    EN: "· {course} · {teacher} · {remaining}/{total} left · expires {expiry}",
   },
   // Flow 7 — the way to a human. On BOTH menus, and never removed by any flow.
   // TASK-246 / AC-24 named the un-mute word here. 🔻 TASK-473 K3 (REQ-107 §7) — the customer's own words, and they DROP
@@ -466,6 +468,17 @@ const TABLE: Record<string, Entry> = {
   checkin_bad_link: { TH: "ลิงก์เช็คอินไม่ถูกต้อง", EN: "This check-in link is not valid." },
   checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
   // TASK-146: fallback when the leave refusal has no server message (mirrors `checkin_err`).
+  // 🔻 TASK-692 §RE-CUT — the customer's OWN sentence, VERBATIM (project-docs/req111-message-inventory/message-inventory-KHWAN-EDITS-2026-10-06.xlsx). Printed to a
+  // PARENT only on the `LEAVE_NO_VALIDITY` code; every other refusal keeps its own sentence.
+  leave_no_validity: {
+    TH: "ไม่สามารถแจ้งลาได้ เนื่องจากวันหมดอายุไม่เพียงพอค่ะ กรุณาติดต่อแอดมินค่ะ",
+    EN: "Leave request unavailable because there is not enough time before the course expiry date. Please contact Admin.",
+  },
+  // 📋 DRAFT (to @Sober — the one copy set): the ADMIN is told when a PARENT is refused (her «แจ้งแอดมิน»). An admin refused at their own door needs none.
+  ob_leave_refused_no_validity: {
+    TH: "ผู้ปกครองแจ้งลาไม่สำเร็จ — อายุคอร์สไม่พอสำหรับคาบชดเชย: {student} · {date}",
+    EN: "A parent's leave was refused — not enough course validity for a make-up: {student} · {date}",
+  },
   leave_err: { TH: "ไม่สามารถแจ้งลาได้ในขณะนี้", EN: "Can't record leave right now" },
 
   leave_ok: { TH: "แจ้งลาสำเร็จ ✅ ({name}){extended}{locked}", EN: "Leave recorded ✅ ({name}){extended}{locked}" },
@@ -742,7 +755,7 @@ const TABLE: Record<string, Entry> = {
   ob_sick_title: { TH: "🤒 แจ้งลา", EN: "🤒 Sick leave" },
   // REQ-049 / TASK-136 — one line each, per recipient language (AC-7). Admin keeps the 🤒 title above it.
   ob_leave_admin: {
-    TH: "แจ้งลา: {student} · {date} {time} น. · ครู{teacher} · {program} — แจ้งโดย {by}",
+    TH: "แจ้งลา: {student} · {date} {time} น. · ครู {teacher} · {program} — แจ้งโดย {by}", // 🔻 ruling 5 — a space after ครู
     EN: "Leave: {student} · {date} {time} · {teacher} · {program} — reported by {by}",
   },
   ob_leave_teacher: {

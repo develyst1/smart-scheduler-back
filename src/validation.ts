@@ -711,7 +711,14 @@ export const otherSeriesPatch = z
 // ⚠️ **CONTRACT CHANGE on TWO doors: a body that was a 400 is now accepted.** 🚫 What did NOT change: **who may price a coach.**
 // `assertMayEditCoachRate` at each route reads the BODY (TASK-584's key `action:bookings.coach-rate`), so a rate still costs
 // the key and a swap without one still does not — proven by value on `bodyEditsCoachRate`, not reasoned.
-export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional() });
+// 🔴 TASK-672 (LIVE MONEY DEFECT, owner: "fix it — server first") — a GROUP series has NO one-session swap. The Manage-plan dialog offered "this
+// session only" and sent `{ to, onDate }`; this schema had no `onDate`, so zod STRIPPED it silently and `swapGroupSeriesTeacher` swapped the WHOLE
+// group from today — and paid the incoming coach the one-session `rateMinor` from today onward. So `onDate` is now a field that can NEVER be valid:
+// it is SEEN before stripping and refused with ONE issue at `["onDate"]` (an absent key still passes, so every body that worked still works).
+// 🚫 Deliberately NOT `.strict()`: `group-series-req104.test.ts` pins that a stray `from` is still silently stripped (`.data` = `{ to }`).
+// 📋 DRAFT wording (owner approves with the next copy set) — a backstop the screen no longer reaches after TASK-673.
+export const GROUP_SWAP_NO_SINGLE_SESSION = "กลุ่มเปลี่ยนครูได้เฉพาะ 'ตั้งแต่วันที่…' เท่านั้น — ไม่มีการสอนแทนคาบเดียว";
+export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional(), onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() });
 export const groupSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).nullable().optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });

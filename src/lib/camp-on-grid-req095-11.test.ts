@@ -183,7 +183,7 @@ describe("🔴 THE ONE SYNC by VALUE through a fake tx — insert the missing (C
     const f = fakeTx({ week, day: { id: D1, date: CAMP_DAY, teacherIds: [T1], startTime: "10:00:00", endTime: "12:00:00" }, existing: [], clashAt: "11:00" });
     try {
       const e = await camp.syncCampDayRows(f.tx, D1).then(() => null, (e) => ({ status: e.status, code: e.code, message: e.message }));
-      expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${CAMP_DAY} 11:00 ครูเอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` });
+      expect(e).toEqual({ status: 409, code: "SLOT_TAKEN", message: `วันที่ ${CAMP_DAY} 11:00 ครู เอก มีคาบแล้ว — ไม่ได้บันทึกอะไร` }); // 🔻 TASK-671 — owner: a space ALWAYS, `ครู เอก` (the whole sentence is still asserted)
     } finally { f.restore(); }
   });
   test("🔻 TASK-581: a CLOSED week syncs EXACTLY as an open one (its coaches keep their blocks — Close gates new bookings only); no teacher ⇒ every row deleted", async () => {

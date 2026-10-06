@@ -104,7 +104,7 @@ import { renderTeacherSchedule, type TeacherSchedRow } from "../lib/teacher-sche
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
 import { checkinLine, joinItems, leaveLine } from "../lib/line-v2-lines";
 import { liffLinkBody } from "../lib/liff-link";
-import { toCourseSummary } from "../lib/leave";
+import { LEAVE_NO_VALIDITY_CODE, toCourseSummary } from "../lib/leave";
 import {
   checkinByToken,
   CHECKIN_TOO_LATE,
@@ -1064,6 +1064,12 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
       const { value: cutoffHours } = await getSetting(leaveCutoffKey(teacherType ?? "FULL_TIME"));
       return send(replyToken, [textReply(leaveNoticeMessage(cutoffHours, b.startTime, lang), lang)]);
     }
+    // 🔻 TASK-692 §RE-CUT — no room before the expiry: HER sentence, ONLY on this code (every other refusal keeps its own). The leave was rolled back, so nothing
+    // exists to point at; the ADMINS are told AFTER the rollback, through the same sender as the other admin notices. 🚫 Never silent to them.
+    if (e?.code === LEAVE_NO_VALIDITY_CODE) {
+      await notifyAdmins({ kind: "leave_refused_no_validity", bookingId: b.id });
+      return send(replyToken, [textReply(t("leave_no_validity", lang), lang)]);
+    }
     return send(replyToken, [textReply(e?.message ?? tb("leave_err"), lang)]);
   }
   // 🔻 TASK-656 (REQ-112 ruling 2) — the "quota full, needs an admin unlock" line is NEVER sent now: nothing locks a leave, so
@@ -1124,7 +1130,6 @@ async function doMyCourses(lineUserId: string, replyToken: string, lang: Lang) {
       teacherNickname: nextSessionTeacher(c.bookings ?? [], bangkokNow().date),
       size: s.size,
       usedSessions: s.usedSessions,
-      leaveRemaining: s.leaveRemaining,
       expiryDate: s.expiryDate,
     }));
   // Same shape as the schedule: one whole list per language (TASK-276, unchanged). ⚠️ TASK-470 — her lines are identical in

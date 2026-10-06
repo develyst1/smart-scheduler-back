@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { canTakeLeave, leaveQuota, toCourseSummary } from "./leave";
+import * as LEAVE from "./leave";
+import { leaveQuota, toCourseSummary } from "./leave";
 import { courseExpiry } from "./recurring"; // 🔻 TASK-650 — the expiry the label now reads, built by the real rule
 
 const base = { id: "x", startDate: "2025-10-01", usedSessions: 0, adminUnlocked: false, expiryDate: "2026-01-01" };
@@ -15,7 +16,6 @@ describe("leave quota rules", () => {
     const s = toCourseSummary({ ...base, size: 10, leaveUsed: 1 });
     expect(s.leaveRemaining).toBe(2);
     expect(s.leaveLocked).toBe(false);
-    expect(canTakeLeave({ ...base, size: 10, leaveUsed: 1 })).toBe(true);
   });
 
   test("🔻 TASK-656 — quota exhausted → NOT locked: leaves are unlimited, the counter is a plain count and `leaveLocked` is always false", () => {
@@ -28,7 +28,7 @@ describe("leave quota rules", () => {
   test("admin unlock overrides the lock", () => {
     const c = { ...base, size: 4, leaveUsed: 1, adminUnlocked: true };
     expect(toCourseSummary(c).leaveLocked).toBe(false);
-    expect(canTakeLeave(c)).toBe(true);
+    expect(LEAVE).not.toHaveProperty("canTakeLeave"); // 🔻 TASK-656 follow-up — deleted: a dead function that reads like a gate
   });
 
   test("maxWeek ceilings", () => {

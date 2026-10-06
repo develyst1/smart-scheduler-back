@@ -21,8 +21,7 @@ export interface MyCourseRow {
   /** Purchased size, straight from the summary. */
   size: number;
   usedSessions: number;
-  leaveRemaining: number;
-  expiryDate: string;
+  expiryDate: string; // 🔻 TASK-656 follow-up — `leaveRemaining` is gone: no allowance, nothing to print
 }
 
 // 🔻 TASK-470 — the old `courseLine` (AC-15's five fields incl. the leave quota) is gone: the customer's format replaced it

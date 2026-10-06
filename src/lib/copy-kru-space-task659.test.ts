@@ -60,7 +60,30 @@ describe("🔴 TASK-659 — no `ครู${` is left in OUR files (asked of the 
     expect(raw("src/services/scheduler.service.ts")).not.toMatch(/\["อาทิตย์", "จันทร์"/);
     expect((raw("src/lib/line-i18n.ts").match(/ob_dow_\d:/g) ?? []).length).toBe(7);
   });
-  test("🚫 the sixth site is NOT touched here — `camp.service.ts` is Team B's, and keeps its old spelling until they route the approved rule", () => {
-    expect(raw("src/services/camp.service.ts")).toContain("ครู${coachName.get(teacherId)");
+  test("the sixth site — `camp.service.ts`, Team B's — now carries the approved space too (Team B's change; asserted here by value)", () => {
+    expect(raw("src/services/camp.service.ts")).toContain("`วันที่ ${d.date} ${hour} ครู ${coachName.get(teacherId) ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`"); // 🔻 TASK-671 (Team B, granted by Porter) — FLIPPED BY VALUE: the sixth site now carries the approved space, whole sentence. The test's TITLE above still says "old spelling"; it is left as granted (this assertion only).
+  });
+});
+
+describe("🔴 ruling 5 follow-up — a space after ครู in the {teacher} TEMPLATES too (a `${`-grep cannot see them)", () => {
+  test("no `ครู{` anywhere in the dictionary or the code (asked of the CODE)", () => {
+    for (const f of [...OURS, "src/lib/line-i18n.ts", "src/lib/line-message.ts"]) {
+      expect({ f, left: [...code(f).matchAll(/ครู\{/g)].length }).toEqual({ f, left: 0 });
+    }
+  });
+  test("the two templates, by value: the parent's course row and the leave notice", async () => {
+    const { t } = await import("./line-i18n");
+    expect(t("course_row", "TH", { course: "C", teacher: "Bank", remaining: "3", total: "4", expiry: "2026-11-11" })).toBe("· C · ครู Bank · เหลือ 3/4 · หมดอายุ 2026-11-11");
+    expect(t("ob_leave_admin", "TH", { student: "S", date: "d", time: "10:00", teacher: "Bank", program: "P", by: "x" })).toContain("· ครู Bank ·");
+  });
+  test("🔴 the parent's course reply carries NO leave count — not in the template, not in either language, and no `leaveRemaining` is passed in", async () => {
+    const { t } = await import("./line-i18n");
+    for (const lang of ["TH", "EN"] as const) {
+      const row = t("course_row", lang, { course: "C", teacher: "Bank", remaining: "3", total: "4", expiry: "2026-11-11", leave: "2" });
+      expect(row).not.toMatch(/สิทธิ์ลา|leave left/);
+      expect(row).not.toContain("2 ");
+    }
+    expect(code("src/services/line-webhook.service.ts")).not.toContain("leaveRemaining: s.leaveRemaining");
+    expect(code("src/lib/line-course-view.ts")).not.toMatch(/leaveRemaining\s*:/); // the field is gone from the row type
   });
 });

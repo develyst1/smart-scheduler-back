@@ -10,7 +10,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expiryImpact, expiryLeaveRoom, type ExpiryCandidate } from "./course-expiry-impact";
+import * as IMPACT from "./course-expiry-impact";
+import { expiryImpact, type ExpiryCandidate } from "./course-expiry-impact";
 import { addDays } from "./time";
 import { readSrc } from "./read-src";
 
@@ -92,66 +93,19 @@ describe("TASK-298 — an earlier date NAMES what it cuts; a later one is quiet"
   });
 });
 
-describe("🔑 TASK-298 §5 — the date that quietly eats the family's remaining leave", () => {
-  // The plan still owes week 6, so a leave taken later needs a make-up in week 7 or 8 (quota 2).
-  test("🔴 a date that eats the room is DISTINGUISHABLE from one that does not", () => {
-    // ⚠️ A warning that fires either way is not a warning — so both sides are asserted.
-    const tight = expiryLeaveRoom(week(6), rows, 2); // exactly the plan's end
-    const roomy = expiryLeaveRoom(week(8), rows, 2);
-    expect({ roomFor: tight.roomFor, all: tight.roomForAll }).toEqual({ roomFor: 0, all: false });
-    expect({ roomFor: roomy.roomFor, all: roomy.roomForAll }).toEqual({ roomFor: 2, all: true });
-  });
-
-  test("…and PARTIAL room is reported as the number it is, not rounded to a verdict", () => {
-    // 🔑 Numbers on the wire, the sentence on the screen — the same division that lets `ExpiryWarningAlert`
-    // compute nothing.
-    const half = expiryLeaveRoom(week(7), rows, 2);
-    expect(half).toEqual({
-      remainingLeave: 2,
-      planEnd: week(6),
-      neededFor: week(8),
-      roomFor: 1,
-      roomForAll: false,
-    });
-  });
-
-  test("🔑 quota SPENT ⇒ nothing to warn about", () => {
-    // ⚠️ The case that keeps this honest: a family with no leave left loses nothing, so an earlier date must
-    // not raise a leave warning on top of the session one it already raises.
-    const spent = expiryLeaveRoom(week(6), rows, 0);
-    expect({ roomFor: spent.roomFor, all: spent.roomForAll, needed: spent.neededFor }).toEqual({
-      roomFor: 0,
-      all: true,
-      needed: week(6),
-    });
-  });
-
-  test("nothing still owed ⇒ no make-up can be appended ⇒ the date takes nothing away", () => {
-    const settled: ExpiryCandidate[] = [{ id: "a", date: week(1), status: "ATTENDED" }];
-    expect(expiryLeaveRoom(week(1), settled, 2)).toEqual({
-      remainingLeave: 2,
-      planEnd: null,
-      neededFor: null,
-      roomFor: 2,
-      roomForAll: true,
-    });
-  });
-
-  test("⚠️ the boundary is INCLUSIVE, exactly as the session impact reads it", () => {
-    // A make-up landing ON the expiry is inside it — `exceedsExtensionCeiling` is `date > ceiling`. A boundary
-    // meaning one thing here and another there is worse than no warning.
-    expect(expiryLeaveRoom(week(7), rows, 1).roomForAll).toBe(true);
-    expect(expiryLeaveRoom(addDays(week(7), -1), rows, 1).roomForAll).toBe(false);
-  });
-
-  test("🔑 §5 needed NO second data path — the same rows and course row answer both questions", () => {
-    // @Sober asked to be told if it did. It does not: `expiryDecision` loads once and hands the same
-    // `candidates` to both, and the quota comes off the course row the session impact already required.
+describe("🔻 TASK-656 follow-up (REQ-112) — the preview answers ONLY the impact: `leaveRoom` and `expiryLeaveRoom` are gone", () => {
+  // ⚠️ This describe was TASK-298 §5, "the date that quietly eats the family's remaining leave" — it pinned `expiryLeaveRoom` by value. REQ-112 deleted
+  // the leave allowance, so the thing it measured has no subject; the pins are retired with it rather than left asserting a rule nobody holds.
+  test("the module no longer exports it, and the service no longer returns it", () => {
+    expect(Object.keys(IMPACT)).not.toContain("expiryLeaveRoom");
     const SVC = code(src("src/services/scheduler.service.ts"));
+    expect(SVC).not.toMatch(/leaveRoom|expiryLeaveRoom/);
     const shared = SVC.slice(SVC.indexOf("async function expiryDecision("), SVC.indexOf("export async function previewCourseExpiry("));
     expect(shared.match(/findMany\(/g)).toHaveLength(1);
     expect(shared).toContain("impact: expiryImpact(expiryDate, candidates),");
-    expect(shared).toContain("expiryLeaveRoom(");
-    expect(shared).toContain("Math.max(0, courseLeaveQuota(course) - course.leaveUsed),");
+  });
+  test("the preview's answer is exactly { expiryWarning }", () => {
+    const SVC = code(src("src/services/scheduler.service.ts"));
+    expect(SVC).toContain("return { expiryWarning: impact };");
   });
 });

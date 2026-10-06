@@ -1,7 +1,7 @@
 {
   "task": "TASK-657",
   "proves": "src/services/makeup-past-expiry-task657.test.ts",
-  "note": "🔴 REQ-112 §R. TWO halves. (1) THE UNDO NEVER TOUCHES THE EXPIRY: U1 gives a week back · U2 records an expiry change · U4 re-introduces the actor check (the REQ-114 (ii) self-block) · U3 re-introduces the `UNDO_LEAVE_CHARGE_UNKNOWN` refusal · U5 refunds a free declared day · U6 never gives the count back · U7/U8 the chain refusal loses its steps / turns its STOP branch into a path (Khwan's Peeta case). (2) THE ADMIN IS TOLD when a make-up lands past the expiry, once per make-up: N1 warns about EVERY make-up · N2 sends twice · N3–N7 each re-plan caller stops asking (each bites ALONE — the proof the callers' list is complete) · N8 asks BEFORE the week (a false alarm the week already covers) · N9 replaces `makeup_far_out` instead of sitting beside it · N10 the check stretches the expiry again (the silent stretch-to-fit, in its third home) · N11 the Thai copy is paraphrased.",
+  "note": "🔴 REQ-112 §R. TWO halves. (1) THE UNDO NEVER TOUCHES THE EXPIRY: U1 gives a week back · U2 records an expiry change · U4 re-introduces the actor check (the REQ-114 (ii) self-block) · U3 re-introduces the `UNDO_LEAVE_CHARGE_UNKNOWN` refusal · U5 refunds a free declared day · U6 never gives the count back · U7/U8 the chain refusal loses its steps / turns its STOP branch into a path (Khwan's Peeta case). (2) THE ADMIN IS TOLD when a make-up lands past the expiry, once per make-up: N1 warns about EVERY make-up · N2 sends twice · N3–N7 each re-plan caller stops asking (each bites ALONE — the proof the callers' list is complete) · N8 asks BEFORE the week (a false alarm the week already covers) · N9 replaces `makeup_far_out` instead of sitting beside it · N10 the check stretches the expiry again (the silent stretch-to-fit, in its third home) · N11 the Thai copy is paraphrased. 🔻 2026-10-06, TASK-692 (REQ-112 re-cut): N5 (door 2 stops asking), N7 (door 1 stops asking) and N8 (door 1 asks before its week) are RETIRED — their SUBJECT is gone: doors 1 and 2 (a FAMILY leave) now REFUSE through `assertRoomForLeave` instead of flagging, so the `flagMakeupsPastExpiry` lines they edited no longer exist there. Their successors are in `leave-refused-no-validity-task692.mutations.json` (the refusal removed · asked before the T1 week). N3/N4/N6 (doors 4, 3, 5) keep their subject and bite.",
   "tests": "src/services/makeup-past-expiry-task657.test.ts src/services/booking-undo-req108.test.ts src/lib/undo-charge-unknown-retired-task657.test.ts src/services/leave-week-triggers-task656.test.ts src/lib/makeup-far-out.test.ts src/lib/pre-start-declared-absence-task609.test.ts",
   "mutations": [
     {
@@ -189,21 +189,6 @@
       ]
     },
     {
-      "id": "N5",
-      "what": "🔴 door 2 (the plan editor) stops asking",
-      "files": [
-        {
-          "file": "src/services/scheduler.service.ts",
-          "edits": [
-            {
-              "from": "        await flagMakeupsPastExpiry(tx, courseId, moves.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
-              "to": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "N6",
       "what": "🔴 door 5 (the seats of a group date) stops asking",
       "files": [
@@ -213,36 +198,6 @@
             {
               "from": "    if (s.courseId) await flagMakeupsPastExpiry(tx, s.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision\n",
               "to": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "N7",
-      "what": "🔴 door 1 (the session's own make-up) stops asking",
-      "files": [
-        {
-          "file": "src/services/scheduler.service.ts",
-          "edits": [
-            {
-              "from": "      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n",
-              "to": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "N8",
-      "what": "🔴 door 1 asks BEFORE its week decision — a make-up the new week already covers raises a false alarm",
-      "files": [
-        {
-          "file": "src/services/scheduler.service.ts",
-          "edits": [
-            {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n",
-              "to": "      if (current.courseId && extendedId) await flagMakeupsPastExpiry(tx, current.courseId, [extendedId]); // 🔻 TASK-657 §3 — AFTER the week decision (door 1 inserts its own make-up)\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
         }

@@ -121,7 +121,12 @@ function world(courses: Course[], rows: any[]) {
     // the coach-notice read chains `.limit()` / `.innerJoin()`; it answers nobody here on purpose
     select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [] }; return q; },
   };
-  spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
+  // 🔻 TASK-692 — a REAL transaction rolls back when its callback throws (the refusal relies on it). The in-memory world did not, so "nothing written" could not be
+  // proven: snapshot before, restore on a throw.
+  spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => {
+    const snap = { bookings: structuredClone(w.bookings), courses: structuredClone(w.courses), expiryChanges: structuredClone(w.expiryChanges), inserts: structuredClone(w.inserts) };
+    try { return await fn(tx); } catch (e) { w.bookings = snap.bookings; w.courses = snap.courses; w.expiryChanges = snap.expiryChanges; w.inserts = snap.inserts; throw e; }
+  }) as any));
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => withRels(w.bookings[0])) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
@@ -187,6 +192,9 @@ describe("🔴 AN ORDINARY LEAVE ADDS NOTHING — any door, any number (the cust
     const t = bangkokNow().date;
     const c = baseCourse("c1", plus(t, -14));
     const w = world([c], [row("c1-b1", "c1", plus(t, -14), "ATTENDED"), row("c1-b2", "c1", plus(t, -7), "ATTENDED"), row("c1-b3", "c1", plus(t, 7)), row("c1-b4", "c1", plus(t, 14))]);
+    // 🔻 TASK-692 — a family leave with no room before the expiry is REFUSED now, so this proof gives the course the room the claim is ABOUT ("any number of leaves inside the validity")
+    w.courses[0].expiryDate = plus(c.expiryDate, 90);
+    c.expiryDate = w.courses[0].expiryDate;
     await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false);
     await sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b4", planned: true, reason: "ป่วย", override: true });
     expectNoWeek(w, "c1", c.expiryDate, 2);
@@ -432,26 +440,25 @@ describe("🔴 ONE ACT, ONE DECISION — acting twice on the SAME row never earn
   });
 });
 
-describe("🔴 RULING 3 — a make-up past the expiry is CREATED, and the expiry is NEVER silently stretched to fit it", () => {
-  test("by value: the admin moves the expiry EARLIER by hand, then one more declared absence ⇒ the make-up lands PAST it, and the expiry is ONLY +7 from the moved date", async () => {
+describe("🔴 RULING 3 — the expiry is NEVER silently stretched to fit a make-up (a family leave with no room is REFUSED — TASK-692; a coach's leave / school cancel still CREATE it)", () => {
+  test("by value: the admin moves the expiry EARLIER by hand, then one declared absence ⇒ REFUSED (no room even after its week), the expiry is NOT stretched, NOTHING is written", async () => {
     const c = baseCourse("c1", FUTURE);
     const w = world([c], courseRows("c1", FUTURE));
     const lastSession = plus(FUTURE, 21);
-    w.courses[0].expiryDate = lastSession;
+    w.courses[0].expiryDate = lastSession; // the admin moved it to the last session's date, by hand
     spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_t: any, _s: string, _x: string, after: string) => plus(after, 21)) as any));
-    await sched.updateBookingStatus("c1-b1", "sick-leave", "ลาล่วงหน้า", false);
-    const makeup = w.bookings.find((b: any) => b.extendedFromId);
-    expect(makeup).toBeDefined(); // 🔑 CREATED — never held, never refused
-    expect(w.courses[0].expiryDate).toBe(plus(lastSession, 7));
-    expect(makeup.date > w.courses[0].expiryDate).toBe(true);
-    expect(w.courses[0].expiryDate).not.toBe(makeup.date);
+    await expect(sched.updateBookingStatus("c1-b1", "sick-leave", "ลาล่วงหน้า", false)).rejects.toMatchObject({ code: "LEAVE_NO_VALIDITY" });
+    expect(w.courses[0].expiryDate).toBe(lastSession); // 🔴 not +7 (the week rolled back with the leave), and certainly not stretched to the make-up
+    expect(w.bookings.find((x: any) => x.extendedFromId)).toBeUndefined();
+    expect(w.bookings.find((x: any) => x.id === "c1-b1").status).toBe("PENDING");
+    expect(w.expiryChanges).toHaveLength(0);
   });
-  test("…and an ORDINARY leave whose make-up lands past the expiry moves it by NOTHING — the admin is told (TASK-657), the system does not stretch", async () => {
+  test("…and a school cancel (ANY reason) whose re-owed class lands past the expiry CREATES it, moves the expiry by NOTHING — the admin is told (TASK-657)", async () => {
     const c = baseCourse("c1", STARTED());
     const w = world([c], courseRows("c1", c.startDate, 2));
     spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_t: any, _s: string, _x: string, after: string) => plus(after, 28)) as any));
-    await sched.updateBookingStatus("c1-b4", "sick-leave", "ป่วย", false);
-    const makeup = w.bookings.find((b: any) => b.extendedFromId);
+    await sched.updateBookingStatus("c1-b4", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
+    const makeup = w.bookings.find((b: any) => b.extendedFromId || (b.status === "EXTENDED" && b.date > c.expiryDate));
     expect(makeup).toBeDefined();
     expect(makeup.date > w.courses[0].expiryDate).toBe(true);
     expect(w.courses[0].expiryDate).toBe(c.expiryDate);

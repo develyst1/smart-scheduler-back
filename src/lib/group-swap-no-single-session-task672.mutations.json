@@ -1,0 +1,68 @@
+{
+  "task": "TASK-672",
+  "proves": "src/lib/group-swap-no-single-session-task672.test.ts",
+  "note": "🔴 LIVE MONEY DEFECT — the GROUP swap refuses a one-session `onDate` (and ONLY `onDate`). `tests` = the task file plus group-series-req104 (:210 pins that a stray `from` is stripped), group-swap-rate-door-task634 (:133-135 the accepted shapes) and group-swap-rate-task632 (:143, the verbatim quote of the schema line).",
+  "tests": "src/lib/group-swap-no-single-session-task672.test.ts src/lib/group-series-req104.test.ts src/lib/group-swap-rate-door-task634.test.ts src/lib/group-swap-rate-task632.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "the `onDate` refusal removed — the DEFECT BACK (zod strips it, the whole group swaps)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": ", onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() });",
+              "to": " });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "what": "`.strict()` instead — a stray `from` would be refused (group-series-req104:210)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": ", onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() });",
+              "to": ", onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() }).strict();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "what": "`fromDate` refused — the legitimate from-here-on swap breaks",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(),",
+              "to": "export const groupSeriesSwap = z.object({ to: ID, fromDate: z.never().optional(),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "what": "`onDate` no longer optional — an ABSENT key is refused too (every swap would 400)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional()",
+              "to": "onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION })"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

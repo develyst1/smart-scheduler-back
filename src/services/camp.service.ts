@@ -281,7 +281,7 @@ export async function syncCampDayRows(tx: any, dayId: string): Promise<{ inserte
       await tx.update(bookings).set({ campWeekDayId: dayId, confirmedAt: new Date() }).where(eq(bookings.id, id));
     } catch (e: any) {
       if (e instanceof ApiException && e.code === "SLOT_TAKEN") {
-        throw conflict("SLOT_TAKEN", `วันที่ ${d.date} ${hour} ครู${coachName.get(teacherId) ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`); // TASK-445: no tx read after the abort
+        throw conflict("SLOT_TAKEN", `วันที่ ${d.date} ${hour} ครู ${coachName.get(teacherId) ?? teacherId} มีคาบแล้ว — ไม่ได้บันทึกอะไร`); // TASK-445 · 🔻 TASK-671 — `ครู {ชื่อ}` with a literal space (owner: always, no helper that decides by script): no tx read after the abort
       }
       throw e;
     }

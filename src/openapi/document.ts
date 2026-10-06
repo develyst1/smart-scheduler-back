@@ -1,4 +1,5 @@
 // OpenAPI 3.0 — Scheduling API (frontoffice). Hand-maintained; keep in sync with routes/api.ts.
+import { SESSION_CANCEL_REASONS } from "../lib/course-plan";
 import { bookingStatus } from "../db/schema";
 
 export const openApiDocument = {
@@ -92,7 +93,7 @@ export const openApiDocument = {
           // course ending, so one query finds every cancellation made by mistake.
           reasonCode: {
             type: "string",
-            enum: ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR"],
+            enum: [...SESSION_CANCEL_REASONS], // 🔻 TASK-690 follow-up — the ONE session set (five codes), never a fourth typed copy
           },
         },
       },

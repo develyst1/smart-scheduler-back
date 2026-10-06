@@ -116,7 +116,12 @@ function world(courses: Course[], rows: any[]) {
     // the coach-notice read chains `.limit()` / `.innerJoin()`; it answers nobody here on purpose
     select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [] }; return q; },
   };
-  spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
+  // 🔻 TASK-692 — a REAL transaction rolls back when its callback throws (the refusal relies on it). The in-memory world did not, so "nothing written" could not be
+  // proven: snapshot before, restore on a throw.
+  spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => {
+    const snap = { bookings: structuredClone(w.bookings), courses: structuredClone(w.courses), expiryChanges: structuredClone(w.expiryChanges), inserts: structuredClone(w.inserts) };
+    try { return await fn(tx); } catch (e) { w.bookings = snap.bookings; w.courses = snap.courses; w.expiryChanges = snap.expiryChanges; w.inserts = snap.inserts; throw e; }
+  }) as any));
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => withRels(w.bookings[0])) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
@@ -143,12 +148,14 @@ const startedCourse = () => {
 };
 const landAt = (days: number) => spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_t: any, _s: string, _x: string, after: string) => plus(after, days)) as any));
 
-describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, and NOTHING extends (her words: «แจ้งแอดมินเท่านั้นค่ะ»)", () => {
-  test("door 1, an ORDINARY leave on a course whose last class is the expiry: the make-up is CREATED past it, the expiry does NOT move, ONE notice", async () => {
+describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, and NOTHING extends (her words: «แจ้งแอดมินเท่านั้นค่ะ») — for the doors that do NOT refuse: a coach's leave, a school cancel", () => {
+  // 🔻 TASK-692 — doors 1 and 2 (a FAMILY leave) now REFUSE when there is no room, so this notice is raised only where the class is LOST whatever we answer:
+  // door 3 (a coach's leave), door 4 (a school cancel, ANY reason) and door 5 (the seats of a group date). Proven for the refusing doors in task692's file.
+  test("door 4, a school cancel on a course whose last class is the expiry: the class is re-owed PAST it, the expiry does NOT move, ONE notice to an admin", async () => {
     const { c, w } = startedCourse();
-    await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false);
-    const makeup = w.bookings.find((b: any) => b.extendedFromId);
-    expect(makeup).toBeDefined(); // 🔑 created — never held, never refused
+    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
+    const makeup = w.bookings.find((b: any) => b.status === "EXTENDED");
+    expect(makeup).toBeDefined(); // 🔑 created — never held
     expect(makeup.date > c.expiryDate).toBe(true);
     expect(w.courses[0].expiryDate).toBe(c.expiryDate); // 🔴 nothing extended
     expect(past()).toHaveLength(1);
@@ -157,47 +164,36 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
 
   test("🔑 a make-up INSIDE the expiry warns NOBODY — a warning that fires every time is not a warning", async () => {
     const { w } = startedCourse();
-    landAt(-4); // lands a few days before the last class — comfortably inside
-    await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false);
-    expect(w.bookings.find((b: any) => b.extendedFromId)).toBeDefined();
+    landAt(-4);
+    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
+    expect(w.bookings.find((b: any) => b.status === "EXTENDED")).toBeDefined();
     expect(past()).toHaveLength(0);
   });
 
-  test("🔴 ONCE PER MAKE-UP — two ordinary leaves ⇒ two make-ups ⇒ two notices (never one per door, never three)", async () => {
+  test("🔴 ONCE PER MAKE-UP — two cancels ⇒ two make-ups ⇒ two notices (never one per door, never three)", async () => {
     const { w } = startedCourse();
-    await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false);
-    await sched.updateBookingStatus("c1-b4", "sick-leave", "ป่วย", false);
-    expect(w.bookings.filter((b: any) => b.extendedFromId)).toHaveLength(2);
+    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
+    await sched.updateBookingStatus("c1-b4", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
+    expect(w.bookings.filter((b: any) => b.status === "EXTENDED")).toHaveLength(2);
     expect(past()).toHaveLength(2);
     expect(new Set(past().map((p) => p.bookingId)).size).toBe(2);
   });
 
-  test("🔑 ASKED AFTER THE WEEK — a declared pre-start absence whose make-up lands past the BASE expiry but inside the week it earned raises NOTHING", async () => {
-    // The base expiry is start+28; the declaration adds a week (T1 ⇒ start+35); the make-up lands on start+35. Asked BEFORE the week it would
-    // have shouted about a class the new week already covers — which is why the check is the caller's, after its week decision.
-    const c = baseCourse("c1", FUTURE);
-    const w = world([c], courseRows("c1", FUTURE));
-    landAt(14); // after = start+21 (the last class) ⇒ start+35
-    await sched.updateBookingStatus("c1-b1", "sick-leave", "ลาล่วงหน้า", false);
+  test("🔑 ASKED AFTER THE WEEK — a school cancel \"our side\" whose re-owed class lands past the BASE expiry but inside the week it earned raises NOTHING", async () => {
+    const { c, w } = startedCourse();
+    landAt(7); // t+21 = expiry + 7 = exactly the week T3 earns
+    await sched.updateBookingStatus("c1-b3", "cancel", "โรงเรียนปิด", false, "SCHOOL_ISSUE");
     expect(w.courses[0].expiryDate).toBe(plus(c.expiryDate, 7));
-    expect(w.bookings.find((b: any) => b.extendedFromId)!.date).toBe(plus(FUTURE, 35));
+    expect(w.bookings.find((b: any) => b.status === "EXTENDED")!.date).toBe(plus(c.expiryDate, 7));
     expect(past()).toHaveLength(0);
   });
 
-  test("…and one that lands PAST even the earned week tells the admin", async () => {
-    const c = baseCourse("c1", FUTURE);
-    const w = world([c], courseRows("c1", FUTURE));
-    landAt(21); // start+42 > start+35
-    await sched.updateBookingStatus("c1-b1", "sick-leave", "ลาล่วงหน้า", false);
+  test("…and one that lands PAST even the earned week tells the admin (and still creates it)", async () => {
+    const { c, w } = startedCourse();
+    landAt(21);
+    await sched.updateBookingStatus("c1-b3", "cancel", "โรงเรียนปิด", false, "SCHOOL_ISSUE");
     expect(past()).toHaveLength(1);
     expect(w.courses[0].expiryDate).toBe(plus(c.expiryDate, 7)); // the week the trigger earned — and nothing more
-  });
-
-  test("door 2 (the plan editor), an ordinary mark-absence ⇒ ONE notice", async () => {
-    const { c, w } = startedCourse();
-    await sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b4", planned: true, reason: "ป่วย", override: true });
-    expect(w.courses[0].expiryDate).toBe(c.expiryDate);
-    expect(past()).toHaveLength(1);
   });
 
   test("door 3 (a coach's leave) ⇒ ONE notice for the make-up it re-owes — after T2's own week", async () => {
@@ -210,14 +206,6 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
     landAt(28);
     await sched.reportTeacherLeave(T1, { date: t, reason: "ป่วย" }, "admin-dong", { onBehalf: true });
     expect(w.courses[0].expiryDate).toBe(plus(c.expiryDate, 7)); // T2's week, and only that
-    expect(past()).toHaveLength(1);
-  });
-
-  test("door 4 (a school cancel, any reason) ⇒ ONE notice for the make-up the cancel re-owes", async () => {
-    const { c, w } = startedCourse();
-    // cancelling c1-b3 (not the LAST class): the re-owed class goes after the last one, which is ON the expiry
-    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
-    expect(w.courses[0].expiryDate).toBe(c.expiryDate);
     expect(past()).toHaveLength(1);
   });
 
@@ -246,15 +234,15 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
 
   test("…and the new notice fires on the EXPIRY alone — the search did not run out, so `makeup_far_out` stays quiet", async () => {
     const { w } = startedCourse();
-    await sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b4", planned: true, reason: "ป่วย", override: true });
+    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
     expect(past()).toHaveLength(1);
     expect(far()).toHaveLength(0);
-    expect(w.bookings.filter((b: any) => b.extendedFromId)).toHaveLength(1);
+    expect(w.bookings.filter((b: any) => b.status === "EXTENDED")).toHaveLength(1);
   });
 
   test("🚫 the FAMILY is never told — every notice of the new kind is addressed to an admin", async () => {
     startedCourse();
-    await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false);
+    await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
     for (const p of past()) expect(p.recipientType).toBe("admin");
     expect(enq().filter((p) => p?.recipientType === "parent" && p?.payload?.kind === "makeup_past_expiry")).toHaveLength(0);
   });
@@ -296,11 +284,13 @@ describe("🔑 §3 — WHO ASKS: every re-plan caller is named, and the ones tha
   const where = (re: RegExp) => [...SCHED.matchAll(re)].map((m) => enclosing(SCHED, m.index!)).sort();
 
   test("the callers that ASK (after their week decision) — by function name", () => {
-    expect(where(/await flagMakeupsPastExpiry\(tx, /g)).toEqual(["applyPlanChange", "cancelSeatsOfGroup", "reportTeacherLeave", "updateBookingStatus", "updateBookingStatus"]);
+    // 🔻 TASK-692 — doors 1 and 2 (a FAMILY leave) REFUSE through `assertRoomForLeave` instead; the flag stays where the class is lost whatever we answer
+    expect(where(/await flagMakeupsPastExpiry\(tx, /g)).toEqual(["cancelSeatsOfGroup", "reportTeacherLeave", "updateBookingStatus"]);
+    expect(where(/await assertRoomForLeave\(tx, /g)).toEqual(["applyPlanChange", "updateBookingStatus"]);
   });
   test("the re-plan callers that DO NOT ask, and why — a new one fails here with a name", () => {
     const replans = where(/reconcileCoursePlan\(tx, /g);
-    const asks = new Set(where(/await flagMakeupsPastExpiry\(tx, /g));
+    const asks = new Set([...where(/await flagMakeupsPastExpiry\(tx, /g), ...where(/await assertRoomForLeave\(tx, /g)]);
     const silent = replans.filter((f) => !asks.has(f)).sort();
     // createCoursePackage (×2): BIRTH — the expiry is born to cover its declared absences, so a make-up it appends is inside by construction
     // applyPlanChange does ask (its mark-absence); its *insert* branch only TRIMS and appends nothing, in the same function.
@@ -344,15 +334,23 @@ describe("🔴 THE SID GATE, by value — the owner's table, row by row (ordinar
   });
 
   for (const n of [4, 6, 10]) {
-    test(`${n}-session — steps 1 and 2: an ORDINARY leave on session 2 (the session's Record leave) and on session 3 (the plan modal's Mark absence) ⇒ +0, one make-up each`, async () => {
+    test(`${n}-session — steps 1 and 2: an ORDINARY leave on session 2 (the session's Record leave), then on session 3 (the plan modal's Mark absence)${n === 4 ? " — 🔴 the SECOND is REFUSED (TASK-692): a 4-session course has exactly ONE week of room" : " ⇒ +0, one make-up each"}`, async () => {
       const { c, w } = gateCourse(n);
       await sched.updateBookingStatus("c1-b2", "sick-leave", "ป่วย", false);
       expect(expiry(w)).toBe(c.expiryDate);
-      await sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b3", planned: true, reason: "ป่วย", override: true });
+      if (n === 4) {
+        // the first make-up lands at D+28 = the expiry (inclusive: inside); the second would land at D+35 — past it ⇒ refused, nothing written
+        await expect(sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b3", planned: true, reason: "ป่วย", override: true })).rejects.toMatchObject({ code: "LEAVE_NO_VALIDITY" });
+        expect(w.inserts.filter((i: any) => i.table === "bookings")).toHaveLength(1);
+        expect(w.bookings.find((b: any) => b.id === "c1-b3").status).toBe("PENDING");
+        expect(w.courses[0].leaveUsed).toBe(1);
+      } else {
+        await sched.applyPlanChange("c1", { kind: "mark-absence", bookingId: "c1-b3", planned: true, reason: "ป่วย", override: true });
+        expect(w.inserts.filter((i: any) => i.table === "bookings")).toHaveLength(2); // one make-up per absence
+        expect(w.courses[0].leaveUsed).toBe(2); // a plain count — no "x of y", no lock
+      }
       expect(expiry(w)).toBe(c.expiryDate);
-      expect(w.inserts.filter((i: any) => i.table === "bookings")).toHaveLength(2); // one make-up per absence
       expect(w.expiryChanges).toHaveLength(0);
-      expect(w.courses[0].leaveUsed).toBe(2); // a plain count — no "x of y", no lock
     });
   }
 
@@ -400,14 +398,15 @@ describe("🔴 THE SID GATE, by value — the owner's table, row by row (ordinar
     expect(weekOfExpiry(start, expiry(w), 0)).toBe(6);
   });
 
-  test("overflow, once: ordinary leaves until a make-up lands past the expiry ⇒ CREATED, the expiry does NOT move, the admin gets the new notice", async () => {
+  test("overflow, once: ordinary leaves on the 4-session course until one has no room ⇒ REFUSED (admin wording), the expiry does NOT move, NOTHING is written, NO admin notice (the admin is looking at the refusal)", async () => {
     const { c, w } = gateCourse(4);
-    for (const id of ["c1-b2", "c1-b3", "c1-b4"]) await sched.updateBookingStatus(id, "sick-leave", "ป่วย", false);
+    await sched.updateBookingStatus("c1-b2", "sick-leave", "ป่วย", false); // the make-up lands ON the expiry — inside
+    const before = JSON.stringify(w.bookings);
+    const e: any = await sched.updateBookingStatus("c1-b3", "sick-leave", "ป่วย", false).catch((x: any) => x);
+    expect(e.code).toBe("LEAVE_NO_VALIDITY");
+    expect(e.message).toBe("อายุคอร์สไม่พอสำหรับคาบชดเชย — ขยายวันหมดอายุก่อน แล้วค่อยบันทึกลา");
+    expect(JSON.stringify(w.bookings)).toBe(before);
     expect(expiry(w)).toBe(c.expiryDate);
-    const makeups = w.bookings.filter((b: any) => b.extendedFromId);
-    expect(makeups).toHaveLength(3);
-    expect(makeups.some((m: any) => m.date > c.expiryDate)).toBe(true); // at least one landed past it
-    expect(past().length).toBeGreaterThan(0);
-    expect(past()).toHaveLength(makeups.filter((m: any) => m.date > c.expiryDate).length); // once per make-up that crossed
+    expect(past()).toHaveLength(0);
   });
 });

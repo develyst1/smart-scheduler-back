@@ -686,6 +686,13 @@ function buildOutboxMessage(
       );
     // 🔻 TASK-657 §3 (REQ-112) — a make-up that landed PAST the course's expiry. A NEW kind BESIDE `makeup_far_out`, not instead of it.
     // 🚫 The family is not told (they asked for a leave and got one); the admin decides whether to extend the expiry — nothing here does.
+    // 🔻 TASK-692 §RE-CUT — a PARENT's leave was refused for lack of validity; the admin is told (nothing was written). A NEW kind: `makeup_past_expiry` stays for the
+    // cases where the make-up IS created past the expiry (a coach's leave, a school cancel — 657 as built).
+    case "leave_refused_no_validity":
+      return t("ob_leave_refused_no_validity", lang, {
+        student: ctx.studentName ?? "-",
+        date: ctx.date ? ddmmyyyy(ctx.date) : "-",
+      });
     case "makeup_past_expiry":
       return t("ob_makeup_past_expiry", lang, {
         student: ctx.studentName ?? "-",
