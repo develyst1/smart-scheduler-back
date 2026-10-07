@@ -110,12 +110,12 @@ describe("🔴 SESSION cancel ONLY — it is NOT a reason to END A COURSE or a V
   });
 });
 
-describe("📋 the label — the customer's own words in Thai, verbatim, DRAFT until @Sober says approved", () => {
+describe("✅ the label — the customer's own words in Thai, verbatim, APPROVED by the owner 2026-10-06 (was DRAFT until the TASK-699 §2 marker pass)", () => {
   test("TH `ปัญหาจากทางเรา` · EN `A problem on our side`, in the dictionary AND through the cancel notice's own reader", () => {
     expect(t("ob_reason_SCHOOL_ISSUE", "TH")).toBe("ปัญหาจากทางเรา");
     expect(t("ob_reason_SCHOOL_ISSUE", "EN")).toBe("A problem on our side");
     expect(cancelReasonText("SCHOOL_ISSUE", "free text that must be ignored", "TH")).toBe("ปัญหาจากทางเรา"); // the CODE wins over the note
-    expect(readSrc(readFileSync(resolve(root, "src/lib/line-i18n.ts"), "utf8"))).toContain("📋 DRAFT — both ride the round's one copy set via @Porter");
+    expect(readSrc(readFileSync(resolve(root, "src/lib/line-i18n.ts"), "utf8"))).toContain("✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 (TH the customer's own words, EN approved).");
   });
   test("🔻 the OpenAPI document's `reasonCode` enum IS the session set — by VALUE (it was a stale fourth copy: three codes, missing TEACHER_LEAVE since TASK-406)", async () => {
     // Granted by @Sober after 690 (one line, `UpdateStatusRequest.reasonCode.enum` only). Derived by SPREAD from `SESSION_CANCEL_REASONS`, so it cannot drift again.

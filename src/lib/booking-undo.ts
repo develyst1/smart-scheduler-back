@@ -67,7 +67,7 @@ export function makeupDecision(linked: LinkedRow[], isSettled: (date: string) =>
   if (linked.length > 1) throw conflict("UNDO_MAKEUP_AMBIGUOUS", `การลานี้มีคาบขยายมากกว่าหนึ่งคาบ (${linked.map((m) => m.date).join(", ")}) — กรุณาแก้ไขด้วยตนเอง`);
   const m = linked[0]!;
   if (m.status === "ATTENDED" || m.status === "NO_SHOW") throw conflict("UNDO_MAKEUP_TAUGHT", `คาบขยายของการลานี้ (${m.date}) เรียนไปแล้ว — ย้อนกลับไม่ได้ กรุณาแก้ไขด้วยตนเอง`);
-  // 📋 DRAFT (REQ-114 (i), TASK-657 §2 — owner approval pending in @Porter's copy set; marked until @Sober says approved). It NAMES THE STEPS, and the
+  // ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 (REQ-114 (i), TASK-657 §2). It NAMES THE STEPS, and the
   // second branch says STOP rather than a path: Khwan's Peeta case — the two-step path removes a leave she meant to keep. Until the one-click
   // chain undo (REQ-114 (iii), NEXT week) ships, the honest instruction for that case is "ask". EN (reading only; refusals are Thai-only): "This leave's
   // make-up ({date}) is itself on leave — it can't be undone in one step. If {date} is coming back too: undo {date}'s leave first, then this one. If the

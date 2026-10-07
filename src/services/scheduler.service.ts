@@ -3431,7 +3431,7 @@ export async function reportTeacherLeave(
   // Today or the past ⇒ everything below, unchanged. `sessionIds` picks classes to CANCEL, so it has no meaning for a whole-day
   // block ⇒ refused in words rather than silently ignored.
   if (isAdvanceLeave(input.date)) {
-    if (input.sessionIds) throw badRequest("ลาล่วงหน้าเป็นการปิดทั้งวัน — ไม่ต้องเลือกคาบ คาบที่มีอยู่แล้วจะแสดงให้แอดมินจัดการ"); // 📋 DRAFT
+    if (input.sessionIds) throw badRequest("ลาล่วงหน้าเป็นการปิดทั้งวัน — ไม่ต้องเลือกคาบ คาบที่มีอยู่แล้วจะแสดงให้แอดมินจัดการ"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370
     const r = await recordAdvanceLeave(db, me, { date: input.date, reason: input.reason }, actor);
     // ⭐ TASK-608 — a day blocked ON SOMEONE'S BEHALF is a change to THEIR week: the teacher is told, and must not learn it from an
     // empty calendar. 🚫 Only on behalf — a teacher needs no notice of their own act. 🚫 And NEVER the families: nothing was

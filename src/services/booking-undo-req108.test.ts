@@ -68,14 +68,14 @@ describe("✅ the rules, by value (`lib/booking-undo.ts`)", () => {
     expect(U).not.toMatch(/ExpiryDecision|ExpiryChangeRow/);
     expect(src("src/services/undo.service.ts")).not.toMatch(/expiryDecision|recordExpiryChange|UNDO_EXPIRY|UNDO_LEAVE_CHARGE_UNKNOWN|courseExpiryChanges|expiryRecordingMarker/);
   });
-  test("📋 DRAFT (TASK-657 §2 / REQ-114 (i)) — the chain refusal NAMES THE STEPS, and the second branch says STOP (Khwan's Peeta case), not a path", () => {
+  test("✅ APPROVED (TASK-657 §2 / REQ-114 (i)) — the chain refusal NAMES THE STEPS, and the second branch says STOP (Khwan's Peeta case), not a path", () => {
     let e: any;
     try { makeupDecision([{ id: "m", status: "SICK_LEAVE", date: "2026-11-06" }], () => false); } catch (x) { e = x; }
     expect(e.code).toBe("UNDO_MAKEUP_CHAIN");
     expect(e.message).toBe("คาบขยายของการลานี้ (2026-11-06) ถูกแจ้งลาต่อ — ย้อนกลับทีเดียวไม่ได้ · ถ้าวันที่ 2026-11-06 จะกลับมาเรียนด้วย: ย้อนการลาของวันที่ 2026-11-06 ก่อน แล้วค่อยย้อนการลานี้ · ถ้าวันที่ 2026-11-06 ยังลาอยู่จริง: อย่าเพิ่งย้อน ให้แจ้งผู้ดูแลระบบ");
     expect(e.message.split("2026-11-06").length - 1).toBe(4);
     expect(e.message).not.toContain("กรุณาแก้ไขด้วยตนเอง"); // the sentence that named no step is gone
-    expect(readFileSync(resolve(root, "src/lib/booking-undo.ts"), "utf8")).toContain("📋 DRAFT (REQ-114 (i)"); // marked as a draft at the line until @Sober says approved (read RAW: `src()` strips comments)
+    expect(readFileSync(resolve(root, "src/lib/booking-undo.ts"), "utf8")).toContain("✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 (REQ-114 (i), TASK-657 §2)."); // the approval is stated at the line (was "📋 DRAFT" until the TASK-699 §2 marker pass; read RAW: `src()` strips comments)
   });
 });
 

@@ -262,10 +262,10 @@ describe("📋 §3 — the DRAFT copy (owner approval pending), both languages, 
       expect(m).not.toMatch(/[{}]/);
     }
   });
-  test("the draft is MARKED as a draft in the dictionary", () => {
+  test("the approval is MARKED in the dictionary (was: marked as a draft)", () => {
     const I = readFileSync(resolve(import.meta.dir, "../lib/line-i18n.ts"), "utf8");
     expect(I).toContain("ob_makeup_past_expiry");
-    expect(I).toMatch(/📋 DRAFT: owner\s+\/\/ approval pending/);
+    expect(I).toContain("✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491."); // was "📋 DRAFT: owner approval pending" until the TASK-699 §2 marker pass
   });
 });
 

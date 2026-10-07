@@ -194,13 +194,13 @@ export const REGISTRATION_COPY = {
    * string (the customer wrote them that way, for a reader whose language we do not yet know). They were keyed `{TH,EN}` when they
    * shipped, so a session rendered ONE language between two bilingual screens — Tanya read that as "Thai-only in an EN chat".
    * 🚫 Their REFUSALS are not here: a refusal answers inside a session whose language IS known (`add_addr_province_bad`, the same
-   * shape as `add_birthdate_bad`). 📋 DRAFT (COPY §18).
+   * shape as `add_birthdate_bad`). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700).
    */
   add_addr_province_prompt: "กรุณาระบุจังหวัดค่ะ เช่น กรุงเทพมหานคร\nPlease enter your province, e.g. Bangkok",
-  add_addr_district_prompt: "กรุณาระบุอำเภอ/เขตค่ะ เช่น วัฒนา\nPlease enter your district, e.g. Watthana",
-  add_addr_subdistrict_prompt: "กรุณาระบุตำบล/แขวงค่ะ เช่น พระโขนงเหนือ\nPlease enter your sub-district, e.g. Phra Khanong Nuea",
-  /** 🔻 TASK-594 §2 — shown INSIDE screen 7's address line, so it is bilingual like the screen that carries it. 📋 DRAFT (COPY §18). */
-  add_addr_on_file: "ที่อยู่เดิมของครอบครัว / on file",
+  add_addr_district_prompt: "กรุณาระบุอำเภอ/เขต เช่น วัฒนา\nPlease enter your district, e.g. Watthana",
+  add_addr_subdistrict_prompt: "กรุณาระบุตำบล/แขวง เช่น พระโขนงเหนือ\nPlease enter your sub-district, e.g. Phra Khanong Nuea",
+  /** 🔻 TASK-594 §2 — shown INSIDE screen 7's address line, so it is bilingual like the screen that carries it. ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700). */
+  add_addr_on_file: "(ที่อยู่เดิมของครอบครัว) / (the address we have on file)",
   /** §17c screen 7, head. */
   add_summary_head: "กรุณาตรวจสอบข้อมูลก่อนบันทึกค่ะ\nPlease check your information before saving.",
   /**
@@ -392,7 +392,7 @@ const TABLE: Record<string, Entry> = {
   // SPEC-071 / TASK-233 (REQ-079 §5 Flow 3) — the registration wizard. The summary step is not decoration:
   // this roster has no delete for anything with history, so the parent reads back what will be written.
   // 🔴 TASK-583 (ruling 4: "the same duplicate-name wording") — THE ONE SOURCE for both doors: the chat renders it, and the page's
-  // refusal CARRIES it (`/register/create`'s NAME_DUPLICATE_NEEDS_DETAIL, `message`), so the two cannot drift. 📋 DRAFT — the
+  // refusal CARRIES it (`/register/create`'s NAME_DUPLICATE_NEEDS_DETAIL, `message`), so the two cannot drift. ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the
   // page's owner-bound wording (COPY-REVIEW §8), which replaces "surname or nickname" with the child's REAL name.
   add_dup_detail: {
     TH: "มีน้องชื่อนี้ในครอบครัวแล้ว — กรุณาใส่ชื่อจริงของน้อง (ชื่อ-นามสกุล) เพื่อไม่ให้สับสนกันค่ะ",
@@ -402,12 +402,12 @@ const TABLE: Record<string, Entry> = {
   // and sit inside the customer's §17c screens, and a one-language question between two bilingual ones is what Tanya read as
   // "Thai-only". 🔑 `add_addr_province_bad` STAYS here, in the session's own language, because it is a REFUSAL — the same shape as
   // `add_birthdate_bad` beside it (the wizard knows the session's language; §17c screens are bilingual because the customer wrote
-  // them that way). 📋 DRAFT (COPY §18).
+  // them that way). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 (COPY §18).
   add_addr_province_bad: { TH: "ไม่พบจังหวัดนี้ค่ะ กรุณาพิมพ์ชื่อจังหวัดเต็ม เช่น เชียงใหม่ หรือ กรุงเทพมหานคร", EN: "We could not find that province. Please type its full name, e.g. เชียงใหม่ or กรุงเทพมหานคร" },
-  // 🔴 TASK-590 (D11 a) — the phone became a family between the phone step and the confirm (another account, another tab). 📋 DRAFT
+  // 🔴 TASK-590 (D11 a) — the phone became a family between the phone step and the confirm (another account, another tab). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370
   add_phone_now_registered: { TH: "เบอร์นี้เพิ่งถูกลงทะเบียนไว้แล้วค่ะ ยังไม่ได้บันทึกนักเรียน กรุณาพิมพ์ \"สมัคร\" แล้วใส่เบอร์อีกครั้ง", EN: "This phone number was just registered. The student was not saved — please type \"Register\" and enter the number again." },
   add_birthdate_bad: {
-    // 🔻 TASK-583 (ruling 4: no ข้าม) — the "or type skip" escape removed; the birthday is required. 📋 DRAFT (a deletion only)
+    // 🔻 TASK-583 (ruling 4: no ข้าม) — the "or type skip" escape removed; the birthday is required. ✅ the APPROVED change (REQ-110 §17, "or type skip" removed — COPY-REVIEW-2026-09-29.md:181) matches; the rest of the sentence predates that round
     TH: "รูปแบบวันเกิดไม่ถูกต้องค่ะ กรุณาพิมพ์เป็น วัน-เดือน-ปี เช่น 02-12-2024",
     EN: "That date format is not valid. Please use DD-MM-YYYY, e.g. 02-12-2024.",
   },
@@ -474,7 +474,7 @@ const TABLE: Record<string, Entry> = {
     TH: "ไม่สามารถแจ้งลาได้ เนื่องจากวันหมดอายุไม่เพียงพอค่ะ กรุณาติดต่อแอดมินค่ะ",
     EN: "Leave request unavailable because there is not enough time before the course expiry date. Please contact Admin.",
   },
-  // 📋 DRAFT (to @Sober — the one copy set): the ADMIN is told when a PARENT is refused (her «แจ้งแอดมิน»). An admin refused at their own door needs none.
+  // ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491: the ADMIN is told when a PARENT is refused (her «แจ้งแอดมิน»). An admin refused at their own door needs none.
   ob_leave_refused_no_validity: {
     TH: "ผู้ปกครองแจ้งลาไม่สำเร็จ — อายุคอร์สไม่พอสำหรับคาบชดเชย: {student} · {date}",
     EN: "A parent's leave was refused — not enough course validity for a make-up: {student} · {date}",
@@ -597,8 +597,8 @@ const TABLE: Record<string, Entry> = {
   // customer's messages.
   // ⚠️ **The wording is mine and the NUMBER is not.** §3 asked for the FACT reported and the threshold left
   // to @Porter — so the sentence states how far, and decides nothing.
-  // 🔻 TASK-657 §3 (REQ-112 — the centre of the customer's model) — a make-up whose date is PAST the course's expiry. 📋 DRAFT: owner
-  // approval pending in @Porter's copy set. Her words: «แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหมค่ะ» — the system
+  // 🔻 TASK-657 §3 (REQ-112 — the centre of the customer's model) — a make-up whose date is PAST the course's expiry. ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491.
+  // Her words: «แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหมค่ะ» — the system
   // tells the admin and decides NOTHING. 🔑 A DIFFERENT event from `ob_makeup_far` below (that one fires when the SEARCH runs out;
   // this one fires when the EXPIRY is crossed) — which is why this is a new key and not a reuse.
   ob_makeup_past_expiry: {
@@ -606,8 +606,7 @@ const TABLE: Record<string, Entry> = {
     EN: "{student}'s make-up was created on {date}, past the course expiry ({expiry}) — the class stands; please check and extend the expiry if you want to.",
   },
   // 🔻 TASK-699 (REQ-112, owner ruling 2026-10-07 via @Porter) — the FAMILY is told when an ADMIN changes a course's expiry, LONGER or SHORTER (same notice, no direction
-  // branch). Khwan asked for it herself («นี่ถ้าผปคทำเอง เราก็ต้องเป็นคนแจ้ง manual อยู่ดีไหมคะ»). 📋 DRAFT: owner approval pending in @Porter's copy set — if the owner
-  // changes the words, these two strings change and nothing else.
+  // branch). Khwan asked for it herself («นี่ถ้าผปคทำเอง เราก็ต้องเป็นคนแจ้ง manual อยู่ดีไหมคะ»). ✅ APPROVED by the owner 2026-10-07 — COPY-REVIEW-2026-09-29.md:525 (the DRAFTED sentence; :516 is a superseded PM rewrite).
   ob_course_expiry_changed: {
     TH: "แจ้งเปลี่ยนวันหมดอายุคอร์สค่ะ: คอร์ส {program} ของ {student} ใช้ได้ถึงวันที่ {to} (จากเดิม {from}) หากมีข้อสงสัย กรุณาติดต่อแอดมินค่ะ",
     EN: "Course expiry date changed: {student}'s {program} course is now valid until {to} (previously {from}). Please contact Admin if you have any questions.",
@@ -723,7 +722,7 @@ const TABLE: Record<string, Entry> = {
   ob_reason_ADMIN_ERROR: { TH: "จองผิด (แอดมิน)", EN: "Booking error (admin)" },
   ob_reason_TEACHER_LEAVE: { TH: "ครูลา", EN: "Teacher leave" }, // TASK-406 (REQ-097) — the 4th code
   // 🔻 TASK-690 (REQ-112, owner ruling 2026-10-06) — the 5th, a SESSION cancel only: *a problem on our side*. TH is the customer's own
-  // words, verbatim. 📋 DRAFT — both ride the round's one copy set via @Porter and stay marked until @Sober says approved.
+  // words, verbatim. ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 (TH the customer's own words, EN approved).
   ob_reason_SCHOOL_ISSUE: { TH: "ปัญหาจากทางเรา", EN: "A problem on our side" },
   // TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice (`class_cancelled_parent`), THE OWNER'S WORDS via @Porter
   // (2026-09-19): the title, the four lines (`ob_f_*`), `Reason` ONLY for a teacher's leave, then the system's `Note`
@@ -736,7 +735,7 @@ const TABLE: Record<string, Entry> = {
   // chat's language, the LABELS stay English (`ob_f_*` + `ob_f_was`) — both halves pinned, so neither gets "fixed". No Coach, no
   // reason. 🚫 Byte-frozen from here.
   mv_title: { TH: "📅 ย้ายคาบเรียน:", EN: "📅 CLASS MOVED:" },
-  // 📖 **DRAFT — MINE, proposed to the owner via Sober (TASK-537 §2); NOT approved.** A cancelled MAKE-UP, to the FAMILY: the
+  // words identical to the owner-APPROVED cl_title; marker retired on @Porter's ruling 2026-10-07 (COPY-REVIEW-2026-09-29.md:521). A cancelled MAKE-UP, to the FAMILY: the
   // title in the chat's language (the move notice's pattern, TASK-529), then the four English-labelled lines — which class is off,
   // nothing about why. 🔑 Deliberately the SAME words as the approved cancel title: naming it "make-up" invites "so is another one
   // coming?", which the message cannot answer truthfully (see TASK-537 §3). Its own key, so the owner can make it differ. Pinned by FORM.

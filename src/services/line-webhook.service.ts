@@ -658,7 +658,7 @@ async function handleAddStudentStep(
     if (parsed.value == null) return strikeOrPrompt(lineUserId, session, replyToken, t("add_birthdate_prompt", lang), lang);
     await resetStrikes(lineUserId);
     // 🔻 TASK-590 (F-C) — a household with an address ON FILE is not asked again (as on the page): straight to the summary.
-    if (addressOnFile) return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, `${parent!.province} (${t("add_addr_on_file", lang)})`);
+    if (addressOnFile) return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, `${parent!.province} ${t("add_addr_on_file", lang)}`);
     await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
     // 🔻 TASK-323 (`§16.2`) — no exit hint on the address question. The exit still works; see the birthdate note.
     return reply(replyToken, t("add_addr_province_prompt", lang));

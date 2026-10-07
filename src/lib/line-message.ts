@@ -311,7 +311,7 @@ function buildOutboxMessage(
         extra(t("cl_note", lang), t(noteKey, lang))
       );
     }
-    // 🔴 TASK-537 — a cancelled MAKE-UP, to the FAMILY (📖 the words are a DRAFT). The house pattern the owner approved for the move
+    // 🔴 TASK-537 — a cancelled MAKE-UP, to the FAMILY (words identical to the owner-APPROVED cl_title; marker retired on @Porter's ruling 2026-10-07 (COPY-REVIEW-2026-09-29.md:521)). The house pattern the owner approved for the move
     // (TASK-529): the title in the CHAT's language, English labels, Date and Time on their own lines. 🚫 Nothing about why, and no
     // `Note` — the cancel notice's Note is chosen by SHAPE ("a make-up has been added"), which for a make-up is a promise we cannot
     // know is true (an ended course, the extension ceiling or a locked leave add nothing).

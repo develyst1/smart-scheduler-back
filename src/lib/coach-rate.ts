@@ -41,6 +41,6 @@ export function seriesRateOf(
   return null;
 }
 
-/** 📋 DRAFT wording — a cover with no rate to pay the covering teacher at: say it, never default to the covered one's. */
+/** ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 ("all other sections approved as drafted") — wording — a cover with no rate to pay the covering teacher at: say it, never default to the covered one's. */
 export const RATE_REQUIRED = (date: string) =>
   new ApiException(400, "RATE_REQUIRED", `วันที่ ${date}: ครูที่มาสอนแทนยังไม่มีค่าสอนในตารางนี้ — กรุณาระบุค่าสอนของครูที่สอนแทน`);

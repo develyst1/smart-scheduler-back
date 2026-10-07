@@ -312,14 +312,14 @@ export async function createStudentFromLine(
 ) {
   // 🔴 TASK-583 (ruling 4) — THE rule for every LINE door, in the one writer: a child is never written without a birthday. Each
   // door asks first (the page: BIRTHDATE_REQUIRED; the chat: a re-ask), so this is the floor no future door can go under.
-  if (!input.birthDate) throw badRequest("กรุณาระบุวันเกิดของนักเรียน"); // 📋 DRAFT — unreachable from today's doors
+  if (!input.birthDate) throw badRequest("กรุณาระบุวันเกิดของนักเรียน"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — unreachable from today's doors
   // 🔴 TASK-590 (F-C) — an address, when one is written, is ALWAYS a full one: `checkFullAddress`, THE one rule, applied again
   // HERE at the write (the doors ask first, for their own codes). 🔴 THE LIMIT (see lib/full-address.ts): the SHAPE is checked —
   // three parts, the province one of the 77 — NOT that the district belongs to the province. `parents.province` ← the province;
   // `parents.note` ← the one line (the page's order and spelling), APPENDED — never overwriting a staff note (TASK-352).
   const given = input.address && (input.address.province || input.address.district || input.address.subDistrict) ? input.address : null;
   const checked = given ? checkFullAddress(given) : null;
-  if (checked && !checked.ok) throw badRequest("ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง"); // 📋 DRAFT — the floor; doors refuse first
+  if (checked && !checked.ok) throw badRequest("ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the floor; doors refuse first
   const created = await createStudentForParent(parent.id, { name: input.name, birthDate: input.birthDate }, exec);
   if (checked?.ok) {
     // Read the row's note NOW rather than trusting the `parent` handed in — a note a staff member wrote since must survive too.

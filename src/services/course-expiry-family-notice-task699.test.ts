@@ -150,9 +150,9 @@ describe("📋 TASK-699 — the words (DRAFT, owner approval pending): exactly t
       expect(msg(lang)).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     }
   });
-  test("marked DRAFT in the dictionary, beside the key", () => {
-    const I = readFileSync(resolve(import.meta.dir, "../lib/line-i18n.ts"), "utf8");
+  test("marked APPROVED in the dictionary, beside the key (was DRAFT until TASK-700)", () => {
+    const I = readFileSync(resolve(import.meta.dir, "../lib/line-i18n.ts"), "utf8").replace(/\r\n/g, "\n");
     expect(I).toContain("ob_course_expiry_changed");
-    expect(I).toMatch(/📋 DRAFT: owner approval pending in @Porter's copy set[^\n]*\n[^\n]*\n\s*ob_course_expiry_changed/);
+    expect(I).toMatch(/✅ APPROVED by the owner 2026-10-07 — COPY-REVIEW-2026-09-29\.md:525[^\n]*\n\s*ob_course_expiry_changed/);
   });
 });

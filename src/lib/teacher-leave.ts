@@ -36,8 +36,9 @@ export const isAdvanceLeave = (date: string, today: string = bangkokNow().date):
 // 🚫 It is NOT inside the act, and that is binding both ways: the TEACHER's own door shares the act and must keep accepting
 // today (a coach's legitimate same-day cancel), and TASK-608's invariant is that `onBehalf` decides only WHO IS TOLD, never
 // WHAT HAPPENS — refusing inside the act on `onBehalf` would break it.
-// 📋 DRAFT (copy is @Sober's): the sentence names what to do instead, because a refusal that only says no sends the admin back
-// to the same button.
+// 📋 ENGINEER WORDING — LISTED, NOT APPROVED (owner rule 2026-10-07: a refusal no screen can reach). 🔴 The day a screen can send today's date, this returns to the
+// approval queue. No screen reaches it: the admin's leave dialog offers future dates only (TASK-611); this refusal is the backstop TASK-648 put behind it.
+// The sentence names what to do instead, because a refusal that only says no sends the admin back to the same button.
 export const ADMIN_LEAVE_FUTURE_ONLY = () =>
   badRequest("บันทึกวันลาแทนครูได้เฉพาะวันถัดไปเป็นต้นไป — ถ้าต้องการยกเลิกคาบของวันนี้ กรุณาจัดการรายคาบในปฏิทิน");
 
@@ -90,7 +91,7 @@ export async function leaveDayBookings(exec: any, teacherId: string, date: strin
  * record stands (its reason, its author) and the list is returned again (`alreadyRecorded`).
  */
 export async function recordAdvanceLeave(exec: any, teacherId: string, input: { date: string; reason: string }, actor: string | null) {
-  if (!isAdvanceLeave(input.date)) throw badRequest("ลาล่วงหน้าได้เฉพาะวันหลังจากวันนี้"); // 📋 DRAFT — the fork makes this unreachable from the route
+  if (!isAdvanceLeave(input.date)) throw badRequest("ลาล่วงหน้าได้เฉพาะวันหลังจากวันนี้"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the fork makes this unreachable from the route
   const [row] = await exec.insert(teacherLeaveDays).values({ teacherId, date: input.date, reason: input.reason, createdBy: actor }).onConflictDoNothing().returning();
   const leave = row ?? (await exec.query.teacherLeaveDays.findFirst({ where: (l: any, { and: a, eq: e }: any) => a(e(l.teacherId, teacherId), e(l.date, input.date)) }));
   return { leave: { date: leave.date as string, reason: (leave.reason ?? null) as string | null }, alreadyRecorded: !row, bookings: await leaveDayBookings(exec, teacherId, input.date) };
@@ -102,7 +103,7 @@ export async function recordAdvanceLeave(exec: any, teacherId: string, input: { 
  */
 export async function liftAdvanceLeave(exec: any, teacherId: string, date: string) {
   const gone = await exec.delete(teacherLeaveDays).where(and(eq(teacherLeaveDays.teacherId, teacherId), eq(teacherLeaveDays.date, date))).returning({ id: teacherLeaveDays.id });
-  if (!gone.length) throw notFound("ไม่พบวันลาล่วงหน้านี้"); // 📋 DRAFT
+  if (!gone.length) throw notFound("ไม่พบวันลาล่วงหน้านี้"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370
   return { lifted: date };
 }
 

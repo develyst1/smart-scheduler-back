@@ -11,7 +11,7 @@ import { conflict } from "./http";
  * door AND the admin's two doors (Record leave, Mark absence): *"parent refused, admin allowed" is two rules for one act*. The admin is not stuck — they
  * extend the expiry first, then record. 🚫 No held state, no retry, no re-plan on extend: recording the leave AGAIN simply works once there is room.
  * A DISTINCT code so the parent's reply can print HER sentence (`leave_no_validity`, TH+EN, verbatim from her edited sheet) ONLY on this code.
- * 📋 DRAFT admin wording (owner approves with the one copy set): «อายุคอร์สไม่พอสำหรับคาบชดเชย — ขยายวันหมดอายุก่อน แล้วค่อยบันทึกลา».
+ * ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 — admin wording: «อายุคอร์สไม่พอสำหรับคาบชดเชย — ขยายวันหมดอายุก่อน แล้วค่อยบันทึกลา».
  * EN reading: "Not enough course validity for a make-up — extend the expiry first, then record the leave."
  */
 export const LEAVE_NO_VALIDITY_CODE = "LEAVE_NO_VALIDITY";
