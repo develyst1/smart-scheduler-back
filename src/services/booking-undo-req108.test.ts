@@ -19,6 +19,7 @@ import { ACTION_KEYS } from "../lib/permissions";
 import { SCHEDULING_WITNESSES } from "../lib/migration-witness";
 import { readSrc } from "../lib/read-src";
 import * as ownScope from "../lib/own-scope"; // TASK-508
+import * as familyLink from "../lib/family-link"; // TASK-704
 import { formatOutboxMessage } from "../lib/line-message";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -529,6 +530,39 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     await undoBooking("b1", { actor: "a", reason: null });
     expect(h.w.outbox.map((m) => m.payload.kind)).toEqual(["class_on_again_teacher"]);
     expect(h.coachesAsked).toEqual(["b1", "b1"]); // 🔻 TASK-561: the leave-day gate asks first (nobody told), then the notice
+  });
+
+  // 🔻 TASK-704 (REQ-115 F1) — a make-up born CONFIRMED was announced to the family; its Undo-cancel tells them, in the make-up's OWN kind (no reason, no new-class line).
+  const withFamily = () => { spies.push(spyOn(familyLink, "householdLineUserIds").mockImplementation((async () => ["U-mom"]) as any)); };
+  const parentKinds = (h: Harness) => h.w.outbox.filter((m) => m.recipientType === "parent").map((m) => [m.recipientLineUserId, m.bookingId, m.payload.kind]);
+  test("🔴 TASK-704 — Undo whose make-up is CONFIRMED + marked ⇒ the FAMILY gets `makeup_cancelled_parent` (no new-class line) AND the coach is told as before", async () => {
+    withFamily();
+    const w = leaveWorld();
+    Object.assign(row(w, "m1"), { status: "CONFIRMED", isMakeup: true });
+    const h = run(w);
+    await undoBooking("b1", { actor: "a", reason: null });
+    expect(parentKinds(h)).toEqual([["U-mom", "m1", "makeup_cancelled_parent"]]);
+    expect(h.w.outbox.find((m) => m.recipientType === "parent")!.payload).toEqual({ kind: "makeup_cancelled_parent", bookingId: "m1", bookingType: "COURSE_PACKAGE", size: 4 });
+    expect(h.w.outbox.filter((m) => m.recipientType === "teacher").map((m) => [m.bookingId, m.payload.kind])).toEqual([["m1", "class_cancelled_teacher"], ["b1", "class_on_again_teacher"]]);
+  });
+  test("🚫 TASK-704 — an EXTENDED (never announced) make-up, marked or not ⇒ coaches ONLY, unchanged", async () => {
+    withFamily();
+    for (const isMakeup of [true, false]) {
+      const w = leaveWorld();
+      Object.assign(row(w, "m1"), { status: "EXTENDED", isMakeup });
+      const h = run(w);
+      await undoBooking("b1", { actor: "a", reason: null });
+      expect(parentKinds(h)).toEqual([]);
+      expect(h.w.outbox.some((m) => m.payload.kind === "class_cancelled_teacher")).toBe(true);
+    }
+  });
+  test("🚫 TASK-704 — a REFUSED Undo sends the family nothing (the send sits after every refusal)", async () => {
+    withFamily();
+    const w = leaveWorld();
+    Object.assign(row(w, "m1"), { status: "CONFIRMED", isMakeup: true });
+    const h = run(w, { plan: { appended: [], cancelled: ["m-other"] } });
+    expect(await errOf(undoBooking("b1", { actor: "a", reason: null }))).toMatchObject({ code: "UNDO_PLAN_WOULD_CHANGE" });
+    expect(parentKinds(h)).toEqual([]);
   });
 
   test("the words a DIFFERENT coach reads for the cancelled make-up — the existing cancel notice, unchanged; Reason = the note written on the row", () => {

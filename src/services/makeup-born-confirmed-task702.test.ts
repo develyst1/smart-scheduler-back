@@ -235,7 +235,7 @@ describe("🔴 THE TRIM (§3c) — reads the MARKER, trims the newest-dated LIVE
     const out = await sched.reconcileCoursePlan(w.tx, "c1");
     expect(out.cancelled).toEqual(["c1-mk"]);
     expect(w.bookings.find((b: any) => b.id === "c1-mk")).toMatchObject({ status: "CANCELLED", note: MAKEUP_NOTE_TRIMMED });
-    expect(kinds().sort()).toEqual(["parent:class_cancelled_parent", "teacher:class_cancelled_teacher"]);
+    expect(kinds().sort()).toEqual(["parent:makeup_cancelled_parent", "teacher:class_cancelled_teacher"]); // 🔻 TASK-704 — a make-up is told in its OWN kind (no "a make-up was added" Note)
   });
   test("NEWEST FIRST: with two marked make-ups and one too many, the later-dated one goes", async () => {
     const w = trimWorld([row("c1-mk1", "c1", plus(t(), 21), "CONFIRMED", { isMakeup: true, extendedFromId: "c1-b3" }), row("c1-mk2", "c1", plus(t(), 28), "CONFIRMED", { isMakeup: true, extendedFromId: "c1-b4" })]);

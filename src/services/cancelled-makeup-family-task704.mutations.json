@@ -1,0 +1,33 @@
+{
+  "task": "TASK-704",
+  "proves": "src/services/makeup-cancel-family-task537.test.ts",
+  "note": "🔴 REQ-115 F1. D1 the make-up branch reads STATUS again (EXTENDED) · D2 the Undo skips the family · D3 the Undo tells the family for an EXTENDED make-up (marker/status gate dropped) · D4 the trim hands the sender a row without the marker (the family gets the ordinary class_cancelled_parent) · D5 an ORDINARY class gets the make-up wording (the branch always true).",
+  "tests": "src/services/makeup-cancel-family-task537.test.ts src/services/booking-undo-req108.test.ts src/services/makeup-born-confirmed-task702.test.ts",
+  "mutations": [
+    {
+      "id": "D1",
+      "what": "🔴 the make-up branch of the family sender reads STATUS again — a CONFIRMED make-up gets the ordinary class's notice",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if ((current as any).isMakeup === true) {\n", "to": "  if (current.status === \"EXTENDED\") {\n" }] }]
+    },
+    {
+      "id": "D2",
+      "what": "🔴 the Undo tells the COACHES only again — the family holds a confirmed class that no longer exists",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "        if (makeup.status === \"CONFIRMED\" && (makeup as any).isMakeup === true) await sendClassCancelledToFamilies(tx, full, null, []);\n", "to": "" }] }]
+    },
+    {
+      "id": "D3",
+      "what": "the Undo tells the family for an EXTENDED (never announced) make-up too",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "        if (makeup.status === \"CONFIRMED\" && (makeup as any).isMakeup === true) await sendClassCancelledToFamilies", "to": "        await sendClassCancelledToFamilies" }] }]
+    },
+    {
+      "id": "D4",
+      "what": "🔴 the trim hands the family sender a row WITHOUT the marker — the family is told \"a make-up has been added\" (false: a trim adds nothing)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "      const full = { ...trimmed, course };\n", "to": "      const full = { ...trimmed, isMakeup: false, course };\n" }] }]
+    },
+    {
+      "id": "D5",
+      "what": "an ORDINARY CONFIRMED class gets the make-up wording — the branch is always taken",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if ((current as any).isMakeup === true) {\n", "to": "  if (true) {\n" }] }]
+    }
+  ]
+}

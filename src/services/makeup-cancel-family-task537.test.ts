@@ -88,10 +88,16 @@ describe("🔑 an ADMIN cancels a make-up ⇒ the family IS told (the REAL statu
     for (const p of payloads) expect(p).toEqual({ kind: "makeup_cancelled_parent", bookingId: M1, bookingType: "COURSE_PACKAGE", size: 4 });
   });
   test("🚫 and a CONFIRMED class cancelled the same way still gets the CONFIRMED notice — byte-identical payload (unchanged)", async () => {
-    const h = run({ status: "CONFIRMED" });
+    const h = run({ status: "CONFIRMED", isMakeup: false }); // 🔻 TASK-704 — an ORDINARY class is the UNMARKED one; the marker, not the status, picks the make-up wording
     await sched.updateBookingStatus(M1, "cancel", "coach unavailable", false, undefined, STAFF);
     expect(h.parentRows().map((r) => r.kind)).toEqual(["class_cancelled_parent", "class_cancelled_parent"]);
     expect(h.w.inserts.find((i) => i.v?.recipientType === "parent")!.v.payload).toEqual({ kind: "class_cancelled_parent", bookingId: M1, bookingType: "COURSE_PACKAGE", size: 4, cancelReason: null });
+  });
+  test("🔴 TASK-704 — a CONFIRMED MARKED make-up (born confirmed) is told in the make-up's OWN kind — never the ordinary class's notice; no reason, no 'make-up added' Note", async () => {
+    const h = run({ status: "CONFIRMED", isMakeup: true });
+    await sched.updateBookingStatus(M1, "cancel", "coach unavailable", false, undefined, STAFF);
+    expect(h.parentRows().map((r) => r.kind)).toEqual(["makeup_cancelled_parent", "makeup_cancelled_parent"]);
+    expect(h.w.inserts.find((i) => i.v?.recipientType === "parent")!.v.payload).toEqual({ kind: "makeup_cancelled_parent", bookingId: M1, bookingType: "COURSE_PACKAGE", size: 4 });
   });
   test("…and a PENDING one still tells nobody (it was never announced)", async () => {
     const h = run({ status: "PENDING" });
@@ -100,15 +106,17 @@ describe("🔑 an ADMIN cancels a make-up ⇒ the family IS told (the REAL statu
   });
 });
 
-describe("🚫 a leave UNDO cancels the make-up ⇒ the family is NOT told — structural, not a condition", () => {
-  test("by source: the Undo cancels the make-up in `undo.service` and names only the COACH sender — no family sender, no parent kind, no parent recipient", () => {
+describe("🔻 TASK-704 — a leave UNDO cancels a CONFIRMED marked make-up ⇒ the family IS told; an EXTENDED one ⇒ coaches only", () => {
+  test("by source: the Undo reuses THE one family sender, only for a CONFIRMED + marked make-up (announced at birth); the coach sender stays for both", () => {
     const U = src("src/services/undo.service.ts");
-    expect(U).toContain("await sendClassCancelledToCoaches(tx, { ...(makeup as any)");
-    expect(U).not.toMatch(/sendClassCancelledToFamilies|classCancelledFamilyAccounts|makeup_cancelled_parent|class_cancelled_parent|enqueueParentCopies|recipientType: "parent"/);
+    expect(U).toContain("await sendClassCancelledToCoaches(tx, full,");
+    expect(U).toContain('if (makeup.status === "CONFIRMED" && (makeup as any).isMakeup === true) await sendClassCancelledToFamilies(tx, full, null, []);');
+    expect(U).not.toMatch(/enqueueParentCopies|recipientType: "parent"|makeup_cancelled_parent|class_cancelled_parent/); // no second sender, no second wording
   });
-  test("…and by behaviour: the real `undoBooking` over an EXTENDED make-up asserts no non-teacher row (booking-undo-req108.test.ts keeps that line)", () => {
+  test("…and by behaviour: booking-undo-req108.test.ts runs the real `undoBooking` over both (the EXTENDED line keeps `never the family`)", () => {
     const T = readFileSync(resolve(root, "src/services/booking-undo-req108.test.ts"), "utf8");
     expect(T).toContain('expect(h.w.outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]); // 🚫 never the family');
+    expect(T).toContain("TASK-704");
   });
 });
 
@@ -137,7 +145,7 @@ describe("the household rule — reused, cancelled seats excluded", () => {
     const inserted: any[] = [];
     const tx = { query: { bookings: { findMany: async () => [] } }, insert: () => ({ values: async (v: any) => { inserted.push(v); } }) };
     const seats = [{ id: "S1", studentId: "kid-live", status: "EXTENDED" }, { id: "S2", studentId: "kid-gone", status: "CANCELLED" }];
-    expect(await sched.classCancelledFamilyAccounts(tx, { id: "G", status: "EXTENDED", bookingType: "GROUP", seats } as any, null)).toEqual(["U-live"]);
+    expect(await sched.classCancelledFamilyAccounts(tx, { id: "G", status: "EXTENDED", isMakeup: true, bookingType: "GROUP", seats } as any, null)).toEqual(["U-live"]);
     expect(asked).toEqual([["kid-live"]]);
     expect(inserted.map((v) => v.payload.kind)).toEqual(["makeup_cancelled_parent"]);
   });

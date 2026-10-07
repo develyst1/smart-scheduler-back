@@ -27,8 +27,8 @@
           "file": "src/services/undo.service.ts",
           "edits": [
             {
-              "from": "reconcileCoursePlan, sendClassCancelledToCoaches } from \"./scheduler.service\";",
-              "to": "reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches } from \"./scheduler.service\";"
+              "from": "reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from \"./scheduler.service\";",
+              "to": "reconcileCoursePlan, recordExpiryChange, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from \"./scheduler.service\";"
             },
             {
               "from": "      // The plan must now balance on its own: the reconcile is asked, and must do NOTHING.",

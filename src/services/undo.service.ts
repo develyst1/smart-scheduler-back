@@ -5,7 +5,7 @@
 // (`… WHERE id = $1 AND status = <the status it was read with>`). Zero rows ⇒ something else changed it first ⇒ refused, and
 // NOTHING else is written — no counter, no make-up, no expiry, no record. That is what makes a double-click, a retry and two
 // admins at once all harmless (TASK-480's shape: the state is the permission). Every other write comes after that row.
-// 🚫 Silent to the FAMILY, always, and to everyone on a check-in Undo (owner ruling 2). 🔔 A LEAVE Undo tells the COACHES — the
+// 🚫 Silent to the FAMILY — except 🔻 TASK-704: it IS told when the Undo cancels a CONFIRMED (announced) make-up — and to everyone on a check-in Undo (owner ruling 2). 🔔 A LEAVE Undo tells the COACHES — the
 // primary and every additional teacher — that the class is on again (TASK-508, owner: yes, never the family) — and, when it
 // cancels the leave's make-up, every coach of THAT class that it is off (TASK-510).
 import { and, eq, sql } from "drizzle-orm";
@@ -26,7 +26,7 @@ import { recordUndo, revertAttendance } from "./attendance-revert.service"; // T
 import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
 import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
-import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches } from "./scheduler.service";
+import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
 const MAKEUP_UNDONE_NOTE = MAKEUP_NOTE_UNDONE; // 🔻 TASK-702 — ONE list (lib/makeup-marker.ts): the migration's P4 reads the same bytes
@@ -165,9 +165,13 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       // 🔴 TASK-510 — the make-up was CANCELLED above, and its coaches may not be this class's coaches: tell every coach of the MAKE-UP
       // (its own row, so the date / time / child are the make-up's), with the existing cancel notice. Only a make-up the coach
       // HELD — EXTENDED or CONFIRMED (on their week, TEACHER_VISIBLE); a PENDING one was never announced (the cancel's own
-      // rule). In the transaction, as TASK-508's send: the notice exists iff the Undo committed — and, like it, AFTER every refusal. 🚫 Never the family.
+      // rule). In the transaction, as TASK-508's send: the notice exists iff the Undo committed — and, like it, AFTER every refusal.
+      // 🔻 TASK-704 (REQ-115 F1) — and the FAMILY, when the make-up was CONFIRMED + marked: it was announced at birth (TASK-702), so a family holding it must be told it is gone ("never the
+      // family" was right only while make-ups were born unannounced). An EXTENDED make-up was never announced ⇒ coaches only, as before. The ORIGINAL class coming back stays silent to the family (not built here).
       if (makeup && (makeup.status === "EXTENDED" || makeup.status === "CONFIRMED")) {
-        await sendClassCancelledToCoaches(tx, { ...(makeup as any), course: row.course ?? null, voucher: row.voucher ?? null }, { cancelReason: null, note: MAKEUP_UNDONE_NOTE });
+        const full = { ...(makeup as any), course: row.course ?? null, voucher: row.voucher ?? null };
+        await sendClassCancelledToCoaches(tx, full, { cancelReason: null, note: MAKEUP_UNDONE_NOTE });
+        if (makeup.status === "CONFIRMED" && (makeup as any).isMakeup === true) await sendClassCancelledToFamilies(tx, full, null, []);
       }
       // 🔔 TASK-508 — the class is BACK ON, and the coaches are the ones who have to be there. Every teacher of the row through
       // THE predicate (primary + additional, TASK-487). 🔑 INSIDE the transaction, the parent deduction's pattern (TASK-490):

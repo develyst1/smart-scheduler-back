@@ -3283,13 +3283,14 @@ export async function classCancelledFamilyAccounts(
   // 🔴 TASK-537 — a MAKE-UP (`EXTENDED`) is a class the family is holding too: it is on their schedule, and since TASK-516 they are
   // told when it MOVES — so its cancel is announced, in its OWN kind (`makeup_cancelled_parent`): no reason, and no `Note` that would
   // promise a replacement we cannot know is coming. The CONFIRMED notice below is byte-identical.
-  // 🔑 WHO CAN REACH THIS for a make-up: the callers of this ONE sender — the admin's cancel, a coach's own leave, the OTHER-series
-  // cancel-all. 🚫 A LEAVE UNDO cannot: it cancels the make-up in `undo.service` and tells only the coaches
-  // (`sendClassCancelledToCoaches`) — the owner's "never the family" is structural there, not a condition here (pinned both ways).
+  // 🔑 WHO REACHES THIS for a make-up: the admin's cancel, a coach's own leave, the OTHER-series cancel-all, the plan TRIM, and (🔻 TASK-704) the leave UNDO —
+  // a make-up born CONFIRMED was announced to the family, so its cancel is too (an unconfirmed EXTENDED one is still coaches-only in the Undo).
   if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;
   const accounts = await familyAccountsOfRow(tx, current);
   if (accounts === null) return null;
-  if (current.status === "EXTENDED") {
+  // 🔻 TASK-704 (REQ-115 F1) — "is this a MAKE-UP?" ⇒ the MARKER, never the status: a make-up is born CONFIRMED now (TASK-702), so a status test sent a cancelled
+  // make-up the ordinary class's wording ("a make-up has been added" — false for a trim). A legacy unconfirmed make-up (EXTENDED + marked) takes the same branch as before.
+  if ((current as any).isMakeup === true) {
     // 🔴 TASK-548 (owner-approved, TASK-537's option) — ONE line only when the re-plan ACTUALLY appended a class, naming its date: read
     // from the rows the re-plan itself RETURNED (its `appended` ids), never inferred. No append ⇒ the payload is byte-identical to
     // TASK-537's (no field at all) ⇒ no line.
