@@ -20,6 +20,11 @@ export interface PlanSession {
   status: string;
   date: string; // "YYYY-MM-DD" — ISO, so string compare = date order
   extendedFromId: string | null;
+  /**
+   * 🔻 TASK-702 (REQ-115, T1) — THE MARKER: this row grew from a leave. A make-up is born CONFIRMED (an ordinary class), so the STATUS can no longer say it;
+   * the TRIM and `canInsert` ask THIS. REQUIRED, not optional: an absent marker would read as "an ordinary class" and the engine could never trim it.
+   */
+  isMakeup: boolean;
   /** SPEC-033 §2 — the course engine counts only COURSE_PACKAGE rows. A soft-linked SINGLE_SESSION "extra" shares
    *  the courseId but must NOT count toward size/owed/end. Absent (legacy/tests) ⇒ treated as a plan row. */
   bookingType?: string;
@@ -37,7 +42,7 @@ export const isCoursePlanRow = (s: { bookingType?: string }): boolean =>
  * the planner (resume · the admin insert) read this to know WHICH leave they answer, and the backfill reads it to know which
  * leaves to look for. 🚫 A leave no row EVER answered (declared at creation, …) is not here — nobody re-answers it.
  */
-export function leavesAwaitingReanswer(sessions: PlanSession[]): string[] {
+export function leavesAwaitingReanswer(sessions: Array<Omit<PlanSession, "isMakeup">>): string[] { // 🔻 TASK-702 — it never asks the marker (links answer a leave, whatever the status)
   const rows = sessions.filter(isCoursePlanRow);
   const everLinked = new Set(rows.filter((s) => s.extendedFromId).map((s) => s.extendedFromId!));
   const liveLinked = new Set(rows.filter((s) => s.status !== "CANCELLED" && s.extendedFromId).map((s) => s.extendedFromId!));
@@ -47,7 +52,7 @@ export function leavesAwaitingReanswer(sessions: PlanSession[]): string[] {
 export interface CoursePlan {
   /** Sessions to add (short course). One per owed slot; carries the absence id that opened the gap. */
   append: Array<{ extendedFromId: string | null }>;
-  /** Sessions to cancel (long course) — newest appended `EXTENDED` first; never delivered/hand-placed. */
+  /** Sessions to cancel (long course) — newest-dated LIVE MARKED make-up first (🔻 TASK-702: the marker, not the status); never delivered, never an ordinary class. */
   cancelIds: string[];
 }
 
@@ -140,14 +145,14 @@ export const requiresCancelReason = (status: string): boolean => isDelivered(sta
 
 /**
  * An insert is only valid when the course has an outstanding owed session to satisfy: it's currently **short**
- * (a leave opened a gap the insert fills directly), OR there is an appended `EXTENDED` session the reconcile
+ * (a leave opened a gap the insert fills directly), OR there is a LIVE MARKED make-up (🔻 TASK-702 — the marker, not the status: a make-up is born CONFIRMED) the reconcile
  * can cancel to net-zero. Otherwise the insert would grow the course to `size + 1` — refuse instead
  * ("คอร์สนี้ครบจำนวนคาบแล้ว — ไม่มีคาบค้างให้เลื่อน", SPEC-028 §2).
  */
 export function canInsert(sessions: PlanSession[], size: number): boolean {
   return (
     courseCurrent(sessions) < size ||
-    sessions.some((s) => isCoursePlanRow(s) && s.status === "EXTENDED")
+    sessions.some((s) => isCoursePlanRow(s) && s.isMakeup && COURSE_LIVE.has(s.status)) // 🔻 TASK-702 — "is this a MAKE-UP?" ⇒ the marker
   );
 }
 
@@ -262,8 +267,8 @@ export const plannedRowExists = (w: number, size: number, absent: ReadonlySet<nu
 /**
  * The moves to bring a course back to `size` teachable sessions.
  * - short  (`current < size`): append `size − current` sessions, each linked to an unmatched SICK_LEAVE.
- * - long   (`current > size`): cancel the newest-dated `EXTENDED` (appended) sessions — never an
- *   attended/delivered or a hand-placed (non-`EXTENDED`) session.
+ * - long   (`current > size`): cancel the newest-dated LIVE MARKED make-ups (🔻 TASK-702: `isMakeup`, in PENDING / CONFIRMED / EXTENDED — a make-up is born CONFIRMED) — never an
+ *   attended/delivered session and NEVER an ordinary class (the one thing a marker bug would break).
  * - at target: no moves (idempotent — a date/teacher-only edit yields zero moves).
  */
 export function planCourseMoves(allSessions: PlanSession[], size: number, reowedFor: readonly string[] = []): CoursePlan {
@@ -297,10 +302,11 @@ export function planCourseMoves(allSessions: PlanSession[], size: number, reowed
     return { append, cancelIds: [] };
   }
 
-  // long: remove the trailing appended session(s) — newest-dated LIVE EXTENDED first.
+  // long: remove the trailing appended session(s) — newest-dated LIVE MARKED make-up first. 🔻 TASK-702: it read `status === "EXTENDED"`; a make-up born CONFIRMED would
+  // never have been trimmed again. 🚫 An ordinary class (unmarked) is NEVER here, whatever its status.
   const over = current - size;
   const cancelIds = sessions
-    .filter((s) => s.status === "EXTENDED")
+    .filter((s) => s.isMakeup && COURSE_LIVE.has(s.status))
     .sort((a, b) => b.date.localeCompare(a.date)) // newest first
     .slice(0, over)
     .map((s) => s.id);

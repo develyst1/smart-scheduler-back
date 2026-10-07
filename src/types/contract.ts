@@ -158,6 +158,8 @@ export interface PlanSessionRow {
   status: BookingStatus | string;
   /** SPEC-033 — lets the course view flag a soft-linked SINGLE_SESSION extra distinctly. */
   bookingType: BookingType | string;
+  /** 🔻 TASK-702 (REQ-115, T1) — this session GREW FROM A LEAVE; the plan view's «ขยายคาบ» badge reads it, not the status. */
+  isMakeup: boolean;
   teacher: { id: string; name: string; nickname: string | null } | null;
   subject: { id: string; name: string } | null;
   /** SPEC-063 / TASK-178 — the attendee note for this session, or `null`. */
@@ -188,6 +190,11 @@ export interface BookingDTO {
   endTime: HhMm;
   bookingType: BookingType;
   status: BookingStatus;
+  /**
+   * 🔻 TASK-702 (REQ-115, T1) — this class GREW FROM A LEAVE (a make-up). A make-up is born CONFIRMED — an ordinary class in every status question — so the status no longer says it;
+   * this does. The front's «ขยายคาบ» badge (Khwan kept it as a REQUIREMENT) reads THIS, never `status === "EXTENDED"`.
+   */
+  isMakeup: boolean;
   note: string | null;
   /** SPEC-063 / TASK-178 (REQ-068) — the attendee note for this session, or `null`. Separate from `note`, which
    *  carries the system's own status reasons. Max 200 chars, set at booking or edited per session. */

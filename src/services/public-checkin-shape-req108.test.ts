@@ -131,7 +131,7 @@ describe("✅ the ADMIN DTO is unchanged — the allow-list is a separate, publi
     expect(d.note).toBe("staff: mum paid late, chase");
     expect(d.course.usedSessions).toBe(2);
     expect([d.student.crmPoints, d.student.crmLevel, d.student.crmLevelName]).toEqual([120, 3, "น่ารักมาก"]);
-    expect(Object.keys(d).length).toBe(34); // 🔻 TASK-542: + `plannedAtCreation` (admin-only; the public allow-list below never carries it)
+    expect(Object.keys(d).length).toBe(35); // 🔻 TASK-702: + `isMakeup` (the make-up marker; admin-only) · 🔻 TASK-542: + `plannedAtCreation` (admin-only; the public allow-list below never carries it)
   });
   test("by source: the public shape is built in ONE place, used by BOTH of `checkinByToken`'s answers, and is an allow-list literal", () => {
     const M = readFileSync(resolve(root, "src/db/mappers.ts"), "utf8");

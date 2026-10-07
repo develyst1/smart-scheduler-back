@@ -282,7 +282,7 @@ export async function createStudentForParent(
  * 🔑 `dryRun` = the CONFIRM's read: the same guards, NO write, then the family's children and the child's upcoming owed sessions
  * ("upcoming" = `ARCHIVE_BLOCKING_STATUSES`, today or later — the archive refusal's own set, so the two agree). One route, so the
  * preview and the act cannot drift apart (the product's `dryRun` precedent: `applyPlanChange`).
- * 📋 DRAFT wording (owner approves with the next copy batch) — `COPY-DRAFT-teamB-week-to-10-11-2026-10-06.md` §C.
+ * ✅ APPROVED wording (owner, 2026-10-06, COPY-REVIEW §C approval) — verbatim, byte-equal to `COPY-DRAFT-teamB-week-to-10-11-2026-10-06.md` §C; do not "improve" it.
  */
 export const STUDENT_ALREADY_HAS_PARENT = () => conflict("STUDENT_ALREADY_HAS_PARENT", "นักเรียนคนนี้ผูกกับผู้ปกครองแล้ว — รีเฟรชหน้าเพื่อดูข้อมูลล่าสุด");
 

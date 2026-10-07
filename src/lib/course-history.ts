@@ -46,8 +46,11 @@ export interface HistoryMovementInput {
  * Kind for a booking event. A `SINGLE_SESSION` soft-linked to the course is the paid extra (REQ-037); an `EXTENDED`
  * is a re-owed makeup; otherwise the status maps directly. LIVE-but-unconsumed rows are `scheduled`.
  */
-export function bookingEventKind(b: { status: string; bookingType: string }): HistoryKind {
+export function bookingEventKind(b: { status: string; bookingType: string; isMakeup?: boolean }): HistoryKind {
   if (b.bookingType === "SINGLE_SESSION") return "extra-session-added";
+  // 🔻 TASK-702 — a make-up is born CONFIRMED, so "is this a re-owed make-up?" is the MARKER's question, not the status's. A LIVE marked row is the appended make-up;
+  // a delivered / cancelled / leave row keeps its own kind below.
+  if (b.isMakeup === true && (b.status === "PENDING" || b.status === "CONFIRMED" || b.status === "EXTENDED")) return "makeup-appended";
   switch (b.status) {
     case "ATTENDED":
       return "attended";

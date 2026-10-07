@@ -284,6 +284,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
   test("56 = 56 — Stage 2 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
   });
 });

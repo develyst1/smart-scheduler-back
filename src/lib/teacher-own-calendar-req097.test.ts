@@ -48,8 +48,8 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("56 = 56: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
-    expect(journal.entries.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(files.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
+    expect(journal.entries.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -350,7 +350,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // 🔻 TASK-410 (§3.7 YES): TWO producers, ONE sender — the admin's cancel branch calls the same function; the kind's
     // string appears once (inside the sender); the sender is CONFIRMED-gated and fans out per seat on a GROUP row
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
-    expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2);
+    expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(3); // 🔻 TASK-702: + the TRIM announces the cancel of a CONFIRMED make-up
     expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);"); // 🔻 TASK-516 addendum: the seats as they were BEFORE the cascade
     const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
     expect(FS).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1 · 🔻 TASK-537: a MAKE-UP is held by the family too (its own kind)
@@ -422,7 +422,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // 🔻 TASK-690 — the migration pinned here is now `0065`, whose own file states ITS count (66); the "expects 46" it used to
     // assert was 0045's. The statement shape below (DROP · ADD … NOT VALID · VALIDATE) is the SAME on purpose.
     expect(last).toContain("`db:verify` expects 66");
-    expect(files.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(files.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");

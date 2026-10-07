@@ -132,6 +132,7 @@ import { leavesAwaitingReanswer,
 } from "../lib/course-plan";
 import { buildCourseHistory } from "../lib/course-history";
 import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
+import { MAKEUP_NOTE_LEAVE, MAKEUP_NOTE_RECONCILE, MAKEUP_NOTE_TRIMMED } from "../lib/makeup-marker"; // 🔻 TASK-702 — ONE list of the notes (the migration's P3/P4 read the same bytes)
 import { t as tr } from "../lib/line-i18n"; // 🔻 TASK-659 — the EXISTING weekday names (`ob_dow_0..6`), not a second table
 import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
 import { assertKindForType, assertRatesOnBooking } from "../lib/other-kind";
@@ -2479,6 +2480,7 @@ const toSessionRow = (b: any): PlanSessionRow => ({
   startTime: b.startTime,
   status: b.status,
   bookingType: b.bookingType, // SPEC-033: lets the course view flag a soft-linked SINGLE_SESSION extra distinctly
+  isMakeup: b.isMakeup === true, // 🔻 TASK-702 — the plan view's «ขยายคาบ» badge reads the MARKER
   teacher: teacherRef(b.teacher),
   subject: subjectRef(b.subject),
   attendeeNote: b.attendeeNote ?? null,
@@ -2510,6 +2512,7 @@ export async function getEntitlementPlan(id: string) {
       status: r.status,
       date: r.date,
       extendedFromId: r.extendedFromId,
+      isMakeup: r.isMakeup === true, // 🔻 TASK-702 — `canInsert` asks the MARKER
       bookingType: r.bookingType, // SPEC-033: lets courseCurrent/canInsert ignore a soft-linked extra
     }));
     const current = courseCurrent(planSessions);
@@ -2879,9 +2882,9 @@ export async function findFreeExtensionDate( // TASK-561: exported — Seam B is
  * link inherits NOTHING and says so — the pause case, where the link was never written (TASK-553's job); a guess here would hide it.
  * An ordinary session (no link, not a make-up) re-owes to no one in particular, as before.
  */
-export function reowedForOf(row: { id: string; status: string; extendedFromId?: string | null }): string[] {
+export function reowedForOf(row: { id: string; status: string; extendedFromId?: string | null; isMakeup?: boolean }): string[] {
   if (row.extendedFromId) return [row.extendedFromId];
-  if (row.status === "EXTENDED") console.info(`[TASK-552] cancelled make-up ${row.id} carries no link — its re-owe inherits NO leave (TASK-553)`);
+  if (row.isMakeup === true) console.info(`[TASK-552] cancelled make-up ${row.id} carries no link — its re-owe inherits NO leave (TASK-553)`);
   return [];
 }
 
@@ -2954,6 +2957,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
         status: r.status,
         date: r.date,
         extendedFromId: r.extendedFromId,
+        isMakeup: r.isMakeup === true, // 🔻 TASK-702 — the TRIM reads the MARKER (a make-up is born CONFIRMED)
         bookingType: r.bookingType,
       }),
     ),
@@ -2974,9 +2978,18 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
   for (const id of plan.cancelIds) {
     await tx
       .update(bookings)
-      .set({ status: "CANCELLED", note: "ยกเลิกคาบขยายอัตโนมัติ (ปรับแผนคอร์ส)" })
+      .set({ status: "CANCELLED", note: MAKEUP_NOTE_TRIMMED })
       .where(eq(bookings.id, id));
     cancelled.push(id);
+    // 🔻 TASK-702 (REQ-115, N3) — a make-up is born CONFIRMED, so the family and the coach HELD it: the trim's old silence (it cancelled unannounced EXTENDED rows) is now wrong.
+    // It sends the NORMAL cancel notice — the existing kinds, no new wording — and only for a class that WAS announced (CONFIRMED + marked). A legacy unconfirmed make-up (EXTENDED)
+    // stays silent, byte-identical to before. In the caller's transaction: the notice exists iff the trim committed.
+    const trimmed = rows.find((r: any) => r.id === id);
+    if (trimmed && trimmed.isMakeup === true && trimmed.status === "CONFIRMED") {
+      const full = { ...trimmed, course };
+      await sendClassCancelledToCoaches(tx, full, { cancelReason: null, note: MAKEUP_NOTE_TRIMMED });
+      await sendClassCancelledToFamilies(tx, full, null, []);
+    }
   }
 
   const appended: string[] = [];
@@ -3066,10 +3079,11 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
           startTime: template.startTime,
           endTime: template.endTime,
           bookingType: "COURSE_PACKAGE",
-          status: "EXTENDED",
+          status: "EXTENDED", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below — and it STAYS this way if that confirm refuses (the leave must not fail)
+          isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER: the status no longer says "this grew from a leave"
           courseId,
           extendedFromId: a.extendedFromId,
-          note: "คาบขยายอัตโนมัติจากการปรับแผนคอร์ส",
+          note: MAKEUP_NOTE_RECONCILE,
         })
         .returning({ id: bookings.id });
       appended.push(ext.id);
@@ -3077,6 +3091,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // writers call (the sick-leave append below is the other). The source is the COURSE's rental, not the
       // template's — the template is the leave row being replaced, which carries none. No post.
       await inheritCourseRental(tx, courseId, ext.id);
+      await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm
       fromDate = extDate;
     }
 
@@ -3708,6 +3723,7 @@ export async function applyPlanChange(
               status: r.status,
               date: r.date,
               extendedFromId: r.extendedFromId,
+              isMakeup: r.isMakeup === true, // 🔻 TASK-702 — `canInsert` asks the MARKER
               bookingType: r.bookingType, // SPEC-033: a soft-linked extra must not read as an owed session
             })),
             // TASK-165 (REQ-064): a FOURTH site asking the same question — SPEC-060 names three. This is the
@@ -3793,6 +3809,113 @@ export async function applyPlanChange(
   }
 }
 
+/**
+ * 🔻 TASK-702 (REQ-115) — **THE ONE CONFIRM**: the status write, every teacher's notice, the check-in token and the parent's notice — moved here VERBATIM from the
+ * single-session `confirm` branch of `updateBookingStatus` so that a make-up born CONFIRMED gets EXACTLY a confirm's side effects and not a copy of them (two confirm
+ * paths drift — the LAST-badge lesson). `updateBookingStatus` calls it (single-confirm behaviour is byte-identical); `confirmMakeupAtBirth` calls it. The freelance HOLD
+ * stays where each caller already had it (the single confirm's end-of-function reconcile; the make-up's explicit one, BEFORE the status write, so a budget refusal changes nothing).
+ * 🚫 The pre-guards (`assertCourseWritable`, `assertNoCoachOnLeave`) are the CALLER's, as before.
+ */
+async function applyConfirm(
+  tx: any,
+  id: string,
+  current: { teacherId: string; studentId?: string | null; coStudentId?: string | null; attendeeNote?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null },
+): Promise<NotifyResult | null> {
+  let notification: NotifyResult | null = null;
+  await tx
+    .update(bookings)
+    .set({ status: "CONFIRMED", confirmedAt: new Date() })
+    .where(eq(bookings.id, id));
+  // 🔴 SPEC-070 / TASK-228 (AC-16 revised) — **EVERY** assigned teacher is told, not just the first.
+  // An อื่นๆ booking may carry several (TASK-224's `booking_teachers`), and a teacher who is on a
+  // booking but never hears about it is worse than one who was never assigned.
+  //
+  // One message PER teacher, never one naming them all: the confirmation is addressed to its recipient
+  // and rendered in that person's own language, so a shared body would change what the other four types
+  // read too.
+  //
+  // 🚫 The id list comes from the ONE accessor (`confirmTeacherIds`), never from reading `teacher_id`
+  // and the join table separately here — that second reader is how the two get to disagree.
+  const teacherIds = await assignedTeacherIds(tx, id, current.teacherId);
+  const teacherRows = await tx.query.teachers.findMany({
+    where: (t: any, { inArray: inA }: any) => inA(t.id, teacherIds),
+  });
+  // Ordered by `teacherIds`, so the row's own `teacher_id` is always first and `notification` below
+  // keeps describing exactly the recipient it always described.
+  const teachers = teacherIds
+    .map((tid) => teacherRows.find((t: any) => t.id === tid))
+    .filter(Boolean) as { id: string; lineUserId: string | null }[];
+  // TASK-219: the note travels IN THE PAYLOAD, built once and sent to everyone below — so the teachers
+  // and the parent can never read different versions of the same confirmation.
+  const confirmPayload = {
+    kind: "booking_confirmed",
+    bookingId: id,
+    attendeeNote: current.attendeeNote ?? null,
+    // 🔴 TASK-303 (REQ-085 §7.3) — the two facts `Program` needs, and the ONLY thing this task adds
+    // outside the message itself. §7.3 asks for the booking's own program string *as §7.1 prints it*
+    // (`Private Freeskate 1 Hr`), and `programLabel` needs the TYPE and the SIZE to produce one.
+    // ⚠️ `MessageContext` carries neither, and the worker's enrichment is out of scope — so without
+    // these the message would print `1 HR` on every COURSE session, **a false statement about the
+    // package on the majority of bookings.** Additive, and exactly what `course_confirmed` already does.
+    bookingType: current.bookingType ?? null,
+    size: current.course?.size ?? current.voucher?.totalHours ?? null,
+  };
+  for (const t of teachers) {
+    const res = await enqueueLine(
+      {
+        recipientType: "teacher",
+        recipientLineUserId: t.lineUserId ?? null,
+        bookingId: id,
+        payload: confirmPayload,
+      },
+      tx,
+    );
+    // The FIRST teacher is the booking's own `teacher_id`, so the returned `notification` — which the
+    // FE renders as "ส่ง LINE แล้ว / ยังไม่ผูก LINE" — means what it has always meant. The extra
+    // teachers get their own outbox rows either way; a SKIPPED row for an unlinked one is still the
+    // record that we tried.
+    if (t.id === current.teacherId) notification = res;
+  }
+  await issueCheckinToken(id, tx, await getNumberSetting("checkin_late_minutes", tx)); // TASK-474 — the token lives to the window end
+  // TASK-207 (3A) — the parent hears about their own child's session too, not only the teacher. One
+  // extra row for this one booking; an unlinked parent gets a SKIPPED row exactly like an unlinked
+  // teacher, never an error.
+  //
+  // ⚠️ This path is also what `bulkConfirm` loops over, so a bulk confirm now enqueues a parent row per
+  // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
+  // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
+  // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
+  await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households
+    bookingId: id,
+    payload: confirmPayload,
+  });
+  return notification;
+}
+
+/**
+ * 🔻 TASK-702 (REQ-115, N1/N3) — **a make-up is born CONFIRMED**: through the ONE confirm (`applyConfirm`), so it gets a confirm's `confirmedAt`, check-in token, freelance
+ * hold, coach-leave guard and the NORMAL notice to the family and the coach (`booking_confirmed` — no new wording). In BOTH course states, including a course whose other
+ * sessions are still PENDING (her 03:39 correction). Called by BOTH make-up writers (the reconcile append, the leave writer), INSIDE their transaction, on a row they have
+ * just inserted EXTENDED + marked.
+ * 🔴 **If the confirm REFUSES** (the freelance budget is spent, the coach is on leave that day, …) **the LEAVE MUST NOT FAIL**: the make-up stays EXTENDED + marked, exactly as
+ * before this task, and the ADMINS are told, once (`makeup_not_confirmed`, 📋 DRAFT). The checks run BEFORE any write of the confirm, so a refusal leaves nothing half-done.
+ * ⚠️ Only an `ApiException` is a refusal; anything else is a real fault and propagates (a half-written confirm is worse than none).
+ */
+export async function confirmMakeupAtBirth(tx: any, makeupId: string): Promise<"confirmed" | "refused"> {
+  const row = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, makeupId), with: { course: true, voucher: true } });
+  if (!row) return "refused";
+  try {
+    await assertNoCoachOnLeave(tx, row);
+    await reconcileBookingHolds(tx, row.id, row.teacherId, "CONFIRMED", false); // the budget refusal (INSUFFICIENT_BUDGET) is thrown HERE, before the status write
+  } catch (e) {
+    if (!(e instanceof ApiException)) throw e;
+    await notifyAdmins({ kind: "makeup_not_confirmed", bookingId: row.id, reason: e.message }, tx, row.id);
+    return "refused";
+  }
+  await applyConfirm(tx, row.id, row);
+  return "confirmed";
+}
+
 export async function updateBookingStatus(
   id: string,
   action: string,
@@ -3839,73 +3962,7 @@ export async function updateBookingStatus(
       if (current.confirmedAt) {
         notification = { channel: "line", status: "skipped", reason: "คาบนี้ยืนยันแล้ว" };
       } else {
-        await tx
-          .update(bookings)
-          .set({ status: "CONFIRMED", confirmedAt: new Date() })
-          .where(eq(bookings.id, id));
-        // 🔴 SPEC-070 / TASK-228 (AC-16 revised) — **EVERY** assigned teacher is told, not just the first.
-        // An อื่นๆ booking may carry several (TASK-224's `booking_teachers`), and a teacher who is on a
-        // booking but never hears about it is worse than one who was never assigned.
-        //
-        // One message PER teacher, never one naming them all: the confirmation is addressed to its recipient
-        // and rendered in that person's own language, so a shared body would change what the other four types
-        // read too.
-        //
-        // 🚫 The id list comes from the ONE accessor (`confirmTeacherIds`), never from reading `teacher_id`
-        // and the join table separately here — that second reader is how the two get to disagree.
-        const teacherIds = await assignedTeacherIds(tx, id, current.teacherId);
-        const teacherRows = await tx.query.teachers.findMany({
-          where: (t, { inArray: inA }) => inA(t.id, teacherIds),
-        });
-        // Ordered by `teacherIds`, so the row's own `teacher_id` is always first and `notification` below
-        // keeps describing exactly the recipient it always described.
-        const teachers = teacherIds
-          .map((tid) => teacherRows.find((t: any) => t.id === tid))
-          .filter(Boolean) as { id: string; lineUserId: string | null }[];
-        // TASK-219: the note travels IN THE PAYLOAD, built once and sent to everyone below — so the teachers
-        // and the parent can never read different versions of the same confirmation.
-        const confirmPayload = {
-          kind: "booking_confirmed",
-          bookingId: id,
-          attendeeNote: current.attendeeNote ?? null,
-          // 🔴 TASK-303 (REQ-085 §7.3) — the two facts `Program` needs, and the ONLY thing this task adds
-          // outside the message itself. §7.3 asks for the booking's own program string *as §7.1 prints it*
-          // (`Private Freeskate 1 Hr`), and `programLabel` needs the TYPE and the SIZE to produce one.
-          // ⚠️ `MessageContext` carries neither, and the worker's enrichment is out of scope — so without
-          // these the message would print `1 HR` on every COURSE session, **a false statement about the
-          // package on the majority of bookings.** Additive, and exactly what `course_confirmed` already does.
-          bookingType: current.bookingType ?? null,
-          size: current.course?.size ?? current.voucher?.totalHours ?? null,
-        };
-        for (const t of teachers) {
-          const res = await enqueueLine(
-            {
-              recipientType: "teacher",
-              recipientLineUserId: t.lineUserId ?? null,
-              bookingId: id,
-              payload: confirmPayload,
-            },
-            tx,
-          );
-          // The FIRST teacher is the booking's own `teacher_id`, so the returned `notification` — which the
-          // FE renders as "ส่ง LINE แล้ว / ยังไม่ผูก LINE" — means what it has always meant. The extra
-          // teachers get their own outbox rows either way; a SKIPPED row for an unlinked one is still the
-          // record that we tried.
-          if (t.id === current.teacherId) notification = res;
-        }
-        await issueCheckinToken(id, tx, await getNumberSetting("checkin_late_minutes", tx)); // TASK-474 — the token lives to the window end
-        // TASK-207 (3A) — the parent hears about their own child's session too, not only the teacher. One
-        // extra row for this one booking; an unlinked parent gets a SKIPPED row exactly like an unlinked
-        // teacher, never an error.
-        //
-        // ⚠️ This path is also what `bulkConfirm` loops over, so a bulk confirm now enqueues a parent row per
-        // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
-        // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
-        // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
-        await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households
-          bookingId: id,
-          payload: confirmPayload,
-        });
+        notification = await applyConfirm(tx, id, current); // 🔻 TASK-702 — the confirm's side effects now live in ONE helper (the make-up's birth calls the SAME one)
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
@@ -4052,7 +4109,7 @@ export async function updateBookingStatus(
       }
       // 🔴 TASK-551 §2 (owner ruling) — a cancelled MAKE-UP that the re-plan put back in the SAME slot changed nothing: ONE decider
       // (`sameSlotReplacement`) answers for both audiences — the family by date + time, the coach by date + time + the SAME coach set.
-      const slot = current.status === "EXTENDED" ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT;
+      const slot = (current as any).isMakeup === true ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT; // 🔻 TASK-702 — "is this a MAKE-UP?" ⇒ the marker (born CONFIRMED, the status no longer says it)
       // 🔻 TASK-656 — DOOR 4 of 5 = trigger T3: *"ที่ขยายอายุคอร์สอัตโนมัติ 1 สัปดาห์ คือการที่เรากด cancel คลาส แล้วเลือก ปัญหาจากทางเรา"* — a
       // class the SCHOOL cancels with the reason `SCHOOL_ISSUE` adds a week. **EVERY OTHER REASON IS +0** (the family's own reasons, an
       // admin's mistake, a coach's leave handled at door 3).
@@ -4204,16 +4261,18 @@ export async function updateBookingStatus(
               startTime: current.startTime,
               endTime: current.endTime,
               bookingType: "COURSE_PACKAGE",
-              status: "EXTENDED",
+              status: "EXTENDED", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below (it STAYS this way if that confirm refuses — the leave must not fail)
+              isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER
               courseId: current.courseId,
               extendedFromId: id,
-              note: "คาบขยายอัตโนมัติจากการลา",
+              note: MAKEUP_NOTE_LEAVE,
             })
             .returning({ id: bookings.id });
           extendedId = ext.id;
           // 🔴 TASK-376 — the SECOND make-up writer, and the one TASK-373 missed: a rented course's leave make-up
           // inherits its paid rental row through the same ONE copy the reconcile calls. Found by @Tanya on `sid`.
           await inheritCourseRental(tx, current.courseId, ext.id);
+          await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm
 
           // 🔴 TASK-646 (QA F3) — a declared pre-start day must stretch the expiry: TASK-609 had copied the FREE half of the
           // at-creation shape and not the STRETCH half, so make-ups landed past a fixed expiry. It recomputed creation's way

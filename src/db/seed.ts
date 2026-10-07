@@ -265,6 +265,7 @@ async function main() {
       courseId: b.course ? (courseByStudent.get(sId(b.student)) ?? null) : null,
       voucherId: b.voucher ? (voucherByStudent.get(sId(b.student)) ?? null) : null,
       note: b.note ?? null,
+      isMakeup: b.status === "EXTENDED", // 🔻 TASK-702 — the dev seed's make-up carries the MARKER
       confirmedAt: ["CONFIRMED", "ATTENDED", "EXTENDED"].includes(b.status) ? new Date() : null,
     })),
   );

@@ -666,6 +666,16 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "re-pointed: this definition still contains it, and re-running 0045 would REGRESS this constraint to four codes.",
     rerunnable: true,
   },
+  {
+    tag: "0066_booking_is_makeup",
+    probe: { kind: "column", table: "bookings", column: "is_makeup" },
+    why:
+      "TASK-702 (REQ-115, T1). `bookings.is_makeup`: the make-up MARKER, backfilled from P1∪P2∪P3∪P4 and VERIFIED in the same transaction (missed 0, extra 0, " +
+      "marked = union, no unmatched note mentioning ขยาย) — any check failing RAISEs and rolls the whole file back, so the COLUMN EXISTING means the checks passed: " +
+      "it is the witness precisely because the column and the marks cannot exist apart. NOT rerunnable: once the new code runs, a marked row whose note an admin " +
+      "overwrote is rightly marked but in no population, which the `extra` check would refuse.",
+    rerunnable: false,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

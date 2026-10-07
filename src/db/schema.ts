@@ -444,6 +444,10 @@ export const bookings = pgTable(
     }),
     // For EXTENDED slots: which original sick-leave booking spawned this.
     extendedFromId: uuid("extended_from_id"),
+    // 🔻 TASK-702 (REQ-115, T1) `0066` — THE MAKE-UP MARKER. A make-up is born CONFIRMED (an ordinary class), so its STATUS no longer says it grew from a leave: this does. Written by
+    // the two make-up writers (the reconcile append, the leave writer) and BACKFILLED by the migration from `lib/makeup-marker.ts`. The plan engine's TRIM and the front's
+    // «ขยายคาบ» badge read it; every status question ("is this unconfirmed / held / announced?") still reads the STATUS.
+    isMakeup: boolean("is_makeup").notNull().default(false),
     // SPEC-049 / TASK-148 (REQ-045, owner decision B): this SICK_LEAVE was declared when the course was
     // CREATED, so it is free — it must not consume leave quota. A flag, not a new status, so every existing
     // status path (reconcile, holds, reports) is untouched. `0019`.

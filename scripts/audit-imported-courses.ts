@@ -64,7 +64,7 @@ async function main() {
       // audit that counted differently from the engine would report faults that aren't there and miss the ones
       // that are; it also inherits the SPEC-033 rule that a soft-linked extra never counts.
       liveCount: courseCurrent(mine as any),
-      extendedCount: mine.filter((r) => r.bookingType === "COURSE_PACKAGE" && r.status === "EXTENDED").length,
+      extendedCount: mine.filter((r) => r.bookingType === "COURSE_PACKAGE" && r.isMakeup === true && ["PENDING", "CONFIRMED", "EXTENDED"].includes(r.status)).length, // 🔻 TASK-702 — "an appended make-up" is the MARKER's question (born CONFIRMED, the status no longer says it)
     };
   });
 

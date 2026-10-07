@@ -222,6 +222,8 @@ export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?
   // decision B), so a screen that says "uses one of the course's leaves" must be able to tell. RAW (the words are the screen's,
   // as TASK-481 settled). 🔑 Admin DTO only: the public check-in answers are an ALLOW-LIST (`toPublicCheckinBooking`) and never see it.
   plannedAtCreation: b.plannedAtCreation === true,
+  // 🔻 TASK-702 (REQ-115, T1) — THE MARKER, raw: this class grew from a leave. The front's «ขยายคาบ» badge reads it (a make-up is born CONFIRMED; the status no longer says so).
+  isMakeup: b.isMakeup === true,
   note: b.note ?? null,
   // TASK-368 (REQ-089 §5) — the closed cancel code (`note` above holds the human sentence). Rides for every
   // reader, `null` on a live row: the calendar shows cancelled sessions on request and must say why.

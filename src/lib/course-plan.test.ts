@@ -30,7 +30,7 @@ function apply(sessions: PlanSession[], size: number): PlanSession[] {
   for (const a of plan.append) {
     seq++;
     maxDate = bump(maxDate);
-    next.push({ id: `ext${seq}`, status: "EXTENDED", date: maxDate, extendedFromId: a.extendedFromId });
+    next.push({ id: `ext${seq}`, status: "EXTENDED", date: maxDate, extendedFromId: a.extendedFromId, isMakeup: true });
   }
   return next;
 }
@@ -38,11 +38,12 @@ const bump = (d: string) => `${d.slice(0, 8)}${String(Number(d.slice(8)) + 7).pa
 const maxLive = (ss: PlanSession[]) =>
   ss.filter((s) => COURSE_LIVE.has(s.status)).reduce((m, s) => (s.date > m ? s.date : m), "0000-00-00");
 
-const S = (id: string, status: string, date: string, ext: string | null = null): PlanSession => ({
+const S = (id: string, status: string, date: string, ext: string | null = null, isMakeup: boolean = status === "EXTENDED"): PlanSession => ({
   id,
   status,
   date,
   extendedFromId: ext,
+  isMakeup, // 🔻 TASK-702 — a fixture make-up (status EXTENDED, or one that answers a leave) carries the MARKER, as the migration's backfill marks it; the plan engine reads the marker, never the status
 });
 
 describe("planCourseMoves — at target is a no-op (TASK-092)", () => {
@@ -139,6 +140,7 @@ describe("seam-keeper — a soft-linked SINGLE_SESSION extra never counts (SPEC-
     status,
     date,
     extendedFromId: null,
+    isMakeup: false,
     bookingType: "SINGLE_SESSION",
   });
   const full = [
@@ -278,6 +280,7 @@ describe("planCourseMoves — absences declared at course creation (TASK-148)", 
     status,
     date,
     extendedFromId,
+    isMakeup: status === "EXTENDED" || extendedFromId !== null, // 🔻 TASK-702 — a fixture make-up (status EXTENDED, or one that answers a leave) carries the MARKER, as the migration's backfill marks it; the plan engine reads the marker, never the status
     bookingType: "COURSE_PACKAGE" as const,
   });
 
@@ -351,6 +354,7 @@ const s = (id: string, status: string, date: string, extendedFromId: string | nu
   status,
   date,
   extendedFromId,
+  isMakeup: status === "EXTENDED" || extendedFromId !== null, // 🔻 TASK-702 — a fixture make-up (status EXTENDED, or one that answers a leave) carries the MARKER, as the migration's backfill marks it; the plan engine reads the marker, never the status
   bookingType: "COURSE_PACKAGE",
 });
 

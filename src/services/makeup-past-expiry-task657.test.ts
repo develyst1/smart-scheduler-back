@@ -42,7 +42,7 @@ const row = (id: string, courseId: string, date: string, status = "PENDING", ove
   id, courseId, date, status, startTime: "10:00:00", endTime: "11:00:00", teacherId: T1, studentId: "s1", coStudentId: null,
   subjectId: "sub1", voucherId: null, bookingType: "COURSE_PACKAGE", note: null, plannedAtCreation: false, leaveCharged: null,
   checkinSource: null, checkinChannel: null, checkinActor: null, campWeekDayId: null, extendedFromId: null, groupId: null,
-  slotYieldedAt: null, cancelReason: null, ...over,
+  slotYieldedAt: null, cancelReason: null, isMakeup: status === "EXTENDED" || !!over.extendedFromId, ...over, // 🔻 TASK-702 — a fixture make-up is MARKED, as the backfill would have marked it
 });
 const courseRows = (courseId: string, start: string, delivered = 0) =>
   Array.from({ length: SIZE }, (_, i) => row(`${courseId}-b${i + 1}`, courseId, plus(start, i * 7), i < delivered ? "ATTENDED" : "PENDING"));
@@ -50,6 +50,7 @@ const courseRows = (courseId: string, start: string, delivered = 0) =>
 /** The world: bookings + courses in memory, every write recorded. `expiryChanges` is what the audit table would hold. */
 function world(courses: Course[], rows: any[]) {
   const w: any = {
+    outbox: [] as any[], // 🔻 TASK-702 — what `enqueueLine` was asked to send; ROLLED BACK with the transaction, like the real outbox table
     courses: courses.map((c) => ({ ...c, usedSessions: 0, leaveUsed: 0, leaveQuota: null, status: "ACTIVE", adminUnlocked: false, priorSessions: 0, classRateMinor: null, endedAt: null, droppedAt: null })),
     bookings: rows, expiryChanges: [] as any[], inserts: [] as any[],
   };
@@ -114,13 +115,13 @@ function world(courses: Course[], rows: any[]) {
     } }),
     delete: () => ({ where: async () => {} }),
     // the coach-notice read chains `.limit()` / `.innerJoin()`; it answers nobody here on purpose
-    select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [] }; return q; },
+    select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [], then: (res: any) => res([]) /* 🔻 TASK-702: an awaited chain reads as no rows (the confirm reads its coaches) */ }; return q; },
   };
   // 🔻 TASK-692 — a REAL transaction rolls back when its callback throws (the refusal relies on it). The in-memory world did not, so "nothing written" could not be
   // proven: snapshot before, restore on a throw.
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => {
-    const snap = { bookings: structuredClone(w.bookings), courses: structuredClone(w.courses), expiryChanges: structuredClone(w.expiryChanges), inserts: structuredClone(w.inserts) };
-    try { return await fn(tx); } catch (e) { w.bookings = snap.bookings; w.courses = snap.courses; w.expiryChanges = snap.expiryChanges; w.inserts = snap.inserts; throw e; }
+    const snap = { outbox: [...w.outbox], bookings: structuredClone(w.bookings), courses: structuredClone(w.courses), expiryChanges: structuredClone(w.expiryChanges), inserts: structuredClone(w.inserts) };
+    try { return await fn(tx); } catch (e) { w.outbox = snap.outbox; w.bookings = snap.bookings; w.courses = snap.courses; w.expiryChanges = snap.expiryChanges; w.inserts = snap.inserts; throw e; }
   }) as any));
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => withRels(w.bookings[0])) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
@@ -128,14 +129,15 @@ function world(courses: Course[], rows: any[]) {
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
   spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_tx: any, _t: string, _st: string, after: string) => plus(after, 7)) as any));
   spies.push(spyOn(rental, "inheritCourseRental").mockImplementation((async () => {}) as any));
-  spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async () => ({ status: "queued" }) as any)) as any);
+  (globalThis as any).__w = w;
+  spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (row: any) => { w.outbox.push(row); return { status: "queued" } as any; }) as any) as any);
   w.tx = tx; // for the doors whose entry point TAKES a transaction (a group date's seats)
   return w;
 }
 
 const code = (x: string) => x.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 /** Every admin notice of the new kind that was enqueued (the world's `enqueueLine` spy records them). With no admin configured `notifyAdmins` writes ONE skipped row — still ONE per notice. */
-const enq = () => ((lineLib.enqueueLine as any).mock.calls as any[]).map((c) => c[0]);
+const enq = () => ((globalThis as any).__w.outbox as any[]); // 🔻 TASK-702 — the world's outbox (rolled back with its transaction)
 const past = () => enq().filter((p) => p?.payload?.kind === "makeup_past_expiry");
 const far = () => enq().filter((p) => p?.payload?.kind === "makeup_far_out");
 const STARTED = () => plus(bangkokNow().date, -14);
@@ -154,7 +156,7 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
   test("door 4, a school cancel on a course whose last class is the expiry: the class is re-owed PAST it, the expiry does NOT move, ONE notice to an admin", async () => {
     const { c, w } = startedCourse();
     await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
-    const makeup = w.bookings.find((b: any) => b.status === "EXTENDED");
+    const makeup = w.bookings.find((b: any) => b.isMakeup === true && b.status !== "CANCELLED");
     expect(makeup).toBeDefined(); // 🔑 created — never held
     expect(makeup.date > c.expiryDate).toBe(true);
     expect(w.courses[0].expiryDate).toBe(c.expiryDate); // 🔴 nothing extended
@@ -166,7 +168,7 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
     const { w } = startedCourse();
     landAt(-4);
     await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
-    expect(w.bookings.find((b: any) => b.status === "EXTENDED")).toBeDefined();
+    expect(w.bookings.find((b: any) => b.isMakeup === true && b.status !== "CANCELLED")).toBeDefined();
     expect(past()).toHaveLength(0);
   });
 
@@ -174,7 +176,7 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
     const { w } = startedCourse();
     await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
     await sched.updateBookingStatus("c1-b4", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
-    expect(w.bookings.filter((b: any) => b.status === "EXTENDED")).toHaveLength(2);
+    expect(w.bookings.filter((b: any) => b.isMakeup === true && b.status !== "CANCELLED")).toHaveLength(2);
     expect(past()).toHaveLength(2);
     expect(new Set(past().map((p) => p.bookingId)).size).toBe(2);
   });
@@ -184,7 +186,7 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
     landAt(7); // t+21 = expiry + 7 = exactly the week T3 earns
     await sched.updateBookingStatus("c1-b3", "cancel", "โรงเรียนปิด", false, "SCHOOL_ISSUE");
     expect(w.courses[0].expiryDate).toBe(plus(c.expiryDate, 7));
-    expect(w.bookings.find((b: any) => b.status === "EXTENDED")!.date).toBe(plus(c.expiryDate, 7));
+    expect(w.bookings.find((b: any) => b.isMakeup === true && b.status !== "CANCELLED")!.date).toBe(plus(c.expiryDate, 7));
     expect(past()).toHaveLength(0);
   });
 
@@ -237,7 +239,7 @@ describe("🔴 §3 — a make-up that cannot fit ⇒ the ADMIN is told, once, an
     await sched.updateBookingStatus("c1-b3", "cancel", "ยกเลิก", false, "CUSTOMER_CANCELLED");
     expect(past()).toHaveLength(1);
     expect(far()).toHaveLength(0);
-    expect(w.bookings.filter((b: any) => b.status === "EXTENDED")).toHaveLength(1);
+    expect(w.bookings.filter((b: any) => b.isMakeup === true && b.status !== "CANCELLED")).toHaveLength(1);
   });
 
   test("🚫 the FAMILY is never told — every notice of the new kind is addressed to an admin", async () => {

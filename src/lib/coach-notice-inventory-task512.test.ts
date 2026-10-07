@@ -66,7 +66,7 @@ const NAMED_BY_DESIGN: Record<string, string> = {
 };
 /** Reaches the additional teachers TODAY, but through its own answer — a copy that currently agrees (named, not yet converged). */
 const OWN_COPY_REACHES_ALL: Record<string, string> = {
-  [`${S}#updateBookingStatus`]: "`booking_confirmed` — `assignedTeacherIds` (teacher_id + booking_teachers)",
+  [`${S}#applyConfirm`]: "`booking_confirmed` — `assignedTeacherIds` (teacher_id + booking_teachers)", // 🔻 TASK-702 — moved here from `updateBookingStatus`: the ONE confirm, shared with the make-up's birth
   "src/services/other-series.service.ts#notifySeriesTeachers": "`teacherId` + `extrasOf(r)`",
   "src/lib/daily-reminder.ts#groupReminders": "`teacherId` + `additionalTeachers` of each session",
   "src/services/jobs.service.ts#runWeeklyTeacherDigestJob": "the week's rows with `additionalTeachers`",

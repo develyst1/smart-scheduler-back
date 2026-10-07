@@ -611,6 +611,13 @@ const TABLE: Record<string, Entry> = {
     TH: "แจ้งเปลี่ยนวันหมดอายุคอร์สค่ะ: คอร์ส {program} ของ {student} ใช้ได้ถึงวันที่ {to} (จากเดิม {from}) หากมีข้อสงสัย กรุณาติดต่อแอดมินค่ะ",
     EN: "Course expiry date changed: {student}'s {program} course is now valid until {to} (previously {from}). Please contact Admin if you have any questions.",
   },
+  // 🔻 TASK-702 (REQ-115) — the ADMINS are told when a make-up could NOT be confirmed at its birth (the freelance budget is spent, the coach is on leave that day, …): the leave
+  // still commits and the make-up stays EXTENDED (marked) — exactly as before this task — so somebody has to confirm it. 📋 DRAFT: owner approval pending in @Porter's copy set
+  // (nothing ships on a draft — if the owner changes the words, these two strings change and nothing else).
+  ob_makeup_not_confirmed: {
+    TH: "🔔 คาบชดเชยของ {student} วันที่ {date} ยังไม่ได้ยืนยัน ({reason}) — กรุณายืนยันคาบนี้",
+    EN: "🔔 Make-up for {student} on {date} is NOT confirmed ({reason}) — please confirm it.",
+  },
   ob_makeup_far: {
     TH: "⚠️ คาบชดเชยถูกจัดไปไกลกว่าปกติ: {weeks} สัปดาห์หลังคาบที่ลา ({replaces} → {landedOn}) — ตารางครูช่วงนี้เต็ม",
     EN: "⚠️ A make-up landed further out than usual: {weeks} weeks after the session it replaces ({replaces} → {landedOn}) — that coach's slot is fully booked.",

@@ -11,8 +11,8 @@ const { reowedForOf } = await import("../services/scheduler.service");
 const root = resolve(import.meta.dir, "..", "..");
 const code = (s: string) => s.replace(/\r\n/g, "\n").replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const SVC = code(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
-type S = { id: string; status: string; date: string; extendedFromId: string | null };
-const r = (id: string, status: string, date: string, extendedFromId: string | null = null): S => ({ id, status, date, extendedFromId });
+type S = { id: string; status: string; date: string; extendedFromId: string | null; isMakeup: boolean };
+const r = (id: string, status: string, date: string, extendedFromId: string | null = null): S => ({ id, status, date, extendedFromId, isMakeup: status === "EXTENDED" || extendedFromId !== null }); // 🔻 TASK-702 — a fixture make-up carries the MARKER, as the backfill marks it
 // A 4-session course: L took a leave; its make-up M1 was CANCELLED by an admin (D7, sid e7cb8771 → 0494ab85).
 const D7 = [r("s1", "CONFIRMED", "2026-10-01"), r("L", "SICK_LEAVE", "2026-10-08"), r("s3", "CONFIRMED", "2026-10-15"), r("s4", "CONFIRMED", "2026-10-22"), r("M1", "CANCELLED", "2026-10-29", "L")];
 
@@ -50,8 +50,12 @@ describe("the inheritance comes ONLY from the row's own written link", () => {
       expect(reowedForOf({ id: "m", status: "EXTENDED", extendedFromId: "L" })).toEqual(["L"]);
       expect(reowedForOf({ id: "c", status: "CONFIRMED", extendedFromId: "L" })).toEqual(["L"]); // a confirmed make-up is still a make-up
       expect(logs).toEqual([]);
-      expect(reowedForOf({ id: "m-bare", status: "EXTENDED", extendedFromId: null })).toEqual([]);
+      expect(reowedForOf({ id: "m-bare", status: "EXTENDED", extendedFromId: null, isMakeup: true })).toEqual([]);
       expect(logs).toEqual(["[TASK-552] cancelled make-up m-bare carries no link — its re-owe inherits NO leave (TASK-553)"]);
+      // 🔻 TASK-702 — a make-up is born CONFIRMED, so "is this a make-up?" is the MARKER: a CONFIRMED unlinked MARKED make-up says so too, an ordinary CONFIRMED class never does
+      expect(reowedForOf({ id: "m-conf", status: "CONFIRMED", extendedFromId: null, isMakeup: true })).toEqual([]);
+      expect(logs).toEqual(["[TASK-552] cancelled make-up m-bare carries no link — its re-owe inherits NO leave (TASK-553)", "[TASK-552] cancelled make-up m-conf carries no link — its re-owe inherits NO leave (TASK-553)"]);
+      logs.length = 1;
       expect(reowedForOf({ id: "s", status: "CONFIRMED", extendedFromId: null })).toEqual([]);
       expect(logs.length).toBe(1); // an ordinary session is not a make-up: nothing to say
     } finally { spy.mockRestore(); }

@@ -20,6 +20,7 @@ import { toCourseSummary } from "./leave";
 // quietly appends the very sessions the family forfeited.
 const s = (id: string, status: string, date: string): PlanSession => ({
   id,
+  isMakeup: status === "EXTENDED", // 🔻 TASK-702 — a fixture make-up carries the MARKER, as the backfill marks it
   status,
   date,
   extendedFromId: null,

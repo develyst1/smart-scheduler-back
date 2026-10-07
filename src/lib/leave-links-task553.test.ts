@@ -9,7 +9,7 @@ import { backfillSummary, planLeaveLinkBackfill, type BackfillRow } from "./leav
 const root = resolve(import.meta.dir, "..", "..");
 const code = (f: string) => readFileSync(resolve(root, f), "utf8").replace(/\r\n/g, "\n").replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const fnBody = (s: string, head: string) => { const a = s.indexOf(head); expect(a).toBeGreaterThan(-1); return s.slice(a, s.indexOf("\n}\n", a)); };
-const S = (id: string, date: string, status: string, extendedFromId: string | null = null): PlanSession => ({ id, date, status, extendedFromId, bookingType: "COURSE_PACKAGE" });
+const S = (id: string, date: string, status: string, extendedFromId: string | null = null): PlanSession => ({ id, date, status, extendedFromId, isMakeup: status === "EXTENDED" || extendedFromId !== null, bookingType: "COURSE_PACKAGE" }); // 🔻 TASK-702 — a fixture make-up carries the MARKER, as the backfill marks it
 
 /** What step 3's planner line would answer: the oldest leave with NO LIVE linked row (a cancelled row no longer matches). */
 const lineWouldPick = (sessions: PlanSession[]) => {

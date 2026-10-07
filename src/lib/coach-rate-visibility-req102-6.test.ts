@@ -189,6 +189,6 @@ describe("🔴 the WRITE half (view ⇔ edit) — `assertMayEditCoachRate` at th
     expect(API).toContain('assertMayEditCoachRate(body, viewerOf(c));');
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.moveBooking\(/);
     expect(API).toMatch(/assertMayEditCoachRate\(c\.req\.valid\("json"\), viewerOf\(c\)\);[^\n]*\n\s+return c\.json\(await svc\.updateCourse\(/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
   });
 });

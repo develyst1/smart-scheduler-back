@@ -203,6 +203,6 @@ describe("🔴 the attention line — the dashboard drops the number without the
     expect(M).not.toMatch(/classRateMinor|teacherRates|priceMinor|listPrice|recordSale|rate:/);
     expect(M).toContain('export const BUDGET_FIGURE_FIELDS = ["hourlyRate", "budgetMinor", "remainingMinor", "reorderMinor"] as const;');
     for (const f of ["src/db/mappers.ts", "src/lib/coach-rate.ts", "src/lib/sale-items.ts", "src/services/som-report.service.ts"]) expect(code(src(f))).not.toMatch(/maskBudget|budget-visibility/);
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
   });
 });

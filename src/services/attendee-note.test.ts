@@ -59,8 +59,9 @@ describe("the note's shape (zod)", () => {
 // ═══ SPEC-066 / TASK-207 (REQ-072 part 3A) — the parent hears about a single-session confirm too ═══
 describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
   const confirmBranch = (() => {
-    const at = SRC.indexOf('if (action === "confirm")');
-    return SRC.slice(at, SRC.indexOf('} else if (action === "attend")', at));
+    // 🔻 TASK-702 — the confirm's side effects live in ONE helper (`applyConfirm`) now, shared with the make-up's birth; the slice follows them
+    const at = SRC.indexOf("async function applyConfirm(");
+    return SRC.slice(at, SRC.indexOf("export async function confirmMakeupAtBirth(", at));
   })();
 
   test("🔴 the parent is enqueued alongside the teacher, not instead of them", () => {
@@ -94,8 +95,9 @@ describe("single confirm notifies BOTH teacher and parent (TASK-207)", () => {
 // ═══ TASK-219 — the note is put ON the confirm payload, once, for both recipients ═══
 describe("the confirm enqueue carries the note (TASK-219)", () => {
   const confirmBranch = (() => {
-    const at = SRC.indexOf('if (action === "confirm")');
-    return SRC.slice(at, SRC.indexOf('} else if (action === "attend")', at));
+    // 🔻 TASK-702 — the confirm's side effects live in ONE helper (`applyConfirm`) now, shared with the make-up's birth; the slice follows them
+    const at = SRC.indexOf("async function applyConfirm(");
+    return SRC.slice(at, SRC.indexOf("export async function confirmMakeupAtBirth(", at));
   })();
 
   test("🔴 the payload reads the booking's own note", () => {

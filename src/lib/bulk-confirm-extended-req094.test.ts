@@ -48,8 +48,11 @@ describe("🔴 the path a proceeding id takes is the REAL single confirm — whi
   test("the single confirm's branch reads only `confirmedAt` (idempotency), never `status` — EXTENDED and PENDING are the same to it; the write sets CONFIRMED + confirmedAt", () => {
     const C = region(SVC, 'if (action === "confirm") {', 'if (action === "attend")');
     expect(C).toContain("if (current.confirmedAt) {");
-    expect(C).toContain('.set({ status: "CONFIRMED", confirmedAt: new Date() })');
-    expect(C.slice(0, C.indexOf(".set({"))).not.toMatch(/current\.status/);
+    // 🔻 TASK-702 — the write moved into the ONE confirm helper (shared with the make-up's birth); the branch calls it and still reads only `confirmedAt`
+    expect(C).toContain("notification = await applyConfirm(tx, id, current);");
+    const H = region(SVC, "async function applyConfirm(", "export async function confirmMakeupAtBirth(");
+    expect(H).toContain('.set({ status: "CONFIRMED", confirmedAt: new Date() })');
+    expect(C.slice(0, C.indexOf("notification = await applyConfirm"))).not.toMatch(/current\.status/);
   });
 });
 
@@ -69,6 +72,6 @@ describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is
     expect(JOB).toContain('eq(bookings.status, "CONFIRMED")');
   });
   test("56 = 56 — REQ-094 added no migration (0038 … 0055 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
   });
 });

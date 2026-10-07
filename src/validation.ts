@@ -716,7 +716,7 @@ export const otherSeriesPatch = z
 // group from today — and paid the incoming coach the one-session `rateMinor` from today onward. So `onDate` is now a field that can NEVER be valid:
 // it is SEEN before stripping and refused with ONE issue at `["onDate"]` (an absent key still passes, so every body that worked still works).
 // 🚫 Deliberately NOT `.strict()`: `group-series-req104.test.ts` pins that a stray `from` is still silently stripped (`.data` = `{ to }`).
-// 📋 DRAFT wording (owner approves with the next copy set) — a backstop the screen no longer reaches after TASK-673.
+// ✅ APPROVED by the owner 2026-10-07 — COPY-REVIEW-2026-09-29.md:561 — verbatim; do not "improve" it. (A backstop the screen no longer reaches after TASK-673.)
 export const GROUP_SWAP_NO_SINGLE_SESSION = "กลุ่มเปลี่ยนครูได้เฉพาะ 'ตั้งแต่วันที่…' เท่านั้น — ไม่มีการสอนแทนคาบเดียว";
 export const groupSeriesSwap = z.object({ to: ID, fromDate: DATE.optional(), rateMinor: z.number().int().min(0).optional(), onDate: z.never({ error: GROUP_SWAP_NO_SINGLE_SESSION }).optional() });
 export const groupSeriesPatch = z

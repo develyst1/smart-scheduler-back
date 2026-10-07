@@ -47,7 +47,7 @@ describe("🔴 BOTH make-up writers call it — and nothing else copies (source)
 
   test("🔴 writer 2 — the sick-leave append (the one that shipped without it): after ITS insert, inside the within-quota branch", () => {
     const S = SICK();
-    expect(S).toContain('note: "คาบขยายอัตโนมัติจากการลา"');
+    expect(S).toContain("note: MAKEUP_NOTE_LEAVE,"); // 🔻 TASK-702 — the note is a constant from the ONE list (lib/makeup-marker.ts): the migration's P3 reads the same bytes
     expect(S).toContain("await inheritCourseRental(tx, current.courseId, ext.id);");
     expect(S.indexOf("inheritCourseRental(")).toBeGreaterThan(S.indexOf("extendedId = ext.id;"));
     // 🔻 TASK-656 (REQ-112 ruling 2) — this used to anchor on `locked = true;`, the over-quota branch, as the END of the

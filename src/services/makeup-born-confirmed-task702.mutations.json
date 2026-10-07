@@ -1,0 +1,368 @@
+{
+  "task": "TASK-702",
+  "proves": "src/services/makeup-born-confirmed-task702.test.ts",
+  "note": "🔴 REQ-115 (T1). THE BEHAVIOUR: B1 the trim reads STATUS not the marker · B2 an ORDINARY class is trimmed (the marker dropped from the filter) · B3/B4 a make-up born UNMARKED (each writer) · B5/B6 born UNCONFIRMED when the confirm would succeed (each writer's confirm call removed) · B7 the freelance HOLD skipped · B8 the check-in token skipped · B9 the family's notice skipped · B10 the LEAVE FAILS when the confirm refuses · B11 the trim cancels SILENTLY · B12 `canInsert` reads STATUS · B13 door 4's same-slot rule reads STATUS · B14 the DTO drops the marker · B15 the history reads STATUS. THE MIGRATION: M1 `missed` check removed · M2 `extra` check removed · M3 `marked = expected` check removed · M4 the suspect check removed · M5 the RAISE removed · M6 P3 missing the leave note (in the list AND in the UPDATE — each bites alone) · M7 P4 dropped from the UPDATE · M8 the migration REWRITES a status.",
+  "tests": "src/services/makeup-born-confirmed-task702.test.ts src/lib/course-plan.test.ts src/services/attendee-note.test.ts src/services/other-booking-line.test.ts src/lib/bulk-confirm-extended-req094.test.ts src/lib/planned-at-creation-dto-task542.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "🔴 the TRIM reads STATUS again — a CONFIRMED make-up is never trimmed (the heart of the task)",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": ".filter((s) => s.isMakeup && COURSE_LIVE.has(s.status))\n",
+              "to": ".filter((s) => s.status === \"EXTENDED\")\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "what": "🔴 AN ORDINARY CLASS IS TRIMMED — the marker dropped from the trim's filter (the one thing a marker bug would break)",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": ".filter((s) => s.isMakeup && COURSE_LIVE.has(s.status))\n",
+              "to": ".filter((s) => COURSE_LIVE.has(s.status))\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "what": "a make-up born UNMARKED by the reconcile append",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "          status: \"EXTENDED\", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below — and it STAYS this way if that confirm refuses (the leave must not fail)\n          isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER: the status no longer says \"this grew from a leave\"\n",
+              "to": "          status: \"EXTENDED\", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below — and it STAYS this way if that confirm refuses (the leave must not fail)\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "what": "a make-up born UNMARKED by the leave writer",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "              status: \"EXTENDED\", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below (it STAYS this way if that confirm refuses — the leave must not fail)\n              isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER\n",
+              "to": "              status: \"EXTENDED\", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below (it STAYS this way if that confirm refuses — the leave must not fail)\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "what": "🔴 the reconcile append no longer confirms its make-up — born EXTENDED when the confirm would succeed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      await inheritCourseRental(tx, courseId, ext.id);\n      await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm\n",
+              "to": "      await inheritCourseRental(tx, courseId, ext.id);\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "what": "🔴 the leave writer no longer confirms its make-up — born EXTENDED when the confirm would succeed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "          await inheritCourseRental(tx, current.courseId, ext.id);\n          await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm\n",
+              "to": "          await inheritCourseRental(tx, current.courseId, ext.id);\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "what": "the freelance HOLD is skipped at the make-up's birth — a CONFIRMED class that never drew its hour",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    await reconcileBookingHolds(tx, row.id, row.teacherId, \"CONFIRMED\", false); // the budget refusal (INSUFFICIENT_BUDGET) is thrown HERE, before the status write\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "what": "the check-in TOKEN is skipped by the ONE confirm — a CONFIRMED class a parent cannot check into",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await issueCheckinToken(id, tx, await getNumberSetting(\"checkin_late_minutes\", tx)); // TASK-474 — the token lives to the window end\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B9",
+      "what": "the FAMILY is not told — the confirm's parent notice dropped",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households\n    bookingId: id,\n    payload: confirmPayload,\n  });\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "what": "🔴 the LEAVE FAILS when the confirm refuses — every refusal propagates (worse than today)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (!(e instanceof ApiException)) throw e;\n    await notifyAdmins({ kind: \"makeup_not_confirmed\"",
+              "to": "    throw e;\n    await notifyAdmins({ kind: \"makeup_not_confirmed\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B11",
+      "what": "🔴 the trim cancels SILENTLY — the family and the coach held the class and are not told",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      await sendClassCancelledToCoaches(tx, full, { cancelReason: null, note: MAKEUP_NOTE_TRIMMED });\n      await sendClassCancelledToFamilies(tx, full, null, []);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B12",
+      "what": "`canInsert` reads STATUS — a course absorbing a CONFIRMED make-up refuses the insert that would net it out",
+      "files": [
+        {
+          "file": "src/lib/course-plan.ts",
+          "edits": [
+            {
+              "from": "    sessions.some((s) => isCoursePlanRow(s) && s.isMakeup && COURSE_LIVE.has(s.status)) // 🔻 TASK-702 — \"is this a MAKE-UP?\" ⇒ the marker\n",
+              "to": "    sessions.some((s) => isCoursePlanRow(s) && s.status === \"EXTENDED\") // 🔻 TASK-702 — \"is this a MAKE-UP?\" ⇒ the marker\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B13",
+      "what": "door 4's same-slot rule reads STATUS — a CONFIRMED make-up cancelled and put straight back tells everybody",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "(current as any).isMakeup === true ? await sameSlotOfReplan(",
+              "to": "current.status === \"EXTENDED\" ? await sameSlotOfReplan("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B14",
+      "what": "the booking DTO drops the marker — the front's «ขยายคาบ» badge has nothing to read",
+      "files": [
+        {
+          "file": "src/db/mappers.ts",
+          "edits": [
+            {
+              "from": "  isMakeup: b.isMakeup === true,\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B15",
+      "what": "the history kind reads STATUS — a CONFIRMED make-up reads as an ordinary scheduled class",
+      "files": [
+        {
+          "file": "src/lib/course-history.ts",
+          "edits": [
+            {
+              "from": "if (b.isMakeup === true && (b.status === \"PENDING\" || b.status === \"CONFIRMED\" || b.status === \"EXTENDED\")) return \"makeup-appended\";",
+              "to": "if (b.status === \"EXTENDED\") return \"makeup-appended\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "what": "🔴 the `missed` check removed — a make-up the backfill left unmarked finishes the migration silently",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "  IF missed <> 0 OR extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n",
+              "to": "  IF extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "🔴 the `extra` check removed — a row marked that is in no population finishes the migration",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "  IF missed <> 0 OR extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n",
+              "to": "  IF missed <> 0 OR marked <> expected OR suspect <> 0 THEN\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the `marked = expected` check removed",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "  IF missed <> 0 OR extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n",
+              "to": "  IF missed <> 0 OR extra <> 0 OR suspect <> 0 THEN\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "🔴 the SUSPECT check removed — a note mentioning ขยาย that no population matches finishes the migration",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "  IF missed <> 0 OR extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n",
+              "to": "  IF missed <> 0 OR extra <> 0 OR marked <> expected THEN\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "🔴 the RAISE never fires — the checks run and nothing refuses",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "  IF missed <> 0 OR extra <> 0 OR marked <> expected OR suspect <> 0 THEN\n",
+              "to": "  IF false THEN\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "P3 missing the LEAVE writer's note — in the shared list (the migration text is then NOT the list)",
+      "files": [
+        {
+          "file": "src/lib/makeup-marker.ts",
+          "edits": [
+            {
+              "from": "export const MAKEUP_BIRTH_NOTES = [MAKEUP_NOTE_RECONCILE, MAKEUP_NOTE_LEAVE] as const;",
+              "to": "export const MAKEUP_BIRTH_NOTES = [MAKEUP_NOTE_RECONCILE] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6b",
+      "what": "P3 missing the LEAVE writer's note — in the UPDATE itself (the backfill never marks the leave writer's make-ups)",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "UPDATE \"bookings\" SET \"is_makeup\" = true\nWHERE \"booking_type\" = 'COURSE_PACKAGE' AND (\"status\" = 'EXTENDED' OR \"extended_from_id\" IS NOT NULL OR \"note\" IN ('คาบขยายอัตโนมัติจากการปรับแผนคอร์ส', 'คาบขยายอัตโนมัติจากการลา') OR (\"status\" = 'CANCELLED' AND \"note\" IN ('ยกเลิกคาบขยายอัตโนมัติ (ปรับแผนคอร์ส)', 'ยกเลิกคาบขยาย — ย้อนกลับการลา')));\n",
+              "to": "UPDATE \"bookings\" SET \"is_makeup\" = true\nWHERE \"booking_type\" = 'COURSE_PACKAGE' AND (\"status\" = 'EXTENDED' OR \"extended_from_id\" IS NOT NULL OR \"note\" IN ('คาบขยายอัตโนมัติจากการปรับแผนคอร์ส') OR (\"status\" = 'CANCELLED' AND \"note\" IN ('ยกเลิกคาบขยายอัตโนมัติ (ปรับแผนคอร์ส)', 'ยกเลิกคาบขยาย — ย้อนกลับการลา')));\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "🔴 P4 dropped from the UPDATE — an unlinked make-up the trim cancelled is never marked",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "UPDATE \"bookings\" SET \"is_makeup\" = true\nWHERE \"booking_type\" = 'COURSE_PACKAGE' AND (\"status\" = 'EXTENDED' OR \"extended_from_id\" IS NOT NULL OR \"note\" IN ('คาบขยายอัตโนมัติจากการปรับแผนคอร์ส', 'คาบขยายอัตโนมัติจากการลา') OR (\"status\" = 'CANCELLED' AND \"note\" IN ('ยกเลิกคาบขยายอัตโนมัติ (ปรับแผนคอร์ส)', 'ยกเลิกคาบขยาย — ย้อนกลับการลา')));\n",
+              "to": "UPDATE \"bookings\" SET \"is_makeup\" = true\nWHERE \"booking_type\" = 'COURSE_PACKAGE' AND (\"status\" = 'EXTENDED' OR \"extended_from_id\" IS NOT NULL OR \"note\" IN ('คาบขยายอัตโนมัติจากการปรับแผนคอร์ส', 'คาบขยายอัตโนมัติจากการลา'));\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "🔴 the migration REWRITES a status — a flip that cannot issue tokens, holds or notices",
+      "files": [
+        {
+          "file": "drizzle/0066_booking_is_makeup.sql",
+          "edits": [
+            {
+              "from": "--> statement-breakpoint\n\nDO $$",
+              "to": "--> statement-breakpoint\n\nUPDATE \"bookings\" SET \"status\" = 'CONFIRMED' WHERE \"is_makeup\" AND \"status\" = 'EXTENDED';\n--> statement-breakpoint\n\nDO $$"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

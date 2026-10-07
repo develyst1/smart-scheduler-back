@@ -207,7 +207,8 @@ describe("🔴 AC-16 — EVERY assigned teacher, on the schedule and in the conf
 });
 
 describe("the confirm path — one message per teacher, from the one id accessor (source)", () => {
-  const confirmBlock = SVC.slice(SVC.indexOf('if (action === "confirm")'), SVC.indexOf("await issueCheckinToken"));
+  // 🔻 TASK-702 — the confirm's side effects live in ONE helper (`applyConfirm`) now, shared with the make-up's birth; the slice follows them
+  const confirmBlock = SVC.slice(SVC.indexOf("async function applyConfirm("), SVC.indexOf("await issueCheckinToken", SVC.indexOf("async function applyConfirm(")));
 
   test("🔴 it LOOPS over the assigned teachers rather than sending to `teacher_id` alone", () => {
     expect(confirmBlock).toContain("await assignedTeacherIds(tx, id, current.teacherId)");

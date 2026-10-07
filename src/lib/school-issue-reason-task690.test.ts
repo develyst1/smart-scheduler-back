@@ -61,8 +61,8 @@ describe("🔴 THE THREE COPIES AGREE — the code set · the validator · the d
   test("numbering: counted at the moment of writing and stated IN the file — 66 files, 66 journal tags, this is the 66th", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(files).toHaveLength(66);
-    expect(journal.entries).toHaveLength(66);
+    expect(files).toHaveLength(67); // 🔻 TASK-702: +0066
+    expect(journal.entries).toHaveLength(67); // 🔻 TASK-702: +0066
     expect(files[65]).toBe(FILE);
     expect(journal.entries[65]).toMatchObject({ idx: 65, tag: "0065_cancel_reason_school_issue", breakpoints: true });
     // the journal's `when` continues the synthetic incrementing value — strictly above every earlier entry

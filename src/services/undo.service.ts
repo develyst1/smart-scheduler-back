@@ -24,11 +24,12 @@ import {
 import { displayNameOf } from "../db/mappers";
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared writes
 import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
+import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
-const MAKEUP_UNDONE_NOTE = "ยกเลิกคาบขยาย — ย้อนกลับการลา";
+const MAKEUP_UNDONE_NOTE = MAKEUP_NOTE_UNDONE; // 🔻 TASK-702 — ONE list (lib/makeup-marker.ts): the migration's P4 reads the same bytes
 
 /**
  * 🔴 SETTLED (Sober's ruling on the contract §C): the date is before today (the day-end never revisits a past date, so a past

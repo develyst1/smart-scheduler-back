@@ -702,6 +702,13 @@ function buildOutboxMessage(
         to: typeof payload.to === "string" ? ddmmyyyy(payload.to) : "-", // a string only — other kinds carry `to` as a slot object
         from: typeof payload.from === "string" ? ddmmyyyy(payload.from) : "-",
       });
+    // 🔻 TASK-702 (REQ-115) — a make-up whose birth-confirm was REFUSED; the admins are told once (the leave itself committed). Student + date come from the make-up's own row.
+    case "makeup_not_confirmed":
+      return t("ob_makeup_not_confirmed", lang, {
+        student: ctx.studentName ?? "-",
+        date: ctx.date ? ddmmyyyy(ctx.date) : "-",
+        reason: typeof payload.reason === "string" && payload.reason ? payload.reason : "-",
+      });
     case "makeup_past_expiry":
       return t("ob_makeup_past_expiry", lang, {
         student: ctx.studentName ?? "-",

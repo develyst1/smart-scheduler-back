@@ -62,7 +62,7 @@ function world(baseExpiry: string) {
         },
       },
       teacherLeaveDays: { findFirst: async () => undefined },
-      teachers: { findFirst: async () => ({ id: T, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", lineUserId: null }) },
+      teachers: { findFirst: async () => ({ id: T, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", lineUserId: null }), findMany: async () => [] /* 🔻 TASK-702: the make-up's birth-confirm reads its coaches */ },
       coursePackages: { findFirst: async () => w.courses[0] },
       appSettings: { findMany: async () => [], findFirst: async () => null },
       jobRuns: { findFirst: async () => null, findMany: async () => [] },
@@ -104,7 +104,7 @@ function world(baseExpiry: string) {
     } }),
     delete: () => ({ where: async () => {} }),
     // the coach-notice read (`teachersOfBooking`) chains `.limit()` and `.innerJoin()`; it answers nobody here on purpose
-    select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [] }; return q; },
+    select: () => { const q: any = { from: () => q, where: () => q, limit: async () => [], innerJoin: async () => [], then: (res: any) => res([]) /* 🔻 TASK-702: an awaited chain reads as no rows */ }; return q; },
   };
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any));
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => withRels(w.bookings[0])) as any));

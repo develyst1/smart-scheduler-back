@@ -32,6 +32,7 @@ const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 type Row = PlanSession & { id: string };
 const row = (id: string, status: string, date = "2026-09-01"): Row => ({
   id,
+  isMakeup: status === "EXTENDED", // 🔻 TASK-702 — a fixture make-up carries the MARKER, as the backfill marks it
   status,
   date,
   extendedFromId: null,

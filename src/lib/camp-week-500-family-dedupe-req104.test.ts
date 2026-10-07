@@ -135,7 +135,7 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     expect(C).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });");
     expect(C).not.toContain("for (const"); // ONE set, ONE call — no per-seat loop
     expect((SCHED.match(/kind: "class_cancelled_parent"/g) ?? []).length).toBe(1);
-    expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(2); // the leave + the admin's cancel, byte-identical callers
+    expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(3); // 🔻 TASK-702: + the TRIM (a make-up is born CONFIRMED, so cancelling one is announced) · the leave + the admin's cancel, byte-identical callers
     expect(region(SCHED, "export async function sendClassCancelledToFamilies(", "\n}\n")).toContain("return (await classCancelledFamilyAccounts(tx, current, cancelReason, appended)) === null ? 0 : 1;");
   });
   test("🔴 cancel-all by value: one child on SIX rows ⇒ six notices (each its own dated class), `householdsTold: 1`; two rows with different families ⇒ the union", async () => {
@@ -158,6 +158,6 @@ describe("🔴 §2 the family notices — ONE household set per row; siblings on
     const out = await series.cancelAllOtherSeries({ groupKey: K }, { reasonCode: "ADMIN_ERROR" }, "dev");
     expect(out).toEqual({ cancelled: 6, seatsCancelled: 6, familyNotices: 13, householdsTold: 3 }); // 5×2 + 3 rows; the union {U1, U1b, U2}
     expect(out).not.toHaveProperty("familiesTold");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(66); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
   });
 });

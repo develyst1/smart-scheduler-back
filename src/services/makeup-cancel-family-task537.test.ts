@@ -32,7 +32,7 @@ const STAFF = { channel: "staff" as const, actor: "admin-dong" };
 function run(row: Record<string, unknown>, replan: { appended?: string[]; rows?: any[]; coaches?: Record<string, string[]> } = {}) { // 🔻 TASK-548 — what the re-plan RETURNS
   const w = {
     bookings: [{ id: M1, status: "EXTENDED", date: "2026-10-30", startTime: "10:00:00", teacherId: "t1", studentId: "s1", coStudentId: null, courseId: "c1", voucherId: null, bookingType: "COURSE_PACKAGE",
-      note: null, plannedAtCreation: false, leaveCharged: null, checkinSource: null, checkinChannel: null, checkinActor: null, campWeekDayId: null, confirmedAt: null, ...row }],
+      note: null, plannedAtCreation: false, leaveCharged: null, checkinSource: null, checkinChannel: null, checkinActor: null, campWeekDayId: null, confirmedAt: null, isMakeup: true /* 🔻 TASK-702 — the row under test IS a make-up: door 4 asks the MARKER */, ...row }],
     courses: [{ id: "c1", size: 4, usedSessions: 1, leaveUsed: 1 }],
     inserts: [] as Array<{ table: string; v: any }>,
     replanAsked: [] as any[], // 🔻 TASK-552 — the opts each re-plan received
@@ -236,9 +236,14 @@ describe("🔴 TASK-551 §2 — a cancelled make-up re-added in the SAME slot te
     expect([h.parentRows().length, h.coachRows().length]).toEqual([2, 2]);
   });
   test("🚫 a CONFIRMED class is never suppressed by this rule (it is about a cancelled MAKE-UP) — even with a same-slot append", async () => {
-    const h = run({ ...SLOT, status: "CONFIRMED" }, again());
+    const h = run({ ...SLOT, status: "CONFIRMED", isMakeup: false }, again()); // 🔻 TASK-702 — an ORDINARY class: unmarked
     await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
     expect([h.parentRows().length, h.coachRows().length]).toEqual([2, 2]);
+  });
+  test("🔻 TASK-702 — a CONFIRMED MARKED make-up (born CONFIRMED) cancelled and put straight back in the SAME slot tells nobody — the rule follows the MARKER, not the status", async () => {
+    const h = run({ ...SLOT, status: "CONFIRMED", isMakeup: true }, again());
+    await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
+    expect([h.parentRows().length, h.coachRows().length]).toEqual([0, 0]);
   });
   test("the pure decider by value: exact date · start · end (`10:00:00` = `10:00`, the same time spelt twice) · the coach SET (order and repeats irrelevant)", async () => {
     const { sameSlotReplacement } = await import("../lib/same-slot");
@@ -251,7 +256,7 @@ describe("🔴 TASK-551 §2 — a cancelled make-up re-added in the SAME slot te
   test("by source: ONE decider feeds BOTH audiences — the coach and the family read the same `slot`, and only a make-up asks", () => {
     const S = code(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
     const c = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
-    expect(c).toContain('const slot = current.status === "EXTENDED" ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT;');
+    expect(c).toContain('const slot = (current as any).isMakeup === true ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT;'); // 🔻 TASK-702 — "is this a MAKE-UP?" is the MARKER's question (born CONFIRMED, the status no longer says it)
     expect(c).toContain("notification = slot.coach ? null : await sendClassCancelledToTeacher(tx, current, {");
     expect(c).toContain("if (!slot.family) await sendClassCancelledToFamilies(");
     expect((S.match(/sameSlotReplacement\(/g) ?? []).length).toBe(1); // one call site: the service helper

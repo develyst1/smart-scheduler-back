@@ -18,8 +18,8 @@ describe("🔑 `plannedAtCreation` — raw, by value both ways", () => {
     expect(toBookingDTO({ ...ROW, plannedAtCreation: false }).plannedAtCreation).toBe(false);
     expect(toBookingDTO({ ...ROW }).plannedAtCreation).toBe(false);
   });
-  test("🚫 nothing else moved: the admin DTO's key set is the previous 33 + `plannedAtCreation` (the same under every provenance view)", () => {
-    const BASE = ["attendeeNote", "badges", "bookingType", "campKidCount", "campWeekDayId", "campWeekId", "cancelReason", "coStudent", "course", "courseLast", "date", "discount", "displayName", "endTime", "group", "groupId", "groupName", "id", "incomingBookingId", "note", "other", "otherSeriesKey", "pendingSlot", "plannedAtCreation", "rate", "rental", "rescheduleTo", "startTime", "status", "student", "subject", "teacher", "teachers", "title"];
+  test("🚫 nothing else moved: the admin DTO's key set is the previous 34 + `isMakeup` (🔻 TASK-702) (the same under every provenance view)", () => {
+    const BASE = ["attendeeNote", "badges", "bookingType", "campKidCount", "campWeekDayId", "campWeekId", "cancelReason", "coStudent", "course", "courseLast", "date", "discount", "displayName", "endTime", "group", "groupId", "groupName", "id", "incomingBookingId", "isMakeup", "note", "other", "otherSeriesKey", "pendingSlot", "plannedAtCreation", "rate", "rental", "rescheduleTo", "startTime", "status", "student", "subject", "teacher", "teachers", "title"];
     expect(Object.keys(toBookingDTO({ ...ROW, plannedAtCreation: true })).sort()).toEqual(BASE);
     const PROV = [...BASE, "checkinActor", "checkinChannel", "checkinSource"].sort();
     expect(Object.keys(toBookingDTO({ ...ROW }, { provenance: "raw" })).sort()).toEqual(PROV);
