@@ -3299,8 +3299,19 @@ export async function classCancelledFamilyAccounts(
   // promise a replacement we cannot know is coming. The CONFIRMED notice below is byte-identical.
   // 🔑 WHO REACHES THIS for a make-up: the admin's cancel, a coach's own leave, the OTHER-series cancel-all, the plan TRIM, and (🔻 TASK-704) the leave UNDO —
   // a make-up born CONFIRMED was announced to the family, so its cancel is too (an unconfirmed EXTENDED one is still coaches-only in the Undo).
-  if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;
-  const accounts = await familyAccountsOfRow(tx, current);
+  // 🔻 TASK-706 (F3) — a GROUP date's family is decided by its SEATS, not by the group row's own status: a sale-added date is a PENDING group row whose seats are CONFIRMED and already on the
+  // family's schedule, so the row's PENDING stopped the notice before it looked at them. ⇒ for a GROUP row that is NOT itself CONFIRMED/EXTENDED, tell the households of the seats that were
+  // CONFIRMED BEFORE the cancel (the callers pass the PRE-cancel seats — `familyAccountsOfRow`'s warning); a PENDING seat's family was never told that date ⇒ not told; none CONFIRMED ⇒ nothing.
+  // 🚫 A CONFIRMED/EXTENDED group row and every non-group row: exactly as before (the early return stands).
+  let target = current;
+  if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") {
+    if (current.bookingType !== "GROUP") return null;
+    const preSeats: any[] = current.seats ?? (await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }));
+    const confirmed = preSeats.filter((st: any) => st.status === "CONFIRMED");
+    if (!confirmed.length) return null;
+    target = { ...current, seats: confirmed };
+  }
+  const accounts = await familyAccountsOfRow(tx, target);
   if (accounts === null) return null;
   // 🔻 TASK-704 (REQ-115 F1) — "is this a MAKE-UP?" ⇒ the MARKER, never the status: a make-up is born CONFIRMED now (TASK-702), so a status test sent a cancelled
   // make-up the ordinary class's wording ("a make-up has been added" — false for a trim). A legacy unconfirmed make-up (EXTENDED + marked) takes the same branch as before.

@@ -353,7 +353,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect((SCHED.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(3); // 🔻 TASK-702: + the TRIM announces the cancel of a CONFIRMED make-up
     expect(region(SCHED, '} else if (action === "cancel") {', '} else if (action === "sick-leave"')).toContain("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);"); // 🔻 TASK-516 addendum: the seats as they were BEFORE the cascade
     const FS = region(SCHED, "async function sendClassCancelledToFamilies(", "async function sendClassCancelledToOtherTeachers(");
-    expect(FS).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") return null;'); // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1 · 🔻 TASK-537: a MAKE-UP is held by the family too (its own kind)
+    expect(FS).toContain('if (current.status !== "CONFIRMED" && current.status !== "EXTENDED") {'); expect(FS).toContain('if (current.bookingType !== "GROUP") return null;'); /* 🔻 TASK-706: the early return stands for every non-group row; a GROUP row is decided by its seats */ // 🔻 TASK-445: the core answers null when nothing was sent; the wrapper keeps 0 | 1 · 🔻 TASK-537: a MAKE-UP is held by the family too (its own kind)
     expect(FS).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });"); // 🔻 TASK-445: ONE household set per row (all the seats), the accounts de-duplicated once
     expect(FS).toContain('current.bookingType === "GROUP"');
   });

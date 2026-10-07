@@ -1,0 +1,28 @@
+{
+  "task": "TASK-706",
+  "proves": "src/services/group-date-cancel-seats-task706.test.ts",
+  "note": "🔴 REQ-115 F3. G1 the gate still reads the GROUP ROW's status (a PENDING group row tells nobody) · G2 a PENDING seat's family is told · G3 the seat filter is applied to NON-group rows too · G4 the POST-cancel seats are read (every seat CANCELLED ⇒ nobody told).",
+  "tests": "src/services/group-date-cancel-seats-task706.test.ts src/services/makeup-cancel-family-task537.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "🔴 the gate reads the group row again — a PENDING group row tells nobody (the F3 bug)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "    if (current.bookingType !== \"GROUP\") return null;\n", "to": "    return null;\n    if (current.bookingType !== \"GROUP\") return null;\n" }] }]
+    },
+    {
+      "id": "G2",
+      "what": "🔴 a PENDING seat's family is told too — they were never told that date",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "preSeats.filter((st: any) => st.status === \"CONFIRMED\");", "to": "preSeats.filter((st: any) => st.status !== \"CANCELLED\");" }] }]
+    },
+    {
+      "id": "G3",
+      "what": "the seat filter is applied to NON-group rows — a PENDING course class is announced",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "    if (current.bookingType !== \"GROUP\") return null;\n", "to": "" }] }]
+    },
+    {
+      "id": "G4",
+      "what": "🔴 the POST-cancel seats are read — every seat is CANCELLED by then, nobody is told",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const preSeats: any[] = current.seats ?? (await tx.query.bookings.findMany(", "to": "const preSeats: any[] = (await tx.query.bookings.findMany(" }] }]
+    }
+  ]
+}
