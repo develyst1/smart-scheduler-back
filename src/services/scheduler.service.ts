@@ -1886,13 +1886,13 @@ export async function resolveClashBySwappingCoach(id: string, input: { teacherId
  * the audit note, and the make-up re-owed by `reconcileCoursePlan` (SPEC-028 §11.3) — in the caller's transaction.
  * The coach is told ONCE, by the group row's own cancel (the caller); a seat sends no teacher notice of its own.
  */
-export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger } = {}) { // TASK-441: exported — the group series cancel-all cascades through it
+export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger; coachOff?: readonly CoachOff[] } = {}) { // TASK-441: exported — the group series cancel-all cascades through it
   const seats = await tx.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES])),
   });
   for (const s of seats) {
     await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));
-    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null; // 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
+    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff ? { coachOff: opts.coachOff } : {}) }) : null; // 🔻 TASK-705 — only the coach's leave passes it · 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
     // 🔻 TASK-656 — DOOR 5 of 5: the SEATS of a group date. 🔴 Whether a seat earns its course a week is the CALLER's fact, passed in as
     // `opts.weekTrigger` — never read back from a free-text note, and never assumed: this function is reached from THREE places and they
     // disagree. A COACH's leave (T2 — each seat's course +1), a group-date cancel carrying `SCHOOL_ISSUE` (T3), and the series cancel-all
@@ -2933,7 +2933,19 @@ async function flagMakeupsPastExpiry(tx: any, courseId: string, makeupIds: reado
   return flagged;
 }
 
-export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[] } = {}) {
+/**
+ * 🔻 TASK-705 (REQ-115 F2) — a (coach, date) pair the CALLER KNOWS the coach is off. A same-day coach leave records no leave day (`teacherLeaveOn` sees only ADVANCE leaves), so when the
+ * cancelled class was the course's last live one the append search's first candidate IS the date just cancelled — free (CANCELLED holds no slot) — and the replacement landed on the day
+ * off. Only the doors that KNOW pass it (the coach's own leave, its group seats, the admin's `TEACHER_LEAVE` cancel); everything else passes nothing ⇒ byte-identical.
+ */
+export type CoachOff = { teacherId: string; date: string };
+
+/** 🔻 TASK-705 §2 — the (coach, date) pairs of a row's own coaches (primary + additional): what a GROUP row's cancel for «ครูลา» tells its seats' re-plans. */
+export async function coachOffOfRow(tx: any, row: { id: string; date: string }): Promise<CoachOff[]> {
+  return (await teachersOfBooking(tx, row.id)).map((c: any) => ({ teacherId: c.id as string, date: row.date }));
+}
+
+export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[]; coachOff?: readonly CoachOff[] } = {}) {
   const course = await tx.query.coursePackages.findFirst({
     where: (c: any, { eq }: any) => eq(c.id, courseId),
   });
@@ -3030,7 +3042,9 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // Mirror the makeup's teacher/subject/time from the absence it replaces (or a live session).
       const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
       if (!template) break;
-      const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate);
+      // 🔻 TASK-705 — the dates THIS coach is known off (per coach: another coach's slot on that date is not blocked) read as taken ⇒ the search skips to the next free week.
+      const coachOffDates = new Set((opts.coachOff ?? []).filter((c) => c.teacherId === template.teacherId).map((c) => c.date));
+      const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates);
       // 🔴 REQ-085 §12 (TASK-308) — **the QUOTA is the only gate on leave, and the expiry STRETCHES to fit.**
       //
       // 🔻 A refusal stood here. It was `EXTENSION_CEILING`, and it fired on the make-up a legitimate leave
@@ -3470,9 +3484,10 @@ export async function reportTeacherLeave(
   let familiesNotified = 0;
   await db.transaction(async (tx) => {
     for (const b of live) {
-      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE" }); // 🔻 TASK-656 — T2 reaches each SEAT's course
+      const coachOff: CoachOff[] = [{ teacherId: me, date: input.date }]; // 🔻 TASK-705 — this coach is off THIS date: no replacement lands on it
+      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff }); // 🔻 TASK-656 — T2 reaches each SEAT's course
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
-      const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null; // 🔻 TASK-548 — its result is the notice's evidence · 🔻 TASK-552 (B)
+      const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any), coachOff }) : null; // 🔻 TASK-548 — its result is the notice's evidence · 🔻 TASK-552 (B)
       // 🔻 TASK-656 — DOOR 3 of 5 = trigger T2: a COACH's leave, the coach's own cancel or an admin recording it on their behalf
       // (`onBehalf`) — ONE path. Her number: a coach away twice on a 13-week course ⇒ "15 ค่ะ".
       // 🔑 Once per CLASS cancelled, not once per leave DAY — two classes of one course on one day are two weeks. (A GROUP row has no
@@ -4062,7 +4077,7 @@ export async function updateBookingStatus(
       // 🔴 TASK-516 addendum — the seats AS THEY WERE, read BEFORE the cascade cancels them: the family notice below tells the families
       // of the seats that were live (the one household rule drops CANCELLED seats — re-read after this line, it would drop them all).
       const seatsBefore = current.bookingType === "GROUP" ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }) : undefined;
-      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {}); // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
+      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}) }); // 🔻 TASK-705 §2 — «ครูลา» on a GROUP row: its coaches are off that date // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
       await tx
         .update(bookings)
         .set({
@@ -4104,7 +4119,12 @@ export async function updateBookingStatus(
         // can test* — the same reason `EXPIRY_REQUIRED` went in TASK-287.
         // ✅ The reconcile still runs, and still re-owes the make-up: **every course-session cancel is a
         // reschedule, not a forfeit** (SPEC-028 §11.3). Only the refusal it could raise is gone.
-        replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
+        // 🔻 TASK-705 — ONLY the reason «ครูลา» (`TEACHER_LEAVE`) says the coach is off: then the class's coaches (primary + additional) are off THAT date, so the replacement skips it.
+        // 🚫 Every other reason passes nothing — TASK-551 (owner): a make-up put straight back in the same slot changed nothing. Read from the raw `reasonCode`: a course cancel ignores it in `enumReason`.
+        const coachOff: CoachOff[] | undefined = reasonCode === "TEACHER_LEAVE"
+          ? (await teachersOfBooking(tx, current.id)).map((c: any) => ({ teacherId: c.id as string, date: current.date }))
+          : undefined;
+        replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}) }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
         // 🔻 TASK-656 — the school-cancel week (trigger T3) is decided BELOW, once `slot` is known: a week here depends on the REASON and on whether
         // the class was really lost, and the same-slot answer does not exist until the re-plan has run.
       }

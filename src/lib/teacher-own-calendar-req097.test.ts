@@ -332,9 +332,9 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(L).toContain('if (delivered) throw conflict("SESSION_DELIVERED", `คาบ ${hhmm(delivered.startTime)} สอนไปแล้ว — แจ้งลาไม่ได้`);');
     expect(L.indexOf("SESSION_DELIVERED")).toBeLessThan(L.indexOf("db.transaction(")); // pre-checked, nothing written
     expect((L.match(/db\.transaction\(/g) ?? []).length).toBe(1);
-    expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE" });'); // 🔻 TASK-656 — T2 reaches each seat
+    expect(L).toContain('if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff });'); // 🔻 TASK-656 — T2 reaches each seat
     expect(L).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
-    expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any) }) : null;");
+    expect(L).toContain("const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any), coachOff }) : null;");
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
     expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);'); // 🔻 TASK-410: the ONE family sender · 🔻 TASK-548: + the re-plan's own append result
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off

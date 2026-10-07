@@ -1,0 +1,128 @@
+{
+  "task": "TASK-705",
+  "proves": "src/services/replan-coach-day-off-task705.test.ts",
+  "note": "🔴 REQ-115 F2. C1 the option is IGNORED by the append search · C2 applied to EVERY coach (not per coach) · C3 NOT passed from the coach's own leave (its re-plan) · C4 NOT passed from the TEACHER_LEAVE admin cancel · C5 passed for ANY admin-cancel reason (TASK-551 broken) · C6 NOT passed to the coach leave's group seats. · C7 NOT passed from the admin GROUP-row cancel · C8 NOT passed from the series cancel-all.",
+  "tests": "src/services/replan-coach-day-off-task705.test.ts src/services/makeup-cancel-family-task537.test.ts src/lib/group-series-req104.test.ts",
+  "mutations": [
+    {
+      "id": "C1",
+      "what": "🔴 the option is ignored — the search never hears of the day off (the F2 bug)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "tx, template.teacherId, template.startTime, fromDate, coachOffDates);",
+              "to": "tx, template.teacherId, template.startTime, fromDate);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "the option is applied to EVERY coach — another coach's day off blocks this coach's slot",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "(opts.coachOff ?? []).filter((c) => c.teacherId === template.teacherId).map",
+              "to": "(opts.coachOff ?? []).map"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "what": "🔴 the coach's own leave does not pass it to its re-plan",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "{ reowedFor: reowedForOf(b as any), coachOff }) : null;",
+              "to": "{ reowedFor: reowedForOf(b as any) }) : null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "what": "🔴 the admin's cancel with TEACHER_LEAVE does not pass it",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const coachOff: CoachOff[] | undefined = reasonCode === \"TEACHER_LEAVE\"",
+              "to": "const coachOff: CoachOff[] | undefined = false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "what": "🔴 the admin's cancel passes it for ANY reason — TASK-551's same-slot ruling broken",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const coachOff: CoachOff[] | undefined = reasonCode === \"TEACHER_LEAVE\"",
+              "to": "const coachOff: CoachOff[] | undefined = true"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "what": "the coach leave's GROUP seats are not told the coach is off",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "{ weekTrigger: \"T2_COACH_LEAVE\", coachOff }",
+              "to": "{ weekTrigger: \"T2_COACH_LEAVE\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "what": "the admin GROUP-row cancel with TEACHER_LEAVE does not pass the pair to its seats",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(reasonCode === \"TEACHER_LEAVE\" ? { coachOff: await coachOffOfRow(tx, current) } : {})",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "what": "the series cancel-all with TEACHER_LEAVE does not pass the pair to its seats",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": ", ...(input.reasonCode === \"TEACHER_LEAVE\" ? { coachOff: await coachOffOfRow(tx, r) } : {})",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

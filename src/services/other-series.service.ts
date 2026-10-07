@@ -27,6 +27,7 @@ import {
   bulkConfirm,
   cancelSeatsOfGroup,
   classCancelledFamilyAccounts,
+  coachOffOfRow,
   confirmCourse,
   insertBooking,
   reconcileBookingHolds,
@@ -187,7 +188,7 @@ export async function cancelAllOtherSeries(key: SeriesKey, input: { reasonCode: 
         // course re-owed (`reconcileCoursePlan`), then each seat's household told `class_cancelled_parent` (a CONFIRMED row only —
         // the family rule). The seats send no teacher notice; the coach is told ONCE below with the group's name.
         // 🔻 TASK-656 — T3 reaches each seat's course ONLY when the series is cancelled for `SCHOOL_ISSUE`; every other reason is +0.
-        seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null, input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {});
+        seatsCancelled += await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null, { ...(input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(input.reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, r) } : {}) }); // 🔻 TASK-705 §2 — «ครูลา»: this row's coaches are off its date
         const accounts = (await classCancelledFamilyAccounts(tx, { ...r, bookingType: "GROUP", seats: r.seats ?? undefined } as any, input.reasonCode)) ?? []; // TASK-445: siblings once per row
         familyNotices += accounts.length;
         for (const a of accounts) households.add(a);

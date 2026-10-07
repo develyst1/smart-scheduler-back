@@ -211,13 +211,13 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   });
   test("the cancel CASCADE: a GROUP row's cancel first cancels every live seat (status + note + the course's make-up via `reconcileCoursePlan`) in the SAME tx, then the group row; GROUP joins the audited-reason set; a seat's own cancel is ordinary", () => {
     const U = region(SCHED, "export async function updateBookingStatus(", "\nexport async function bulkConfirm(");
-    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" } : {});');
+    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}) });');
     expect(U.indexOf('cancelSeatsOfGroup(tx, current.id')).toBeLessThan(U.indexOf('status: "CANCELLED",'));
     expect(U).toContain('new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"])');
     const C = region(SCHED, "async function cancelSeatsOfGroup(", "\n}\n");
     expect(C).toContain("a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES]))");
     expect(C).toContain('await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));');
-    expect(C).toContain("const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s) }) : null;");
+    expect(C).toContain("const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff ? { coachOff: opts.coachOff } : {}) }) : null;");
     expect(C).not.toMatch(/enqueueLine|sendClassCancelledToTeacher/); // the coach is told ONCE, by the group row's own cancel
   });
   test("🔴 a SEAT draws no freelance hour — `reconcileBookingHolds` returns before the ledger read when the row has a `groupId` (the group row holds the hour)", () => {

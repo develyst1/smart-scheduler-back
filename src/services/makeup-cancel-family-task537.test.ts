@@ -186,7 +186,7 @@ describe("🔴 TASK-548 — a cancelled make-up names the new class ONLY when th
   test("🔑 by source: the admin's family notice is built AFTER the re-plan (same transaction) and is handed the re-plan's OWN result", () => {
     const S = code(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
     const c = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
-    const replan = c.indexOf("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) });");
+    const replan = c.indexOf("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}) });");
     const notice = c.indexOf("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);");
     expect(replan).toBeGreaterThan(-1);
     expect(notice).toBeGreaterThan(replan);

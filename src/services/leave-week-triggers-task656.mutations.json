@@ -87,8 +87,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "enumReason === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" } : {}); // 🔻 TASK-656 — T3 reaches each SEAT",
-              "to": "{}); // 🔻 TASK-656 — T3 reaches each SEAT"
+              "from": "...(enumReason === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" as const } : {}), ...(reasonCode",
+              "to": "...(reasonCode"
             }
           ]
         }

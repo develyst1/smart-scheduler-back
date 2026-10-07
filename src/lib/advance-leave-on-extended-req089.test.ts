@@ -137,7 +137,7 @@ describe("🔑 ONE rule, THREE callers — the preview and the save agree becaus
     const reconcile = fn("export async function reconcileCoursePlan(");
     expect(preview).toContain("let fromDate = sessions[sessions.length - 1]?.date ?? input.startDate;");
     expect(reconcile).toContain("const plannedRows = rows.filter((r: any) => !cancelledSet.has(r.id) && r.status !== \"CANCELLED\");");
-    expect(reconcile).toContain("findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate)");
+    expect(reconcile).toContain("findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates)");
   });
 });
 

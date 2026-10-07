@@ -280,7 +280,7 @@ describe("🔑 TASK-308 — the owner's `มิลล่า`, and his screenshot
     expect(SVC).not.toContain("EXTENSION_CEILING");
     expect(SVC).not.toContain("CANCEL_AT_CEILING");
     // ✅ …and the reconcile still RUNS on a cancel: every course-session cancel is a reschedule, not a forfeit.
-    expect(SVC).toContain("await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current) });");
+    expect(SVC).toContain("await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}) });");
   });
 
   test("✅ §10's creation stretch for DECLARED absences survives this", () => {
