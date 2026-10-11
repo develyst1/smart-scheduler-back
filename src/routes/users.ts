@@ -36,5 +36,7 @@ export const userRoutes = new Hono()
   .put("/:id/role", zValidator("json", v.setUserRole), async (c) =>
     c.json({ user: await usersSvc.setUserRole(c.req.param("id"), c.req.valid("json").roleId) }),
   )
+  // 🔴 TASK-725 — unlink a user's LINE account (the Unlink on the Users page). Super admin only, like the whole group. Idempotent.
+  .delete("/:id/line-link", async (c) => c.json(await usersSvc.unlinkUserLine(c.req.param("id"), actorOf(c))))
   .post("/:id/disable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), true) }))
   .post("/:id/enable", async (c) => c.json({ user: await usersSvc.setUserDisabled(c.req.param("id"), false) }));

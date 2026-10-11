@@ -239,7 +239,7 @@ describe("🔴 F2 — by source: the option cannot leak", () => {
   const S = readFileSync(resolve(import.meta.dir, "scheduler.service.ts"), "utf8");
   test("the coach's own leave passes (that coach, that date) to the re-plan AND to its group seats", () => {
     expect(S).toContain('const coachOff: CoachOff[] = [{ teacherId: me, date: input.date }];');
-    expect(S).toContain('{ weekTrigger: "T2_COACH_LEAVE", coachOff }');
+    expect(S).toContain('{ weekTrigger: "T2_COACH_LEAVE", coachOff, reseat: true }');
     expect(S).toContain("reowedFor: reowedForOf(b as any), coachOff }");
   });
   test("the admin cancel passes it ONLY for the raw reason TEACHER_LEAVE; the other callers (plan editor, Undo, creation, the SCHOOL_ISSUE / series seats) pass nothing", () => {

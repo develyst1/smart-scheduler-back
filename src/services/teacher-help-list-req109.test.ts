@@ -33,6 +33,7 @@ const chat = (who: "teacher" | "parent", lang: "TH" | "EN") => {
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => (who === "parent" ? { id: "p1", lineUserId: U, lineLang: lang, status: "active", suspendedAt: null } : undefined)) as any));
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => (who === "parent" ? { parentId: "p1", lineUserId: U, lineLang: lang } : undefined)) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
   spies.push(spyOn(db, "update").mockImplementation((() => ({ set: () => ({ where: async () => {} }) })) as any));
   spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: () => ({ onConflictDoUpdate: async () => {}, onConflictDoNothing: async () => {} }) })) as any));
   spies.push(spyOn(checkinSvc, "findBookingsForTeacher").mockImplementation((async () => { calls.push("schedule"); return []; }) as any));

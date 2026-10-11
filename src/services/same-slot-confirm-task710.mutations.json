@@ -1,0 +1,28 @@
+{
+  "task": "TASK-710",
+  "proves": "src/services/same-slot-confirm-task710.test.ts",
+  "note": "🔴 FINAL ROUND 1. S1 the confirm notice IGNORES the same-slot decider (= the behaviour on 3cd2b46: a second «CONFIRMED» for the same slot — the reproduction) · S2 the audiences SWAPPED (family ⇐ slot.coach, coach ⇐ slot.family) · S3 the replacement is left UNCONFIRMED when its notices are held · S4 the held message is DROPPED on a different slot (never flushed).",
+  "tests": "src/services/same-slot-confirm-task710.test.ts src/services/makeup-cancel-family-task537.test.ts",
+  "mutations": [
+    {
+      "id": "S1",
+      "what": "🔴 the confirm notice ignores the decider — the family and the coach get a second «CONFIRMED» for the same slot (the reported defect)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "for (const n of heldConfirm) if (!(n.audience === \"parent\" ? slot.family : slot.coach)) await n.send();", "to": "for (const n of heldConfirm) await n.send();" }] }]
+    },
+    {
+      "id": "S2",
+      "what": "slot.family and slot.coach swapped — a different-coach replacement silences the coach and tells the family",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "n.audience === \"parent\" ? slot.family : slot.coach", "to": "n.audience === \"parent\" ? slot.coach : slot.family" }] }]
+    },
+    {
+      "id": "S3",
+      "what": "🔴 the replacement is left unconfirmed when its notices are held — silence bought by not confirming",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await applyConfirm(tx, row.id, row, hold);\n", "to": "  if (!hold) await applyConfirm(tx, row.id, row, hold);\n" }] }]
+    },
+    {
+      "id": "S4",
+      "what": "🔴 the held message is dropped on a DIFFERENT slot — never flushed",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "for (const n of heldConfirm) if (!(n.audience === \"parent\" ? slot.family : slot.coach)) await n.send();", "to": "for (const n of heldConfirm) if (false) await n.send();" }] }]
+    }
+  ]
+}

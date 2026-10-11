@@ -107,7 +107,7 @@ describe("the confirm enqueue carries the note (TASK-219)", () => {
   test("🔑 ONE payload object, sent to teacher and parent — not two literals", () => {
     // Two literals would be two places to update, and one of them would be missed — which is how a parent
     // ends up reading a different confirmation from the teacher.
-    expect(confirmBranch.match(/payload: confirmPayload/g)).toHaveLength(2);
+    expect(confirmBranch.match(/payload: confirmPayload/g)).toHaveLength(4); // 🔻 TASK-710: teacher + parent × (sent now | held for the same-slot decision) — still ONE `confirmPayload` object, no literal
     expect(confirmBranch).not.toMatch(/payload: \{ kind: "booking_confirmed"/);
   });
 });

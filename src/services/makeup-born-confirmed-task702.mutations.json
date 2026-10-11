@@ -72,7 +72,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      await inheritCourseRental(tx, courseId, ext.id);\n      await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm\n",
+              "from": "      await inheritCourseRental(tx, courseId, ext.id);\n      await confirmMakeupAtBirth(tx, ext.id, opts.holdConfirmNotices); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm · 🔻 TASK-710 — held only when the caller asks\n",
               "to": "      await inheritCourseRental(tx, courseId, ext.id);\n"
             }
           ]
@@ -132,7 +132,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "  await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households\n    bookingId: id,\n    payload: confirmPayload,\n  });\n",
+              "from": "  await enqueueParentCopies(tx, parentAccounts, {\n    bookingId: id,\n    payload: confirmPayload,\n  });\n",
               "to": ""
             }
           ]

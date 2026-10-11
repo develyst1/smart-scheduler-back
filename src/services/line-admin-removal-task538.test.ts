@@ -35,6 +35,7 @@ function world(ids: string[]) {
       appSettings: { findFirst: async () => ({ key: "line_admin_user_ids", value: w.ids }) },
       teachers: { findFirst: async () => undefined, findMany: async () => [] }, // each test says who (if anyone) is a coach
       parents: { findMany: async () => [] },
+      users: { findMany: async () => [], findFirst: async () => undefined }, // 🔻 TASK-725 — no web user has a LINE account linked here; the linked entries are pinned in admin-line-link-task725.test.ts
     },
     insert: () => ({ values: (v: any) => ({ onConflictDoUpdate: async () => { w.writes.push(v.value); w.ids = v.value; } }) }),
     select: () => ({ from: async () => [] }),
@@ -56,7 +57,9 @@ describe("🔑 the list — only what our data can name, and it SAYS what it can
     expect(out.admins[2]).toMatchObject({ alsoTeacher: null, alsoParent: null, afterRemoval: "visitor-menu" }); // null = WE do not know
     const json = JSON.stringify(out);
     for (const id of [U_COACH, U_MOM, U_X]) expect(json).not.toContain(id);
-    expect(json).not.toMatch(/displayName|linkedAt/);
+    expect(json).not.toMatch(/linkedAt/);
+    // 🔻 TASK-725 — `displayName` is now the WEB USER's name on a `linked` entry (never LINE's, which is still not stored); a LEGACY bare id has none:
+    expect(out.admins.map((a) => [a.kind, a.displayName, a.userId, a.username, a.disabled])).toEqual([["legacy", null, null, null, false], ["legacy", null, null, null, false], ["legacy", null, null, null, false]]);
   });
   test("a coach behind the id ⇒ named, and falls back to the TEACHER menu (teacher first — `detectLinkedRole`'s order)", async () => {
     const { exec } = world([U_COACH]);
@@ -157,9 +160,10 @@ describe("🔑 super admin ONLY — through the ROOT app, real tokens", () => {
 });
 
 describe("🚫 what must not move", () => {
-  test("SEC-1's gate · the admin link still settles the admin menu · teacher/parent linking · the account default · TASK-524's action", () => {
+  test("SEC-1's reply and limiter (now the one-time code) · the admin link still settles the admin menu · teacher/parent linking · the account default · TASK-524's action", () => {
     const W = src("src/services/line-webhook.service.ts");
-    expect(W).toContain('if (!checkAdminCode(lineUserId, code, process.env[ADMIN_CODE_ENV])) return { ok: false, message: (l) => t("verify_admin_bad", l) };');
+    // 🔻 TASK-725 — the shared admin code is RETIRED: the same `verify_admin_bad` reply, now for the one-time web code (the miss limiter lives in `linkLineByCode`).
+    expect(W).toContain('if (!(await linkLineByCode(lineUserId, code)).ok) return { ok: false, message: (l) => t("verify_admin_bad", l) };');
     expect(W).toContain('if ((await detectLinkedRole(lineUserId)) === "admin") await settleAdminLink(lineUserId);');
     expect(W).toContain('if (role !== "admin") await settleLinkedRole(lineUserId, role);');
     expect(W).toContain('if (action === "admin") return doCallAdmin(lineUserId, replyToken, lang);');

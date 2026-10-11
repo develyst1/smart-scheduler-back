@@ -470,6 +470,13 @@
       "when": 1783000000062,
       "tag": "0066_booking_is_makeup",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1783000000063,
+      "tag": "0067_users_line_link",
+      "breakpoints": true
     }
   ]
 }

@@ -96,7 +96,7 @@ describe("auth middleware (B.7 → TASK-377)", () => {
     expect(login.status).toBe(200);
     expect(grantReads).toEqual([ROW.id]); // TASK-504 — the login's answer reads THIS user's own grants, once (undeclared until now)
     const { token, user } = (await login.json()) as any;
-    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleId: null, roleName: null, teacherId: null, teacherName: null, grants: { fromRole: [], own: [] } }); // 🔻 TASK-387: + role fields; 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
+    expect(user).toEqual({ id: "11111111-1111-4111-8111-111111111111", username: "admin", displayName: "Admin", isSuperAdmin: true, disabledAt: null, createdAt: "2026-09-17T00:00:00.000Z", role: "super_admin", menus: [...MENU_KEYS], actions: [...ACTION_KEYS], roleId: null, roleName: null, teacherId: null, teacherName: null, grants: { fromRole: [], own: [] }, lineLinked: false }); // 🔻 TASK-725: + lineLinked // 🔻 TASK-387: + role fields; 🔻 TASK-381: a super admin's menus = all 12; 🔻 TASK-385: + all actions
     expect("passwordHash" in user).toBe(false);
     const ping = await app.request("/api/ping", { headers: { authorization: `Bearer ${token}` } });
     expect(ping.status).toBe(200);

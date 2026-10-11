@@ -676,6 +676,15 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "overwrote is rightly marked but in no population, which the `extra` check would refuse.",
     rerunnable: false,
   },
+  {
+    tag: "0067_users_line_link",
+    probe: { kind: "index", index: "users_line_link_code_hash_uq" },
+    why:
+      "TASK-725. The admin LINE link is tied to the WEB USER: `users.line_user_id` + the one-time code (`line_link_code_hash`, `line_link_code_expires_at`). " +
+      "The probe is the LAST object the file creates (the partial unique index on the code hash, after the three columns and the line_user_id index), so a half-applied " +
+      "file reads as not applied and re-runs. Rerunnable: every statement is IF NOT EXISTS; no data is written.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

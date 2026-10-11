@@ -8,7 +8,12 @@ import { enqueueLine } from "./line";
 
 const ADMIN_KEY = "line_admin_user_ids";
 
-export async function getAdminLineUserIds(exec: any = db): Promise<string[]> {
+/**
+ * 🔴 TASK-725 — the LEGACY admin links: bare LINE ids in `app_settings.line_admin_user_ids`, put there by whoever typed the (now retired) shared admin code.
+ * READ-ONLY from now on: nothing adds to this list any more (`addAdminLineUserId` is DELETED, so that is structural, not a promise), it only shrinks —
+ * `removeAdminLineUserId`, from the old panel — until each person re-links through the web or the super admin removes them.
+ */
+export async function getLegacyAdminLineUserIds(exec: any = db): Promise<string[]> {
   const row = await exec.query.appSettings.findFirst({
     where: (s: any, { eq: e }: any) => e(s.key, ADMIN_KEY),
   });
@@ -16,22 +21,30 @@ export async function getAdminLineUserIds(exec: any = db): Promise<string[]> {
   return Array.isArray(val) ? (val as string[]).filter(Boolean) : [];
 }
 
-export async function addAdminLineUserId(lineUserId: string, exec: any = db): Promise<void> {
-  const existing = await getAdminLineUserIds(exec);
-  if (existing.includes(lineUserId)) return;
-  const next = [...existing, lineUserId];
-  await exec
-    .insert(appSettings)
-    .values({ key: ADMIN_KEY, value: next })
-    .onConflictDoUpdate({
-      target: appSettings.key,
-      set: { value: next, updatedAt: sql`now()` },
-    });
+/**
+ * TASK-725 — the LINKED admins: the LINE account of every web user who linked one and is NOT disabled (`disabled_at IS NULL`).
+ * ⇒ Disabling a user turns that person's notices OFF, enabling turns them back ON, with no second switch to forget.
+ */
+export async function getLinkedAdminLineUserIds(exec: any = db): Promise<string[]> {
+  const rows: Array<{ lineUserId: string | null }> = await exec.query.users.findMany({
+    columns: { lineUserId: true },
+    where: (u: any, { and, isNotNull, isNull }: any) => and(isNotNull(u.lineUserId), isNull(u.disabledAt)),
+  });
+  return rows.map((r) => r.lineUserId).filter((x): x is string => !!x);
 }
 
-/** 🔴 TASK-538 — take ONE id off the admin list (the only thing `notifyAdmins` and `detectLinkedRole` read). The mirror of the add. */
+/**
+ * THE recipients, for every reader (`notifyAdmins`, `detectLinkedRole`, the menu sweep, the old panel): active linked users ∪ the legacy list,
+ * DE-DUPLICATED (an account in both counts once), legacy first so the order readers have always seen is unchanged.
+ */
+export async function getAdminLineUserIds(exec: any = db): Promise<string[]> {
+  const [legacy, linked] = await Promise.all([getLegacyAdminLineUserIds(exec), getLinkedAdminLineUserIds(exec)]);
+  return [...new Set([...legacy, ...linked])];
+}
+
+/** 🔴 TASK-538 — take ONE id off the LEGACY list. 🔑 TASK-725: it reads the LEGACY list only — rebuilding it from `getAdminLineUserIds` would copy every linked user's id into it. */
 export async function removeAdminLineUserId(lineUserId: string, exec: any = db): Promise<void> {
-  const next = (await getAdminLineUserIds(exec)).filter((x) => x !== lineUserId);
+  const next = (await getLegacyAdminLineUserIds(exec)).filter((x) => x !== lineUserId);
   await exec
     .insert(appSettings)
     .values({ key: ADMIN_KEY, value: next })

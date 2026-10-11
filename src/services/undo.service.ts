@@ -26,6 +26,7 @@ import { recordUndo, revertAttendance } from "./attendance-revert.service"; // T
 import { leaveNoteUndo } from "../lib/leave-note"; // TASK-540
 import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
+import { retireEmptyExtraGroupDate } from "./scheduler.service"; // TASK-716 — a SEAT make-up undone may have been an extra group date's last
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from "./scheduler.service";
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
@@ -173,6 +174,7 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
         await sendClassCancelledToCoaches(tx, full, { cancelReason: null, note: MAKEUP_UNDONE_NOTE });
         if (makeup.status === "CONFIRMED" && (makeup as any).isMakeup === true) await sendClassCancelledToFamilies(tx, full, null, []);
       }
+      if ((makeup as any)?.groupId) await retireEmptyExtraGroupDate(tx, (makeup as any).groupId); // 🔻 TASK-716 — an undone SEAT make-up may have been the extra group date's last
       // 🔔 TASK-508 — the class is BACK ON, and the coaches are the ones who have to be there. Every teacher of the row through
       // THE predicate (primary + additional, TASK-487). 🔑 INSIDE the transaction, the parent deduction's pattern (TASK-490):
       // the message exists iff the Undo committed — a rollback (a refusal below, a lost race) takes the row with it, and a

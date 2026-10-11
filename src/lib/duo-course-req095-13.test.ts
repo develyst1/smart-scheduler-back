@@ -294,7 +294,7 @@ describe("🔴 the ONE household accessor — by VALUE (union, de-duplicated, pr
     expect(SCHED).not.toMatch(/parentLineUserIds\(|familyAccountsOfStudent\(|familyLineUserIds\(/);
     expect(DED).not.toMatch(/familyAccountsOfStudent\(|familyLineUserIds\(/);
     expect(DED).toContain("const accounts = await householdLineUserIds(exec, [input.studentId, input.coStudentId ?? null]);");
-    expect(SCHED).toContain("await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), {"); // the single confirm
+    expect(SCHED).toContain("const parentAccounts = await householdLineUserIds(tx, [current.studentId, current.coStudentId]);"); // the single confirm
     expect(SCHED).toContain("const parentLines = confirmed ? await householdLineUserIds(tx, [student?.id ?? course.studentId, course.coStudentId]) : [];"); // confirmCourse
     expect(SCHED).toContain("  return householdLineUserIds(tx, ids);\n}"); // 🔻 TASK-516: the row's family rule moved into `familyAccountsOfRow` (the cancel AND the move read it) — the cancel — 🔻 TASK-445: ONE set for the row (a GROUP row's seats too), the accounts returned for the counts
     expect(SCHED).toContain("await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload });");

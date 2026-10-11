@@ -65,6 +65,7 @@ function world(baseExpiry: string) {
       teachers: { findFirst: async () => ({ id: T, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", lineUserId: null }), findMany: async () => [] /* 🔻 TASK-702: the make-up's birth-confirm reads its coaches */ },
       coursePackages: { findFirst: async () => w.courses[0] },
       appSettings: { findMany: async () => [], findFirst: async () => null },
+      users: { findMany: async () => [] }, // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
       jobRuns: { findFirst: async () => null, findMany: async () => [] },
       boItem: { findMany: async () => [] },
       // the notice side of the path: present so it RUNS, empty so it proves nothing here (TASK-647 is where it is proven)

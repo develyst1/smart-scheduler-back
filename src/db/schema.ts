@@ -679,8 +679,22 @@ export const users = pgTable(
     roleId: uuid("role_id").references(() => roles.id, { onDelete: "restrict" }),
     /** TASK-406 (`0044`, REQ-097) — the teacher this account IS. Set ⇒ the account is SCOPED to its own calendar (`lib/own-scope.ts`). NULL = an admin. */
     teacherId: uuid("teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+    /**
+     * TASK-725 (`0067`) — the LINE account of this web user (an admin's notices go to it). Written ONLY by `linkLineByCode` (the one-time code typed
+     * in the OA chat) and cleared ONLY by the Unlink / a re-link. NULL = not linked. One LINE account belongs to AT MOST one user (partial unique index).
+     * 🚫 Never in any DTO: the FE gets `lineLinked: boolean`. The legacy bare ids in `app_settings.line_admin_user_ids` are READ-ONLY now.
+     */
+    lineUserId: text("line_user_id"),
+    /** TASK-725 — SHA-256 of the one-time link code (never the code itself) and its expiry. One live code per user; a new one replaces it; use burns both. */
+    lineLinkCodeHash: text("line_link_code_hash"),
+    lineLinkCodeExpiresAt: timestamp("line_link_code_expires_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("users_username_uq").on(t.username), uniqueIndex("users_teacher_id_uq").on(t.teacherId).where(sql`${t.teacherId} is not null`)],
+  (t) => [
+    uniqueIndex("users_username_uq").on(t.username),
+    uniqueIndex("users_teacher_id_uq").on(t.teacherId).where(sql`${t.teacherId} is not null`),
+    uniqueIndex("users_line_user_id_uq").on(t.lineUserId).where(sql`${t.lineUserId} is not null`),
+    uniqueIndex("users_line_link_code_hash_uq").on(t.lineLinkCodeHash).where(sql`${t.lineLinkCodeHash} is not null`),
+  ],
 );
 
 // ───────────── TASK-387 (REQ-092 RBAC, SPEC-079 Stage 4) — roles, `0037` ─────────────

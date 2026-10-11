@@ -41,6 +41,7 @@ const chat = (o: { linked?: "customer" | null } = {}) => {
   spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => (o.linked === "customer" ? { id: "p1", lineUserId: U, lineLang: "TH", status: "active" } : undefined)) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => (o.linked === "customer" ? { parentId: "p1", lineUserId: U } : undefined)) as any));
   fakeFamilyLinks(spies, o.linked === "customer" ? { [U]: "p1" } : {}); // TASK-504 — the SAME family, at the `db.select` boundary `familyOfLineUser` really uses
   spies.push(spyOn(db, "insert").mockImplementation((() => ({

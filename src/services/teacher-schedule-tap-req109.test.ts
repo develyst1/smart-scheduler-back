@@ -23,6 +23,7 @@ const teacherChat = (lang: "TH" | "EN", rows: any[]) => {
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
   spies.push(spyOn(checkinSvc, "findBookingsForTeacher").mockImplementation((async (_u: string, from: string, to: string) => { asked.push([from, to]); return rows; }) as any));
   spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { replies.push(...m); }) as any));
   setSystemTime(new Date("2026-09-25T09:00:00+07:00")); // a Friday

@@ -1,0 +1,282 @@
+{
+  "task": "TASK-725",
+  "proves": "src/services/admin-line-link-task725.test.ts",
+  "note": "The admin LINE link is tied to the WEB USER (one-time code; the shared code RETIRED). N1-N5 are the DoD's five; the rest are the other places this can go wrong: recipients, a re-link, the miss limiter, the DTO, the shell's /me hot path, the Unlink. `tests` = the task file + the SEC-1 file (the retirement and the no-fallback pins) + the three files that test the claimed sources.",
+  "tests": "src/services/admin-line-link-task725.test.ts src/services/sec1-admin-code-task534.test.ts src/lib/line-admin.test.ts src/services/line-admin-removal-task538.test.ts src/lib/rich-menu-admin-task530.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "the shared admin code accepted again (an env fallback beside the one-time code) — THE FALLBACK THE OWNER FORBADE",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "if (!(await linkLineByCode(lineUserId, code)).ok) return",
+              "to": "if (!(await linkLineByCode(lineUserId, code)).ok && !(process.env.LINE_ADMIN_VERIFY_CODE && code.trim() === process.env.LINE_ADMIN_VERIFY_CODE)) return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "a DISABLED user is still notified (the recipients' read loses `disabled_at IS NULL`)",
+      "files": [
+        {
+          "file": "src/lib/line-admin.ts",
+          "edits": [
+            {
+              "from": "where: (u: any, { and, isNotNull, isNull }: any) => and(isNotNull(u.lineUserId), isNull(u.disabledAt)),",
+              "to": "where: (u: any, { isNotNull }: any) => isNotNull(u.lineUserId),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "a code is REUSABLE (the link no longer burns the hash and the expiry)",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": ".set({ lineUserId, lineLinkCodeHash: null, lineLinkCodeExpiresAt: null })",
+              "to": ".set({ lineUserId })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "EXPIRY ignored (both the pre-check and the write's `expires > now`)",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "if (!row.lineLinkCodeExpiresAt || new Date(row.lineLinkCodeExpiresAt).getTime() <= now) return miss(\"expired\");",
+              "to": "if (false) return miss(\"expired\");"
+            },
+            {
+              "from": "eq(users.lineLinkCodeHash, hash), gt(users.lineLinkCodeExpiresAt, new Date(now)), isNull(users.disabledAt)",
+              "to": "eq(users.lineLinkCodeHash, hash), isNull(users.disabledAt)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "the RAW LINE id in the user DTO",
+      "files": [
+        {
+          "file": "src/services/user.service.ts",
+          "edits": [
+            {
+              "from": "    lineLinked: !!u.lineUserId,\n  };",
+              "to": "    lineLinked: !!u.lineUserId,\n    lineUserId: u.lineUserId ?? null,\n  } as UserDTO;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "the code is stored PLAIN, not hashed",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "lineLinkCodeHash: hashLinkCode(code)",
+              "to": "lineLinkCodeHash: code"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "a COACH account can get a code",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "  if (row.teacherId) throw LINE_LINK_NOT_FOR_COACH();\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N8",
+      "what": "a DISABLED user can get a code",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "  if (row.disabledAt) throw LINE_LINK_USER_DISABLED();\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N9",
+      "what": "a LINE account already on ANOTHER user can be linked again",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "if (holder) return miss(\"this LINE account is already linked to another user\");",
+              "to": "if (false) return miss(\"this LINE account is already linked to another user\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N10",
+      "what": "the per-LINE-account MISS LIMITER is bypassed",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "if (adminLinkBlocked(lineUserId, now, limit)) return { ok: false, reason: \"over the miss limit\" };",
+              "to": "if (false) return { ok: false, reason: \"over the miss limit\" };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N11",
+      "what": "a miss is never RECORDED (the limiter never fills)",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "    recordAdminLinkAttempt(lineUserId, { miss: true, reason }, now, limit);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N12",
+      "what": "a RE-LINK leaves the earlier LINE account an admin (the legacy copy is not removed)",
+      "files": [
+        {
+          "file": "src/services/admin-line-link.service.ts",
+          "edits": [
+            {
+              "from": "    await removeAdminLineUserId(previous, exec);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N13",
+      "what": "the recipients are NOT de-duplicated (an account in both lists is notified twice)",
+      "files": [
+        {
+          "file": "src/lib/line-admin.ts",
+          "edits": [
+            {
+              "from": "return [...new Set([...legacy, ...linked])];",
+              "to": "return [...legacy, ...linked];"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N14",
+      "what": "the LEGACY ids stop receiving (the union loses its first half)",
+      "files": [
+        {
+          "file": "src/lib/line-admin.ts",
+          "edits": [
+            {
+              "from": "return [...new Set([...legacy, ...linked])];",
+              "to": "return [...new Set(linked)];"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N15",
+      "what": "THE TRAP: the legacy remover rebuilds the list from the UNION (it would copy every linked user's id into the legacy list)",
+      "files": [
+        {
+          "file": "src/lib/line-admin.ts",
+          "edits": [
+            {
+              "from": "const next = (await getLegacyAdminLineUserIds(exec)).filter((x) => x !== lineUserId);",
+              "to": "const next = (await getAdminLineUserIds(exec)).filter((x) => x !== lineUserId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N16",
+      "what": "Unlink leaves a PENDING code behind",
+      "files": [
+        {
+          "file": "src/services/line-admin-links.service.ts",
+          "edits": [
+            {
+              "from": ".set({ lineUserId: null, lineLinkCodeHash: null, lineLinkCodeExpiresAt: null })",
+              "to": ".set({ lineUserId: null })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N17",
+      "what": "Unlink does not remove the LEGACY copy of the same account (it would stay an admin)",
+      "files": [
+        {
+          "file": "src/services/line-admin-links.service.ts",
+          "edits": [
+            {
+              "from": "  await removeAdminLineUserId(id, exec);\n  const settled = await settleMenuAfterRemoval(id, exec);",
+              "to": "  const settled = await settleMenuAfterRemoval(id, exec);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N18",
+      "what": "the shell's `GET /me` gets the extra read back (the hot path changes)",
+      "files": [
+        {
+          "file": "src/routes/me.ts",
+          "edits": [
+            {
+              "from": "teacherId: u.teacherId } }); // TASK-406",
+              "to": "teacherId: u.teacherId, lineLinked: await isLineLinked(u.id) } }); // TASK-406"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

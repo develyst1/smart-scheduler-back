@@ -1,0 +1,173 @@
+{
+  "task": "TASK-716",
+  "proves": "src/services/extra-group-date-retires-task716.test.ts",
+  "note": "🔴 FINAL ROUND. R1 the empty extra row is left LIVE (the defect) · R2 an ORDINARY empty group date is cancelled too · R3 the coach is not told · R4 the row retires when ANY seat leaves (not the last) · R5 the CLOSED stamp is missing on the extra row · R6 an ATTENDED seat counts as gone · R7 the trim does not call the helper · R8 the admin cancel / seat leave does not · R9 Mark absence does not · R10 the Undo does not · R11 the freelance hour is not released.",
+  "tests": "src/services/extra-group-date-retires-task716.test.ts src/services/group-date-makeups-one-date-task713.test.ts src/services/booking-undo-req108.test.ts",
+  "mutations": [
+    {
+      "id": "R1",
+      "what": "🔴 the empty extra row is left LIVE — a CONFIRMED class with no child, on the coach's reminder (the reported defect)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (!groupRowId) return false;\n  const g = await tx.query.bookings.findFirst",
+              "to": "  return false;\n  const g = await tx.query.bookings.findFirst"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "🔴 an ORDINARY empty group date is cancelled too — an unmarked series date retired",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "g.bookingType !== \"GROUP\" || g.isMakeup !== true || ",
+              "to": "g.bookingType !== \"GROUP\" || "
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "the coach is not told when the date retires",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (g.status !== \"PENDING\") await sendClassCancelledToCoaches(tx, g, { cancelReason: null, note: null }); // live and not PENDING = announced (CONFIRMED / EXTENDED)\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "🔴 the row retires when ANY seat leaves, not the last",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (seats.some((st: any) => (SEAT_KEEPS_DATE as readonly string[]).includes(st.status))) return false;",
+              "to": "if (seats.every((st: any) => (SEAT_KEEPS_DATE as readonly string[]).includes(st.status))) return false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "the series is CLOSED but the extra row is not stamped",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "isMakeup: true, ...(closedAt ? { groupClosedAt: closedAt } : {}) })",
+              "to": "isMakeup: true })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "a TAUGHT (ATTENDED) seat counts as gone — a class that happened is cancelled",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const SEAT_KEEPS_DATE = [\"PENDING\", \"CONFIRMED\", \"EXTENDED\", \"ATTENDED\", \"NO_SHOW\"] as const;",
+              "to": "const SEAT_KEEPS_DATE = [\"PENDING\", \"CONFIRMED\", \"EXTENDED\", \"NO_SHOW\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "the TRIM does not call the helper",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (trimmed?.groupId) await retireEmptyExtraGroupDate(tx, trimmed.groupId);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "what": "the admin cancel / a seat's leave does not call the helper",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if ((current as any).groupId && (action === \"cancel\" || action === \"sick-leave\")) await retireEmptyExtraGroupDate(tx, (current as any).groupId);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "what": "Mark absence does not call the helper",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        if (b.groupId) await retireEmptyExtraGroupDate(tx, b.groupId); // 🔻 TASK-716 — the absent seat",
+              "to": "        // (dropped) 🔻 TASK-716 — the absent seat"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "what": "the Undo does not call the helper",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "      if ((makeup as any)?.groupId) await retireEmptyExtraGroupDate(tx, (makeup as any).groupId);",
+              "to": "      //"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R11",
+      "what": "the freelance hour of the retired date is not released",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await reconcileBookingHolds(tx, g.id, g.teacherId, \"CANCELLED\", false); // the freelance hour back\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

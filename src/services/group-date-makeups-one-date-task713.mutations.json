@@ -1,0 +1,43 @@
+{
+  "task": "TASK-713",
+  "proves": "src/services/group-date-makeups-one-date-task713.test.ts",
+  "note": "🔴 FINAL ROUND 4. K1 the make-ups are appended STANDALONE again (the reported defect) · K2 the extra date ignores the coach's day off (coachOff) · K3 the extra date is created even when NO seat re-owes (eager) · K4 the COACH is told per seat · K5 the marker is not set on a seat make-up · K6 the series CANCEL-ALL is re-seated too (reseat always on) · K7 the coach is not told at all (the group row's confirm notice dropped) · (a seat whose course does not re-owe is never seated: a seat is only created by the re-plan's append, which appends only what is owed — K3 pins the 'no extra date' half).",
+  "tests": "src/services/group-date-makeups-one-date-task713.test.ts src/services/same-slot-confirm-task710.test.ts",
+  "mutations": [
+    {
+      "id": "K1",
+      "what": "🔴 the seat make-ups are appended STANDALONE again — each holds the coach's slot, the next child goes a week later (3 kids = 3 weeks)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "          ...(placed ? { groupId: placed.groupId } : {}), // 🔻 TASK-713", "to": "          // 🔻 TASK-713" }] }]
+    },
+    {
+      "id": "K2",
+      "what": "🔴 the extra date ignores the coach's day off — a «ครูลา» replacement lands on the coach's own day off",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const taken = new Set<string>(coachOff.filter((c) => coaches.includes(c.teacherId)).map((c) => c.date));", "to": "const taken = new Set<string>();" }] }]
+    },
+    {
+      "id": "K3",
+      "what": "the extra group date is created even when no seat re-owes a session",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  for (const s of seats) {\n    await tx.update(bookings).set({ status: \"CANCELLED\", note: note ?? s.note }).where(eq(bookings.id, s.id));\n    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff", "to": "  if (seatPlacement) await seatPlacement.resolve();\n  for (const s of seats) {\n    await tx.update(bookings).set({ status: \"CANCELLED\", note: note ?? s.note }).where(eq(bookings.id, s.id));\n    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff" }] }]
+    },
+    {
+      "id": "K4",
+      "what": "🔴 the COACH is told once per SEAT — the seats' teacher notices are sent too",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "for (const n of heldSeatNotices) if (n.audience === \"parent\") await n.send();", "to": "for (const n of heldSeatNotices) await n.send();" }] }]
+    },
+    {
+      "id": "K5",
+      "what": "the marker is not set on a seat make-up — the trim, the history and the badge cannot tell it is a make-up",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "...(placed ? { groupId: placed.groupId } : {}), // 🔻 TASK-713", "to": "...(placed ? { groupId: placed.groupId, isMakeup: false } : {}), // 🔻 TASK-713" }] }]
+    },
+    {
+      "id": "K6",
+      "what": "🔴 the series CANCEL-ALL is re-seated too — reseat is always on",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  const seatPlacement: SeatPlacement | undefined = opts.reseat\n", "to": "  const seatPlacement: SeatPlacement | undefined = true\n" }] }]
+    },
+    {
+      "id": "K7",
+      "what": "🔴 the coach is not told at all — the group row's confirm notice is dropped",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  for (const n of heldGroupNotices) if (n.audience === \"teacher\") await n.send();\n", "to": "" }] }]
+    }
+  ]
+}

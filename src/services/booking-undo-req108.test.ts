@@ -565,6 +565,22 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     expect(parentKinds(h)).toEqual([]);
   });
 
+  // 🔻 TASK-716 — the Undo cancels a SEAT make-up that was the extra group date's LAST seat ⇒ the date retires (coach told, the existing notice); an unmarked group row is left alone.
+  test("🔴 TASK-716 — undoing a leave whose make-up is the LAST seat of a marked extra group date ⇒ that date is CANCELLED and its coach told once; an ORDINARY group date is left alone", async () => {
+    for (const marked of [true, false]) {
+      const w = leaveWorld();
+      w.bookings.push(B("E1", "2026-11-06", "CONFIRMED", { bookingType: "GROUP", courseId: null, studentId: null, isMakeup: marked }));
+      Object.assign(row(w, "m1"), { status: "CONFIRMED", isMakeup: true, groupId: "E1" });
+      const h = run(w);
+      spies.push(spyOn(familyLink, "householdLineUserIds").mockImplementation((async () => ["U-mom"]) as any)); // the CONFIRMED seat make-up's family is told too (TASK-704)
+      await undoBooking("b1", { actor: "a", reason: null });
+      expect(row(h.w, "m1").status).toBe("CANCELLED");
+      expect(row(h.w, "E1").status).toBe(marked ? "CANCELLED" : "CONFIRMED");
+      expect(h.w.outbox.filter((m) => m.bookingId === "E1" && m.payload.kind === "class_cancelled_teacher")).toHaveLength(marked ? 1 : 0);
+      for (const sp of spies.splice(0)) sp.mockRestore();
+    }
+  });
+
   test("the words a DIFFERENT coach reads for the cancelled make-up — the existing cancel notice, unchanged; Reason = the note written on the row", () => {
     const CTX = { studentName: "มะขิด", subject: "Freeskate", date: "2026-11-06", startTime: "10:00", endTime: "11:00", coach: "Nok" };
     expect(formatOutboxMessage(makeupOff("m1", "U").payload as any, CTX as any, "TH", "teacher").split("\n")).toEqual([

@@ -158,7 +158,11 @@ describe("🔑 the link door — an admin gets the admin menu at verify, through
     const W = src("src/services/line-webhook.service.ts");
     const branch = region(W, 'if (role === "admin") {', "\n  }\n");
     expect(branch).toContain('if ((await detectLinkedRole(lineUserId)) === "admin") await settleAdminLink(lineUserId);');
-    expect(branch.indexOf("await addAdminLineUserId(lineUserId);")).toBeLessThan(branch.indexOf("settleAdminLink"));
+    // 🔻 TASK-725 — the LINK moved: `addAdminLineUserId` is GONE (nothing adds to the legacy list any more); the admin branch links by the one-time web code. The SAME claim —
+    // the id is linked BEFORE the menu is settled — read off the new call. 🔑 Both indexes must EXIST: `-1 < n` is true for an absent string, which is how a pin goes vacuous.
+    const linkAt = branch.indexOf("await linkLineByCode(lineUserId, code)");
+    expect(linkAt).toBeGreaterThan(-1);
+    expect(branch.indexOf("settleAdminLink")).toBeGreaterThan(linkAt);
     expect(W).toContain('if (role !== "admin") await settleLinkedRole(lineUserId, role);');
     expect(W).not.toContain("linkRoleRichMenu(lineUserId, \"admin\")"); // the chat never links a menu itself
   });

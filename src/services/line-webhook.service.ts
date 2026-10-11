@@ -17,8 +17,8 @@ import {
   parseRoleChoice,
   type LineWebhookEvent,
 } from "../lib/line-webhook";
-import { addAdminLineUserId, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
-import { ADMIN_CODE_ENV, checkAdminCode } from "../lib/line-admin-code";
+import { getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
+import { linkLineByCode } from "./admin-line-link.service"; // TASK-725 — the ONE-TIME web code; the shared admin code is retired
 import { bookingPicker, childPicker, childrenFlex, textReply } from "../lib/line-reply";
 import { childrenWithSessions, sessionLabel, sessionPick, needsChildStep } from "../lib/line-leave";
 import { hasEnoughLeaveNotice, leaveCutoffKey, leaveNoticeMessage } from "../lib/leave-notice";
@@ -426,10 +426,10 @@ async function verifyAndLink(
   lang: Lang,
 ): Promise<VerifyResult> {
   if (role === "admin") {
-    // 🔴🔴 TASK-534 (SEC-1) — no default, a minimum strength, a per-user miss limit; every refusal is the SAME reply (the person
-    // typing may be the attacker) and the reason goes to the log only. The gate is `checkAdminCode`; nothing here reads the code.
-    if (!checkAdminCode(lineUserId, code, process.env[ADMIN_CODE_ENV])) return { ok: false, message: (l) => t("verify_admin_bad", l) };
-    await addAdminLineUserId(lineUserId);
+    // 🔴🔴 TASK-725 (supersedes TASK-534's shared code) — the typed text is the ONE-TIME code a signed-in WEB USER asked for. A hit writes that user's
+    // `users.line_user_id`; the shared admin code is RETIRED and NOTHING here reads an environment value (no default, no fallback — item 8). Every refusal is
+    // the SAME reply (the person typing may be the attacker), the reason goes to the log only, and the per-LINE-account miss limiter is `linkLineByCode`'s.
+    if (!(await linkLineByCode(lineUserId, code)).ok) return { ok: false, message: (l) => t("verify_admin_bad", l) };
     // 🔴 TASK-530 — an admin gets the ADMIN menu (one cell: the web app), so they no longer sit on the account default (the
     // unknown menu). Only when ADMIN is this account's role: `detectLinkedRole` reads teacher → parent → admin, and a coach or
     // parent who is also an admin keeps that role's menu — the same order the relink sweep uses. The LINK is the register door's.

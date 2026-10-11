@@ -43,6 +43,7 @@ describe("🔴 (b) no webhook event ends in silence because something threw", ()
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+    spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
     spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { replies.push(...m); }) as any));
     return { replies, logs };
   };
@@ -156,6 +157,7 @@ describe("🔴 (a) the collision — one read of BOTH stores before any write, a
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+    spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
     spies.push(spyOn(db, "update").mockImplementation((() => ({ set: () => ({ where: async () => {} }) })) as any));
     spies.push(spyOn(db, "insert").mockImplementation((() => ({ values: () => ({ onConflictDoUpdate: async () => {}, onConflictDoNothing: async () => {} }) })) as any));
     fakeFamilyLinks(spies); // TASK-504 — this chat has no family link yet (the collision is the PARENT column's, via linkFamilyByPhone)

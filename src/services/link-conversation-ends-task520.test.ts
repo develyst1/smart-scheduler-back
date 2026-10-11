@@ -43,6 +43,7 @@ function world(row: Partial<Row>, opts: { linked: () => boolean; claim?: string 
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => undefined) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
   spies.push(spyOn(teacherLink, "requestTeacherLink").mockImplementation((async () => { calls.push("claim"); return opts.claim ?? "pending"; }) as any));
   spies.push(spyOn(checkinSvc, "findBookingsForTeacher").mockImplementation((async () => { calls.push("schedule"); return []; }) as any));
   spies.push(spyOn(lineClient, "replyMessage").mockImplementation((async (_t: string, m: any[]) => { for (const x of m) replies.push(x.text); }) as any));

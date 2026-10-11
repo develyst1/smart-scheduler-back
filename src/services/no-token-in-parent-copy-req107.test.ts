@@ -35,6 +35,7 @@ describe("✅ the two link pages — the parent's words, the same statuses (WHEN
     spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => ({ id: "b1", date: TODAY, startTime: "16:00:00", endTime: "17:00:00", status: "CONFIRMED", checkinToken: "token-123456", checkinTokenExpiresAt: new Date(`${TODAY}T17:00:59+07:00`), studentId: "s9", coStudentId: null, voucherId: null })) as any));
     spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async () => ({ id: "s9", parentId: null })) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+    spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
     setSystemTime(new Date(`${TODAY}T17:30:00+07:00`));
     const r = await post("/checkin", "token-123456");
     expect(r.status).toBe(400);
@@ -64,6 +65,7 @@ describe("🔴 the LINE chat — the line Tanya saw, now in the CHAT's language"
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => undefined) as any));
     spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async () => ({ id: "p1", lineUserId: U, lineLang: lang, status: "active", suspendedAt: null })) as any));
     spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+    spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
     spies.push(spyOn(db.query.familyLineLinks, "findFirst").mockImplementation((async () => ({ parentId: "p1", lineUserId: U, lineLang: lang })) as any));
     spies.push(spyOn(checkinSvc, "findTodayBookingsForParent").mockImplementation((async () => [{ id: "b1", date: TODAY, startTime: "16:00:00", endTime: "17:00:00", student: { name: "Feen" }, teacher: { nickname: "KK" }, subject: { name: "BALLET" } }]) as any));
     spies.push(spyOn(checkinSvc, "getCheckinQr").mockImplementation((async () => ({ token: "tok" })) as any));

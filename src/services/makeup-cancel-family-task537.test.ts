@@ -186,7 +186,7 @@ describe("🔴 TASK-548 — a cancelled make-up names the new class ONLY when th
   test("🔑 by source: the admin's family notice is built AFTER the re-plan (same transaction) and is handed the re-plan's OWN result", () => {
     const S = code(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
     const c = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
-    const replan = c.indexOf("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}) });");
+    const replan = c.indexOf("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}), holdConfirmNotices: heldConfirm });");
     const notice = c.indexOf("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);");
     expect(replan).toBeGreaterThan(-1);
     expect(notice).toBeGreaterThan(replan);
@@ -276,14 +276,14 @@ describe("🔴 TASK-552 (B) — the re-plan is ASKED to re-owe to the cancelled 
   test("a make-up WITH a link ⇒ the re-plan is asked with exactly that leave", async () => {
     const h = run({ extendedFromId: "L-own" });
     await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
-    expect(h.w.replanAsked).toEqual([{ reowedFor: ["L-own"] }]);
+    expect(h.w.replanAsked).toEqual([{ reowedFor: ["L-own"], holdConfirmNotices: [] }]) /* 🔻 TASK-710: the admin cancel also hands the re-plan its (empty here) hold list */;
   });
   test("⚠️ a make-up with NO link (the pause case) ⇒ the re-plan is asked with NOTHING — and it is said, not invented", async () => {
     const logs: string[] = [];
     spies.push(spyOn(console, "info").mockImplementation(((...a: unknown[]) => { logs.push(a.map(String).join(" ")); }) as any));
     const h = run({ extendedFromId: null });
     await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
-    expect(h.w.replanAsked).toEqual([{ reowedFor: [] }]);
+    expect(h.w.replanAsked).toEqual([{ reowedFor: [], holdConfirmNotices: [] }]) /* 🔻 TASK-710 */;
     expect(logs.join("\n")).toContain("carries no link — its re-owe inherits NO leave (TASK-553)");
   });
 });

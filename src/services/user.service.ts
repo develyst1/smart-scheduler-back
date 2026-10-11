@@ -12,6 +12,7 @@ import { rolePermissions, userPermissions, users } from "../db/schema";
 import { findRole, roleKeysByIds } from "./role.service";
 import { ACTION_KEYS, MENU_KEYS, isActionKey, isMenuKey, type ActionKey, type MenuKey } from "../lib/permissions";
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
+import { unlinkLineOfUser } from "./line-admin-links.service";
 
 export const PASSWORD_MIN = 8;
 export const USERNAME_RE = /^[a-z0-9._-]{3,40}$/;
@@ -37,6 +38,8 @@ export type UserDTO = {
   roleId: string | null;
   roleName: string | null;
   grants: { fromRole: string[]; own: string[] };
+  /** TASK-725 — has this user linked a LINE account (admin notices)? 🚫 A BOOLEAN only: the LINE id, the code and its hash never leave the server. */
+  lineLinked: boolean;
 };
 
 /** What `toUserDTO` needs of a role: its id, name and keys. */
@@ -51,6 +54,8 @@ export const toUserDTO = (u: {
   createdAt: Date | string;
   teacherId?: string | null;
   teacher?: { nickname?: string | null; name?: string | null } | null;
+  /** TASK-725 — read ONLY to answer `lineLinked`; never copied out. */
+  lineUserId?: string | null;
 }, own: Iterable<string> = [], role: RoleGrants | null = null): UserDTO => {
   // 🔴 TASK-387: `menus`/`actions` are EFFECTIVE = the role's keys ∪ the user's own rows (a super admin: all).
   const ownKeys = [...own];
@@ -69,6 +74,7 @@ export const toUserDTO = (u: {
     roleId: role?.id ?? null,
     roleName: role?.name ?? null,
     grants: { fromRole: [...(role?.keys ?? [])], own: ownKeys },
+    lineLinked: !!u.lineUserId,
   };
 };
 
@@ -115,7 +121,7 @@ export async function effectiveGrantKeys(userId: string, roleId: string | null |
 }
 
 /** The DTO of one row: its own rows + its role (two small reads; the list uses the grouped readers instead). */
-export async function userDTO(row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; disabledAt: Date | string | null; createdAt: Date | string; roleId?: string | null }): Promise<UserDTO> {
+export async function userDTO(row: { id: string; username: string; displayName: string; isSuperAdmin: boolean; disabledAt: Date | string | null; createdAt: Date | string; roleId?: string | null; lineUserId?: string | null }): Promise<UserDTO> {
   const [own, role] = await Promise.all([userGrantKeys(row.id), roleGrantsOf(row.roleId)]);
   const teacher = (row as any).teacherId ? await db.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, (row as any).teacherId) }) : null; // TASK-406
   return toUserDTO({ ...row, teacher: teacher ?? null }, own, role);
@@ -278,6 +284,14 @@ export async function resetPassword(id: string, password: string): Promise<{ ok:
   assertPassword(password);
   await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, id));
   return { ok: true };
+}
+
+/** 🔴 TASK-725 — UNLINK a web user's LINE account (super admin; the route's own guard). The user stays; only the LINE link goes, and with it the admin notices. */
+export async function unlinkUserLine(id: string, actor: string | null): Promise<{ user: UserDTO; afterRemoval: string; menuSettled: boolean }> {
+  const r = await unlinkLineOfUser(id, actor);
+  const row = await findUserById(id);
+  if (!row) throw notFound("ไม่พบผู้ใช้");
+  return { user: await userDTO(row), afterRemoval: r.afterRemoval, menuSettled: r.menuSettled };
 }
 
 export async function setUserDisabled(id: string, disabled: boolean): Promise<UserDTO> {

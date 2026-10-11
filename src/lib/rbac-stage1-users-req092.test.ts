@@ -52,7 +52,7 @@ describe("🔑 the rules — pure, with values", () => {
   });
   test("the DTO never carries the hash", () => {
     const dto = usersSvc.toUserDTO({ id: "u", username: "a", displayName: "A", isSuperAdmin: false, disabledAt: null, createdAt: "2026-09-17T00:00:00Z", passwordHash: "x" } as any);
-    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "grants", "id", "isSuperAdmin", "menus", "roleId", "roleName", "teacherId", "teacherName", "username"]); // 🔻 TASK-406: + teacherId/teacherName (never the hash) // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions; 🔻 TASK-387: + roleId, roleName, grants
+    expect(Object.keys(dto).sort()).toEqual(["actions", "createdAt", "disabledAt", "displayName", "grants", "id", "isSuperAdmin", "lineLinked", "menus", "roleId", "roleName", "teacherId", "teacherName", "username"]); // 🔻 TASK-725: + lineLinked (a boolean; the LINE id never leaves the server) // 🔻 TASK-406: + teacherId/teacherName (never the hash) // 🔻 TASK-381: + menus; 🔻 TASK-385: + actions; 🔻 TASK-387: + roleId, roleName, grants
   });
   test("`Bun.password` round-trips (argon2id) and a wrong password fails", async () => {
     const h = await usersSvc.hashPassword("correct horse");
@@ -216,10 +216,10 @@ describe("🔴 the source — actor = username everywhere, the env login retired
   });
   test("🔴 56 = 56 (0037 … 0055 added since): `0036_users` is the 37th file, idx 36; two tables, the UNIQUE on user_permissions LAST; the witness; the lock sentence", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
+    expect(files.length).toBe(68); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067
     expect(files[36]).toBe("0036_users.sql");
     const j = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(67); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
+    expect(j.entries.length).toBe(68); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067
     expect(j.entries[36]).toMatchObject({ idx: 36, tag: "0036_users" });
     const SQL = readFileSync(resolve(root, "drizzle/0036_users.sql"), "utf8").replace(/\r\n/g, "\n");
     const body = SQL.replace(/^--.*$/gm, "");

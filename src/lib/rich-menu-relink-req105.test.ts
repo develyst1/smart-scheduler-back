@@ -110,6 +110,7 @@ describe("🔴 the user census — teachers first, both customer sources, the th
         parents: { findMany: async () => [{ id: "p1", name: "Khwan", phone: "0924912848", lineUserId: "U-khwan", lineLang: null }, { id: "p2", name: null, phone: "0811111111", lineUserId: null, lineLang: "EN" }] },
         // 🔻 TASK-530 — the admins' list: a pure admin, and a COACH who is also an admin (teacher wins — `detectLinkedRole`'s order)
         appSettings: { findFirst: async () => ({ key: "line_admin_user_ids", value: ["U-boss9", "U-ek"] }) },
+        users: { findMany: async () => [] }, // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
       },
       select: () => ({ from: async () => [{ parentId: "p1", lineUserId: "U-khwan" }, { parentId: "p1", lineUserId: "U-dad" }, { parentId: "p2", lineUserId: "U-p2" }] }),
     };
@@ -164,6 +165,6 @@ describe("🔴 the script and the publish warning — the plan is the deliverabl
     out = await publishRelinkWarning();
     expect(out[0]).toContain("Followers still hold the menu ids of the PREVIOUS publish");
     expect(out[0]).not.toContain("null");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(67); // TASK-497: +0059 // no migration · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(68); // TASK-497: +0059 // no migration · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067
   });
 });

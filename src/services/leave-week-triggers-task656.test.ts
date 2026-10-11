@@ -530,8 +530,8 @@ describe("🔑 THE LIST IS A LIST — three triggers, pinned BY VALUE; the call 
     ].sort();
     expect(callers).toHaveLength(3);
     expect(callers[0]).toContain('other-series.service.ts · await cancelSeatsOfGroup(tx, r.id, input.note?.trim() || null, { ...(input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(input.reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, r) } : {}) })');
-    expect(callers[1]).toContain('scheduler.service.ts · await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff })');
-    expect(callers[2]).toContain('scheduler.service.ts · await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}) })');
+    expect(callers[1]).toContain('scheduler.service.ts · await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff, reseat: true })');
+    expect(callers[2]).toContain('scheduler.service.ts · await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}), reseat: true })');
   });
 
   test("🔑 the customer's own words are IN the code beside the list (quoted, not paraphrased)", () => {

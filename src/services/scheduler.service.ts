@@ -1886,13 +1886,22 @@ export async function resolveClashBySwappingCoach(id: string, input: { teacherId
  * the audit note, and the make-up re-owed by `reconcileCoursePlan` (SPEC-028 §11.3) — in the caller's transaction.
  * The coach is told ONCE, by the group row's own cancel (the caller); a seat sends no teacher notice of its own.
  */
-export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger; coachOff?: readonly CoachOff[] } = {}) { // TASK-441: exported — the group series cancel-all cascades through it
+export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger; coachOff?: readonly CoachOff[]; reseat?: boolean } = {}) { // TASK-441: exported — the group series cancel-all cascades through it
   const seats = await tx.query.bookings.findMany({
     where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.groupId, groupId), inA(b.status, [...COURSE_LIVE_STATUSES])),
   });
+  // 🔻 TASK-713 (REQ-115 FINAL ROUND 4) — a cancelled GROUP DATE (the admin's cancel of the group row, the coach's own leave) re-seats every seat that re-owes on ONE extra group date: the series
+  // runs a week longer. `reseat` is the CALLER's fact: the series CANCEL-ALL passes nothing ⇒ standalone make-ups as before (the series is ending — there is no "week longer" to run).
+  // The extra date is created LAZILY, on the first seat that really re-owes, and memoised for the rest. The seats' parent notices are the normal born-CONFIRMED ones, queued after the loop;
+  // the COACH hears once, from the group row's own confirm — never once per seat.
+  const heldSeatNotices: HeldConfirmNotice[] = [];
+  let extra: { date: string; groupId: string } | null = null;
+  const seatPlacement: SeatPlacement | undefined = opts.reseat
+    ? { resolve: async () => (extra ??= await extendGroupForMakeups(tx, groupId, opts.coachOff ?? [])) }
+    : undefined;
   for (const s of seats) {
     await tx.update(bookings).set({ status: "CANCELLED", note: note ?? s.note }).where(eq(bookings.id, s.id));
-    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff ? { coachOff: opts.coachOff } : {}) }) : null; // 🔻 TASK-705 — only the coach's leave passes it · 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
+    const replanned = s.courseId ? await reconcileCoursePlan(tx, s.courseId, { reowedFor: reowedForOf(s), ...(opts.coachOff ? { coachOff: opts.coachOff } : {}), ...(seatPlacement ? { seatPlacement, holdConfirmNotices: heldSeatNotices } : {}) }) : null; // 🔻 TASK-705 — only the coach's leave passes it · 🔻 TASK-552 (B) — a seat that was a make-up re-owes to its own leave
     // 🔻 TASK-656 — DOOR 5 of 5: the SEATS of a group date. 🔴 Whether a seat earns its course a week is the CALLER's fact, passed in as
     // `opts.weekTrigger` — never read back from a free-text note, and never assumed: this function is reached from THREE places and they
     // disagree. A COACH's leave (T2 — each seat's course +1), a group-date cancel carrying `SCHOOL_ISSUE` (T3), and the series cancel-all
@@ -1902,7 +1911,78 @@ export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string 
     if (s.courseId && opts.weekTrigger) await addLeaveWeek(tx, s.courseId, opts.weekTrigger);
     if (s.courseId) await flagMakeupsPastExpiry(tx, s.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
   }
+  for (const n of heldSeatNotices) if (n.audience === "parent") await n.send(); // 🔻 TASK-713 — each household its seat's normal confirmed notice; the teachers' rows are NOT sent per seat (the group row's confirm told the coach once)
   return seats.length;
+}
+
+/**
+ * 🔻 TASK-713 — where a cancelled group date's make-ups go: the series' next free week AFTER both its current last live date and the cancelled date itself (so never back into the slot just
+ * freed), skipping every day a coach of the group is known off (`coachOff`, TASK-705) or on an ADVANCE leave. ONE new GROUP row there — the series' own teacher / extras / rates / cap / kind,
+ * through `insertBooking` (every gate reused) — born CONFIRMED through the ONE confirm: the coach's only notice, and the freelance hour of the new date. A CLOSED series still takes it: closing ends
+ * the intake of NEW children, and these seats are the group's existing ones. 🚫 No cap check: the seats are a subset of the cancelled date's.
+ */
+async function extendGroupForMakeups(tx: any, cancelledGroupId: string, coachOff: readonly CoachOff[]): Promise<{ date: string; groupId: string }> {
+  const cancelled = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, cancelledGroupId) });
+  if (!cancelled?.groupKey) throw notFound("ไม่พบกลุ่ม");
+  const t = await groupTemplate(tx, cancelled.groupKey);
+  const extras = (t.additionalTeachers ?? []).map((a: any) => a.teacherId as string);
+  const rates: Record<string, number> = {};
+  if (t.teacherRateMinor != null) rates[t.teacherId] = t.teacherRateMinor;
+  for (const a of t.additionalTeachers ?? []) if (a.rateMinor != null) rates[a.teacherId] = a.rateMinor;
+  const live = await tx.query.bookings.findMany({
+    where: (b: any, { and: a, eq: e, ne: n }: any) => a(e(b.groupKey, cancelled.groupKey), e(b.bookingType, "GROUP"), n(b.status, "CANCELLED")),
+  });
+  const from = [cancelled.date, ...live.map((r: any) => r.date as string)].reduce((m: string, d: string) => (d > m ? d : m));
+  const closedAt = live.find((r: any) => r.groupClosedAt)?.groupClosedAt ?? null; // 🔻 TASK-716 — the series' CLOSED stamp is on every row of the key; the new row carries it too
+  const coaches = [t.teacherId, ...extras];
+  const taken = new Set<string>(coachOff.filter((c) => coaches.includes(c.teacherId)).map((c) => c.date));
+  let date = await findFreeExtensionDate(tx, t.teacherId, hhmm(t.startTime), from, taken);
+  for (let i = 0; i < 52; i++) { // an additional coach's ADVANCE leave day reads as not free too (the search itself knows only the primary's)
+    let off = false;
+    for (const e of extras) if (await teacherLeaveOn(tx, e, date)) off = true;
+    if (!off) break;
+    taken.add(date);
+    date = await findFreeExtensionDate(tx, t.teacherId, hhmm(t.startTime), from, taken);
+  }
+  let id: string;
+  try {
+    id = await insertBooking(tx, null, { teacherId: t.teacherId, subjectId: null, startTime: hhmm(t.startTime), bookingType: "GROUP", otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey: cancelled.groupKey, teacherRates: rates, date });
+    if (extras.length) await attachAdditionalTeachers(tx, id, extras, rates);
+  } catch (e) {
+    if (e instanceof ApiException && e.code === "SLOT_TAKEN") throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ขยายกลุ่มไม่ได้ (${e.message})`);
+    throw e;
+  }
+  // 🔻 TASK-716 — MARK the row as made for make-ups (the `is_makeup` marker, no migration): it retires itself when its last seat leaves (`retireEmptyExtraGroupDate`). An ORDINARY group date is never marked.
+  // And the CLOSED series' stamp, so "the stamp is on every row of the key" stays true (`assertGroupSeriesOpen` reads ANY row).
+  await tx.update(bookings).set({ isMakeup: true, ...(closedAt ? { groupClosedAt: closedAt } : {}) }).where(eq(bookings.id, id));
+  // the ONE confirm: coach-leave guard, the freelance hour, the coach's single notice (a refusal tells the admins; the seats still land). A group row has no child, so its family half would only be an
+  // empty SKIPPED row — held and dropped; the families are told by their SEATS' confirms.
+  const heldGroupNotices: HeldConfirmNotice[] = [];
+  await confirmMakeupAtBirth(tx, id, heldGroupNotices);
+  for (const n of heldGroupNotices) if (n.audience === "teacher") await n.send();
+  return { date, groupId: id };
+}
+
+/** Statuses of a SEAT that still make the group date a class: owed (PENDING / CONFIRMED / EXTENDED), taught (ATTENDED) or charged (NO_SHOW). CANCELLED / SICK_LEAVE seats are gone. */
+const SEAT_KEEPS_DATE = ["PENDING", "CONFIRMED", "EXTENDED", "ATTENDED", "NO_SHOW"] as const;
+
+/**
+ * 🔻 TASK-716 — **an extra group date made for make-ups retires itself when its LAST seat leaves.** A GROUP row with no seat is still a live CONFIRMED class: it holds the coach's slot, sits on the
+ * coach's reminder and drew the freelance hour — for a date that exists ONLY to carry make-ups (`isMakeup` on the GROUP row) that is our defect. ONE helper, called from EVERY path that takes a seat
+ * out of a group row (the trim · the Undo · the admin's cancel / a seat's leave in `updateBookingStatus` · the plan editor's Mark absence · a course END · a course PAUSE): the row goes CANCELLED in the
+ * caller's transaction (the slot and the hour released) and the coach(es) get the EXISTING cancel notice — no new words, no reason line; the family is not told about the GROUP row (each seat's own notice went).
+ * 🚫 An ORDINARY (unmarked) group date emptied is left as it is. Idempotent: a retired row is not live, so a second call does nothing. A PENDING row (its confirm was refused) was never announced ⇒ no notice.
+ */
+export async function retireEmptyExtraGroupDate(tx: any, groupRowId: string | null | undefined): Promise<boolean> {
+  if (!groupRowId) return false;
+  const g = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, groupRowId) });
+  if (!g || g.bookingType !== "GROUP" || g.isMakeup !== true || !(COURSE_LIVE_STATUSES as readonly string[]).includes(g.status)) return false;
+  const seats = await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, g.id) });
+  if (seats.some((st: any) => (SEAT_KEEPS_DATE as readonly string[]).includes(st.status))) return false;
+  await tx.update(bookings).set({ status: "CANCELLED" }).where(eq(bookings.id, g.id));
+  await reconcileBookingHolds(tx, g.id, g.teacherId, "CANCELLED", false); // the freelance hour back
+  if (g.status !== "PENDING") await sendClassCancelledToCoaches(tx, g, { cancelReason: null, note: null }); // live and not PENDING = announced (CONFIRMED / EXTENDED)
+  return true;
 }
 
 /**
@@ -2940,12 +3020,15 @@ async function flagMakeupsPastExpiry(tx: any, courseId: string, makeupIds: reado
  */
 export type CoachOff = { teacherId: string; date: string };
 
+/** 🔻 TASK-713 — "put this append on the group's extra date, as a SEAT": resolves (lazily, once per cancelled group date) the date and the group row the make-up is seated on. Only `cancelSeatsOfGroup({ reseat })` passes it. */
+export type SeatPlacement = { resolve: () => Promise<{ date: string; groupId: string }> };
+
 /** 🔻 TASK-705 §2 — the (coach, date) pairs of a row's own coaches (primary + additional): what a GROUP row's cancel for «ครูลา» tells its seats' re-plans. */
 export async function coachOffOfRow(tx: any, row: { id: string; date: string }): Promise<CoachOff[]> {
   return (await teachersOfBooking(tx, row.id)).map((c: any) => ({ teacherId: c.id as string, date: row.date }));
 }
 
-export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[]; coachOff?: readonly CoachOff[] } = {}) {
+export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[]; coachOff?: readonly CoachOff[]; holdConfirmNotices?: HeldConfirmNotice[]; seatPlacement?: SeatPlacement } = {}) {
   const course = await tx.query.coursePackages.findFirst({
     where: (c: any, { eq }: any) => eq(c.id, courseId),
   });
@@ -3002,6 +3085,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       await sendClassCancelledToCoaches(tx, full, { cancelReason: null, note: MAKEUP_NOTE_TRIMMED });
       await sendClassCancelledToFamilies(tx, full, null, []);
     }
+    if (trimmed?.groupId) await retireEmptyExtraGroupDate(tx, trimmed.groupId); // 🔻 TASK-716 — a trimmed SEAT may have been the extra date's last
   }
 
   const appended: string[] = [];
@@ -3044,7 +3128,8 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       if (!template) break;
       // 🔻 TASK-705 — the dates THIS coach is known off (per coach: another coach's slot on that date is not blocked) read as taken ⇒ the search skips to the next free week.
       const coachOffDates = new Set((opts.coachOff ?? []).filter((c) => c.teacherId === template.teacherId).map((c) => c.date));
-      const extDate = await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates);
+      const placed = opts.seatPlacement ? await opts.seatPlacement.resolve() : null; // 🔻 TASK-713 — a re-seated group make-up lands on the group's ONE extra date, as a seat
+      const extDate = placed ? placed.date : await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates);
       // 🔴 REQ-085 §12 (TASK-308) — **the QUOTA is the only gate on leave, and the expiry STRETCHES to fit.**
       //
       // 🔻 A refusal stood here. It was `EXTENSION_CEILING`, and it fired on the make-up a legitimate leave
@@ -3098,6 +3183,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
           courseId,
           extendedFromId: a.extendedFromId,
           note: MAKEUP_NOTE_RECONCILE,
+          ...(placed ? { groupId: placed.groupId } : {}), // 🔻 TASK-713 — a SEAT: holds no slot, draws no hour (its group row does)
         })
         .returning({ id: bookings.id });
       appended.push(ext.id);
@@ -3105,7 +3191,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // writers call (the sick-leave append below is the other). The source is the COURSE's rental, not the
       // template's — the template is the leave row being replaced, which carries none. No post.
       await inheritCourseRental(tx, courseId, ext.id);
-      await confirmMakeupAtBirth(tx, ext.id); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm
+      await confirmMakeupAtBirth(tx, ext.id, opts.holdConfirmNotices); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm · 🔻 TASK-710 — held only when the caller asks
       fromDate = extDate;
     }
 
@@ -3496,7 +3582,7 @@ export async function reportTeacherLeave(
   await db.transaction(async (tx) => {
     for (const b of live) {
       const coachOff: CoachOff[] = [{ teacherId: me, date: input.date }]; // 🔻 TASK-705 — this coach is off THIS date: no replacement lands on it
-      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff }); // 🔻 TASK-656 — T2 reaches each SEAT's course
+      if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff, reseat: true }); // 🔻 TASK-713 — a group date cancelled: its make-ups share ONE extra date · 🔻 TASK-656 — T2 reaches each SEAT's course
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
       const replanned = b.courseId ? await reconcileCoursePlan(tx, b.courseId, { reowedFor: reowedForOf(b as any), coachOff }) : null; // 🔻 TASK-548 — its result is the notice's evidence · 🔻 TASK-552 (B)
       // 🔻 TASK-656 — DOOR 3 of 5 = trigger T2: a COACH's leave, the coach's own cancel or an admin recording it on their behalf
@@ -3735,6 +3821,7 @@ export async function applyPlanChange(
         // `mark-absence` carries one `bookingId`, so this fires once per marked session — three absences in
         // one edit send three notices, which is defensible and a surprise only if left unstated.
         await sendLeaveNotice(tx, b, { size: course.size, via: "staff" });
+        if (b.groupId) await retireEmptyExtraGroupDate(tx, b.groupId); // 🔻 TASK-716 — the absent seat may have been the extra date's last
         return await finalize({ change: "mark-absence" as const, ...moves });
       }
 
@@ -3843,10 +3930,17 @@ export async function applyPlanChange(
  * stays where each caller already had it (the single confirm's end-of-function reconcile; the make-up's explicit one, BEFORE the status write, so a budget refusal changes nothing).
  * 🚫 The pre-guards (`assertCourseWritable`, `assertNoCoachOnLeave`) are the CALLER's, as before.
  */
+/**
+ * 🔻 TASK-710 — a confirm notice that was HELD instead of sent: `audience` says who it is for, `send` queues it exactly as `applyConfirm` would have. Only the admin's cancel asks for this
+ * (a replacement re-issued in the SAME slot must not announce itself a second time — the SAME decider that silences its cancel notice decides), and it ALWAYS flushes what it holds.
+ */
+export type HeldConfirmNotice = { audience: "teacher" | "parent"; send: () => Promise<unknown> };
+
 async function applyConfirm(
   tx: any,
   id: string,
   current: { teacherId: string; studentId?: string | null; coStudentId?: string | null; attendeeNote?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null },
+  hold?: HeldConfirmNotice[], // 🔻 TASK-710 — given ⇒ the two notices are collected here instead of queued; omitted ⇒ byte-identical to before
 ): Promise<NotifyResult | null> {
   let notification: NotifyResult | null = null;
   await tx
@@ -3888,6 +3982,7 @@ async function applyConfirm(
     size: current.course?.size ?? current.voucher?.totalHours ?? null,
   };
   for (const t of teachers) {
+    if (hold) { hold.push({ audience: "teacher", send: () => enqueueLine({ recipientType: "teacher", recipientLineUserId: t.lineUserId ?? null, bookingId: id, payload: confirmPayload }, tx) }); continue; } // 🔻 TASK-710
     const res = await enqueueLine(
       {
         recipientType: "teacher",
@@ -3912,7 +4007,9 @@ async function applyConfirm(
   // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
   // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
   // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
-  await enqueueParentCopies(tx, await householdLineUserIds(tx, [current.studentId, current.coStudentId]), { // TASK-420 — both households
+  const parentAccounts = await householdLineUserIds(tx, [current.studentId, current.coStudentId]); // TASK-420 — both households
+  if (hold) { hold.push({ audience: "parent", send: () => enqueueParentCopies(tx, parentAccounts, { bookingId: id, payload: confirmPayload }) }); return notification; } // 🔻 TASK-710
+  await enqueueParentCopies(tx, parentAccounts, {
     bookingId: id,
     payload: confirmPayload,
   });
@@ -3928,7 +4025,7 @@ async function applyConfirm(
  * before this task, and the ADMINS are told, once (`makeup_not_confirmed`, 📋 DRAFT). The checks run BEFORE any write of the confirm, so a refusal leaves nothing half-done.
  * ⚠️ Only an `ApiException` is a refusal; anything else is a real fault and propagates (a half-written confirm is worse than none).
  */
-export async function confirmMakeupAtBirth(tx: any, makeupId: string): Promise<"confirmed" | "refused"> {
+export async function confirmMakeupAtBirth(tx: any, makeupId: string, hold?: HeldConfirmNotice[]): Promise<"confirmed" | "refused"> {
   const row = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, makeupId), with: { course: true, voucher: true } });
   if (!row) return "refused";
   try {
@@ -3939,7 +4036,7 @@ export async function confirmMakeupAtBirth(tx: any, makeupId: string): Promise<"
     await notifyAdmins({ kind: "makeup_not_confirmed", bookingId: row.id, reason: e.message }, tx, row.id);
     return "refused";
   }
-  await applyConfirm(tx, row.id, row);
+  await applyConfirm(tx, row.id, row, hold);
   return "confirmed";
 }
 
@@ -4088,7 +4185,7 @@ export async function updateBookingStatus(
       // 🔴 TASK-516 addendum — the seats AS THEY WERE, read BEFORE the cascade cancels them: the family notice below tells the families
       // of the seats that were live (the one household rule drops CANCELLED seats — re-read after this line, it would drop them all).
       const seatsBefore = current.bookingType === "GROUP" ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }) : undefined;
-      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}) }); // 🔻 TASK-705 §2 — «ครูลา» on a GROUP row: its coaches are off that date // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
+      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}), reseat: true }); // 🔻 TASK-705 §2 — «ครูลา» on a GROUP row: its coaches are off that date // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
       await tx
         .update(bookings)
         .set({
@@ -4122,6 +4219,7 @@ export async function updateBookingStatus(
       // cancel before TASK-105. The money hold releases below (CANCELLED is releasing); the makeup draws on its
       // own confirm — so a cancel nets zero freelance hours until the makeup is taught.
       let replanned: { appended: string[] } | null = null;
+      const heldConfirm: HeldConfirmNotice[] = []; // 🔻 TASK-710 — the replacement's «CONFIRMED» notices, held until the same-slot decision below
       if (current.courseId) {
         // 🔻 TASK-308 (REQ-085 §12) — the `try/catch` here re-mapped `EXTENSION_CEILING` to a
         // cancel-specific `CANCEL_AT_CEILING`, because a re-owed make-up could be refused by the ceiling.
@@ -4135,13 +4233,17 @@ export async function updateBookingStatus(
         const coachOff: CoachOff[] | undefined = reasonCode === "TEACHER_LEAVE"
           ? (await teachersOfBooking(tx, current.id)).map((c: any) => ({ teacherId: c.id as string, date: current.date }))
           : undefined;
-        replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}) }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
+        replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}), holdConfirmNotices: heldConfirm }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
         // 🔻 TASK-656 — the school-cancel week (trigger T3) is decided BELOW, once `slot` is known: a week here depends on the REASON and on whether
         // the class was really lost, and the same-slot answer does not exist until the re-plan has run.
       }
       // 🔴 TASK-551 §2 (owner ruling) — a cancelled MAKE-UP that the re-plan put back in the SAME slot changed nothing: ONE decider
       // (`sameSlotReplacement`) answers for both audiences — the family by date + time, the coach by date + time + the SAME coach set.
       const slot = (current as any).isMakeup === true ? await sameSlotOfReplan(tx, current, replanned?.appended ?? []) : NOT_SAME_SLOT; // 🔻 TASK-702 — "is this a MAKE-UP?" ⇒ the marker (born CONFIRMED, the status no longer says it)
+      // 🔻 TASK-710 — the replacement put back in the SAME slot changed nothing, so it does not announce itself a second time: its «CONFIRMED» notice obeys the SAME decider as the cancel notice below
+      // (family ⇐ `slot.family`, coach ⇐ `slot.coach`). The replacement itself is CONFIRMED either way (hold, token, everything `applyConfirm` does) — only the message is held, and EVERY held notice is
+      // flushed here or silenced by name: none can be lost on a different slot, and a row that is not a make-up has `NOT_SAME_SLOT` ⇒ all sent.
+      for (const n of heldConfirm) if (!(n.audience === "parent" ? slot.family : slot.coach)) await n.send();
       // 🔻 TASK-656 — DOOR 4 of 5 = trigger T3: *"ที่ขยายอายุคอร์สอัตโนมัติ 1 สัปดาห์ คือการที่เรากด cancel คลาส แล้วเลือก ปัญหาจากทางเรา"* — a
       // class the SCHOOL cancels with the reason `SCHOOL_ISSUE` adds a week. **EVERY OTHER REASON IS +0** (the family's own reasons, an
       // admin's mistake, a coach's leave handled at door 3).
@@ -4362,6 +4464,7 @@ export async function updateBookingStatus(
     // own confirm, so a sick-leave costs one freelance hour total (the makeup), not two.
     const after = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id) });
     if (after) await reconcileBookingHolds(tx, id, current.teacherId, after.status, override);
+    if ((current as any).groupId && (action === "cancel" || action === "sick-leave")) await retireEmptyExtraGroupDate(tx, (current as any).groupId); // 🔻 TASK-716 — a seat cancelled / on leave may have been the extra date's last
 
     const booking = await loadBookingDTO(tx, id);
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
@@ -4864,6 +4967,7 @@ async function cancelDoomedRows(
       .set({ status: "CANCELLED", note: stamp.note, ...(stamp.cancelReason ? { cancelReason: stamp.cancelReason } : {}) })
       .where(eq(bookings.id, b.id));
     await reconcileBookingHolds(tx, b.id, b.teacherId, "CANCELLED", false);
+    if ((b as any).groupId) await retireEmptyExtraGroupDate(tx, (b as any).groupId); // 🔻 TASK-716 — an ended course's seat may have been an extra date's last
   }
 }
 
@@ -5518,6 +5622,7 @@ export async function dropCourse(id: string, input: { reason?: string | null }, 
         .update(bookings)
         .set({ status: "CANCELLED", note: COURSE_PAUSE_NOTE })
         .where(eq(bookings.id, b.id));
+      if (b.groupId) await retireEmptyExtraGroupDate(tx, b.groupId); // 🔻 TASK-716 — a paused course's seat may have been an extra date's last
     }
     // TASK-370: one message per coach naming the CONFIRMED classes he loses; `paused` still carries the pre-write status.
     await sendCourseDroppedToTeachers(tx, course, paused, "dropped", { cancelReason: null, note: COURSE_PAUSE_NOTE });

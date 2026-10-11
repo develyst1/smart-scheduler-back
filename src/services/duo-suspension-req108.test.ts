@@ -39,6 +39,7 @@ const households = (suspended: string[], asker = "p1") => {
   spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async (q: any) => kids[idOf(q)]) as any));
   spies.push(spyOn(db.query.parents, "findFirst").mockImplementation((async (q: any) => { const id = idOf(q); return parent(id === "p1" || id === "p2" ? id : asker); }) as any));
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => undefined) as any));
+  spies.push(spyOn(db.query.users, "findMany").mockImplementation((async () => []) as any)); // 🔻 TASK-725 — nobody has a LINE account linked here: the admin recipients' read also asks `users`
   return kids;
 };
 /** The session row behind the token, and the act's two writes recorded (attend; CRM points per child). */
