@@ -1,0 +1,46 @@
+{
+  "task": "TASK-711",
+  "proves": "src/services/undo-tells-family-class-on-again-task711.test.ts",
+  "note": "🔴 FINAL ROUND item 2. W1 the family is not told (the old silence) · W2 the family is told on a CHECK-IN Undo too · W3 told BEFORE the plan check (a refusal after the writes would leave it — the source order) · W4 the coach's message changed · W5 the family's copy carries a Coach line · W6 the Thai note changed · W7 the English title changed.",
+  "tests": "src/services/undo-tells-family-class-on-again-task711.test.ts src/services/booking-undo-req108.test.ts",
+  "mutations": [
+    {
+      "id": "W1",
+      "what": "🔴 the family is not told after an Undo of its leave (the old silence)",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "      await sendClassOnAgainToFamilies(tx, { ...row, course: row.course ?? null, voucher: row.voucher ?? null });\n", "to": "" }] }]
+    },
+    {
+      "id": "W2",
+      "what": "🔴 the family is told on a CHECK-IN Undo too — a false attendance undone is not a leave",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "      await revertAttendance(tx, row);\n", "to": "      await revertAttendance(tx, row);\n      await sendClassOnAgainToFamilies(tx, { ...row, course: row.course ?? null, voucher: row.voucher ?? null });\n" }] }]
+    },
+    {
+      "id": "W3",
+      "what": "told BEFORE the plan check — a refusal after the writes would leave the message behind",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [
+        { "from": "      await sendClassOnAgainToFamilies(tx, { ...row, course: row.course ?? null, voucher: row.voucher ?? null });\n", "to": "" },
+        { "from": "      if (row.courseId) {\n        const moves = await reconcileCoursePlan(tx, row.courseId);", "to": "      await sendClassOnAgainToFamilies(tx, { ...row, course: row.course ?? null, voucher: row.voucher ?? null });\n      if (row.courseId) {\n        const moves = await reconcileCoursePlan(tx, row.courseId);" }
+      ] }]
+    },
+    {
+      "id": "W4",
+      "what": "the coach's message is changed — a size where there was none",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "payload: { kind: \"class_on_again_teacher\", bookingId: row.id, bookingType: row.bookingType ?? null, size: row.course?.size ?? row.voucher?.totalHours ?? null },", "to": "payload: { kind: \"class_on_again_teacher\", bookingId: row.id, bookingType: row.bookingType ?? null, size: null },"  }] }]
+    },
+    {
+      "id": "W5",
+      "what": "the family's copy carries a Coach line — the approved text has none",
+      "files": [{ "file": "src/lib/line-message.ts", "edits": [{ "from": "            coach: undefined,\n          },\n          { type, audience: recipientType, lang },\n        ) +\n        extra(t(\"cl_note\", lang), t(\"ob_class_on_again_parent_note\", lang))", "to": "            coach: ctx.coach,\n          },\n          { type, audience: recipientType, lang },\n        ) +\n        extra(t(\"cl_note\", lang), t(\"ob_class_on_again_parent_note\", lang))" }] }]
+    },
+    {
+      "id": "W6",
+      "what": "the owner's Thai note is changed",
+      "files": [{ "file": "src/lib/line-i18n.ts", "edits": [{ "from": "ยกเลิกการลาแล้ว เรียนคาบนี้ตามปกติค่ะ", "to": "ยกเลิกการลาแล้ว เรียนตามปกติค่ะ" }] }]
+    },
+    {
+      "id": "W7",
+      "what": "the owner's English title is changed",
+      "files": [{ "file": "src/lib/line-i18n.ts", "edits": [{ "from": "EN: \"✅ CLASS ON AGAIN:\"", "to": "EN: \"✅ CLASS IS ON AGAIN:\"" }] }]
+    }
+  ]
+}

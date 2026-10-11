@@ -376,6 +376,26 @@ function buildOutboxMessage(
         )
       );
     }
+    // 🔻 TASK-711 — the FAMILY's copy of «class on again» (owner-APPROVED, COPY-REVIEW-2026-09-29.md:592): the title in the chat's language, the family's own field block — NO Coach line — then `Note :`.
+    // Two producers' worth of shape is the cancel notice's (`class_cancelled_parent`): same labels, same order, same empty-field rule. The coach's message (above) is unchanged.
+    case "class_on_again_parent": {
+      const type = notifyTypeOf(payload.bookingType as string);
+      return (
+        t("ob_class_on_again_parent_title", lang) + "\n" +
+        renderFieldBlock(
+          "class_on_again",
+          {
+            student: ctx.studentName, // the worker enriches from the booking (as class_cancelled_parent) — no payload fallback, so no new `|| undefined` site
+            program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
+            date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
+            time: ctx.startTime ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined,
+            coach: undefined,
+          },
+          { type, audience: recipientType, lang },
+        ) +
+        extra(t("cl_note", lang), t("ob_class_on_again_parent_note", lang))
+      );
+    }
     // 🔴 TASK-516 — a MOVED class · ✅ TASK-529 — the owner's words: the house block is the NEW slot, the OLD one ONE appended
     // `Was :` line (where cancel puts Reason / Note). Both slots come from the PAYLOAD — the snapshot taken when that move was
     // made — never from the row as it is when the worker runs: two quick moves then read A→B and B→C, each true on its own.

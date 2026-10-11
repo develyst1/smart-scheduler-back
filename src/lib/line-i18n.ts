@@ -709,6 +709,10 @@ const TABLE: Record<string, Entry> = {
   ob_class_moved_title: { TH: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", EN: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️" },
   ob_f_was: { TH: "Previous Schedule", EN: "Previous Schedule" }, // BOTH audiences — the coach's and the family's copy share this English label
   ob_class_on_again_title: { TH: "CLASS ON AGAIN / มีคาบตามเดิม ‼️", EN: "CLASS ON AGAIN / มีคาบตามเดิม ‼️" },
+  // 🔻 TASK-711 (REQ-115 FINAL ROUND item 2) — the FAMILY is told a class is ON AGAIN after an Undo of its leave. ✅ APPROVED by the owner 2026-10-11 — COPY-REVIEW-2026-09-29.md:592 (set 1, item 1, «ชุด 1 อนุมัติทั้งหมด»),
+  // verbatim from TASK-711. Title (chat language) + the family's own field block (no Coach line — the approved text has none) + `Note :`.
+  ob_class_on_again_parent_title: { TH: "✅ มีคาบเรียนตามเดิม:", EN: "✅ CLASS ON AGAIN:" },
+  ob_class_on_again_parent_note: { TH: "ยกเลิกการลาแล้ว เรียนคาบนี้ตามปกติค่ะ", EN: "Leave cancelled. This class goes ahead as scheduled." },
   // ✅ TASK-375 / TASK-376 (`REQ-091` Deploy B) — **APPROVED by the owner as drafted** — the stamp of the same-day
   // rental notice, in `leave_notice`'s shape. 🚫 Byte-frozen from here (the `ob_deduct_title` convention: the owner
   // has seen it, so the test pins the bytes). `Rental` below is the customer's own section word (TASK-372), and

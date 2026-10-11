@@ -156,6 +156,8 @@ const run = (w: World, opts: { plan?: { appended: string[]; cancelled: string[] 
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
   // TASK-508 — the coaches of a row: its primary + its additional teachers (`booking_teachers`), answered from the world. The
   // predicate itself is pinned by its rendered SQL below; here the question is only WHO gets told.
+  // 🔻 TASK-711 — a leave Undo now tells the FAMILY too (the household read): no linked account here ⇒ the notice lands as the SKIPPED row `enqueueLine` writes for an unlinked family. Tests that care pass their own spy.
+  if (!(familyLink.householdLineUserIds as any).mock) spies.push(spyOn(familyLink, "householdLineUserIds").mockImplementation((async () => []) as any)); // (a test's own spy, registered earlier, wins)
   spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async (_e: any, id: string) => {
     h.coachesAsked.push(id);
     const b = w.bookings.find((x) => x.id === id);
@@ -181,8 +183,8 @@ describe("🔴 a mistaken LEAVE — back to CONFIRMED, its count given back ONCE
     expect(h.w.undos).toEqual([{ bookingId: "b1", kind: "leave", undoneBy: "admin-dong", reason: "wrong child", priorStatus: "SICK_LEAVE", priorCheckinChannel: null, priorCheckinActor: null, leaveRefunded: true, makeupCancelledId: "m1", expiryFrom: null, expiryTo: null }]);
     // 🚫 nothing else touched: the inserts are the record — and, since TASK-508 (owner: yes), ONE message to the coach that the
     // class is on again. 🔻 TASK-510 — and the make-up m1 it cancelled tells ITS coach the class is off (first), then b1's coach it is on again.
-    expect(h.w.writes.filter((x) => x.startsWith("insert:"))).toEqual(["insert:outbox", "insert:outbox", "insert:undos"]);
-    expect(h.w.outbox.map((m) => [m.bookingId, m.payload.kind])).toEqual([["m1", "class_cancelled_teacher"], ["b1", "class_on_again_teacher"]]);
+    expect(h.w.writes.filter((x) => x.startsWith("insert:"))).toEqual(["insert:outbox", "insert:outbox", "insert:outbox", "insert:undos"]); // 🔻 TASK-711: the make-up's coach · the FAMILY «class on again» · the class's coach · the record
+    expect(h.w.outbox.map((m) => [m.bookingId, m.payload.kind])).toEqual([["m1", "class_cancelled_teacher"], ["b1", "class_on_again_parent"], ["b1", "class_on_again_teacher"]]); // 🔻 TASK-711: the family's «class on again» sits between the make-up's cancel and the coach's
     expect(h.reversed).toEqual([]);
   });
   test("🔴 REQ-114 (ii), the SELF-BLOCK, gone by construction — two Undos in a row on ONE course both succeed, and the expiry never moves", async () => {
@@ -435,7 +437,8 @@ describe("🔔 TASK-508 — a LEAVE Undo tells EVERY coach of the class that it 
     await undoBooking("b1", { actor: "admin-dong", reason: null });
     expect(h.coachesAsked).toEqual(["b1", "m1", "b1"]); // 🔻 TASK-561: first THIS class's coaches for the leave-day gate (asked, nobody told) · then the make-up's coaches (TASK-510), then THIS class's — told once each (the outbox pins who is told)
     expect(h.w.outbox.filter((m) => m.payload.kind === "class_on_again_teacher")).toEqual([onAgain("U-coach-t1"), onAgain("U-coach-t2")]);
-    expect(h.w.outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]); // 🚫 never the family
+    // 🔻 TASK-711 — the owner REVERSED «never the family» (TASK-508's silence): the family of the child whose leave was undone now gets ONE «class on again»; no OTHER non-coach row, and the coach rows above are unchanged.
+    expect(h.w.outbox.filter((m) => m.recipientType !== "teacher").map((m) => [m.recipientType, m.bookingId, m.payload.kind])).toEqual([["parent", "b1", "class_on_again_parent"]]);
   });
 
   test("📌 an UNLINKED coach gets NOTHING delivered — a SKIPPED row records that they could not be told (the Undo still succeeds)", async () => {
@@ -510,10 +513,11 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     await undoBooking("b1", { actor: "a", reason: null });
     expect(h.w.outbox.map((m) => [m.recipientLineUserId, m.bookingId, m.payload.kind])).toEqual([
       ["U-coach-t9", "m1", "class_cancelled_teacher"], // the make-up's coach: THAT class is off
+      [null, "b1", "class_on_again_parent"], // 🔻 TASK-711 — the family (unlinked in this fixture ⇒ the SKIPPED row), after the make-up's cancel and before the coach's
       ["U-coach-t1", "b1", "class_on_again_teacher"], // this class's coach: it is on again
     ]);
     expect(h.w.outbox[0]).toEqual(makeupOff("m1", "U-coach-t9"));
-    expect(h.w.outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]);
+    expect(h.w.outbox.filter((m) => m.recipientType !== "teacher").map((m) => m.payload.kind)).toEqual(["class_on_again_parent"]); // 🔻 TASK-711: the family's «class on again», nothing else non-coach
   });
 
   test("a co-taught MAKE-UP: both of its coaches are told; an unlinked one is a SKIPPED row", async () => {
@@ -528,7 +532,7 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     row(w, "m1").status = "PENDING";
     const h = run(w);
     await undoBooking("b1", { actor: "a", reason: null });
-    expect(h.w.outbox.map((m) => m.payload.kind)).toEqual(["class_on_again_teacher"]);
+    expect(h.w.outbox.map((m) => m.payload.kind)).toEqual(["class_on_again_parent", "class_on_again_teacher"]); // 🔻 TASK-711: …and the family's «class on again» (the PENDING make-up's cancel tells nobody, still)
     expect(h.coachesAsked).toEqual(["b1", "b1"]); // 🔻 TASK-561: the leave-day gate asks first (nobody told), then the notice
   });
 
@@ -541,8 +545,8 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     Object.assign(row(w, "m1"), { status: "CONFIRMED", isMakeup: true });
     const h = run(w);
     await undoBooking("b1", { actor: "a", reason: null });
-    expect(parentKinds(h)).toEqual([["U-mom", "m1", "makeup_cancelled_parent"]]);
-    expect(h.w.outbox.find((m) => m.recipientType === "parent")!.payload).toEqual({ kind: "makeup_cancelled_parent", bookingId: "m1", bookingType: "COURSE_PACKAGE", size: 4 });
+    expect(parentKinds(h)).toEqual([["U-mom", "m1", "makeup_cancelled_parent"], ["U-mom", "b1", "class_on_again_parent"]]); // 🔻 TASK-711: the order a family sees — the make-up's cancel, THEN «class on again»
+    expect(h.w.outbox.find((m) => m.recipientType === "parent" && m.payload.kind === "makeup_cancelled_parent")!.payload).toEqual({ kind: "makeup_cancelled_parent", bookingId: "m1", bookingType: "COURSE_PACKAGE", size: 4 });
     expect(h.w.outbox.filter((m) => m.recipientType === "teacher").map((m) => [m.bookingId, m.payload.kind])).toEqual([["m1", "class_cancelled_teacher"], ["b1", "class_on_again_teacher"]]);
   });
   test("🚫 TASK-704 — an EXTENDED (never announced) make-up, marked or not ⇒ coaches ONLY, unchanged", async () => {
@@ -552,7 +556,7 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
       Object.assign(row(w, "m1"), { status: "EXTENDED", isMakeup });
       const h = run(w);
       await undoBooking("b1", { actor: "a", reason: null });
-      expect(parentKinds(h)).toEqual([]);
+      expect(parentKinds(h)).toEqual([["U-mom", "b1", "class_on_again_parent"]]); // 🔻 TASK-711: no make-up cancel notice for the family (never announced) — only «class on again»
       expect(h.w.outbox.some((m) => m.payload.kind === "class_cancelled_teacher")).toBe(true);
     }
   });

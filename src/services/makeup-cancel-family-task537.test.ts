@@ -115,7 +115,7 @@ describe("🔻 TASK-704 — a leave UNDO cancels a CONFIRMED marked make-up ⇒ 
   });
   test("…and by behaviour: booking-undo-req108.test.ts runs the real `undoBooking` over both (the EXTENDED line keeps `never the family`)", () => {
     const T = readFileSync(resolve(root, "src/services/booking-undo-req108.test.ts"), "utf8");
-    expect(T).toContain('expect(h.w.outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]); // 🚫 never the family');
+    expect(T).toContain('toEqual([["parent", "b1", "class_on_again_parent"]]);'); // 🔻 TASK-711: the old «never the family» line is now «the family gets ONE class_on_again_parent, no other non-coach row»
     expect(T).toContain("TASK-704");
   });
 });

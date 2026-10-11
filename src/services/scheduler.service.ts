@@ -3402,6 +3402,21 @@ export async function sendClassCancelledToFamilies(
 }
 
 /**
+ * 🔻 TASK-711 (REQ-115 FINAL ROUND item 2) — after an Undo of a LEAVE the FAMILY is told the class is ON AGAIN (the owner reversed «never the family», TASK-508's silence). Through the ONE family path:
+ * `familyAccountsOfRow` (a Private/DUO row's two households, de-duplicated — an unlinked household still lands its SKIPPED row) → `enqueueParentCopies`, in the caller's transaction (the notice exists iff the
+ * Undo committed). New kind `class_on_again_parent`; the coach's `class_on_again_teacher` is untouched. ⇒ the accounts told (null: the row names no child).
+ */
+export async function sendClassOnAgainToFamilies(
+  tx: any,
+  current: { id: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
+): Promise<string[] | null> {
+  const accounts = await familyAccountsOfRow(tx, current);
+  if (accounts === null) return null;
+  await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload: { kind: "class_on_again_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null } });
+  return accounts;
+}
+
+/**
  * 🔴 TASK-445 (Tanya's `familiesTold: 6`) — the ONE family sender's core: the row's household set is ONE set — a Private/DUO
  * row's two kids, or ALL of a GROUP row's seats — so the ONE accessor de-duplicates the accounts and **two siblings seated on
  * the same row reach their family ONCE** (TASK-420 built a set PER SEAT, which told the same account twice). ⇒ the distinct

@@ -28,6 +28,7 @@ import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
 import { retireEmptyExtraGroupDate } from "./scheduler.service"; // TASK-716 — a SEAT make-up undone may have been an extra group date's last
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from "./scheduler.service";
+import { sendClassOnAgainToFamilies } from "./scheduler.service"; // 🔻 TASK-711 — the family hears «class on again» after an Undo of its leave
 import { planReviveOfRetiredExtraDate, reviveRetiredExtraGroupDate } from "./scheduler.service"; // 🔻 TASK-719 — a retired extra group date comes back with its seat
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
@@ -187,6 +188,9 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       // throw (`enqueueLine`'s contract); the only failure left is the database refusing a write — the same failure that would
       // stop the Undo's own writes. 🚫 Never the family (no parent recipient exists on this path).
       // 🔻 TASK-719 — when the seat's date was revived, THAT notice (about the group row) already told every coach: the seat is the same class, so it is not announced a second time.
+      // 🔻 TASK-711 — and the FAMILY: «class on again» for the child whose leave was undone (the order a family sees after one Undo: the make-up's cancel above (TASK-704, when it was CONFIRMED), then this).
+      // Same transaction, same place as the coach's — AFTER every refusal. Leave Undo ONLY: the check-in Undo (the `else` below) sends nothing new.
+      await sendClassOnAgainToFamilies(tx, { ...row, course: row.course ?? null, voucher: row.voucher ?? null });
       if (!reviveGroup) for (const coach of await teachersOfBooking(tx, row.id)) {
         await enqueueLine({
           recipientType: "teacher",
