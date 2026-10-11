@@ -316,13 +316,13 @@ describe("🔴 the three kinds by VALUE — ADDED / REMOVED are the owner-accept
     expect(en).toBe("📅 ADDED TO SCHEDULE\nYou have been added to a schedule\nItem: ECA Club\nTime: 15:00-16:00\nDates:\n  - 12-10-2026\n  - 19-10-2026\nPlease check your schedule");
   });
   test("REMOVED (TH + EN)", () => {
-    expect(formatOutboxMessage(payload("other_teacher_removed") as any, {}, "TH", "teacher")).toBe("❌ นำออกจากตารางสอน\nคุณถูกนำออกจากตารางสอน\nรายการ: ECA Club\nTime: 15:00-16:00\nวันที่:\n  - 12-10-2026\n  - 19-10-2026");
-    expect(formatOutboxMessage(payload("other_teacher_removed") as any, {}, "EN", "teacher")).toBe("❌ REMOVED FROM SCHEDULE\nYou have been removed from a schedule\nItem: ECA Club\nTime: 15:00-16:00\nDates:\n  - 12-10-2026\n  - 19-10-2026");
+    expect(formatOutboxMessage(payload("other_teacher_removed") as any, {}, "TH", "teacher")).toBe("❌ คุณถูกนำออกจากตารางสอน\nรายการ: ECA Club\nTime: 15:00-16:00\nวันที่:\n  - 12-10-2026\n  - 19-10-2026");
+    expect(formatOutboxMessage(payload("other_teacher_removed") as any, {}, "EN", "teacher")).toBe("❌ You have been removed from a schedule\nItem: ECA Club\nTime: 15:00-16:00\nDates:\n  - 12-10-2026\n  - 19-10-2026");
   });
   test("CANCELLED (🔻 TASK-430: REQ-101 §5's owner-accepted bytes, NO placeholder) — TH + EN, the reason's existing label, `DD-MM-YYYY`; an empty payload leaks nothing", () => {
-    expect(formatOutboxMessage(payload("other_series_cancelled", { reason: "ADMIN_ERROR" }) as any, {}, "TH", "teacher")).toBe("❌ ยกเลิกตารางทั้งชุด\nตารางสอนถูกยกเลิกทั้งชุด\nรายการ: ECA Club\nTime: 15:00-16:00\nเหตุผล: จองผิด (แอดมิน)\nวันที่:\n  - 12-10-2026\n  - 19-10-2026");
-    expect(formatOutboxMessage(payload("other_series_cancelled", { reason: "ADMIN_ERROR" }) as any, {}, "EN", "teacher")).toBe("❌ SCHEDULE CANCELLED\nYour teaching schedule has been cancelled\nProgram: ECA Club\nTime: 15:00-16:00\nReason: Booking error (admin)\nDate:\n  - 12-10-2026\n  - 19-10-2026");
-    expect(formatOutboxMessage({ kind: "other_series_cancelled" } as any, {}, "TH", "teacher")).toBe("❌ ยกเลิกตารางทั้งชุด\nตารางสอนถูกยกเลิกทั้งชุด");
+    expect(formatOutboxMessage(payload("other_series_cancelled", { reason: "ADMIN_ERROR" }) as any, {}, "TH", "teacher")).toBe("❌ ตารางสอนถูกยกเลิกทั้งหมด\nรายการ: ECA Club\nTime: 15:00-16:00\nเหตุผล: จองผิด (แอดมิน)\nวันที่:\n  - 12-10-2026\n  - 19-10-2026");
+    expect(formatOutboxMessage(payload("other_series_cancelled", { reason: "ADMIN_ERROR" }) as any, {}, "EN", "teacher")).toBe("❌ Your teaching schedule has been cancelled\nProgram: ECA Club\nTime: 15:00-16:00\nReason: Booking error (admin)\nDate:\n  - 12-10-2026\n  - 19-10-2026");
+    expect(formatOutboxMessage({ kind: "other_series_cancelled" } as any, {}, "TH", "teacher")).toBe("❌ ตารางสอนถูกยกเลิกทั้งหมด");
     const I = readFileSync(resolve(root, "src/lib/line-i18n.ts"), "utf8");
     expect(region(I, "os_added_title", "ob_teacher_assigned_title")).not.toContain("📖"); // the three kinds carry no placeholder mark
     expect(I).toContain("ADDED / REMOVED: Porter's draft, OWNER-ACCEPTED 2026-09-21");

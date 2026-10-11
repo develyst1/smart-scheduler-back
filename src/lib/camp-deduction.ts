@@ -6,7 +6,7 @@
 // house style — do not "harmonise" it, and do not add `t()`: it is already English, which is what the owner ruled.
 import { ddmmyyyy } from "./time";
 
-export const CAMP_DEDUCTION_TITLE = "🏕️ BALANCE CAMP";
+export const CAMP_DEDUCTION_TITLE = "🏕️ CAMP DEDUCTION: "; // 🔻 TASK-727 (P27) — her title, verbatim (the trailing space is hers)
 
 /** Units → days: FULL = 2 units = 1 day; AM/PM = 1 unit = 0.5 day. */
 export const unitsToDays = (units: number): number => units / 2;

@@ -740,7 +740,7 @@ describe("🔴 TASK-546 — the Undo dialog's preview: the SAME function as the 
   test("by source: the act CALLS the planner (one decider); the preview's path has no write, no transaction, no send", () => {
     const U = src("src/services/undo.service.ts");
     const act = U.slice(U.indexOf("export async function undoBooking("));
-    expect(act).toContain("const { row, kind, leaveRefunded, makeup } = await planUndo(tx, bookingId, today);");
+    expect(act).toContain("const { row, kind, leaveRefunded, makeup, reviveGroup } = await planUndo(tx, bookingId, today);");
     expect(act).not.toContain("makeupDecision("); // the decision is not re-made in the act
     const prev = U.slice(U.indexOf("export async function previewUndo("), U.indexOf("export async function undoBooking("));
     expect(prev).toContain("await planUndo(exec, bookingId, bangkokNow().date)");

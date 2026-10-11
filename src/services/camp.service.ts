@@ -95,11 +95,14 @@ export async function updateWeek(id: string, input: { name?: string; capacity?: 
     const [u] = await tx.update(campWeeks).set(patch).where(eq(campWeeks.id, id)).returning();
     if (input.teacherIds !== undefined || input.windowStart !== undefined || input.windowEnd !== undefined) {
       const days = await tx.query.campWeekDays.findMany({ where: (d: any, { eq: e, isNull: nul, and: a }: any) => a(e(d.campWeekId, id), nul(d.editedAt)) });
-      for (const d of days) {
+      for (const d of [...days].sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))) { // 🔻 TASK-712 §B — date order, so "the first offending day" is a fact, not an accident of the read
         await tx.update(campWeekDays).set({ startTime: ws, endTime: we }).where(eq(campWeekDays.id, d.id));
         // TASK-454 — a week-level roster change replaces the day's coach set; a window change alone touches nobody's
         // own hours, because a coach on the default is stored as NULL and resolves to the new window by itself.
         if (input.teacherIds !== undefined) await setDayTeachers(tx, d.id, input.teacherIds.map((teacherId) => ({ teacherId })));
+        // 🔻 TASK-712 §B — the SAME rule by the week-level door: a re-derived day whose stored own-hours coach would now sit outside the new window refuses the save (the same sentence, the first offending
+        // day + coach, nothing written — this is one transaction). Days an admin edited by hand (`edited_at`) are not re-derived and are not judged here.
+        await assertOwnHoursInsideDay(tx, d.date, d.id, ws, we);
         for (const teacherId of (await syncCampDayRows(tx, d.id)).onLeave) onLeave.push({ date: d.date, teacherId });
       }
     }
@@ -191,8 +194,8 @@ export type CampDayTeacherInput = { teacherId: string; startTime?: string | null
 
 /**
  * Replace the day's coach set in ONE tx: upsert what was asked for, delete whoever is no longer on the day. Each
- * coach's window is validated the same way the day's is (`assertCampWindow`) — a coach may sit OUTSIDE the day's
- * default, deliberately: the default is a default, not a clamp.
+ * coach's window is validated the same way the day's is (`assertCampWindow`). 🔻 TASK-712 — and it must sit INSIDE the day's hours (`assertOwnHoursInsideDay`, checked by
+ * the caller against the day AFTER this save): the old "a coach may sit outside the day's default, deliberately" is retired — the owner ruled it a silent mistake.
  */
 async function setDayTeachers(tx: any, dayId: string, teachers: CampDayTeacherInput[]) {
   for (const t of teachers) {
@@ -210,6 +213,27 @@ async function setDayTeachers(tx: any, dayId: string, teachers: CampDayTeacherIn
   }
   const keep = teachers.map((t) => t.teacherId);
   await tx.delete(campWeekDayTeachers).where(keep.length ? and(eq(campWeekDayTeachers.campWeekDayId, dayId), notInArray(campWeekDayTeachers.teacherId, keep)) : eq(campWeekDayTeachers.campWeekDayId, dayId));
+}
+
+/**
+ * 🔻 TASK-712 (REQ-116, owner-approved `COPY-REVIEW-2026-09-29.md:592` item 2) — **a coach's OWN hours must sit inside the day's hours, at BOTH ends.** `setDayTeachers` used to say "a coach may sit
+ * OUTSIDE the day's default, deliberately" — and a day moved to end at 14:00 left coach QACT's own 13:00–15:00 standing past it, accepted in silence (TEST-089 Part 2). Now: `start < dayStart` or
+ * `end > dayEnd` ⇒ 400, naming the date, the coach and both windows; equal ends are inside. 🔑 Checked against the day's hours AFTER this save, over the coaches' STORED rows (read back in the same
+ * transaction, so a day + coach changed together are judged as a pair) — and so also when ONLY the day's hours change (the front then sends no `teachers[]`). A coach on the day's default (no own
+ * times) is never refused. The FIRST offender in the day's own order (start, then id) is named. The save is one transaction ⇒ a refusal writes nothing. Thai only (a server refusal).
+ */
+async function assertOwnHoursInsideDay(tx: any, date: string, dayId: string, dayStart: string, dayEnd: string): Promise<void> {
+  const rows: Array<{ teacherId: string; startTime: string | null; endTime: string | null }> = await tx.query.campWeekDayTeachers.findMany({ where: (t: any, { eq: e }: any) => e(t.campWeekDayId, dayId) });
+  const own = rows
+    .filter((r) => r.startTime && r.endTime)
+    .map((r) => ({ teacherId: r.teacherId, start: hm(r.startTime)!, end: hm(r.endTime)! }))
+    .sort((a, b) => a.start.localeCompare(b.start) || a.teacherId.localeCompare(b.teacherId));
+  const bad = own.find((c) => c.start < dayStart || c.end > dayEnd);
+  if (!bad) return;
+  const names: any[] = await tx.query.teachers.findMany({ where: (x: any, { inArray: inA }: any) => inA(x.id, [bad.teacherId]) });
+  const t = names.find((x: any) => x.id === bad.teacherId);
+  const coach = t?.nickname ?? t?.name ?? bad.teacherId;
+  throw badRequest(`วันที่ ${date} ครู ${coach} ตั้งเวลา ${bad.start}-${bad.end} อยู่นอกเวลาของวัน (${dayStart}-${dayEnd}) — ไม่ได้บันทึกอะไร`);
 }
 
 /** The PATCH's two accepted shapes as ONE list: `teachers` wins; the old `teacherIds`+`teacherRates` still parse. */
@@ -310,6 +334,7 @@ export async function updateWeekDay(weekId: string, date: string, input: { teach
     // still parses into the same list (one deploy). Before the sync, which copies the rates onto the derived rows.
     const teachers = dayTeacherInputs(input, campDayTeachers(d), { start, end });
     if (teachers) await setDayTeachers(tx, d.id, teachers);
+    await assertOwnHoursInsideDay(tx, date, d.id, start, end); // 🔻 TASK-712 — AFTER the day's and the coaches' writes, BEFORE the sync: a refusal rolls the whole save back
     return syncCampDayRows(tx, d.id);
   });
   const fresh = await db.query.campWeekDays.findFirst({ where: (x, { eq: e }) => e(x.id, d.id), with: { teachers: true } });

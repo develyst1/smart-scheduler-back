@@ -128,7 +128,7 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
     // whoever typed the phone that such a child exists.
     // 🔻 TASK-583 (ruling 4: the chat uses the page's wording, COPY §8 DRAFT) — "surname or nickname" ⇒ the REAL name, first + surname
     const th = t("add_dup_detail", "TH");
-    expect(th).toContain("ชื่อจริงของน้อง (ชื่อ-นามสกุล)");
+    expect(th).toContain("ชื่อเล่น + ชื่อจริงของน้อง"); // 🔻 TASK-727 (R63) — Khwan's words: nickname + first name (the meaning moved from the REAL full name)
     expect(th).not.toContain("ตั้งใหม่");
     expect(t("add_dup_detail", "EN").toLowerCase()).not.toContain("rename");
   });

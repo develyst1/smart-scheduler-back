@@ -28,6 +28,7 @@ import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
 import { retireEmptyExtraGroupDate } from "./scheduler.service"; // TASK-716 — a SEAT make-up undone may have been an extra group date's last
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from "./scheduler.service";
+import { planReviveOfRetiredExtraDate, reviveRetiredExtraGroupDate } from "./scheduler.service"; // 🔻 TASK-719 — a retired extra group date comes back with its seat
 
 /** The note a leave Undo writes on the make-up it cancels — and the `Reason` its coaches read (TASK-510: one string, both). */
 const MAKEUP_UNDONE_NOTE = MAKEUP_NOTE_UNDONE; // 🔻 TASK-702 — ONE list (lib/makeup-marker.ts): the migration's P4 reads the same bytes
@@ -56,6 +57,7 @@ export type UndoPlan = {
   kind: UndoKind;
   leaveRefunded: boolean;
   makeup: { id: string; status: string; date: string; teacherId: string } | null;
+  reviveGroup: any | null; // 🔻 TASK-719 — the RETIRED marked extra group date this seat's Undo brings back (null: today's path)
 };
 
 /**
@@ -106,7 +108,9 @@ export async function planUndo(tx: any, bookingId: string, today: string): Promi
         if (holder) throw UNDO_SLOT_TAKEN(`${row.date} ${hhmm(row.startTime)}`, displayNameOf(holder) || "คาบอื่น"); // the ONE name rule
       }
     }
-    return { row, kind, leaveRefunded, makeup };
+    // 🔻 TASK-719 (TEST-093 F1) — a seat of a RETIRED extra group date: its date must come back with it, or the Undo is refused (slot taken · coach on leave · an unmarked cancelled date). Reads only.
+    const reviveGroup = kind === "leave" && row.groupId ? await planReviveOfRetiredExtraDate(tx, row.groupId) : null;
+    return { row, kind, leaveRefunded, makeup, reviveGroup };
 }
 
 /**
@@ -133,7 +137,7 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
   const today = bangkokNow().date;
   const result: UndoResult = await db.transaction(async (tx: any) => {
     // 🔻 TASK-546 — the READS that decide everything, lifted VERBATIM into `planUndo` (the preview runs the same function).
-    const { row, kind, leaveRefunded, makeup } = await planUndo(tx, bookingId, today);
+    const { row, kind, leaveRefunded, makeup, reviveGroup } = await planUndo(tx, bookingId, today);
 
     // ── 🔑 THE GUARD: one conditional update on the status the row was read with (a check-in's is the shared `revertAttendance`) ──
     if (kind === "leave") {
@@ -143,6 +147,7 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
         .where(and(eq(bookings.id, row.id), eq(bookings.status, row.status)))
         .returning({ id: bookings.id });
       if (!flipped.length) throw UNDO_ALREADY_CHANGED();
+      if (reviveGroup) await reviveRetiredExtraGroupDate(tx, reviveGroup); // 🔻 TASK-719 — the date comes back with its seat; its coaches hear CLASS ON AGAIN once (below, the seat's own notice is not repeated)
       // 🔴 The refund: `sql` arithmetic with a FLOOR — never read-modify-write, and the floor makes any double decrement harmless.
       if (leaveRefunded) {
         await tx.update(coursePackages).set({ leaveUsed: sql`GREATEST(${coursePackages.leaveUsed} - 1, 0)` }).where(eq(coursePackages.id, row.courseId));
@@ -181,7 +186,8 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       // committed Undo cannot lose its message. It cannot FAIL the Undo on its own: an unlinked coach is a SKIPPED row, never a
       // throw (`enqueueLine`'s contract); the only failure left is the database refusing a write — the same failure that would
       // stop the Undo's own writes. 🚫 Never the family (no parent recipient exists on this path).
-      for (const coach of await teachersOfBooking(tx, row.id)) {
+      // 🔻 TASK-719 — when the seat's date was revived, THAT notice (about the group row) already told every coach: the seat is the same class, so it is not announced a second time.
+      if (!reviveGroup) for (const coach of await teachersOfBooking(tx, row.id)) {
         await enqueueLine({
           recipientType: "teacher",
           recipientLineUserId: coach.lineUserId ?? null,

@@ -206,7 +206,7 @@ describe("🔴 Finding B — the phone is unique and stays: the admin's create �
   });
   test("🔴 TASK-413 — the reply by VALUE (the owner's words), both languages; the webhook's `phone-archived` branch reaches them through the reply mapper; the placeholder sentence is gone", () => {
     expect(t("verify_parent_archived", "TH")).toBe("เบอร์นี้เคยลงทะเบียนไว้แล้ว กรุณาติดต่อร้านเพื่อคืนสถานะ");
-    expect(t("verify_parent_archived", "EN")).toBe("This number was registered before — please contact the shop to restore it.");
+    expect(t("verify_parent_archived", "EN")).toBe("This number was registered before — please contact our Admin.");
     const I = src("src/lib/line-i18n.ts");
     expect(I).not.toContain("PLACEHOLDER — MINE, and the owner has NOT seen it.** The number belongs to an");
     expect(code(I)).not.toMatch(/reactivate|แอดมินเพื่อเปิดใช้งาน/);

@@ -291,7 +291,7 @@ describe("🔴 AC-21 — unchanged for teachers and for anyone not in a bound ch
     // guards is unchanged — only the helper is. Labels still use `t(key, lang)`, under LINE's 20-char cap.
     expect(SVC).toContain('tb("enter_ask_phone")');
     expect(t("enter_ask_phone", "TH")).toContain("เบอร์โทร");
-    expect(t("enter_ask_phone", "TH")).toContain("แอดมิน");
+    expect(t("enter_ask_phone", "TH")).toBe("กรุณากรอกเบอร์โทร.ที่ลงทะเบียนไว้ในระบบ Line ค่ะ"); // 🔻 TASK-727 (R46) — Khwan's words; they drop the "contact an admin" sentence
   });
 
   test("a suspended household is still refused every postback", () => {

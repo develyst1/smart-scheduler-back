@@ -1,0 +1,293 @@
+{
+  "task": "TASK-727",
+  "proves": "src/lib/khwan-workbook-task727.test.ts",
+  "note": "Khwan's approved LINE wording. K1-K4 are the DoD's four kinds (an old text restored · P18 prints an empty Remark · a P40-P42 notice falls back to the bell · a NOT-approved row changed = the scope guard); the rest are the other places a row can go wrong: the family's Coach line, EN leaking into the TH-only P18, the two-children join, the one-line P21 title, the camp split and title, the producer's names and its never-fail catch. `tests` = the new by-value file + the TASK-529 move pins.",
+  "tests": "src/lib/khwan-workbook-task727.test.ts src/services/announce-move-task516.test.ts src/lib/other-series-req101.test.ts src/lib/line-notices-both-names-req095-13.test.ts",
+  "mutations": [
+    {
+      "id": "K1",
+      "what": "P13 — the coach's move title is the OLD one again (CLASS MOVED / ย้ายคาบ)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "ob_class_moved_title: { TH: \"CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️\", EN:",
+              "to": "ob_class_moved_title: { TH: \"CLASS MOVED / ย้ายคาบ ‼️\", EN:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K2",
+      "what": "P18 — the TH assigned notice prints an EMPTY Remark / Rental (the labels without a value)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "? extra(t(\"ob_f_note\", lang), fieldValue(payload.attendeeNote ?? ctx.attendeeNote)) + extra(t(\"ob_f_rental\", lang), fieldValue(payload.rental ?? ctx.rental))",
+              "to": "? t(\"ob_f_note\", lang) + \" :\\n\" + t(\"ob_f_rental\", lang) + \" :\\n\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K3",
+      "what": "P40 — a family registering a child falls back to the generic bell again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "return name ? `🔔 Student: ${name} registered` : t(\"ob_default\", lang);",
+              "to": "return t(\"ob_default\", lang);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K4",
+      "what": "SCOPE GUARD — P11 (NOT approved: waits on Khwan) is changed to her cell",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "mc_title: { TH: \"❌ ยกเลิกคาบเรียน:\"",
+              "to": "mc_title: { TH: \"CLASS CANCELLED / ยกเลิกคาบ ‼️\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K5",
+      "what": "P14 — the family's move notice loses the Coach line again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "coach: ctx.coach, // 🔻 TASK-727 (P14)",
+              "to": "coach: teacher ? ctx.coach : undefined, // 🔻 TASK-727 (P14)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K6",
+      "what": "P18 — the Remark / Rental lines leak into the EN notice (she gave nothing for EN)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(payload.kind === \"teacher_assigned\" && lang === \"TH\"",
+              "to": "(payload.kind === \"teacher_assigned\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K7",
+      "what": "P41 — a parent with two children names only the first",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "${names.join(\" & \")}",
+              "to": "${names[0]}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K8",
+      "what": "P42 — a coach's request falls back to the generic bell again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "return coach ? `🔔 Please support Coach ${coach}.` : t(\"ob_default\", lang);",
+              "to": "return t(\"ob_default\", lang);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K9",
+      "what": "P21 — REMOVED / CANCELLED print the second (body) sentence again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(k === \"added\" ? t(\"os_added_body\", lang) + \"\\n\" : \"\")",
+              "to": "t(\"os_added_body\", lang) + \"\\n\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K10",
+      "what": "P25 — the camp roster's split is the OLD `(Full x · AM y · PM z)` again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "${t(\"cp_split\", lang, { full: r.full, am: r.am, pm: r.pm })}",
+              "to": "Full ${r.full} · AM ${r.am} · PM ${r.pm}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K11",
+      "what": "P27 — the camp deduction title is `BALANCE CAMP` again",
+      "files": [
+        {
+          "file": "src/lib/camp-deduction.ts",
+          "edits": [
+            {
+              "from": "CAMP_DEDUCTION_TITLE = \"🏕️ CAMP DEDUCTION: \"",
+              "to": "CAMP_DEDUCTION_TITLE = \"🏕️ BALANCE CAMP\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K12",
+      "what": "SCOPE GUARD — R35 (the approved A′, NOT hers) is replaced by her short sentence",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "empty_checkin: { TH: \"วันนี้ไม่พบคลาสที่ยืนยันแล้ว",
+              "to": "empty_checkin: { TH: \"วันนี้ไม่มีคลาสเรียนค่ะ\", XX: \"วันนี้ไม่พบคลาสที่ยืนยันแล้ว"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K13",
+      "what": "R38 — the doubled `ที่สามารถที่สามารถ` is back",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "empty_leave: { TH: \"ไม่มีคลาสที่สามารถแจ้งลาได้ค่ะ\"",
+              "to": "empty_leave: { TH: \"ไม่มีคลาสที่สามารถที่สามารถแจ้งลาได้ค่ะ\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K14",
+      "what": "P42 — the producer no longer passes the coach's nickname",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "names = { coachName: teacher?.nickname };",
+              "to": "names = {};"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K15",
+      "what": "the name lookup is no longer guarded — a failed read would cost the alert (the button that must never fail)",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "} catch (e) {\n    console.error(\"[line-webhook] admin-ask name lookup failed",
+              "to": "} finally {\n    console.error(\"[line-webhook] admin-ask name lookup failed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K16",
+      "what": "P18 (Porter's grant) — the outbox context no longer carries the booking's rental",
+      "files": [
+        {
+          "file": "src/services/outbox.service.ts",
+          "edits": [
+            {
+              "from": "rental: (b as any).rental?.code ? rentalPrintLine(",
+              "to": "rental: false ? rentalPrintLine("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K17",
+      "what": "Q3 — P41's children are printed by `k.name` again (the one name rule broken)",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": ".map((k: any) => studentNamesOf({ student: k }))",
+              "to": ".map((k: any) => k.name)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K18",
+      "what": "Q3 — P40's child is printed by `.name` again (the one name rule broken)",
+      "files": [
+        {
+          "file": "src/services/line-register.service.ts",
+          "edits": [
+            {
+              "from": "studentName: studentNamesOf({ student: created.student }) ?? created.student.name",
+              "to": "studentName: created.student.name"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K19",
+      "what": "P18 — the notice ignores the context (only a payload could fill Remark / Rental)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "fieldValue(payload.attendeeNote ?? ctx.attendeeNote)",
+              "to": "fieldValue(payload.attendeeNote)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

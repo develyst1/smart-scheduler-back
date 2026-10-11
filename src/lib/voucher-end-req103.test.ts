@@ -322,7 +322,7 @@ describe("🔴 the routes under the course-cancel key; the validators reused; th
       const msg = render("voucher_ended", lang);
       expect(msg).toBe(render("ended", lang));
       expect(msg).not.toBe(render("dropped", lang));
-      expect(msg).toContain("COURSE ENDED / ยกเลิกคอร์ส ‼️");
+      expect(msg).toContain("คอร์ส CANCEL‼️"); // 🔻 TASK-727 (P16)
       expect(msg).toContain("Freeskate 10 HR");
       expect(msg).toContain("05-10-2026, 12-10-2026");
       expect(msg.toLowerCase()).not.toContain("voucher");

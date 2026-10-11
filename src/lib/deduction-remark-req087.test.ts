@@ -93,7 +93,7 @@ describe("🔑 TASK-336 §1 — it is THE SESSION'S OWN note, not the course's",
     // @Porter's *check the name* (TASK-320's shape): `attendeeNote` is the column, the payload field, and what
     // `§7.3` and `§9.1` both read. It was genuinely ABSENT rather than silently discarded.
     const MSG = code(src("src/lib/line-message.ts"));
-    expect(MSG.match(/payload\.attendeeNote/g)!.length).toBe(3); // §7.3 · §9.1 · the deduction
+    expect(MSG.match(/payload\.attendeeNote/g)!.length).toBe(4); // §7.3 · §9.1 · the deduction · 🔻 TASK-727: P18 `teacher_assigned` (TH `Remark`)
     expect(code(src("src/db/schema.ts"))).toContain("attendeeNote");
   });
 });
@@ -152,6 +152,6 @@ describe("🚫 TASK-336 §5 — what this did not touch", () => {
     // deliver whitespace. ⇒ this assertion is what proves a defence-in-depth change stayed invisible.
     const session = formatOutboxMessage({ kind: "booking_confirmed", bookingType: "COURSE_PACKAGE", size: 6, attendeeNote: "แพ้ถั่ว" } as any, CTX, "TH", "parent");
     expect(session).toContain("Remark : แพ้ถั่ว");
-    expect(code(src("src/lib/line-message.ts")).match(/fieldValue\(payload\.attendeeNote\)/g)!.length).toBe(3);
+    expect(code(src("src/lib/line-message.ts")).match(/fieldValue\(payload\.attendeeNote\)/g)!.length).toBe(3); // (🔻 TASK-727: P18 reads `payload.attendeeNote ?? ctx.attendeeNote` — another shape, not counted here)
   });
 });

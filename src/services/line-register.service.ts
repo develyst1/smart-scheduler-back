@@ -28,6 +28,7 @@ import { type AddressParts, checkFullAddress } from "../lib/full-address"; // TA
 import { badRequest } from "../lib/http";
 import { moveRosterLink } from "../lib/roster-link";
 import { getSetting } from "./settings.service";
+import { studentNamesOf } from "../db/mappers"; // 🔻 TASK-727 (P40) — the ONE name rule
 import {
   MAX_STUDENTS_PER_PARENT,
   assertCanAddStudent,
@@ -326,7 +327,7 @@ export async function createStudentFromLine(
     const [row] = await exec.select({ note: parents.note }).from(parents).where(eq(parents.id, parent.id)).limit(1);
     await exec.update(parents).set(householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })).where(eq(parents.id, parent.id));
   }
-  await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone }, exec);
+  await notifyAdmins({ kind: "student_registered", studentName: studentNamesOf({ student: created.student }) ?? created.student.name, parentPhone: parent.phone }, exec);
   return created;
 }
 

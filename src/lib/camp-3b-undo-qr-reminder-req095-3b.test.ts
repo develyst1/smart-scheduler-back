@@ -213,10 +213,10 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
   test("🔴 TASK-405 — the words by VALUE (the owner's, via Porter): the teacher block, TH and EN, under the TODAY'S SCHEDULE title", () => {
     const teacher = sends.find((s) => s.personId === "t1")!.payload;
     expect(formatOutboxMessage(teacher as any, {}, "EN", "teacher")).toBe(
-      "⏱️TODAY'S SCHEDULE:\n\nCamp : Camp A\nDate : 05-10-2026\nStudents : 3 (Full 1 · AM 1 · PM 1)\n  - น้องเอ\n  - น้องบี\n  - น้องซี",
+      "⏱️TODAY'S SCHEDULE:\n\nCamp : Camp A\nDate : 05-10-2026\nStudents : 3 (Full day 1 · Morning 1 · Afternoon 1)\n  - น้องเอ\n  - น้องบี\n  - น้องซี",
     );
     expect(formatOutboxMessage(teacher as any, {}, "TH", "teacher")).toBe(
-      "⏱️TODAY'S SCHEDULE:\n\nแคมป์ : Camp A\nDate : 05-10-2026\nStudents : 3 (Full 1 · AM 1 · PM 1)\n  - น้องเอ\n  - น้องบี\n  - น้องซี",
+      "⏱️TODAY'S SCHEDULE:\n\nCamp : Camp A\nDate : 05-10-2026\nStudents : 3 (ทั้งวัน 1 ·เช้า 1 · บ่าย 1)\n  - น้องเอ\n  - น้องบี\n  - น้องซี",
     );
   });
   test("🔴 TASK-405 — the parent block by VALUE: Student / Camp / Date / Time, one block per child, the three halves in both languages", () => {
@@ -225,7 +225,7 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
       "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nTime : Morning (AM)\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nTime : Full day",
     );
     expect(formatOutboxMessage(parent as any, {}, "TH", "parent")).toBe(
-      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nแคมป์ : Camp A\nDate : 05-10-2026\nช่วง : ช่วงเช้า\n\nStudent : น้องบี\nแคมป์ : Camp A\nDate : 05-10-2026\nช่วง : เต็มวัน",
+      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nช่วง : ช่วงเช้า\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nช่วง : เต็มวัน",
     );
     const pm = { kind: "camp_reminder", audience: "parent", rows: [{ child: "น้องซี", weekName: "Camp A", date: "2026-10-05", half: "PM" }] };
     expect(formatOutboxMessage(pm as any, {}, "EN", "parent")).toContain("Time : Afternoon (PM)");
@@ -252,7 +252,7 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
     expect(I).not.toMatch(/cp_title|cp_teacher_line|cp_parent_line|PLACEHOLDER — MINE, and the owner has NOT seen it\.\*\* The camp-day reminder/);
     for (const k of ["cp_camp:", "cp_students:", "cp_time:", "cp_half_full:", "cp_half_am:", "cp_half_pm:"]) expect(I).toContain(k);
     expect(I).toContain('cp_students: { TH: "Students", EN: "Students" },');
-    expect(I).toContain('cp_camp: { TH: "แคมป์", EN: "Camp" },');
+    expect(I).toContain('cp_camp: { TH: "Camp", EN: "Camp" },');
     expect(I).toContain('cp_time: { TH: "ช่วง", EN: "Time" },');
     // the builder carries the names on the teacher row ONLY; the parent row names its own child
     const B = code(src("src/lib/camp-reminder.ts"));

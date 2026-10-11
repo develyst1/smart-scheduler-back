@@ -241,17 +241,17 @@ describe("🔴 the DAY-END `camp_deduction` pass by value — CONSUMING days not
     expect(SVC).not.toMatch(/camp_deduction_enabled|getSetting\("camp_deduction/);
   });
   test("🔴 the bytes — REQ-104 §3, ENGLISH ONLY: identical under TH and EN, no Thai code point, DD-MM-YYYY, `3.5` and `4` (never `4.0`); an empty payload renders; the branch has no `t()`/`lang`", () => {
-    const expected = `🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 3.5 / 5 days`; // 🔻 TASK-558: Khwan's format (REQ-110 item 12)
+    const expected = `🏕️ CAMP DEDUCTION: \nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 3.5 / 5 days`; // 🔻 TASK-558: Khwan's format (REQ-110 item 12)
     expect(renderCampDeduction({ studentName: "Aiwa", date: CAMP_DAY, remainingDays: 3.5, totalDays: 5 })).toBe(expected);
-    expect(renderCampDeduction({ studentName: "Aiwa", date: CAMP_DAY, remainingDays: 4, totalDays: 5 })).toBe(`🏕️ BALANCE CAMP\nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 4 / 5 days`);
-    expect(CAMP_DEDUCTION_TITLE).toBe("🏕️ BALANCE CAMP");
+    expect(renderCampDeduction({ studentName: "Aiwa", date: CAMP_DAY, remainingDays: 4, totalDays: 5 })).toBe(`🏕️ CAMP DEDUCTION: \nStudent: Aiwa\nDate: ${ddmmyyyy(CAMP_DAY)}\nRemaining: 4 / 5 days`);
+    expect(CAMP_DEDUCTION_TITLE).toBe("🏕️ CAMP DEDUCTION: ");
     for (const lang of ["TH", "EN"] as const) {
       const out = formatOutboxMessage({ kind: "camp_deduction", studentName: "Aiwa", date: CAMP_DAY, remainingDays: 3.5, totalDays: 5 } as any, { studentName: "น้องเอ" } as any, lang, "parent");
       expect(out).toBe(expected);
       expect(out).not.toMatch(/[฀-๿]/);
       expect(out).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     }
-    expect(formatOutboxMessage({ kind: "camp_deduction" } as any, {}, "TH", "parent")).toBe("🏕️ BALANCE CAMP\nStudent: \nDate: \nRemaining:  /  days");
+    expect(formatOutboxMessage({ kind: "camp_deduction" } as any, {}, "TH", "parent")).toBe("🏕️ CAMP DEDUCTION: \nStudent: \nDate: \nRemaining:  /  days");
     const branch = region(code(src("src/lib/line-message.ts")), 'case "camp_deduction":', "case ");
     expect(branch).not.toMatch(/\bt\(|lang/);
     expect(code(src("src/lib/camp-deduction.ts"))).not.toMatch(/line-i18n|\bt\(/);

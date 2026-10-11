@@ -12,6 +12,7 @@ import { notificationOutbox } from "../db/schema";
 import { hhmm } from "../lib/time";
 import { formatOutboxMessage, type MessageContext } from "../lib/line-message";
 import { joinCoaches } from "../lib/coach-names";
+import { rentalPrintLine } from "../lib/rental-row";
 import { studentNamesOf } from "../db/mappers";
 import { LinePushError, lineConfigured, pushMessage } from "../lib/line-client";
 import { resolveBotLang } from "../lib/line-lang";
@@ -26,7 +27,7 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
     // 🔴 SPEC-072 / TASK-253 — `additionalTeachers` joins onto the SAME query rather than adding a second
     // round trip: this runs once per outbox row, and REQ-077's `Coach` may name several people (REQ-078).
     // 🔻 TASK-522 — a SEAT's GROUP row (with its coaches) rides the SAME query: a group's extra coaches live on the group row.
-    with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, group: { with: { teacher: true, additionalTeachers: { with: { teacher: true } } } } },
+    with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, rental: true, group: { with: { teacher: true, additionalTeachers: { with: { teacher: true } } } } },
   });
   if (!b) return {};
   return {
@@ -46,6 +47,9 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
     subject: b.subject?.name,
     // TASK-228 (AC-16) — what names an อื่นๆ booking in every message the teacher reads.
     title: b.otherTitle ?? undefined,
+    // 🔻 TASK-727 (P18, Porter 2026-10-11) — the booking's own Remark and Rental, for the coach's "assigned" notice (TH prints each only when it has a value). The rental arrives RENDERED (the customer's print line).
+    attendeeNote: b.attendeeNote ?? undefined,
+    rental: (b as any).rental?.code ? rentalPrintLine((b as any).rental.code, (b as any).rental.remark ?? null) : undefined,
     date: b.date,
     startTime: hhmm(b.startTime),
     endTime: hhmm(b.endTime),

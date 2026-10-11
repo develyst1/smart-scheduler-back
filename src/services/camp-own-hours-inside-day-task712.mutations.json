@@ -1,0 +1,143 @@
+{
+  "task": "TASK-712",
+  "proves": "src/services/camp-own-hours-inside-day-task712.test.ts",
+  "note": "🔴 REQ-116 / FINAL ROUND item 3. A the END is not checked (own end past the day's) · B the START is not checked · C a day-only change is not checked (the check runs only when `teachers[]` is sent) · D checked against the OLD day window (the pre-save hours) · E the sentence changed · F the check runs BEFORE the coaches' write (so a day + coach changed together is judged against the old rows). · §B: G the WEEK door is not checked · H the week door is checked against the OLD day window · I the days are not taken in date order (the wrong day is named).",
+  "tests": "src/services/camp-own-hours-inside-day-task712.test.ts src/lib/camp-day-rate-req104.test.ts src/lib/camp-per-coach-window-req105.test.ts",
+  "mutations": [
+    {
+      "id": "A",
+      "what": "🔴 the END is not checked — an own end past the day's end is accepted (TEST-089's case)",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "const bad = own.find((c) => c.start < dayStart || c.end > dayEnd);",
+              "to": "const bad = own.find((c) => c.start < dayStart);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "what": "the START is not checked — an own start before the day's start is accepted",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "const bad = own.find((c) => c.start < dayStart || c.end > dayEnd);",
+              "to": "const bad = own.find((c) => c.end > dayEnd);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "what": "🔴 a day-only change is not checked — the check runs only when the body carries `teachers[]`",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "    await assertOwnHoursInsideDay(tx, date, d.id, start, end);",
+              "to": "    if (input.teachers) await assertOwnHoursInsideDay(tx, date, d.id, start, end);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "what": "🔴 checked against the OLD day window — the pre-save hours, not the ones being saved",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "    await assertOwnHoursInsideDay(tx, date, d.id, start, end);",
+              "to": "    await assertOwnHoursInsideDay(tx, date, d.id, hm(d.startTime)!, hm(d.endTime)!);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "what": "the owner's sentence is changed",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "อยู่นอกเวลาของวัน (",
+              "to": "อยู่นอกช่วงเวลาของวัน ("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "what": "the check runs BEFORE the coaches' write — a day + coach changed together is judged against the OLD stored rows",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "    if (teachers) await setDayTeachers(tx, d.id, teachers);\n    await assertOwnHoursInsideDay(tx, date, d.id, start, end);",
+              "to": "    await assertOwnHoursInsideDay(tx, date, d.id, start, end);\n    if (teachers) await setDayTeachers(tx, d.id, teachers);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "what": "🔴 §B the WEEK-level window change is not checked — a coach left outside the new window is accepted by the other door",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "        await assertOwnHoursInsideDay(tx, d.date, d.id, ws, we);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "what": "§B the week door is checked against the OLD day window (the pre-save hours)",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "await assertOwnHoursInsideDay(tx, d.date, d.id, ws, we);",
+              "to": "await assertOwnHoursInsideDay(tx, d.date, d.id, hm(d.startTime)!, hm(d.endTime)!);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "I",
+      "what": "§B the days are not taken in date order — the wrong day is named",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "for (const d of [...days].sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))) {",
+              "to": "for (const d of days) {"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -51,6 +51,9 @@ export interface MessageContext {
    * class and must not change.
    */
   coach?: string;
+  /** 🔻 TASK-727 (P18) — the booking's own note and its rendered rental line, read by the coach's "assigned" notice only. */
+  attendeeNote?: string;
+  rental?: string;
 }
 
 const line = (label: string, value?: string) => (value ? `${label}: ${value}\n` : "");
@@ -392,7 +395,7 @@ function buildOutboxMessage(
             program: programLabel(type, { subject: ctx.subject, size: payload.size as number, title: ctx.title }),
             date: to?.date ? ddmmyyyy(to.date) : undefined,
             time: to?.startTime ? `${to.startTime}${to.endTime ? `-${to.endTime}` : ""}` : undefined,
-            coach: teacher ? ctx.coach : undefined, // the family's copy never names the coach (as their cancel notice)
+            coach: ctx.coach, // 🔻 TASK-727 (P14) — the family's move notice now carries `Coach`, her words: the coach's message, word for word
           },
           { type, audience: recipientType, lang },
         ) +
@@ -472,7 +475,7 @@ function buildOutboxMessage(
             const names: string[] = r.names ?? [];
             const shown = names.slice(0, CAMP_NAMES_MAX).map((n) => `  - ${n}`);
             const more = names.length > CAMP_NAMES_MAX ? [`  +${names.length - CAMP_NAMES_MAX}`] : [];
-            return [`${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_students", lang)} : ${r.total} (Full ${r.full} · AM ${r.am} · PM ${r.pm})`, ...shown, ...more].join("\n");
+            return [`${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_students", lang)} : ${r.total} (${t("cp_split", lang, { full: r.full, am: r.am, pm: r.pm })})`, ...shown, ...more].join("\n");
           })
         : rows.map((r) => [`${t("ob_f_student", lang)} : ${r.child}`, `${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_time", lang)} : ${half(r.half)}`].join("\n"));
       return [t("ob_today_title", lang), ...blocks].join("\n\n");
@@ -753,7 +756,7 @@ function buildOutboxMessage(
       const k = payload.kind === "other_teacher_added" ? "added" : payload.kind === "other_teacher_removed" ? "removed" : "cancelled";
       return (
         t(`os_${k}_title`, lang) + "\n" +
-        t(`os_${k}_body`, lang) + "\n" +
+        (k === "added" ? t("os_added_body", lang) + "\n" : "") + // 🔻 TASK-727 (P21/P22) — REMOVED / CANCELLED: the title and the sentence are ONE line (her words); only ADDED keeps its body
         line(t(k === "cancelled" ? "os_c_item" : "os_l_item", lang), fieldValue(payload.title)) + // TASK-430: the owner's EN `Program`
         line(t("ob_f_time", lang), hour) +
         (k === "cancelled" ? line(t("cl_reason", lang), payload.reason ? t(`ob_reason_${payload.reason as string}`, lang) : undefined) : "") + // TASK-430: `เหตุผล` / `Reason`
@@ -790,7 +793,12 @@ function buildOutboxMessage(
         t(title, lang) + "\n" +
         line(t("ob_l_student", lang), ctx.studentName) +
         line(t("ob_l_subject", lang), ctx.subject) +
-        line(t("ob_l_time", lang), when)
+        line(t("ob_l_time", lang), when) +
+        // 🔻 TASK-727 (P18) — her TH sample adds `Remark :` and `Rental :` to the "assigned" notice; the house rule: each line only when it has a value (never a bare label).
+        // TH only (her EN cell is empty ⇒ EN stays as it was). They come from the PAYLOAD (a producer that passes them; none does yet, so today neither prints).
+        (payload.kind === "teacher_assigned" && lang === "TH"
+          ? extra(t("ob_f_note", lang), fieldValue(payload.attendeeNote ?? ctx.attendeeNote)) + extra(t("ob_f_rental", lang), fieldValue(payload.rental ?? ctx.rental))
+          : "")
       );
     }
     // 🔴 TASK-334 Part A (`REQ-087`) — an approved teacher is told what the payload already said.
@@ -810,10 +818,22 @@ function buildOutboxMessage(
       return buildDigestMessage((payload.checks as any[]) ?? [], lang);
     // 🔻 TASK-525 — the admin-request alert is now FOUR kinds by who asked (`parent_` · `teacher_` · `admin_` · `unlinked_asked_for_admin`);
     // all four land here, parked together — word them TOGETHER, and never word a teacher's as a parent's.
-    // ⛔ TASK-334 Part B — `student_registered` and `parent_asked_for_admin` still land here, and it is
-    // **BLOCKED ON COPY, not an oversight.** The facts are on their payloads; the WORDS are the owner's, and
-    // an admin alert is read under time pressure — the worst place to ship a string we invented. 🅿️ PARKED by
-    // the owner, LIVE on the board so it is not lost.
+    // ✅ TASK-334 Part B was BLOCKED ON COPY — the words came back (owner, 2026-10-07; Khwan's workbook P40–P42), so the three kinds below have their own cases.
+    // `admin_asked_for_admin` and `unlinked_asked_for_admin` (P43/P44) still land here: their one open word (the fallback name) waits on Khwan.
+    // 🔻 TASK-727 (P40–P42) — the admin notices that name WHO, her words (one text for both languages; owner-decided 2026-10-07).
+    // A name missing from the payload falls back to the generic bell: a poor message must never become NO message (as `teacher_link_approved`).
+    case "student_registered": {
+      const name = fieldValue(payload.studentName);
+      return name ? `🔔 Student: ${name} registered` : t("ob_default", lang);
+    }
+    case "parent_asked_for_admin": {
+      const names = Array.isArray(payload.studentNames) ? (payload.studentNames as unknown[]).map(fieldValue).filter((n): n is string => !!n) : [];
+      return names.length ? `🔔 Please support Parent of Student ${names.join(" & ")}.` : t("ob_default", lang);
+    }
+    case "teacher_asked_for_admin": {
+      const coach = fieldValue(payload.coachName);
+      return coach ? `🔔 Please support Coach ${coach}.` : t("ob_default", lang);
+    }
     default:
       return t("ob_default", lang);
   }

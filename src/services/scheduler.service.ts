@@ -3,7 +3,7 @@
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { isRealMove } from "../lib/class-move"; // TASK-516
-import { attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance
+import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
 import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
@@ -1961,6 +1961,41 @@ async function extendGroupForMakeups(tx: any, cancelledGroupId: string, coachOff
   await confirmMakeupAtBirth(tx, id, heldGroupNotices);
   for (const n of heldGroupNotices) if (n.audience === "teacher") await n.send();
   return { date, groupId: id };
+}
+
+/**
+ * 🔻 TASK-719 (TEST-093 F1) — **a seat brought back LIVE onto a RETIRED extra date brings the date back too, or the act is refused — never a CONFIRMED child on a CANCELLED date.** TASK-716 retires an
+ * extra group date (`isMakeup` on the GROUP row, CANCELLED) when its last seat leaves; the Undo of that seat's leave then flipped the SEAT back to CONFIRMED and left the date CANCELLED — the child
+ * holding a class that does not run, the coach told it is cancelled. ONE helper, in two halves so the Undo's preview and act stay the same reads (`planUndo` → `undoBooking`):
+ *  · `planReviveOfRetiredExtraDate` — READS and REFUSALS only, before any write: a live group row ⇒ nothing to do (today's behaviour, byte-identical) · CANCELLED + UNMARKED ⇒ `UNDO_ALREADY_CHANGED` (an admin
+ *    cancelled that date; there is nothing to go back to) · CANCELLED + MARKED ⇒ the coach's slot must be free (the Undo's own holder query, the unique index's predicate — `UNDO_SLOT_TAKEN`) and no coach
+ *    of the row on an advance leave that day (`assertNoCoachOnLeave`, the confirm's guard). Returns the group row to revive, or `null`.
+ *  · `reviveRetiredExtraGroupDate` — the WRITES: the row CONFIRMED again (guarded on its CANCELLED status), its freelance hour held again, and EVERY coach of the row told with the EXISTING
+ *    `class_on_again_teacher` (TASK-508) — not a second `booking_confirmed`. No family message for the group row (the family hears about its child's class from the Undo itself).
+ * Any door that brings a SICK_LEAVE seat back live can call the pair; today that is the Undo of the leave (there is no separate "unmark absence" door in the code).
+ */
+export async function planReviveOfRetiredExtraDate(tx: any, groupRowId: string | null | undefined): Promise<any | null> {
+  if (!groupRowId) return null;
+  const g = await tx.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, groupRowId) });
+  if (!g || g.bookingType !== "GROUP" || g.status !== "CANCELLED") return null; // a live group row (or no group at all): today's path, untouched
+  if (g.isMakeup !== true) throw UNDO_ALREADY_CHANGED(); // an ordinary group date an admin cancelled: nothing to go back to
+  const holder = await tx.query.bookings.findFirst({
+    where: (b: any, { and: a, eq: e, ne: n, notInArray: notIn, isNull: nil }: any) =>
+      a(e(b.teacherId, g.teacherId), e(b.date, g.date), e(b.startTime, g.startTime), n(b.id, g.id), notIn(b.status, [...SLOT_INACTIVE_STATUSES]), nil(b.groupId), nil(b.slotYieldedAt)),
+    with: { student: true, coStudent: true },
+  });
+  if (holder) throw UNDO_SLOT_TAKEN(`${g.date} ${hhmm(g.startTime)}`, displayNameOf(holder) || "คาบอื่น"); // the ONE name rule
+  await assertNoCoachOnLeave(tx, g);
+  return g;
+}
+
+export async function reviveRetiredExtraGroupDate(tx: any, g: { id: string; teacherId: string }): Promise<void> {
+  const flipped = await tx.update(bookings).set({ status: "CONFIRMED", confirmedAt: new Date() }).where(and(eq(bookings.id, g.id), eq(bookings.status, "CANCELLED"))).returning({ id: bookings.id });
+  if (!flipped.length) throw UNDO_ALREADY_CHANGED(); // something else moved it first: refused, nothing else written
+  await reconcileBookingHolds(tx, g.id, g.teacherId, "CONFIRMED", false); // the freelance hour held again (a refusal here rolls the whole act back)
+  for (const coach of await teachersOfBooking(tx, g.id)) {
+    await enqueueLine({ recipientType: "teacher", recipientLineUserId: coach.lineUserId ?? null, bookingId: g.id, payload: { kind: "class_on_again_teacher", bookingId: g.id, bookingType: "GROUP", size: null } }, tx);
+  }
 }
 
 /** Statuses of a SEAT that still make the group date a class: owed (PENDING / CONFIRMED / EXTENDED), taught (ATTENDED) or charged (NO_SHOW). CANCELLED / SICK_LEAVE seats are gone. */

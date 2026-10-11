@@ -117,7 +117,7 @@ describe("🔴 TASK-337 — the REASON is in the code, because the comment matte
   test("all FOUR note renderings use `fieldValue`, and none uses the old idiom", () => {
     // 🔻 THREE, not two: TASK-336's deduction `Remark` reads the same field. **My first count said two and
     // was simply wrong** — there are FOUR note renderings, three on `attendeeNote` and one on `note`.
-    expect(MSG.match(/fieldValue\(payload\.attendeeNote\)/g)!.length).toBe(3); // §7.3 · §9.1 · the deduction
+    expect(MSG.match(/fieldValue\(payload\.attendeeNote\)/g)!.length).toBe(3); // §7.3 · §9.1 · the deduction (🔻 TASK-727: P18 reads `payload.attendeeNote ?? ctx.attendeeNote` — another shape, not counted here)
     expect(MSG).toContain("fieldValue(payload.note)"); // §7.1
     expect(MSG).not.toContain("(payload.attendeeNote as string) || undefined");
     expect(MSG).not.toContain("(payload.note as string) || undefined");

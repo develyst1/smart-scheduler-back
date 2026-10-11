@@ -41,10 +41,13 @@ export function hasEnoughLeaveNotice(
   return minutesUntilClass(bookingDate, startTime, now) >= cutoffHours * 60;
 }
 
-/** Refusal copy (AC-7) — names the configured cut-off AND the session it is about, in the reader's language. */
-export function leaveNoticeMessage(cutoffHours: number, startTime: string, lang: Lang = "TH"): string {
-  const time = startTime.slice(0, 5);
+/**
+ * Refusal copy (AC-7) — 🔻 TASK-717 (R147): **KHWAN's words**, owner-APPROVED (`COPY-REVIEW-2026-09-29.md:592` item 4), the number from the SETTING (`cutoffHours`, per coach type) and never a fixed 1.
+ * Two lines (a line break between the sentence and the emergency line), in the reader's language: TH for the calendar's `LEAVE_NOTICE_TOO_LATE` refusal (a server refusal is Thai), the reader's own for the
+ * parent's «ลา» in LINE. Her sentence has no "this one starts at {time}", so `_startTime` is IGNORED — kept in the signature only so both doors (and their pins) are untouched.
+ */
+export function leaveNoticeMessage(cutoffHours: number, _startTime: string, lang: Lang = "TH"): string {
   return lang === "EN"
-    ? `Sorry — leave must be at least ${cutoffHours} hours before the session. This one starts at ${time}. Please contact the admin if you need help.`
-    : `ขออภัยค่ะ ลาได้ล่วงหน้าอย่างน้อย ${cutoffHours} ชั่วโมงก่อนเริ่มคาบ คาบนี้เริ่ม ${time} น. หากจำเป็น กรุณาติดต่อแอดมิน`;
+    ? `Sorry, absences must be requested at least ${cutoffHours} hour(s) before the class starts.\nFor emergencies, please contact Admin.`
+    : `ขออภัยค่ะ การลาต้องแจ้งล่วงหน้าอย่างน้อย ${cutoffHours} ชม. ก่อนเริ่มคลาส\nกรณีฉุกเฉิน กรุณาติดต่อแอดมินค่ะ`;
 }

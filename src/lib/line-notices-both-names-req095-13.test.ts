@@ -65,7 +65,7 @@ describe("🔴 the outbox worker's `bookingContext` by VALUE — the fifth name 
   test("by source: the context loads `coStudent` and names `studentNamesOf`; no `b.student?.name` chain", () => {
     const O = code(src("src/services/outbox.service.ts"));
     const C = region(O, "export async function bookingContext(", "\n}\n");
-    expect(C).toContain("with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, group: "); // 🔻 TASK-522: + the seat's group (its coaches), same query
+    expect(C).toContain("with: { student: true, coStudent: true, teacher: true, subject: true, additionalTeachers: { with: { teacher: true } }, rental: true, group: "); // 🔻 TASK-522: + the seat's group (its coaches), same query · 🔻 TASK-727: + the rental (P18)
     expect(C).toContain("studentName: studentNamesOf(b) ?? undefined,");
     expect(C).not.toContain("b.student?.name");
   });

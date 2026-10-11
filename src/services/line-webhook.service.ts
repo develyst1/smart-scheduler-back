@@ -1161,7 +1161,22 @@ async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang, r
   // check, on purpose (TASK-234: the one button that must never fail) — so it has no resolved role, and this is that path's ONLY
   // lookup: it gates nothing (everyone still reaches a person) and nothing after it asks again (the path returns below).
   const who = role === undefined ? await detectLinkedRole(lineUserId) : role;
-  await notifyAdmins({ kind: adminAskKind(who), lineUserId });
+  // 🔻 TASK-727 (P41/P42) — the admin notice now names WHO is waiting: a parent's children (`A & B`), a coach's nickname. The notice's words live in `line-message.ts`
+  // (a missing name falls back to the generic bell). Only the two roles whose copy names a person look anything up; admin / unlinked are unchanged.
+  // 🔑 This is the button that must NEVER fail (TASK-234): a failed name lookup costs the NAME, never the alert or the mute — the notice falls back to the generic bell.
+  let names: Record<string, unknown> = {};
+  try {
+    if (who === "customer") {
+      const parent = await findParentByLineUserId(lineUserId);
+      names = { studentNames: (parent ? await listStudentsOfParent(parent.id) : []).map((k: any) => studentNamesOf({ student: k })) }; // the ONE name rule (nickname ?? name), as every other surface
+    } else if (who === "teacher") {
+      const teacher = await db.query.teachers.findFirst({ where: (t2, { eq: e }) => e(t2.lineUserId, lineUserId) });
+      names = { coachName: teacher?.nickname };
+    }
+  } catch (e) {
+    console.error("[line-webhook] admin-ask name lookup failed — the notice goes without a name:", e instanceof Error ? e.message : e);
+  }
+  await notifyAdmins({ kind: adminAskKind(who), lineUserId, ...names });
   // Mute with the SAME helper the handover uses — one definition of "how long the bot stays out of a chat".
   await db
     .insert(lineLinkSessions)

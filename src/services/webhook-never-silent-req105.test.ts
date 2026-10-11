@@ -147,7 +147,7 @@ describe("🔴 (a) the collision — one read of BOTH stores before any write, a
     expect(R).toContain('if (e instanceof ApiException && e.status === 400) return { outcome: "line-bound-to-other-family" };');
     expect((R.match(/outcome: "line-bound-to-other-family"/g) ?? []).length).toBe(8); // the type + the page pre-check ×2 + the bind + this map + the new-phone guard + 🔻 TASK-590: the one-transaction register's type + its re-check — ONE set of words for one meaning
     expect(R).not.toMatch(/set\(\{ lineUserId \}\)/); // 🚫 nothing here re-points an account at another family
-    expect(t("verify_parent_other_family", "TH")).toContain("ผูกกับอีกครอบครัว");
+    expect(t("verify_parent_other_family", "TH")).toContain("ผูกในระบบไว้แล้ว");
   });
   test("end to end: the customer's exact sequence answers with the refusal instead of silence", async () => {
     const replies: any[] = [];

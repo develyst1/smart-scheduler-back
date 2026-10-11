@@ -1,0 +1,48 @@
+{
+  "task": "TASK-719",
+  "proves": "src/services/undo-revives-extra-group-date-task719.test.ts",
+  "note": "🔴 TEST-093 F1. V1 the retired date is NOT revived (the defect) · V2 revived WITHOUT the slot check · V3 the coach is told booking_confirmed instead of CLASS ON AGAIN · V4 the coach is not told · V5 an UNMARKED cancelled date is revived · V6 the freelance hour is not held again · V7 the coach-on-leave guard is missing · V8 the seat's own CLASS ON AGAIN is repeated (a coach hears it twice).",
+  "tests": "src/services/undo-revives-extra-group-date-task719.test.ts src/services/booking-undo-req108.test.ts",
+  "mutations": [
+    {
+      "id": "V1",
+      "what": "🔴 the retired date is not revived — a CONFIRMED child on a CANCELLED date (the reported defect)",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "      if (reviveGroup) await reviveRetiredExtraGroupDate(tx, reviveGroup);", "to": "      // (dropped)" }] }]
+    },
+    {
+      "id": "V2",
+      "what": "🔴 revived WITHOUT the slot check — the date comes back on a slot someone else holds",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (holder) throw UNDO_SLOT_TAKEN(`${g.date} ${hhmm(g.startTime)}`, displayNameOf(holder) || \"คาบอื่น\"); // the ONE name rule\n", "to": "" }] }]
+    },
+    {
+      "id": "V3",
+      "what": "the coach is told a SECOND «confirmed» instead of CLASS ON AGAIN",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "payload: { kind: \"class_on_again_teacher\", bookingId: g.id, bookingType: \"GROUP\", size: null }", "to": "payload: { kind: \"booking_confirmed\", bookingId: g.id, bookingType: \"GROUP\", size: null }" }] }]
+    },
+    {
+      "id": "V4",
+      "what": "the coach is not told the date is back",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  for (const coach of await teachersOfBooking(tx, g.id)) {\n    await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: coach.lineUserId ?? null, bookingId: g.id,", "to": "  for (const coach of [] as any[]) {\n    await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: coach.lineUserId ?? null, bookingId: g.id," }] }]
+    },
+    {
+      "id": "V5",
+      "what": "an UNMARKED cancelled group date is revived — an admin's cancellation undone by a seat's Undo",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (g.isMakeup !== true) throw UNDO_ALREADY_CHANGED(); // an ordinary group date an admin cancelled: nothing to go back to\n", "to": "" }] }]
+    },
+    {
+      "id": "V6",
+      "what": "the freelance hour of the revived date is not held again",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await reconcileBookingHolds(tx, g.id, g.teacherId, \"CONFIRMED\", false);", "to": "  //" }] }]
+    },
+    {
+      "id": "V7",
+      "what": "the coach-on-leave guard is missing — the date revives onto a day its coach is away",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await assertNoCoachOnLeave(tx, g);\n  return g;", "to": "  return g;" }] }]
+    },
+    {
+      "id": "V8",
+      "what": "the seat's own CLASS ON AGAIN is repeated — a coach hears it twice for one class",
+      "files": [{ "file": "src/services/undo.service.ts", "edits": [{ "from": "if (!reviveGroup) for (const coach of await teachersOfBooking(tx, row.id)) {", "to": "for (const coach of await teachersOfBooking(tx, row.id)) {" }] }]
+    }
+  ]
+}

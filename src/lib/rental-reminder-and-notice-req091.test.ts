@@ -83,8 +83,8 @@ describe("🔑 (2) the notice — `leave_notice`'s FORM, the customer's print li
 
   test("the stamp's shape, the customer's block, then `Rental :` with his example", () => {
     const lines = render("TH").split("\n");
-    expect(lines[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/); // the form
-    expect(lines[0]).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️"); // 🔒 …and the owner's bytes (TASK-376)
+    expect(lines[0]).toMatch(/^[A-Z]+\/ \S+ ‼️$/); // the form (🔻 TASK-727 P17: her title)
+    expect(lines[0]).toBe("RENT/ อุปกรณ์เช่า ‼️"); // 🔒 …and the owner's bytes (TASK-376)
     expect(lines.slice(1)).toEqual(["Student : มะขิด", "Program : Freeskate 6 HR", "Date : 17-09-2026", "Time : 12:00-13:00", "Coach : Ek", "Rental : Rent 200 / Full Set (inline skate size 18-19 CM)"]);
     expect(TEMPLATE_FIELDS.rental_added).toEqual(TEMPLATE_FIELDS.leave_notice);
   });
@@ -99,8 +99,8 @@ describe("🔑 (2) the notice — `leave_notice`'s FORM, the customer's print li
     const I18N = src("src/lib/line-i18n.ts");
     expect(I18N).toContain("APPROVED by the owner as drafted** — the stamp of the same-day");
     expect(I18N).not.toMatch(/PLACEHOLDER — MINE[^\n]*TASK-375/);
-    expect(t("ob_rental_added_title", "TH")).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️");
-    expect(t("ob_rental_added_title", "EN")).toBe("RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️");
+    expect(t("ob_rental_added_title", "TH")).toBe("RENT/ อุปกรณ์เช่า ‼️");
+    expect(t("ob_rental_added_title", "EN")).toBe("RENT/ อุปกรณ์เช่า ‼️");
     expect(I18N).toContain('ob_f_rental: { TH: "Rental", EN: "Rental" },');
   });
 });

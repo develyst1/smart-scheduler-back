@@ -293,10 +293,10 @@ const TABLE: Record<string, Entry> = {
   // same sentence.** 📌 The owner's own distinction: *"too late for tomorrow's class, call the school" is help;
   // "no class eligible" is a shrug.* 🚫 The second key names no number — the cut-off is a per-teacher-type
   // setting, and a sentence that hardcoded one would be a second copy of the rule.
-  empty_leave: { TH: "ไม่มีคาบที่จะแจ้งลาค่ะ", EN: "You have no upcoming classes to cancel" },
+  empty_leave: { TH: "ไม่มีคลาสที่สามารถแจ้งลาได้ค่ะ", EN: "You have no upcoming classes to cancel" },
   empty_leave_cutoff: {
-    TH: "คาบที่เหลือใกล้ถึงเวลาเรียนแล้ว แจ้งลาผ่านบอทไม่ทันค่ะ กรุณาติดต่อแอดมิน",
-    EN: "Your upcoming classes are too close to their start time to cancel here. Please contact the admin.",
+    TH: "คลาสเรียนใกล้ถึงเวลาเรียนแล้ว ไม่สามารถแจ้งลาในระบบได้ค่ะ กรุณาติดต่อแอดมินเพื่อ support นะคะ",
+    EN: "Class is about to start. Absence requests can no longer be made in the system. Please contact Admin for assistance.",
   },
 
   // SPEC-071 / TASK-234 (AC-15) — the parent-facing course view. Five fields, in the customer template.
@@ -328,8 +328,8 @@ const TABLE: Record<string, Entry> = {
   // 🔴 TASK-473 K0a (REQ-107 §7) — Sign Up gets its OWN words; the link is the same `LIFF_ID` link (TASK-469).
   liff_signup: { TH: "กรุณากดที่ลิ้งค์ด้านล่างเพื่อสมัครสมาชิกค่ะ", EN: "Please click the link below to sign up." },
   enter_ask_phone: {
-    TH: "กรุณาพิมพ์เบอร์โทรที่ลงทะเบียนไว้ค่ะ หากยังไม่เคยลงทะเบียน กรุณาติดต่อแอดมิน",
-    EN: "Please type your registered phone number. If you have never registered, please contact an admin.",
+    TH: "กรุณากรอกเบอร์โทร.ที่ลงทะเบียนไว้ในระบบ Line ค่ะ",
+    EN: "Please enter your mobile phone that linked with Line app.",
   },
   children_title: { TH: "นักเรียนของคุณ", EN: "Your children" },
   children_none: { TH: 'ยังไม่มีนักเรียน — แตะ "เพิ่มนักเรียน" เพื่อเพิ่ม', EN: 'No children yet — tap "Add child" to add' },
@@ -367,7 +367,7 @@ const TABLE: Record<string, Entry> = {
   // rules, both deliberate (`lib/line-pairing.ts`).
   verify_parent_children_names: {
     TH: "\nพบข้อมูลของคุณแล้วค่ะ — {names}",
-    EN: "\nFound your family — {names}",
+    EN: "\nFound your children — {names}",
   },
   // This chat is already bound to a DIFFERENT family. Says so plainly and offers a human — the one thing it
   // must never do is quietly re-point the account, which would show a parent another family's children.
@@ -375,17 +375,17 @@ const TABLE: Record<string, Entry> = {
   // shop's decision) and never creates a duplicate. THE OWNER'S WORDS via @Porter (2026-09-20).
   verify_parent_archived: {
     TH: "เบอร์นี้เคยลงทะเบียนไว้แล้ว กรุณาติดต่อร้านเพื่อคืนสถานะ",
-    EN: "This number was registered before — please contact the shop to restore it.",
+    EN: "This number was registered before — please contact our Admin.",
   },
   // 🔴 TASK-449 (REQ-105 §7) — the LAST line of defence: whatever throws inside a handler, the person who typed
   // something gets a sentence instead of silence. 📖 The TH is @Sober's from the TASK (the owner's to confirm).
   generic_error: {
     TH: "ขออภัย ระบบมีปัญหาชั่วคราว กรุณาติดต่อแอดมิน",
-    EN: "Sorry — something went wrong on our side. Please contact an admin.",
+    EN: "Sorry — something went wrong. Please contact our Admin.",
   },
   verify_parent_other_family: {
-    TH: "บัญชี LINE นี้ผูกกับอีกครอบครัวไว้แล้วค่ะ หากไม่ถูกต้องกรุณาติดต่อแอดมิน",
-    EN: "This LINE account is already linked to another family. Please contact an admin if that is wrong.",
+    TH: "บัญชี LINE นี้ได้มีการผูกในระบบไว้แล้วค่ะ กรุณาติดต่อแอดมินค่ะ",
+    EN: "Someone has linked this LINE account in the system already. Please contact our Admin.",
   },
   // TASK-232 — the 2FA step, shipped OFF. The copy lives here from day one so switching the setting on needs
   // no copy work either: turning it on must be a setting, never a rebuild.
@@ -395,8 +395,8 @@ const TABLE: Record<string, Entry> = {
   // refusal CARRIES it (`/register/create`'s NAME_DUPLICATE_NEEDS_DETAIL, `message`), so the two cannot drift. ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the
   // page's owner-bound wording (COPY-REVIEW §8), which replaces "surname or nickname" with the child's REAL name.
   add_dup_detail: {
-    TH: "มีน้องชื่อนี้ในครอบครัวแล้ว — กรุณาใส่ชื่อจริงของน้อง (ชื่อ-นามสกุล) เพื่อไม่ให้สับสนกันค่ะ",
-    EN: "There is already a child with this name. Please enter the child's real name (first name and surname) so they are not mixed up.",
+    TH: "มีน้องลงทะเบียนชื่อนี้แล้ว — กรุณาใช้ชื่อเล่น + ชื่อจริงของน้องค่ะ",
+    EN: "This name is already registered. Please use your child’s nickname + first name.",
   },
   // 🔻 TASK-594 §2 — the three address PROMPTS and the summary's on-file note MOVED to `REGISTRATION_COPY` (bilingual): they replace
   // and sit inside the customer's §17c screens, and a one-language question between two bilingual ones is what Tanya read as
@@ -466,7 +466,7 @@ const TABLE: Record<string, Entry> = {
   // (front `invalidLink`: "ลิงก์เช็คอินไม่ถูกต้อง") — one voice on both sides of the wire.
   checkin_too_late: { TH: "เลยเวลาเช็คอินแล้ว", EN: "Check-in time has passed." },
   checkin_bad_link: { TH: "ลิงก์เช็คอินไม่ถูกต้อง", EN: "This check-in link is not valid." },
-  checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้", EN: "Can't check in right now" },
+  checkin_err: { TH: "ไม่สามารถเช็คอินได้ในขณะนี้ค่ะ กรุณาติดต่อแอดมิน", EN: "You can't check in right now. Please contact Admin." },
   // TASK-146: fallback when the leave refusal has no server message (mirrors `checkin_err`).
   // 🔻 TASK-692 §RE-CUT — the customer's OWN sentence, VERBATIM (project-docs/req111-message-inventory/message-inventory-KHWAN-EDITS-2026-10-06.xlsx). Printed to a
   // PARENT only on the `LEAVE_NO_VALIDITY` code; every other refusal keeps its own sentence.
@@ -479,7 +479,7 @@ const TABLE: Record<string, Entry> = {
     TH: "ผู้ปกครองแจ้งลาไม่สำเร็จ — อายุคอร์สไม่พอสำหรับคาบชดเชย: {student} · {date}",
     EN: "A parent's leave was refused — not enough course validity for a make-up: {student} · {date}",
   },
-  leave_err: { TH: "ไม่สามารถแจ้งลาได้ในขณะนี้", EN: "Can't record leave right now" },
+  leave_err: { TH: "ไม่สามารถแจ้งลาได้ในขณะนี้ค่ะ กรุณาติดต่อแอดมิน", EN: "You can't request an absence right now. Please contact Admin." },
 
   leave_ok: { TH: "แจ้งลาสำเร็จ ✅ ({name}){extended}{locked}", EN: "Leave recorded ✅ ({name}){extended}{locked}" },
   // TASK-135 (REQ-046) AC-1/AC-3: name the session that was cancelled, not just the student. Wording is the
@@ -638,7 +638,7 @@ const TABLE: Record<string, Entry> = {
   ob_l_schedule: { TH: "ตารางเรียน", EN: "Schedule" },
   ob_l_sessions: { TH: "จำนวนคาบที่ยืนยัน", EN: "Sessions confirmed" },
   // TASK-206: the label names DAYS, because the value is now a list of dates rather than a tally.
-  ob_l_planned_leave: { TH: "แจ้งลาล่วงหน้าไว้ (วันที่)", EN: "Leave already booked (dates)" },
+  ob_l_planned_leave: { TH: "แจ้งลาล่วงหน้าไว้ (วันที่)", EN: "Leave already requested (dates)" },
   ob_l_note: { TH: "หมายเหตุ", EN: "Note" },
   // ── SPEC-072 / TASK-253 (REQ-077) — the customer's own template labels ────────────────────────────────────
   // ⚠️ These are **English in both languages, on purpose**: the customer wrote the templates that way
@@ -696,8 +696,8 @@ const TABLE: Record<string, Entry> = {
   // Thai-and-English in both languages exactly as `ob_leave_notice_title` is: the audience is coaches, never a
   // parent.
   ob_class_cancelled_title: { TH: "CLASS CANCELLED / ยกเลิกคาบ ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบ ‼️" },
-  ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
-  ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
+  ob_course_dropped_title: { TH: "COURSE PAUSED / ดร็อปคอร์ส ‼️", EN: "COURSE PAUSED / ดร็อปคอร์ส ‼️" },
+  ob_course_ended_title: { TH: "คอร์ส CANCEL‼️", EN: "คอร์ส CANCEL‼️" },
   ob_f_reason: { TH: "Reason", EN: "Reason" },
   // 📖 **PLACEHOLDER — MINE, and the owner has NOT seen it** (TASK-508). A leave Undo puts a class BACK ON, and the coach is the
   // one who has to be there. The stamp says the fact a coach needs between classes — the class is on — never our word for our
@@ -706,14 +706,14 @@ const TABLE: Record<string, Entry> = {
   // ✅ TASK-529 — **APPROVED by the owner** (09-27, via Porter): a MOVED class, in the house pattern. The block is the NEW slot
   // (what a coach acts on); the OLD one is ONE appended line, `Was : <date> <time>`, where cancel appends Reason / Note. The
   // bilingual stamp, identical in both columns, ‼️; English labels in both languages; nothing about why. 🚫 Byte-frozen from here.
-  ob_class_moved_title: { TH: "CLASS MOVED / ย้ายคาบ ‼️", EN: "CLASS MOVED / ย้ายคาบ ‼️" },
-  ob_f_was: { TH: "Was", EN: "Was" }, // BOTH audiences — the coach's and the family's copy share this English label
+  ob_class_moved_title: { TH: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", EN: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️" },
+  ob_f_was: { TH: "Previous Schedule", EN: "Previous Schedule" }, // BOTH audiences — the coach's and the family's copy share this English label
   ob_class_on_again_title: { TH: "CLASS ON AGAIN / มีคาบตามเดิม ‼️", EN: "CLASS ON AGAIN / มีคาบตามเดิม ‼️" },
   // ✅ TASK-375 / TASK-376 (`REQ-091` Deploy B) — **APPROVED by the owner as drafted** — the stamp of the same-day
   // rental notice, in `leave_notice`'s shape. 🚫 Byte-frozen from here (the `ob_deduct_title` convention: the owner
   // has seen it, so the test pins the bytes). `Rental` below is the customer's own section word (TASK-372), and
   // the value line is his ruled print shape.
-  ob_rental_added_title: { TH: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️", EN: "RENTAL ADDED / เพิ่มอุปกรณ์เช่า ‼️" },
+  ob_rental_added_title: { TH: "RENT/ อุปกรณ์เช่า ‼️", EN: "RENT/ อุปกรณ์เช่า ‼️" },
   ob_f_rental: { TH: "Rental", EN: "Rental" },
   // 📖 **PLACEHOLDER — MINE, and the customer has NOT seen it** (TASK-394, `REQ-095 §4`). The coach's reminder prints
   // an ECA/Free/KOL entry's head count after its title; the LABEL is pinned by FORM, not bytes — @Porter carries the
@@ -741,7 +741,7 @@ const TABLE: Record<string, Entry> = {
   // ✅ TASK-529 — **APPROVED by the owner** (09-27): a MOVED class, to the FAMILY. 🔑 Deliberately mixed: the TITLE follows the
   // chat's language, the LABELS stay English (`ob_f_*` + `ob_f_was`) — both halves pinned, so neither gets "fixed". No Coach, no
   // reason. 🚫 Byte-frozen from here.
-  mv_title: { TH: "📅 ย้ายคาบเรียน:", EN: "📅 CLASS MOVED:" },
+  mv_title: { TH: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", EN: "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️" },
   // words identical to the owner-APPROVED cl_title; marker retired on @Porter's ruling 2026-10-07 (COPY-REVIEW-2026-09-29.md:521). A cancelled MAKE-UP, to the FAMILY: the
   // title in the chat's language (the move notice's pattern, TASK-529), then the four English-labelled lines — which class is off,
   // nothing about why. 🔑 Deliberately the SAME words as the approved cancel title: naming it "make-up" invites "so is another one
@@ -753,7 +753,7 @@ const TABLE: Record<string, Entry> = {
   // real append · never the word) stay — the promise outranks the letters.
   mc_new_class: { TH: "ระบบเพิ่มคาบใหม่ให้แล้ว วันที่ {date}", EN: "A new class has been added on {date}." },
   cl_note_makeup: { TH: "ระบบเพิ่มคาบชดเชยให้แล้ว", EN: "A make-up session has been added to the schedule." },
-  cl_note_hour: { TH: "คืนชั่วโมงเข้ายอดคงเหลือแล้ว", EN: "The hour has been returned to your balance." },
+  cl_note_hour: { TH: "คืนชั่วโมงเรียนให้แล้วค่ะ", EN: "The lesson hour has been returned to your course." },
   ob_dow_0: { TH: "อาทิตย์", EN: "Sunday" },
   ob_dow_1: { TH: "จันทร์", EN: "Monday" },
   ob_dow_2: { TH: "อังคาร", EN: "Tuesday" },
@@ -787,10 +787,8 @@ const TABLE: Record<string, Entry> = {
   os_added_title: { TH: "📅 เพิ่มตารางสอน", EN: "📅 ADDED TO SCHEDULE" },
   os_added_body: { TH: "คุณถูกเพิ่มเข้าตารางสอน", EN: "You have been added to a schedule" },
   os_added_footer: { TH: "กรุณาตรวจสอบตารางของคุณ", EN: "Please check your schedule" },
-  os_removed_title: { TH: "❌ นำออกจากตารางสอน", EN: "❌ REMOVED FROM SCHEDULE" },
-  os_removed_body: { TH: "คุณถูกนำออกจากตารางสอน", EN: "You have been removed from a schedule" },
-  os_cancelled_title: { TH: "❌ ยกเลิกตารางทั้งชุด", EN: "❌ SCHEDULE CANCELLED" },
-  os_cancelled_body: { TH: "ตารางสอนถูกยกเลิกทั้งชุด", EN: "Your teaching schedule has been cancelled" },
+  os_removed_title: { TH: "❌ คุณถูกนำออกจากตารางสอน", EN: "❌ You have been removed from a schedule" },
+  os_cancelled_title: { TH: "❌ ตารางสอนถูกยกเลิกทั้งหมด", EN: "❌ Your teaching schedule has been cancelled" },
   os_c_item: { TH: "รายการ", EN: "Program" },
   os_c_dates: { TH: "วันที่", EN: "Date" },
   os_l_item: { TH: "รายการ", EN: "Item" },
@@ -799,7 +797,8 @@ const TABLE: Record<string, Entry> = {
   // TASK-405 (REQ-095 §10, Stage 3b close) — the camp-day reminder's labels, THE OWNER'S WORDS via @Porter (2026-09-19).
   // 🔑 `Students`, never `Kids` — the app's term (a customer may be a teen/adult). `Student`/`Date` reuse the
   // `ob_f_*` keys; these are the camp's own. The labels ride the per-audience language rule like every other message.
-  cp_camp: { TH: "แคมป์", EN: "Camp" },
+  cp_camp: { TH: "Camp", EN: "Camp" }, // 🔻 TASK-727 (P25/P26) — her TH label is the English word, as in her sample
+  cp_split: { TH: "ทั้งวัน {full} ·เช้า {am} · บ่าย {pm}", EN: "Full day {full} · Morning {am} · Afternoon {pm}" }, // 🔻 TASK-727 (P25) — verbatim, incl. the missing space before เช้า
   cp_students: { TH: "Students", EN: "Students" },
   cp_time: { TH: "ช่วง", EN: "Time" },
   cp_half_full: { TH: "เต็มวัน", EN: "Full day" },
@@ -811,9 +810,9 @@ const TABLE: Record<string, Entry> = {
   // on that day until an admin says otherwise. ⚠️ A teacher who believes their classes were cancelled does not turn up.
   // 🚫 No family and no other coach receives either of these: nothing changed for them (TASK-587's closed defect).
   ob_teacher_leave_recorded_title: { TH: "🗓️ แอดมินบันทึกวันลาของคุณแล้ว", EN: "🗓️ An admin recorded a leave day for you" },
-  ob_teacher_leave_lifted_title: { TH: "🗓️ แอดมินยกเลิกวันลาของคุณแล้ว", EN: "🗓️ An admin removed your leave day" },
+  ob_teacher_leave_lifted_title: { TH: "🗓️ แอดมินยกเลิกวันลาของคุณแล้ว", EN: "🗓️ LEAVE CANCELLED" },
   ob_tl_blocked: { TH: "วันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class can be booked with you that day." },
-  ob_tl_open_again: { TH: "วันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again that day." },
+  ob_tl_open_again: { TH: "วันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again." },
   ob_tl_nothing_cancelled: {
     TH: "คาบที่จองไว้แล้ว {n} คาบยังอยู่ในตารางและยังไม่ได้ยกเลิก — กรุณาถือว่าสอนตามปกติจนกว่าแอดมินจะแจ้ง",
     EN: "The {n} class(es) already booked that day are unchanged and NOT cancelled — please treat them as going ahead until an admin tells you otherwise.",

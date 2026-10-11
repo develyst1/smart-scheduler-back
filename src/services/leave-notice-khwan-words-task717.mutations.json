@@ -1,0 +1,28 @@
+{
+  "task": "TASK-717",
+  "proves": "src/services/leave-notice-khwan-words-task717.test.ts",
+  "note": "🔴 R147. A a FIXED 1 instead of the setting (the number is not read) · B the Thai line break lost · C EN served to a TH reader (the language is ignored) · D the English line break lost.",
+  "tests": "src/services/leave-notice-khwan-words-task717.test.ts src/lib/leave-notice.test.ts",
+  "mutations": [
+    {
+      "id": "A",
+      "what": "🔴 a FIXED 1 instead of the setting — a coach type with a 3-hour (or 24) cut-off is told 1",
+      "files": [{ "file": "src/lib/leave-notice.ts", "edits": [{ "from": "การลาต้องแจ้งล่วงหน้าอย่างน้อย ${cutoffHours} ชม.", "to": "การลาต้องแจ้งล่วงหน้าอย่างน้อย 1 ชม." }] }]
+    },
+    {
+      "id": "B",
+      "what": "the Thai line break is lost — the emergency line runs on",
+      "files": [{ "file": "src/lib/leave-notice.ts", "edits": [{ "from": "ก่อนเริ่มคลาส\\nกรณีฉุกเฉิน", "to": "ก่อนเริ่มคลาส กรณีฉุกเฉิน" }] }]
+    },
+    {
+      "id": "C",
+      "what": "🔴 EN is served to a TH reader — the language is ignored",
+      "files": [{ "file": "src/lib/leave-notice.ts", "edits": [{ "from": "  return lang === \"EN\"\n", "to": "  return true\n" }] }]
+    },
+    {
+      "id": "D",
+      "what": "the English line break is lost",
+      "files": [{ "file": "src/lib/leave-notice.ts", "edits": [{ "from": "before the class starts.\\nFor emergencies", "to": "before the class starts. For emergencies" }] }]
+    }
+  ]
+}

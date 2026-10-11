@@ -48,13 +48,9 @@ describe("leave advance-notice rules", () => {
     expect(hasEnoughLeaveNotice("2026-07-15", "09:00", 3, now)).toBe(false);
   });
 
-  test("AC-7: the refusal names the configured hours AND the session time, TH + EN", () => {
-    expect(leaveNoticeMessage(3, "13:00:00", "TH")).toBe(
-      "ขออภัยค่ะ ลาได้ล่วงหน้าอย่างน้อย 3 ชั่วโมงก่อนเริ่มคาบ คาบนี้เริ่ม 13:00 น. หากจำเป็น กรุณาติดต่อแอดมิน",
-    );
-    expect(leaveNoticeMessage(6, "09:00", "EN")).toBe(
-      "Sorry — leave must be at least 6 hours before the session. This one starts at 09:00. Please contact the admin if you need help.",
-    );
-    expect(leaveNoticeMessage(3, "13:00:00")).toContain("3 ชั่วโมง"); // default TH
+  test("AC-7: the refusal names the configured hours, TH + EN — 🔻 TASK-717: Khwan's words (the exact bytes are pinned in services/leave-notice-khwan-words-task717.test.ts); the session time is no longer in it", () => {
+    expect(leaveNoticeMessage(3, "13:00:00", "TH")).toContain("อย่างน้อย 3 ชม.");
+    expect(leaveNoticeMessage(6, "09:00", "EN")).toContain("at least 6 hour(s)");
+    expect(leaveNoticeMessage(3, "13:00:00")).toContain("3 ชม."); // default TH
   });
 });

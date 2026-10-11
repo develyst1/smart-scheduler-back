@@ -1,6 +1,6 @@
 // TASK-558 (REQ-110 item 12) — the day-end camp-deduction notice in the CUSTOMER's own format. A REFORMAT: same kind, same
 // sender, same recipient (the family only). The four lines are Khwan's, verbatim:
-//   🏕️ BALANCE CAMP / Student: โมล่า / Date: 28-09-2026 / Remaining: 0 / 0.5 days
+//   🏕️ CAMP DEDUCTION:  / Student: โมล่า / Date: 28-09-2026 / Remaining: 0 / 0.5 days
 // 🔑 Every figure comes from what the sender ALREADY carries — `notifyCampDeductions` puts `studentName`, `date`, `remainingDays`
 // and `totalDays` in the payload (TASK-443). No sender change: this file drives the REAL sender into the REAL renderer.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -34,13 +34,13 @@ const sentPayload = async (pkg: { totalUnits: number; usedUnits: number; nicknam
 describe("🔴 TASK-558 — the camp-deduction notice in Khwan's format, every figure from the sender's own payload", () => {
   test("🔑 Khwan's OWN example, by value, end to end: a half-day package (1 unit), its only half-day consumed ⇒ `0 / 0.5 days`", async () => {
     const payload = await sentPayload({ totalUnits: 1, usedUnits: 1, nickname: "โมล่า", name: "Mola Full" }, "2026-09-28");
-    const expected = "🏕️ BALANCE CAMP\nStudent: โมล่า\nDate: 28-09-2026\nRemaining: 0 / 0.5 days";
+    const expected = "🏕️ CAMP DEDUCTION: \nStudent: โมล่า\nDate: 28-09-2026\nRemaining: 0 / 0.5 days";
     for (const lang of ["TH", "EN"] as const) expect(formatOutboxMessage(payload, {} as any, lang, "parent")).toBe(expected); // English only: identical in both
   });
   test("the SHAPE: four lines, this order, `Label: value` with NO space before the colon, `DD-MM-YYYY`, ` / ` between the figures", () => {
     const lines = renderCampDeduction({ studentName: "โมล่า", date: "2026-09-28", remainingDays: 0, totalDays: 0.5 }).split("\n");
     expect(lines.length).toBe(4);
-    expect(lines[0]).toBe("🏕️ BALANCE CAMP");
+    expect(lines[0]).toBe("🏕️ CAMP DEDUCTION: ");
     expect(lines[1]).toMatch(/^Student: \S/);
     expect(lines[2]).toMatch(/^Date: \d{2}-\d{2}-\d{4}$/);
     expect(lines[3]).toMatch(/^Remaining: \d+(\.5)? \/ \d+(\.5)? days$/);

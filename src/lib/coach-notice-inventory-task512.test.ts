@@ -47,7 +47,9 @@ const VIA_PREDICATE = [`${S}#sendLeaveNotice`, `${S}#sendClassCancelledToCoaches
   `${S}#pauseBooking`, `${S}#resumeBooking`, "src/services/rental.service.ts#notifyRentalAddedSameDay",
   // TASK-516 — a MOVED class. ⚠️ It tells the FAMILY too, BY RULING ("ย้ายคาบแจ้งทั้งคู่") — through `enqueueParentCopies` and the ONE
   // family rule (`familyAccountsOfRow`), never a hand-written parent recipient (the check below looks for exactly that).
-  `${S}#announceMove`];
+  `${S}#announceMove`,
+  // 🔻 TASK-719 — a retired extra group date revived by a seat's Undo: every coach of the GROUP row, through THE predicate (`class_on_again_teacher`)
+  `${S}#reviveRetiredExtraGroupDate`];
 /** The recipient is a NAMED person, not "the coaches of a class" — correct by design. */
 const NAMED_BY_DESIGN: Record<string, string> = {
   [`${S}#sendTeacherReassigned`]: "the coach taken off and the coach put on — two named people",

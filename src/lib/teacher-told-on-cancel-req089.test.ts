@@ -107,7 +107,7 @@ describe("🔑 `course_dropped_teacher` — one message per course per coach: th
     const drop = render("TH").split("\n")[0];
     const end = render("TH", { cause: "ended", cancelReason: "PROGRAM_CHANGED", note: null }).split("\n");
     expect(end[0]).not.toBe(drop);
-    expect(end[0]).toMatch(/^[A-Z ]+ \/ \S+ ‼️$/);
+    expect(end[0]).toBe("คอร์ส CANCEL‼️"); // 🔻 TASK-727 (P16) — her title
     expect(end.at(-1)).toBe(`Reason : ${cancelReasonText("PROGRAM_CHANGED", null, "TH")}`);
   });
 
@@ -185,8 +185,8 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
   test("🔒 the owner's words, byte-frozen (§6.1): three stamps, one label, three reason labels — 7 keys, 14 values", () => {
     const FROZEN: Record<string, { TH: string; EN: string }> = {
       ob_class_cancelled_title: { TH: "CLASS CANCELLED / ยกเลิกคาบ ‼️", EN: "CLASS CANCELLED / ยกเลิกคาบ ‼️" },
-      ob_course_dropped_title: { TH: "COURSE PAUSED / พักคอร์ส ‼️", EN: "COURSE PAUSED / พักคอร์ส ‼️" },
-      ob_course_ended_title: { TH: "COURSE ENDED / ยกเลิกคอร์ส ‼️", EN: "COURSE ENDED / ยกเลิกคอร์ส ‼️" },
+      ob_course_dropped_title: { TH: "COURSE PAUSED / ดร็อปคอร์ส ‼️", EN: "COURSE PAUSED / ดร็อปคอร์ส ‼️" }, // 🔻 TASK-727 (P15)
+      ob_course_ended_title: { TH: "คอร์ส CANCEL‼️", EN: "คอร์ส CANCEL‼️" }, // 🔻 TASK-727 (P16)
       ob_f_reason: { TH: "Reason", EN: "Reason" },
       ob_reason_PROGRAM_CHANGED: { TH: "เปลี่ยนโปรแกรม", EN: "Program changed" },
       ob_reason_CUSTOMER_CANCELLED: { TH: "ลูกค้ายกเลิก", EN: "Customer cancelled" },

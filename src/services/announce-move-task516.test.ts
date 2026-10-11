@@ -109,35 +109,35 @@ describe("✅ TASK-529 — the WORDS, APPROVED by the owner: BYTE-pinned (the ho
   const CTX = { studentName: "มะขิด", subject: "Freeskate", coach: "Ek, Nok" };
   const payload = (kind: string) => ({ kind, bookingType: "SINGLE_SESSION", size: null, from: A, to: { date: "2026-10-12", startTime: "14:00", endTime: "15:00" } }) as any;
   const COACH = [
-    "CLASS MOVED / ย้ายคาบ ‼️",
+    "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", // 🔻 TASK-727 (P13)
     "Student : มะขิด",
     "Program : Freeskate 1 HR",
     "Date : 12-10-2026",
     "Time : 14:00-15:00",
     "Coach : Ek, Nok",
-    "Was : 05-10-2026 10:00-11:00",
+    "Previous Schedule : 05-10-2026 10:00-11:00", // 🔻 TASK-727 (P13)
   ].join("\n");
-  const FAMILY_BODY = ["Student : มะขิด", "Program : Freeskate 1 HR", "Date : 12-10-2026", "Time : 14:00-15:00", "Was : 05-10-2026 10:00-11:00"];
+  const FAMILY_BODY = ["Student : มะขิด", "Program : Freeskate 1 HR", "Date : 12-10-2026", "Time : 14:00-15:00", "Coach : Ek, Nok", "Previous Schedule : 05-10-2026 10:00-11:00"]; // 🔻 TASK-727 (P14) — the family gets the coach's message, word for word
   test("the COACH's copy — the approved bytes, IDENTICAL in TH and EN (the house stamp)", () => {
     expect(formatOutboxMessage(payload("class_moved_teacher"), CTX as any, "TH", "teacher")).toBe(COACH);
     expect(formatOutboxMessage(payload("class_moved_teacher"), CTX as any, "EN", "teacher")).toBe(COACH);
   });
   test("the FAMILY's copy — the approved bytes in both languages; no Coach line, no reason", () => {
-    expect(formatOutboxMessage(payload("class_moved_parent"), CTX as any, "TH", "parent")).toBe(["📅 ย้ายคาบเรียน:", ...FAMILY_BODY].join("\n"));
-    expect(formatOutboxMessage(payload("class_moved_parent"), CTX as any, "EN", "parent")).toBe(["📅 CLASS MOVED:", ...FAMILY_BODY].join("\n"));
+    expect(formatOutboxMessage(payload("class_moved_parent"), CTX as any, "TH", "parent")).toBe(["CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", ...FAMILY_BODY].join("\n"));
+    expect(formatOutboxMessage(payload("class_moved_parent"), CTX as any, "EN", "parent")).toBe(["CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", ...FAMILY_BODY].join("\n"));
   });
   test("🔑 deliberately mixed, BOTH halves pinned: the family's TITLE follows the chat language, its LABELS stay English", () => {
     const th = formatOutboxMessage(payload("class_moved_parent"), CTX as any, "TH", "parent").split("\n");
     const en = formatOutboxMessage(payload("class_moved_parent"), CTX as any, "EN", "parent").split("\n");
-    expect([th[0], en[0]]).toEqual(["📅 ย้ายคาบเรียน:", "📅 CLASS MOVED:"]); // the title differs by language…
+    expect([th[0], en[0]]).toEqual(["CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️", "CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️"]); // 🔻 TASK-727 (P14): one two-language title, identical in both languages…
     expect(th.slice(1)).toEqual(en.slice(1)); // …the labelled lines do not
-    expect(th.slice(1).map((l) => l.split(" : ")[0])).toEqual(["Student", "Program", "Date", "Time", "Was"]);
+    expect(th.slice(1).map((l) => l.split(" : ")[0])).toEqual(["Student", "Program", "Date", "Time", "Coach", "Previous Schedule"]);
   });
   test("`Was :` is ONE appended line, LAST (where cancel puts Reason / Note), and it is the OLD slot — the block is the NEW one", () => {
     for (const [kind, who] of [["class_moved_teacher", "teacher"], ["class_moved_parent", "parent"]] as const) {
       const lines = formatOutboxMessage(payload(kind), CTX as any, "TH", who).split("\n");
-      expect(lines.filter((l) => l.startsWith("Was : "))).toEqual(["Was : 05-10-2026 10:00-11:00"]);
-      expect(lines.at(-1)).toBe("Was : 05-10-2026 10:00-11:00");
+      expect(lines.filter((l) => l.startsWith("Previous Schedule : "))).toEqual(["Previous Schedule : 05-10-2026 10:00-11:00"]);
+      expect(lines.at(-1)).toBe("Previous Schedule : 05-10-2026 10:00-11:00");
       expect(lines).toContain("Date : 12-10-2026");
     }
   });
@@ -145,8 +145,8 @@ describe("✅ TASK-529 — the WORDS, APPROVED by the owner: BYTE-pinned (the ho
     const S = readFileSync(resolve(import.meta.dir, "scheduler.service.ts"), "utf8").replace(/\r\n/g, "\n");
     expect(S).toContain("from: { date: before.date, startTime: hhmm(before.startTime), endTime: hhmm(before.endTime) },");
     const out = formatOutboxMessage({ kind: "class_moved_parent", from: { date: "2026-10-05" } } as any, CTX as any, "EN", "parent");
-    expect(out.startsWith("📅 CLASS MOVED:")).toBe(true); // a poor message, never NO message (the walker's finding)
-    expect(out).not.toContain("Was");
+    expect(out.startsWith("CLASS RESCHEDULED / แก้ไขตารางเรียน ‼️")).toBe(true); // a poor message, never NO message (the walker's finding)
+    expect(out).not.toContain("Previous Schedule");
   });
 });
 

@@ -373,18 +373,18 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     const ctx = { studentName: "น้องเอ", subject: "Freeskate", date: "2026-10-05", startTime: "10:00", endTime: "11:00" } as any;
     const p = (bookingType: string, cancelReason: string | null) => ({ kind: "class_cancelled_parent", bookingId: B1, bookingType, size: 10, cancelReason });
     expect(formatOutboxMessage(p("SINGLE_SESSION", "ADMIN_ERROR") as any, ctx, "EN", "parent")).toBe(
-      "❌ CLASS CANCELLED:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : The hour has been returned to your balance.",
+      "❌ CLASS CANCELLED:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : The lesson hour has been returned to your course.",
     );
     expect(formatOutboxMessage(p("SINGLE_SESSION", "ADMIN_ERROR") as any, ctx, "TH", "parent")).toBe(
-      "❌ ยกเลิกคาบเรียน:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : คืนชั่วโมงเข้ายอดคงเหลือแล้ว",
+      "❌ ยกเลิกคาบเรียน:\nStudent : น้องเอ\nProgram : Freeskate 1 HR\nDate : 05-10-2026\nTime : 10:00-11:00\nNote : คืนชั่วโมงเรียนให้แล้วค่ะ",
     );
     for (const code of ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", null]) for (const lang of ["EN", "TH"] as const) {
       const m = formatOutboxMessage(p("VOUCHER", code) as any, ctx, lang, "parent");
       expect(m).not.toMatch(/Reason|เหตุผล/);
-      expect(m).toContain(lang === "EN" ? "Note : The hour has been returned to your balance." : "Note : คืนชั่วโมงเข้ายอดคงเหลือแล้ว");
+      expect(m).toContain(lang === "EN" ? "Note : The lesson hour has been returned to your course." : "Note : คืนชั่วโมงเรียนให้แล้วค่ะ");
     }
-    expect(formatOutboxMessage(p("VOUCHER", "TEACHER_LEAVE") as any, ctx, "EN", "parent")).toContain("Reason : Teacher leave\nNote : The hour has been returned to your balance.");
-    expect(formatOutboxMessage(p("FIRST_TRIAL", "TEACHER_LEAVE") as any, ctx, "TH", "parent")).toContain("เหตุผล : ครูลา\nNote : คืนชั่วโมงเข้ายอดคงเหลือแล้ว");
+    expect(formatOutboxMessage(p("VOUCHER", "TEACHER_LEAVE") as any, ctx, "EN", "parent")).toContain("Reason : Teacher leave\nNote : The lesson hour has been returned to your course.");
+    expect(formatOutboxMessage(p("FIRST_TRIAL", "TEACHER_LEAVE") as any, ctx, "TH", "parent")).toContain("เหตุผล : ครูลา\nNote : คืนชั่วโมงเรียนให้แล้วค่ะ");
     expect(formatOutboxMessage(p("GROUP", "CUSTOMER_CANCELLED") as any, ctx, "EN", "parent")).toContain("Note : A make-up session has been added to the schedule.");
     // the keys, no Kids, the placeholder sentence gone; every message trimmed, no raw ISO, no leak
     const I = src("src/lib/line-i18n.ts");

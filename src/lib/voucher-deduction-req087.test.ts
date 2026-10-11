@@ -153,16 +153,16 @@ describe("🔴 TASK-334 Part A — an approved teacher is told what the payload 
   });
 });
 
-describe("⛔ TASK-334 Part B — the two ADMIN kinds STILL render the default, and that is a DECISION", () => {
-  test("🔴 both still generic — BLOCKED ON COPY, and the code says so", () => {
-    // ⚠️ The facts are on the payload; the WORDS are the owner's. An admin alert is read under time pressure,
-    // which is the worst place to ship a placeholder. 🅿️ PARKED by the owner — it stays LIVE and unfixed on the
-    // board so it is not lost. **Asserted so the next reader knows it is a decision and not an oversight.**
-    for (const kind of ["student_registered", "parent_asked_for_admin"]) {
-      expect(formatOutboxMessage({ kind, studentName: "น้องเอ", parentPhone: "0812345678", lineUserId: "U1" } as any, {}, "TH", "parent"))
-        .toBe(t("ob_default", "TH"));
+describe("✅ TASK-334 Part B → TASK-727 — the admin kinds with NO name on the payload still render the default; P43/P44 (the fallback name) stay parked", () => {
+  test("🔴 no name on the payload ⇒ the generic bell (a poor message never becomes NO message); P43/P44 kinds are still generic", () => {
+    // 🔻 TASK-727: `student_registered` / `parent_asked_for_admin` / `teacher_asked_for_admin` have their words (the by-value pins are in `khwan-workbook-task727.test.ts`);
+    // without the name they fall back to the bell. The two kinds waiting on Khwan's one open word are still generic.
+    for (const kind of ["student_registered", "parent_asked_for_admin", "teacher_asked_for_admin"]) {
+      expect(formatOutboxMessage({ kind, parentPhone: "0812345678", lineUserId: "U1" } as any, {}, "TH", "parent")).toBe(t("ob_default", "TH"));
     }
-    expect(src("src/lib/line-message.ts")).toContain("BLOCKED ON COPY, not an oversight");
+    for (const kind of ["admin_asked_for_admin", "unlinked_asked_for_admin"]) {
+      expect(formatOutboxMessage({ kind, studentName: "น้องเอ", lineUserId: "U1" } as any, {}, "TH", "parent")).toBe(t("ob_default", "TH"));
+    }
   });
 
   test("🚫 the three DEAD branches are untouched — a dead branch is not a defect; a MISSING one is", () => {

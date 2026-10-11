@@ -80,7 +80,7 @@ describe("🔴 TASK-314 §2.2 — a child added INLINE notifies the admin (AC-11
     expect(WIZARD).toContain("await createStudentFromLine(parent!, {"); // 🔻 TASK-590 — an EXISTING family; a new one goes through `registerFamilyWithFirstChild`, which calls the same creator
     expect(fnIn(REG, "export async function registerFamilyWithFirstChild(")).toContain("await createStudentFromLine(parent, {");
     expect(INLINE).toContain(INLINE_ENTERS_WIZARD); // 🔻 TASK-583 — the inline door reaches the creator only via the wizard's CONFIRM
-    expect(CREATOR).toContain('await notifyAdmins({ kind: "student_registered", studentName: created.student.name, parentPhone: parent.phone }, exec);'); // 🔻 TASK-590: on the caller's tx (a new family's notice rolls back with it)
+    expect(CREATOR).toContain('await notifyAdmins({ kind: "student_registered", studentName: studentNamesOf({ student: created.student }) ?? created.student.name, parentPhone: parent.phone }, exec);'); // 🔻 TASK-727 (P40): the ONE name rule // 🔻 TASK-590: on the caller's tx (a new family's notice rolls back with it)
     // The row first, then the message — the order AC-11 always had.
     expect(CREATOR.indexOf("createStudentForParent(")).toBeLessThan(CREATOR.indexOf("notifyAdmins("));
     // …and no door calls the service write directly any more: the notification cannot be skipped by construction.

@@ -98,7 +98,7 @@ describe("🔑 ONE duplicate sentence, ONE source — the chat's key, carried by
   });
   test("and the chat asks with that same key; the words are the page's (COPY §8 DRAFT): the REAL name, never a rename", () => {
     expect(WEBHOOK).toContain('withExit(t("add_dup_detail", lang), lang)');
-    expect(t("add_dup_detail", "TH")).toBe("มีน้องชื่อนี้ในครอบครัวแล้ว — กรุณาใส่ชื่อจริงของน้อง (ชื่อ-นามสกุล) เพื่อไม่ให้สับสนกันค่ะ");
-    expect(t("add_dup_detail", "EN")).toBe("There is already a child with this name. Please enter the child's real name (first name and surname) so they are not mixed up.");
+    expect(t("add_dup_detail", "TH")).toBe("มีน้องลงทะเบียนชื่อนี้แล้ว — กรุณาใช้ชื่อเล่น + ชื่อจริงของน้องค่ะ");
+    expect(t("add_dup_detail", "EN")).toBe("This name is already registered. Please use your child’s nickname + first name.");
   });
 });
