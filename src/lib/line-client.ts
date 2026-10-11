@@ -125,6 +125,23 @@ export async function getProfileLang(userId: string): Promise<"TH" | "EN" | null
   }
 }
 
+/**
+ * 🔻 TASK-729 — GET /profile/{userId}.displayName: the name a «คุยกับแอดมิน» admin notice shows ("Chat name"). Best-effort: `null` on no token, any failure,
+ * a timeout or an empty name — a failed read costs the NAME, never the alert. 🚫 The caller never stores it in the app's tables and never logs it.
+ */
+export async function getProfileDisplayName(userId: string): Promise<string | null> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(`${LINE_API}/profile/${userId}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return null;
+    const p = (await res.json()) as { displayName?: string };
+    return p.displayName?.trim() ? p.displayName.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** GET /bot/info — used to verify the token without needing a recipient. */
 export async function getBotInfo(): Promise<unknown> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;

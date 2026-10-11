@@ -1172,6 +1172,10 @@ async function doCallAdmin(lineUserId: string, replyToken: string, lang: Lang, r
     } else if (who === "teacher") {
       const teacher = await db.query.teachers.findFirst({ where: (t2, { eq: e }) => e(t2.lineUserId, lineUserId) });
       names = { coachName: teacher?.nickname };
+    } else {
+      // 🔻 TASK-729 (P43/P44) — an admin or an unlinked person: the notice shows their LINE display name ("Chat name"). 🚫 NEVER STORED (owner, literally): the name is read by the
+      // PUSH WORKER at send time (`outbox.service.ts`, `withAskerName`); the outbox row carries only the asker's LINE id (`lineUserId`, below) and when the button was pressed.
+      names = { pressedAt: bangkokNow().time };
     }
   } catch (e) {
     console.error("[line-webhook] admin-ask name lookup failed — the notice goes without a name:", e instanceof Error ? e.message : e);

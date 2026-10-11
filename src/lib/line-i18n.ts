@@ -784,6 +784,10 @@ const TABLE: Record<string, Entry> = {
   ob_ch_line: { TH: "LINE", EN: "LINE" },
   ob_ch_system: { TH: "ระบบ", EN: "System" },
   ob_default: { TH: "🔔 แจ้งเตือนจากระบบตารางเรียน", EN: "🔔 Notification from the scheduler" },
+  // 📋 DRAFT wording: Khwan Q7 pending (TASK-729) — what P43/P44 print when LINE gives no display name: "ผู้ใช้ LINE", then " · HH:mm" (the button press, Bangkok) added by the renderer. NOT approved.
+  aa_chat_fallback: { TH: "ผู้ใช้ LINE", EN: "ผู้ใช้ LINE" },
+  // 📋 DRAFT wording: Khwan Q5 pending (TASK-730) — the voucher sale's `Program` line: her sample was `VOUCHER  5 HR` (two spaces read as a typo); a voucher has no program name of its own. NOT approved.
+  vs_program: { TH: "VOUCHER {hours} HR", EN: "VOUCHER {hours} HR" },
   // TASK-094: a per-session teacher swap notifies BOTH teachers — the one it leaves and the one it lands on.
   // TASK-428 (REQ-101 §4) — the OTHER SERIES notices. ADDED / REMOVED: Porter's draft, OWNER-ACCEPTED 2026-09-21 (bytes may
   // be tweaked later). CANCELLED (TASK-430, REQ-101 §5): Porter's draft, OWNER-ACCEPTED 2026-09-21 — no placeholder; its EN

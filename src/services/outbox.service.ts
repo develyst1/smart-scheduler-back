@@ -14,7 +14,7 @@ import { formatOutboxMessage, type MessageContext } from "../lib/line-message";
 import { joinCoaches } from "../lib/coach-names";
 import { rentalPrintLine } from "../lib/rental-row";
 import { studentNamesOf } from "../db/mappers";
-import { LinePushError, lineConfigured, pushMessage } from "../lib/line-client";
+import { LinePushError, getProfileDisplayName, lineConfigured, pushMessage } from "../lib/line-client";
 import { resolveBotLang } from "../lib/line-lang";
 
 const MAX_ATTEMPTS = 5;
@@ -56,6 +56,19 @@ export async function bookingContext(bookingId: string | null): Promise<MessageC
   };
 }
 
+/**
+ * 🔻 TASK-729 (P43/P44) — the «คุยกับแอดมิน» notices of an ADMIN and of an UNLINKED chat show the asker's LINE display name ("Chat name"). The owner: **never stored.**
+ * ⇒ it is read HERE, at push time, from the asker's id the row already carries (`payload.lineUserId` — the ASKER's, not the recipient's), and goes onto a COPY of the
+ * payload for the one render. The row is never written back with it, and nothing logs it. A failed read ⇒ no name ⇒ the renderer's fallback; the send goes on.
+ * Every other kind passes through untouched (no read, same object).
+ */
+export async function withAskerName(payload: any): Promise<any> {
+  if (payload?.kind !== "admin_asked_for_admin" && payload?.kind !== "unlinked_asked_for_admin") return payload;
+  const asker = typeof payload.lineUserId === "string" ? payload.lineUserId : null;
+  const chatName = asker ? await getProfileDisplayName(asker).catch(() => null) : null;
+  return { ...payload, chatName };
+}
+
 /** Process one batch of pending LINE rows. Returns a small summary for logging/tests. */
 export async function processOutboxOnce(): Promise<{ sent: number; failed: number; retry: number; errors: string[] }> {
   const rows = await db
@@ -88,7 +101,7 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
     // 📌 `admin` reads as `parent` — the fuller message. An admin is staff reading a family's copy, and hiding
     // the expiry from the person who answers questions about it would be the wrong half to cut.
     const audience = row.recipientType === "teacher" ? "teacher" : "parent";
-    const text = formatOutboxMessage(row.payload as any, ctx, lang, audience);
+    const text = formatOutboxMessage(await withAskerName(row.payload as any), ctx, lang, audience); // 🔻 TASK-729: P43/P44 only; a COPY, never written back
     const attempts = row.attempts + 1;
     try {
       await pushMessage(row.recipientLineUserId!, [{ type: "text", text }]);

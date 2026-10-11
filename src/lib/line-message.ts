@@ -14,6 +14,7 @@ import { renderCampDeduction } from "./camp-deduction";
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
   notifyTypeOf,
+  fieldLines,
   programLabel,
   renderFieldBlock,
   TEMPLATE_LANG,
@@ -854,6 +855,30 @@ function buildOutboxMessage(
       const coach = fieldValue(payload.coachName);
       return coach ? `🔔 Please support Coach ${coach}.` : t("ob_default", lang);
     }
+    // 🔻 TASK-729 (P43/P44) — the last two «คุยกับแอดมิน» notices; ONE text for both languages. `chatName` = the LINE display name read when the button was pressed;
+    // none ⇒ the DRAFT fallback (📋 Khwan Q7 pending): "ผู้ใช้ LINE" + " · HH:mm" of the press. 🔑 Never the generic bell.
+    case "admin_asked_for_admin":
+    case "unlinked_asked_for_admin": {
+      const name = fieldValue(payload.chatName) ?? t("aa_chat_fallback", lang) + (fieldValue(payload.pressedAt) ? ` · ${fieldValue(payload.pressedAt)}` : "");
+      return payload.kind === "admin_asked_for_admin" ? `🔔 Please support Admin "${name}".` : `🔔 Please support "${name}".`;
+    }
+    // 🔻 TASK-730 (D1, row 45; 📋 DRAFT — Khwan Q5 pending: the expiry format and the Remark source) — a VOUCHER was sold; the family gets her layout, ONE text for both languages.
+    // Everything is on the payload (a sale is not a booking row). `Remark` has no source today (a voucher has no note field) ⇒ the line prints only if a payload ever carries one.
+    case "voucher_sold_parent":
+      return (
+        t("ob_course_title", lang) + "\n" +
+        // her three fields, in her order, through `fieldLines` (no new template key: the field table is untouched)
+        fieldLines(
+          ["student", "program", "expiry"],
+          {
+            student: fieldValue(payload.studentName),
+            program: t("vs_program", lang, { hours: String(payload.hours ?? "") }),
+            expiry: dateField(payload.expiryDate),
+          },
+          lang,
+        ).map((l) => `${l}\n`).join("") +
+        extra(t("ob_f_note", lang), fieldValue(payload.note))
+      );
     default:
       return t("ob_default", lang);
   }

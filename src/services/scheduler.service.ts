@@ -61,6 +61,7 @@ import {
 import { VOUCHER_ENDED_MESSAGE, endableVoucherDraws, isVoucherEnded, isVoucherHours, voucherExpiry, voucherRemaining, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
 import { householdLineUserIds } from "../lib/family-link";
+import { notifyVoucherSold } from "../lib/voucher-sold-notice"; // 🔻 TASK-730
 import { DUO_SAME_CHILD, NOT_A_COURSE_SESSION, duoStudentIds } from "../lib/duo-course";
 import { assertSubjectKindForCourse } from "../lib/subject-kinds";
 import { enqueueLine, type NotifyResult } from "../lib/line";
@@ -2935,6 +2936,8 @@ export async function createVoucher(input: any) {
     });
     return { voucher: toVoucherDTO(row) };
   });
+
+  await notifyVoucherSold(result.voucher); // 🔻 TASK-730 (D1; 📋 DRAFT — Khwan Q5): the family is told ONCE, after the commit; it can never fail the sale. `importVoucher` sends nothing.
 
   // Phase 2: a voucher sale → record revenue on its INCOME item ("voucher-{hours}").
   void recordSale(voucherItemRef(input.totalHours), 1, {

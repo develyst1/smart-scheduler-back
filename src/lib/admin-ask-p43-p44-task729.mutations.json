@@ -1,0 +1,143 @@
+{
+  "task": "TASK-729",
+  "proves": "src/lib/admin-ask-p43-p44-task729.test.ts",
+  "note": "P43/P44 (the last two «คุยกับแอดมิน» admin notices; 'never stored' = LITERALLY: the push worker reads the name at send time, on a copy). The DoD's four = A1 (the name STORED in the row) · A2 (the alert/send lost on a failed read) · A3 (the fallback without the time) · A4 (P43 -> the generic bell); the rest: the name logged, P44 wearing P43's words, a blank name accepted, the worker reading for every kind.",
+  "tests": "src/lib/admin-ask-p43-p44-task729.test.ts src/services/command-list-by-role-task523.test.ts",
+  "mutations": [
+    {
+      "id": "A1",
+      "what": "the display name is STORED — the worker writes it onto the row's own payload object (no copy)",
+      "files": [
+        {
+          "file": "src/services/outbox.service.ts",
+          "edits": [
+            {
+              "from": "return { ...payload, chatName };",
+              "to": "payload.chatName = chatName; return payload;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "what": "a failed profile read THROWS (the read's own guard removed) — it would cost the SEND",
+      "files": [
+        {
+          "file": "src/lib/line-client.ts",
+          "edits": [
+            {
+              "from": "return p.displayName?.trim() ? p.displayName.trim() : null;\n  } catch {",
+              "to": "return p.displayName?.trim() ? p.displayName.trim() : null;\n  } catch (e) {\n    throw e;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "what": "the fallback drops the time (the 'ผู้ใช้ LINE' alone)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "+ (fieldValue(payload.pressedAt) ? ` · ${fieldValue(payload.pressedAt)}` : \"\")",
+              "to": "+ \"\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "what": "P43 falls back to the generic bell",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "return payload.kind === \"admin_asked_for_admin\" ? `🔔 Please support Admin \"${name}\".` : `🔔 Please support \"${name}\".`;",
+              "to": "return t(\"ob_default\", lang);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "what": "the display name is LOGGED by the worker",
+      "files": [
+        {
+          "file": "src/services/outbox.service.ts",
+          "edits": [
+            {
+              "from": "return { ...payload, chatName };",
+              "to": "console.info(\"asker\", chatName); return { ...payload, chatName };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "what": "P44 (an unlinked person) wears P43's `Admin` word",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "`🔔 Please support \"${name}\".`;",
+              "to": "`🔔 Please support Admin \"${name}\".`;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A7",
+      "what": "a blank display name is returned as the name (not null)",
+      "files": [
+        {
+          "file": "src/lib/line-client.ts",
+          "edits": [
+            {
+              "from": "return p.displayName?.trim() ? p.displayName.trim() : null;",
+              "to": "return p.displayName ?? null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A8",
+      "what": "the handler reads the profile again (the name back in the stored payload)",
+      "files": [
+        {
+          "file": "src/services/line-webhook.service.ts",
+          "edits": [
+            {
+              "from": "names = { pressedAt: bangkokNow().time };",
+              "to": "names = { chatName: \"x\", pressedAt: bangkokNow().time };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A9",
+      "what": "the worker reads the profile for EVERY kind (not only P43/P44)",
+      "files": [
+        {
+          "file": "src/services/outbox.service.ts",
+          "edits": [
+            {
+              "from": "if (payload?.kind !== \"admin_asked_for_admin\" && payload?.kind !== \"unlinked_asked_for_admin\") return payload;",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

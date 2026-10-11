@@ -160,9 +160,7 @@ describe("✅ TASK-334 Part B → TASK-727 — the admin kinds with NO name on t
     for (const kind of ["student_registered", "parent_asked_for_admin", "teacher_asked_for_admin"]) {
       expect(formatOutboxMessage({ kind, parentPhone: "0812345678", lineUserId: "U1" } as any, {}, "TH", "parent")).toBe(t("ob_default", "TH"));
     }
-    for (const kind of ["admin_asked_for_admin", "unlinked_asked_for_admin"]) {
-      expect(formatOutboxMessage({ kind, studentName: "น้องเอ", lineUserId: "U1" } as any, {}, "TH", "parent")).toBe(t("ob_default", "TH"));
-    }
+    // 🔻 TASK-729: P43/P44 (`admin_asked_for_admin` / `unlinked_asked_for_admin`) have their own cases now — pinned in `admin-ask-p43-p44-task729.test.ts`.
   });
 
   test("🚫 the three DEAD branches are untouched — a dead branch is not a defect; a MISSING one is", () => {

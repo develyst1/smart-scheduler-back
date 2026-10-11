@@ -1,0 +1,113 @@
+{
+  "task": "TASK-730",
+  "proves": "src/lib/voucher-sold-confirmed-task730.test.ts",
+  "note": "D1 (the family's CONFIRMED SCHEDULE when a voucher is sold; 📋 DRAFT, Khwan Q5). The DoD's four = V1 (the import sends) · V2 (Remark printed empty) · V3 (the expiry printed as a length) · V4 (sent twice); the rest: the sale failing with the message, a send with no family.",
+  "tests": "src/lib/voucher-sold-confirmed-task730.test.ts",
+  "mutations": [
+    {
+      "id": "V1",
+      "what": "the notifier is also called a second time from the sale (and nothing stops an import doing the same)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await notifyVoucherSold(result.voucher); // 🔻 TASK-730",
+              "to": "await notifyVoucherSold(result.voucher); await notifyVoucherSold(result.voucher); // 🔻 TASK-730"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "what": "Remark is printed with no value",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"ob_f_note\", lang), fieldValue(payload.note))\n      );\n    default:",
+              "to": "t(\"ob_f_note\", lang) + \" :\\n\"\n      );\n    default:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "what": "the expiry is printed as a LENGTH ('3 Months'), not a date",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "program: t(\"vs_program\", lang, { hours: String(payload.hours ?? \"\") }),\n            expiry: dateField(payload.expiryDate),",
+              "to": "program: t(\"vs_program\", lang, { hours: String(payload.hours ?? \"\") }),\n            expiry: \"3 Months\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "what": "one account gets the message twice",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "for (const lineUserId of await householdLineUserIds(exec, [voucher.student.id])) {",
+              "to": "for (const lineUserId of [...(await householdLineUserIds(exec, [voucher.student.id])), ...(await householdLineUserIds(exec, [voucher.student.id]))]) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V5",
+      "what": "the sale fails when the notice fails (the guard removed)",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "} catch (e) {\n    console.error(\"[voucher-sold]",
+              "to": "} finally {\n    console.error(\"[voucher-sold]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V6",
+      "what": "a notice goes out even with no linked family",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "for (const lineUserId of await householdLineUserIds(exec, [voucher.student.id])) {",
+              "to": "for (const lineUserId of [...(await householdLineUserIds(exec, [voucher.student.id])), \"U-nobody\"]) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V7",
+      "what": "the student is printed by `name` (the one name rule broken)",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "studentName: studentNamesOf({ student: voucher.student }) ?? \"\", // the ONE name rule",
+              "to": "studentName: voucher.student.name, // the ONE name rule"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

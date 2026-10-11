@@ -167,9 +167,14 @@ describe("🔴 TASK-525 — `คุยกับแอดมิน` alerts the ad
     expect(seen.length).toBe(1); // …and every admin (themselves included — `notifyAdmins`' own list) is alerted
     expect(c.replies.map((r) => r.text)).toEqual([tb("admin_called")]);
   });
-  test("🚫 NO copy invented: all four kinds render the PARKED default (TASK-334), until the owner words them together", () => {
-    for (const kind of Object.values(EXPECT_KIND)) {
+  test("🚫 a payload with no NAME renders the generic bell for the parent / coach kinds; the admin / unlinked kinds (P43 / P44, TASK-729) render their own words with the fallback", () => {
+    // 🔻 TASK-729 — the words came back for P43/P44 (the display name is read by the push worker; none here ⇒ the DRAFT fallback). The parent / coach kinds carry their names from 727.
+    for (const kind of Object.values(EXPECT_KIND).filter((k) => k === "parent_asked_for_admin" || k === "teacher_asked_for_admin")) {
       for (const lang of ["TH", "EN"] as const) expect({ kind, out: formatOutboxMessage({ kind, lineUserId: "U1" } as any, {}, lang, "admin" as any) }).toEqual({ kind, out: t("ob_default", lang) });
+    }
+    for (const lang of ["TH", "EN"] as const) {
+      expect(formatOutboxMessage({ kind: "admin_asked_for_admin", lineUserId: "U1" } as any, {}, lang, "admin" as any)).toBe('🔔 Please support Admin "ผู้ใช้ LINE".');
+      expect(formatOutboxMessage({ kind: "unlinked_asked_for_admin", lineUserId: "U1" } as any, {}, lang, "admin" as any)).toBe('🔔 Please support "ผู้ใช้ LINE".');
     }
   });
 });
