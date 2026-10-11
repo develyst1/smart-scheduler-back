@@ -366,14 +366,18 @@ describe("🔴 THE CLASSIFICATION (§3c) — every reader of `EXTENDED`, each ON
   });
 });
 
-describe("📋 §3d — the admins' fallback notice (DRAFT, owner approval pending): both languages, no raw placeholder", () => {
+describe("✅ §3d — the admins' fallback notice (TH owner-approved 2026-10-07, EN its companion): both languages, no raw placeholder", () => {
   const m = (lang: "TH" | "EN") => formatOutboxMessage({ kind: "makeup_not_confirmed", reason: "งบชั่วโมงของครูไม่พอ" } as any, { studentName: "Mali", date: "2026-11-25" } as any, lang);
   test("TH / EN", () => {
     expect(m("TH")).toBe("🔔 คาบชดเชยของ Mali วันที่ 25-11-2026 ยังไม่ได้ยืนยัน (งบชั่วโมงของครูไม่พอ) — กรุณายืนยันคาบนี้");
     expect(m("EN")).toBe("🔔 Make-up for Mali on 25-11-2026 is NOT confirmed (งบชั่วโมงของครูไม่พอ) — please confirm it.");
     for (const lang of ["TH", "EN"] as const) expect(formatOutboxMessage({ kind: "makeup_not_confirmed" } as any, {}, lang)).not.toMatch(/[{}]/);
   });
-  test("marked DRAFT beside the key", () => {
-    expect(readFileSync(resolve(import.meta.dir, "../lib/line-i18n.ts"), "utf8")).toMatch(/TASK-702 \(REQ-115\) — the ADMINS are told[\s\S]*📋 DRAFT: owner approval pending/);
+  test("🔻 TASK-708 — labelled with the REAL approval beside the key: TH approved (COPY-REVIEW :584), EN not separately owner-approved; no DRAFT left", () => {
+    const L = readFileSync(resolve(import.meta.dir, "../lib/line-i18n.ts"), "utf8").replace(/\r\n/g, "\n");
+    const block = L.slice(L.indexOf("TASK-702 (REQ-115) — the ADMINS are told"), L.indexOf("ob_makeup_not_confirmed: {"));
+    expect(block).toContain("✅ TH APPROVED by the owner 2026-10-07 — COPY-REVIEW-2026-09-29.md:584");
+    expect(block).toContain("EN is its companion as drafted, not separately");
+    expect(block).not.toContain("DRAFT");
   });
 });

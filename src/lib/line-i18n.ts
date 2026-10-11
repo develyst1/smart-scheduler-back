@@ -612,8 +612,8 @@ const TABLE: Record<string, Entry> = {
     EN: "Course expiry date changed: {student}'s {program} course is now valid until {to} (previously {from}). Please contact Admin if you have any questions.",
   },
   // 🔻 TASK-702 (REQ-115) — the ADMINS are told when a make-up could NOT be confirmed at its birth (the freelance budget is spent, the coach is on leave that day, …): the leave
-  // still commits and the make-up stays EXTENDED (marked) — exactly as before this task — so somebody has to confirm it. 📋 DRAFT: owner approval pending in @Porter's copy set
-  // (nothing ships on a draft — if the owner changes the words, these two strings change and nothing else).
+  // still commits and the make-up stays EXTENDED (marked) — exactly as before this task — so somebody has to confirm it. ✅ TH APPROVED by the owner 2026-10-07 — COPY-REVIEW-2026-09-29.md:584 (the owner was shown the TH line only); EN is its companion as drafted, not separately
+  // owner-approved. (If the owner changes the words, these two strings change and nothing else.)
   ob_makeup_not_confirmed: {
     TH: "🔔 คาบชดเชยของ {student} วันที่ {date} ยังไม่ได้ยืนยัน ({reason}) — กรุณายืนยันคาบนี้",
     EN: "🔔 Make-up for {student} on {date} is NOT confirmed ({reason}) — please confirm it.",
