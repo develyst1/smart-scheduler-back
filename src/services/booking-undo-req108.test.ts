@@ -599,6 +599,7 @@ describe("🔴 TASK-510 — every coach of a class is told when it stops happeni
     query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
       students: { findFirst: async () => ({ id: "s1", name: "Feen Full", nickname: "Feen" }) },
       appSettings: { findFirst: async () => ({ value: ["U-admin"] }) },
+      users: { findMany: async () => [] },
     },
     insert: (_t: any) => ({ values: async (v: any) => { outbox.push(v); } }),
   });

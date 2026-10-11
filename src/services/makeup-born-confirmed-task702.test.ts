@@ -324,7 +324,7 @@ describe("🔴 THE MIGRATION `0066` — its SQL pinned by value: the populations
   });
   test("journal + witness: registered, the COLUMN is the witness, NOT rerunnable (and why)", async () => {
     const J = JSON.parse(readFileSync(resolve(import.meta.dir, "../../drizzle/meta/_journal.json"), "utf8"));
-    expect(J.entries.at(-1)).toMatchObject({ idx: 66, tag: "0066_booking_is_makeup" });
+    expect(J.entries.find((e: any) => e.idx === 66)).toMatchObject({ idx: 66, tag: "0066_booking_is_makeup" });
     const { SCHEDULING_WITNESSES } = await import("../lib/migration-witness");
     expect(SCHEDULING_WITNESSES.find((x: any) => x.tag === "0066_booking_is_makeup")).toMatchObject({ probe: { kind: "column", table: "bookings", column: "is_makeup" }, rerunnable: false });
   });
