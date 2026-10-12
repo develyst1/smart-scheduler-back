@@ -40,9 +40,13 @@ describe("🔴 TASK-737 — Palm §8, by value", () => {
     expect(countDaily(PALM, { includePending: false }).attendanceRate).toBe(40); // round(2 / 5 × 100)
     expect(countDaily([], {}).attendanceRate).toBe(0); // no division by zero
   });
-  test("🚫 the switch stays at Palm's default (the owner's ruling flips it, not us)", () => {
-    expect(TOTAL_BOOKED_INCLUDES_PENDING).toBe(true);
-    expect(countDaily(PALM).totalBooked).toBe(6);
+  test("🔒 the switch is RULED (Khwan, 2026-10-13, option A): Total booked = Confirmed + On leave — and the DEFAULT path (no option passed) says so, with the % from it", () => {
+    expect(TOTAL_BOOKED_INCLUDES_PENDING).toBe(false);
+    const d = countDaily(PALM); // no `includePending` passed
+    expect(d.totalBooked).toBe(d.confirmed + d.onLeave); // 4 + 1
+    expect(d.totalBooked).toBe(5);
+    expect(d.attendanceRate).toBe(40); // round(2 / 5 × 100)
+    expect(d.pending).toBe(1); // the pending class is on its own card, not in Total booked
   });
   test("byTeacher[A]: count 4 · attended 2 · total = 6 lessons not cancelled/paused + 2 ECA + 3 CAMP = 11", () => {
     expect(r.byTeacher).toEqual([{ teacherId: A, count: 4, attended: 2, total: 11 }]);

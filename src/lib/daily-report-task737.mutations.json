@@ -1,19 +1,173 @@
 {
   "task": "TASK-737",
   "proves": "src/lib/daily-report-task737.test.ts",
-  "note": "REQ-119: GET /reports/daily serves Palm's contract. The DoD's eight = M1 seats counted · M2 extra coach ignored · M3 teacherId ignored on one counter · M4 NO_SHOW out of confirmed · M5 EXTENDED out of pending · M6 PAUSED in totalBooked · M7 a type missing from byType · M8 the switch flipped; the rest: Awaiting widened to vouchers, the stable tie-break lost, the OLD report touched.",
+  "note": "REQ-119: GET /reports/daily serves Palm's contract. The DoD's eight = M1 seats counted · M2 extra coach ignored · M3 teacherId ignored on one counter · M4 NO_SHOW out of confirmed · M5 EXTENDED out of pending · M6 PAUSED in totalBooked · M7 a type missing from byType · M8 the switch flipped back (738); the rest: Awaiting widened to vouchers, the stable tie-break lost, the OLD report touched.",
   "tests": "src/lib/daily-report-task737.test.ts",
   "mutations": [
-    { "id": "M1", "what": "a GROUP's SEATS are counted (the group_id IS NULL filter is gone)", "files": [{ "file": "src/services/daily-report.service.ts", "edits": [{ "from": "eq(b.pendingSlot, false), isNull(b.groupId))", "to": "eq(b.pendingSlot, false))" }] }] },
-    { "id": "M2", "what": "the extra coaches (booking_teachers) are ignored — an ECA counts for its primary coach only", "files": [{ "file": "src/services/daily-report.service.ts", "edits": [{ "from": "coachIds: [b.teacherId, ...(b.additionalTeachers ?? []).map((a: any) => a.teacherId)],", "to": "coachIds: [b.teacherId]," }] }] },
-    { "id": "M3", "what": "teacherId is ignored on ONE counter (cancelled stays the day's total for every coach — Palm's old bug)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "cancelled: n((r) => r.status === \"CANCELLED\"),", "to": "cancelled: rowsOfDay.filter(isLesson).filter((r) => r.status === \"CANCELLED\").length," }] }] },
-    { "id": "M4", "what": "NO_SHOW is out of Confirmed (Palm Q1 reversed)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "new Set([\"CONFIRMED\", \"ATTENDED\", \"NO_SHOW\"])", "to": "new Set([\"CONFIRMED\", \"ATTENDED\"])" }] }] },
-    { "id": "M5", "what": "EXTENDED is out of Pending (Palm Q2 reversed)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "new Set([\"PENDING\", \"EXTENDED\"])", "to": "new Set([\"PENDING\"])" }] }] },
-    { "id": "M6", "what": "PAUSED is IN Total booked (Palm Q5 reversed)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "new Set([\"CANCELLED\", \"PAUSED\"])", "to": "new Set([\"CANCELLED\"])" }] }] },
-    { "id": "M7", "what": "a booking type is missing from byBookingType* (VOUCHER)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "[\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"COURSE_PACKAGE\", \"VOUCHER\"] as const;", "to": "[\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"COURSE_PACKAGE\"] as const;" }] }] },
-    { "id": "M8", "what": "THE SWITCH IS FLIPPED (the owner's ruling is pending: nobody flips it)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "TOTAL_BOOKED_INCLUDES_PENDING = true;", "to": "TOTAL_BOOKED_INCLUDES_PENDING = false;" }] }] },
-    { "id": "M9", "what": "Awaiting is widened to a paused VOUCHER session (Palm Q4 answered by us)", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": "new Set([\"FIRST_TRIAL\", \"SINGLE_SESSION\"])", "to": "new Set([\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"VOUCHER\"])" }] }] },
-    { "id": "M10", "what": "the stable tie-break (teacherId asc) is lost", "files": [{ "file": "src/lib/daily-report.ts", "edits": [{ "from": " || (a.teacherId < b.teacherId ? -1 : a.teacherId > b.teacherId ? 1 : 0)", "to": "" }] }] },
-    { "id": "M11", "what": "the OLD getDailyReport is edited (the SOM report + the day-end job would move)", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "onLeave: count((r) => r.status === \"SICK_LEAVE\"),", "to": "onLeave: count((r) => r.status === \"SICK_LEAVE\" || r.status === \"NO_SHOW\")," }] }] }
+    {
+      "id": "M1",
+      "what": "a GROUP's SEATS are counted (the group_id IS NULL filter is gone)",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "eq(b.pendingSlot, false), isNull(b.groupId))",
+              "to": "eq(b.pendingSlot, false))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the extra coaches (booking_teachers) are ignored — an ECA counts for its primary coach only",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "coachIds: [b.teacherId, ...(b.additionalTeachers ?? []).map((a: any) => a.teacherId)],",
+              "to": "coachIds: [b.teacherId],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "teacherId is ignored on ONE counter (cancelled stays the day's total for every coach — Palm's old bug)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "cancelled: n((r) => r.status === \"CANCELLED\"),",
+              "to": "cancelled: rowsOfDay.filter(isLesson).filter((r) => r.status === \"CANCELLED\").length,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "NO_SHOW is out of Confirmed (Palm Q1 reversed)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "new Set([\"CONFIRMED\", \"ATTENDED\", \"NO_SHOW\"])",
+              "to": "new Set([\"CONFIRMED\", \"ATTENDED\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "EXTENDED is out of Pending (Palm Q2 reversed)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "new Set([\"PENDING\", \"EXTENDED\"])",
+              "to": "new Set([\"PENDING\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "PAUSED is IN Total booked (Palm Q5 reversed)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "new Set([\"CANCELLED\", \"PAUSED\"])",
+              "to": "new Set([\"CANCELLED\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "a booking type is missing from byBookingType* (VOUCHER)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "[\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"COURSE_PACKAGE\", \"VOUCHER\"] as const;",
+              "to": "[\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"COURSE_PACKAGE\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "THE SWITCH IS FLIPPED BACK to Palm's earlier choice (Khwan ruled A on 2026-10-13: Pending is OUT of Total booked)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "TOTAL_BOOKED_INCLUDES_PENDING = false;",
+              "to": "TOTAL_BOOKED_INCLUDES_PENDING = true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "Awaiting is widened to a paused VOUCHER session (Palm Q4 answered by us)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "new Set([\"FIRST_TRIAL\", \"SINGLE_SESSION\"])",
+              "to": "new Set([\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"VOUCHER\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "what": "the stable tie-break (teacherId asc) is lost",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": " || (a.teacherId < b.teacherId ? -1 : a.teacherId > b.teacherId ? 1 : 0)",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "what": "the OLD getDailyReport is edited (the SOM report + the day-end job would move)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "onLeave: count((r) => r.status === \"SICK_LEAVE\"),",
+              "to": "onLeave: count((r) => r.status === \"SICK_LEAVE\" || r.status === \"NO_SHOW\"),"
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

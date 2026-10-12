@@ -9,11 +9,12 @@ export const LESSON_TYPES = ["FIRST_TRIAL", "SINGLE_SESSION", "COURSE_PACKAGE", 
 export type LessonType = (typeof LESSON_TYPES)[number];
 
 /**
- * 🔒 THE ONE SWITCH (REQ-119 ❓, the owner's ruling is pending — do NOT flip it here).
- *   true  = Palm: Total booked = every lesson that is neither CANCELLED nor PAUSED (Pending and Extended are IN) — what the front shows today, so the numbers do not jump at switch-over;
- *   false = the customer's Excel: Total booked = Confirmed + On leave (Pending OUT).
+ * 🔒 THE ONE SWITCH (REQ-119 ❓) — RULED by Khwan, 2026-10-13: **A**, "ไม่นับคลาสที่ยังไม่คอนเฟิร์ม" ⇒ `false`.
+ *   false = the customer's Excel (the RULE): Total booked = Confirmed + On leave — Pending and Extended are OUT (a class not yet confirmed is not counted), and so is PAUSED / CANCELLED;
+ *   true  = Palm's earlier choice (every lesson that is neither CANCELLED nor PAUSED, Pending and Extended IN). Kept as the injectable `includePending` option below so both paths stay tested and documented.
+ * The attendance circle follows by itself (`attended / totalBooked`).
  */
-export const TOTAL_BOOKED_INCLUDES_PENDING = true;
+export const TOTAL_BOOKED_INCLUDES_PENDING = false;
 
 /** Palm Q1: NO_SHOW counts as Confirmed. */
 export const CONFIRMED_STATUSES: ReadonlySet<string> = new Set(["CONFIRMED", "ATTENDED", "NO_SHOW"]);
