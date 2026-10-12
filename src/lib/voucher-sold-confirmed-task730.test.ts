@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { formatOutboxMessage } from "./line-message";
 import { notifyVoucherSold } from "./voucher-sold-notice";
 
-const VOUCHER = { id: "v-1", totalHours: 5, expiryDate: "2027-01-15", student: { id: "s-1", name: "Student A Full", nickname: "Student A" } };
+const VOUCHER = { id: "v-1", totalHours: 5, student: { id: "s-1", name: "Student A Full", nickname: "Student A" } };
 
 /** A fake executor: students → parent, parents → primary account, no invited links, the outbox collects inserts. */
 function world(o: { parentId?: string | null; accounts?: Array<string | null>; failInsert?: boolean } = {}) {
@@ -26,9 +26,9 @@ function world(o: { parentId?: string | null; accounts?: Array<string | null>; f
 const render = (payload: any, lang: "TH" | "EN") => formatOutboxMessage(payload, {}, lang, "parent");
 
 describe("🔴 TASK-730 — the message, by value (her row 45)", () => {
-  const payload = { kind: "voucher_sold_parent", studentName: "Student A", hours: 5, expiryDate: "2027-01-15" };
-  test("her layout with the REAL expiry date (DD-MM-YYYY), identical in TH and EN; no Remark line when there is none", () => {
-    const text = "📅CONFIRMED SCHEDULE:\nStudent : Student A\nProgram : VOUCHER 5 HR\n*Expiry date : 15-01-2027";
+  const payload = { kind: "voucher_sold_parent", studentName: "Student A", hours: 5, months: 3 };
+  test("her layout with the expiry in MONTHS (Khwan's Q5 answer: `3 Months`), identical in TH and EN; no Remark line when there is none", () => {
+    const text = "📅CONFIRMED SCHEDULE:\nStudent : Student A\nProgram : VOUCHER 5 HR\n*Expiry date : 3 Months";
     expect(render(payload, "TH")).toBe(text);
     expect(render(payload, "EN")).toBe(text);
   });
@@ -36,9 +36,15 @@ describe("🔴 TASK-730 — the message, by value (her row 45)", () => {
     expect(render({ ...payload, note: "bring a helmet" }, "EN").split("\n").at(-1)).toBe("Remark : bring a helmet");
     for (const blank of ["", "   ", null, undefined]) expect(render({ ...payload, note: blank }, "EN")).not.toContain("Remark");
   });
-  test("no ISO date leaks and the program line is the sample's shape for 10 and 15 hours too", () => {
-    expect(render({ ...payload, hours: 10 }, "EN")).toContain("Program : VOUCHER 10 HR");
-    expect(render({ ...payload, hours: 15 }, "EN")).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  test("the program line and the months follow the package: 5 h → 3 Months, 10 h → 6, 15 h → 9 (the table that decides the real expiry); never a date", async () => {
+    for (const [hours, months] of [[5, 3], [10, 6], [15, 9]] as const) {
+      const { exec, inserted } = world();
+      await notifyVoucherSold({ ...VOUCHER, totalHours: hours }, exec);
+      const text = render(inserted[0].payload, "EN");
+      expect(text).toContain(`Program : VOUCHER ${hours} HR`);
+      expect(text.split("\n").at(-1)).toBe(`*Expiry date : ${months} Months`);
+      expect(text).not.toMatch(/\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2}/);
+    }
   });
 });
 
@@ -48,8 +54,8 @@ describe("🔴 TASK-730 — the sale tells the family ONCE (by value, no databas
     await notifyVoucherSold(VOUCHER, exec);
     expect(inserted.length).toBe(1);
     expect(inserted[0]).toMatchObject({ recipientType: "parent", recipientLineUserId: "U-parent", status: "PENDING", idempotencyKey: "voucher-sold:v-1:U-parent" });
-    expect(inserted[0].payload).toEqual({ kind: "voucher_sold_parent", studentName: "Student A", hours: 5, expiryDate: "2027-01-15" });
-    expect(render(inserted[0].payload, "TH")).toBe("📅CONFIRMED SCHEDULE:\nStudent : Student A\nProgram : VOUCHER 5 HR\n*Expiry date : 15-01-2027");
+    expect(inserted[0].payload).toEqual({ kind: "voucher_sold_parent", studentName: "Student A", hours: 5, months: 3 }); // no date on the row: the real expiry is provisional until the first booking
+    expect(render(inserted[0].payload, "TH")).toBe("📅CONFIRMED SCHEDULE:\nStudent : Student A\nProgram : VOUCHER 5 HR\n*Expiry date : 3 Months");
   });
   test("two accounts in the family ⇒ one row each (and two different send-once keys)", async () => {
     const { exec, inserted } = world({ accounts: ["U-mum", "U-dad"] });

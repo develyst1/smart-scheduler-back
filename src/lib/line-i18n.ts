@@ -332,7 +332,7 @@ const TABLE: Record<string, Entry> = {
     EN: "Please enter your mobile phone that linked with Line app.",
   },
   children_title: { TH: "นักเรียนของคุณ", EN: "Your children" },
-  children_none: { TH: 'ยังไม่มีนักเรียน — แตะ "เพิ่มนักเรียน" เพื่อเพิ่ม', EN: 'No children yet — tap "Add child" to add' },
+  children_none: { TH: "ยังไม่มีนักเรียน — แตะปุ่ม \"เพิ่มนักเรียน\"", EN: "No children yet — tap \"Add child\"" }, // 🔻 TASK-731 (R48; answer 3 "ใช่ค่ะ"): her cell with the doubled word corrected; EN is her cell (drops "to add")
 
   verify_admin_bad: { TH: "รหัสแอดมินไม่ถูกต้อง ลองใหม่อีกครั้ง", EN: "Wrong admin code, please try again" },
   verify_admin_ok: { TH: "ผูกบัญชีแอดมินสำเร็จ ✅ จะได้รับแจ้งเตือนเมื่อมีการแจ้งลา", EN: "Admin account linked ✅ You'll be notified of leave requests" },
@@ -361,7 +361,7 @@ const TABLE: Record<string, Entry> = {
   verify_parent_ok_existing: { TH: "ผูกบัญชีผู้ปกครองสำเร็จ ✅ (เบอร์ {phone}){list}", EN: "Registration completed ✅ (phone {phone}){list}" },
   // TASK-047: a COUNT, never names — anyone can type a phone number, so listing the children would disclose
   // a family's data to a stranger. (Replaces the retired `verify_parent_students`.)
-  verify_parent_children_count: { TH: "\nพบนักเรียน {n} คนในบัญชีนี้", EN: "\n{n} children on file" },
+  verify_parent_children_count: { TH: "\nพบนักเรียน {n} คนในบัญชีนี้", EN: "\n{n} children found" }, // 🔻 TASK-731 (R58; answer 4): `{n} children found`; TH as today
   // SPEC-071 Amendment #2 / TASK-232 — REQ-079 §2's own wording: the phone alone returns the children BY NAME.
   // 🔴 The count above is NOT retired — it is what the 2FA-on path shows before verification. Two paths, two
   // rules, both deliberate (`lib/line-pairing.ts`).
@@ -817,13 +817,13 @@ const TABLE: Record<string, Entry> = {
   // 🔑 The second line is the one that must be unmissable: **nothing was cancelled**, so the teacher keeps teaching the classes already
   // on that day until an admin says otherwise. ⚠️ A teacher who believes their classes were cancelled does not turn up.
   // 🚫 No family and no other coach receives either of these: nothing changed for them (TASK-587's closed defect).
-  ob_teacher_leave_recorded_title: { TH: "🗓️ แอดมินบันทึกวันลาของคุณแล้ว", EN: "🗓️ An admin recorded a leave day for you" },
+  ob_teacher_leave_recorded_title: { TH: "🗓️ แอดมินบันทึกวันลาของคุณแล้ว", EN: "🗓️ LEAVE RECORDED" }, // 🔻 TASK-731 (P33/P34; Khwan's answer 2: "LEAVE RECORDED")
   ob_teacher_leave_lifted_title: { TH: "🗓️ แอดมินยกเลิกวันลาของคุณแล้ว", EN: "🗓️ LEAVE CANCELLED" },
-  ob_tl_blocked: { TH: "วันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class can be booked with you that day." },
+  ob_tl_blocked: { TH: "วันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class will be booked." }, // 🔻 TASK-731 (P33/P34): her EN line
   ob_tl_open_again: { TH: "วันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again." },
   ob_tl_nothing_cancelled: {
     TH: "คาบที่จองไว้แล้ว {n} คาบยังอยู่ในตารางและยังไม่ได้ยกเลิก — กรุณาถือว่าสอนตามปกติจนกว่าแอดมินจะแจ้ง",
-    EN: "The {n} class(es) already booked that day are unchanged and NOT cancelled — please treat them as going ahead until an admin tells you otherwise.",
+    EN: "The {n} class(es) that already booked, still on. ", // 🔻 TASK-731 (P33): her EN line, verbatim (her grammar: "that already booked")
   },
   ob_tl_by: { TH: "บันทึกโดย", EN: "Recorded by" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },

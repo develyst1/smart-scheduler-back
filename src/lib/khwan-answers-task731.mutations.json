@@ -1,0 +1,128 @@
+{
+  "task": "TASK-731",
+  "proves": "src/lib/khwan-answers-task731.test.ts",
+  "note": "Khwan's answers 1-4. The DoD's three = B1 (an old text back: P33's title) · B2 (P11 prints the new class's date) · B3 (R58's TH changed: the scope guard); the rest: P11's Note dropped / its Reason printed for any code, R48's doubled word back, R58's EN back to 'on file'.",
+  "tests": "src/lib/khwan-answers-task731.test.ts src/lib/khwan-workbook-task727.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "P33/P34 — the title is `LEAVE CANCELLED` again (the old text)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "EN: \"🗓️ LEAVE RECORDED\" }, // 🔻 TASK-731",
+              "to": "EN: \"🗓️ An admin recorded a leave day for you\" }, // 🔻 TASK-731"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "what": "P11 — the new class's DATE is printed again",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) : undefined)\n      );\n    }\n    case \"class_cancelled_teacher\": {",
+              "to": "extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) + \" \" + (payload.newClassDates as string[]).map((d) => ddmmyyyy(d)).join(\", \") : undefined)\n      );\n    }\n    case \"class_cancelled_teacher\": {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "what": "SCOPE GUARD — R58's TH is changed (she changed only the EN)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "TH: \"\\nพบนักเรียน {n} คนในบัญชีนี้\", EN: \"\\n{n} children found\"",
+              "to": "TH: \"\\nพบนักเรียน {n} คน\", EN: \"\\n{n} children found\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "what": "P11 — the make-up Note is dropped",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) : undefined)\n      );\n    }\n    case \"class_cancelled_teacher\": {",
+              "to": "\"\"\n      );\n    }\n    case \"class_cancelled_teacher\": {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "what": "P11 — the Reason prints for ANY cancel code (the shop's own codes leak)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"cl_reason\", lang), payload.cancelReason === \"TEACHER_LEAVE\" ? t(\"ob_reason_TEACHER_LEAVE\", lang) : undefined) +\n        extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) : undefined)\n      );\n    }\n    case \"class_cancelled_teacher\": {",
+              "to": "extra(t(\"cl_reason\", lang), payload.cancelReason ? t(\"ob_reason_TEACHER_LEAVE\", lang) : undefined) +\n        extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) : undefined)\n      );\n    }\n    case \"class_cancelled_teacher\": {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "what": "R48 — the doubled word is back (her cell as written)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "แตะปุ่ม \\\"เพิ่มนักเรียน\\\"",
+              "to": "แตะ เพื่อปุ่ม \\\"เพิ่มนักเรียน\\\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "what": "R58 — the EN is `on file` again",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "EN: \"\\n{n} children found\"",
+              "to": "EN: \"\\n{n} children on file\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "what": "P11 — the Note prints even when NO class was appended (the TASK-537/548 truth rule broken)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"cl_note\", lang), appended ? t(\"cl_note_makeup\", lang) : undefined)",
+              "to": "extra(t(\"cl_note\", lang), t(\"cl_note_makeup\", lang))"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

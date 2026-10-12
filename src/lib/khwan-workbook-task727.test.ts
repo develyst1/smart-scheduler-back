@@ -131,17 +131,12 @@ describe("🔴 TASK-727 §2 — the camp renderers (P25 / P27 by value; P26 only
   });
 });
 
-describe("🚫 TASK-727 scope guard — the rows NOT approved are untouched (they wait on Khwan)", () => {
-  test("P11 · P33/P34 · R35 · R48 · R58 · R147 keep today's words", () => {
-    expect(t("mc_title", "TH")).toBe("❌ ยกเลิกคาบเรียน:"); // P11 makeup_cancelled_parent
-    expect(t("mc_title", "EN")).toBe("❌ CLASS CANCELLED:");
-    expect(t("ob_teacher_leave_recorded_title", "EN")).toBe("🗓️ An admin recorded a leave day for you"); // P33/P34
-    expect(t("ob_tl_blocked", "EN")).toBe("No new class can be booked with you that day.");
+describe("🚫 TASK-727 scope guard — the rows still NOT approved stay untouched (P11 · P33/P34 · R48 · R58 were approved by Khwan's answers 2026-10-12: TASK-731)", () => {
+  test("R35 (the approved A′) keeps its words; the TH halves of the rows that changed EN-only stay as they were", () => {
     expect(t("empty_checkin", "TH")).toContain("วันนี้ไม่พบคลาสที่ยืนยันแล้วสำหรับบัญชีนี้ค่ะ"); // R35 — the approved A′ stays
-    expect(t("children_none", "TH")).toBe('ยังไม่มีนักเรียน — แตะ "เพิ่มนักเรียน" เพื่อเพิ่ม'); // R48
-    expect(t("children_none", "EN")).toBe('No children yet — tap "Add child" to add');
-    expect(t("verify_parent_children_count", "EN")).toBe("\n{n} children on file"); // R58
-    expect(t("verify_parent_children_count", "TH")).toBe("\nพบนักเรียน {n} คนในบัญชีนี้");
+    expect(t("verify_parent_children_count", "TH")).toBe("\nพบนักเรียน {n} คนในบัญชีนี้"); // R58's TH is as today
+    expect(t("ob_teacher_leave_recorded_title", "TH")).toBe("🗓️ แอดมินบันทึกวันลาของคุณแล้ว"); // P33/P34's TH is as today
+    expect(t("ob_tl_blocked", "TH")).toBe("วันนั้นจะไม่มีการจองคาบใหม่กับคุณ");
   });
 });
 

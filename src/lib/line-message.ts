@@ -321,8 +321,10 @@ function buildOutboxMessage(
     // know is true (an ended course, the extension ceiling or a locked leave add nothing).
     case "makeup_cancelled_parent": {
       const type = notifyTypeOf(payload.bookingType as string);
-      // 🔻 TASK-548 — the class the re-plan ACTUALLY appended (its dates, from the payload the sender read off those rows). None ⇒ no line.
-      const newDates = Array.isArray(payload.newClassDates) ? (payload.newClassDates as string[]).filter(Boolean) : [];
+      // 🔻 TASK-731 (P11; Khwan's answer 1, 2026-10-12: "Reason and Note, both languages" · the new class's date: "ไม่ต้องมี") — the family's cancel shape for a make-up too:
+      // `Reason` (only for a teacher's leave, as the class cancel) + `Note`, in the chat's language. She removed the DATE, not the CONDITION: the Note ("a make-up has been added") is TRUE only
+      // when the re-plan ACTUALLY appended a class (TASK-548 — false for a trim), so it prints ONLY when `newClassDates` is non-empty (the dates' values are never printed).
+      const appended = Array.isArray(payload.newClassDates) && (payload.newClassDates as unknown[]).some(Boolean);
       return (
         t("mc_title", lang) + "\n" +
         renderFieldBlock(
@@ -336,7 +338,8 @@ function buildOutboxMessage(
           },
           { type, audience: recipientType, lang },
         ) +
-        extra(t("cl_note", lang), newDates.length ? t("mc_new_class", lang, { date: newDates.map((d) => ddmmyyyy(d)).join(", ") }) : undefined)
+        extra(t("cl_reason", lang), payload.cancelReason === "TEACHER_LEAVE" ? t("ob_reason_TEACHER_LEAVE", lang) : undefined) +
+        extra(t("cl_note", lang), appended ? t("cl_note_makeup", lang) : undefined)
       );
     }
     case "class_cancelled_teacher": {
@@ -873,7 +876,7 @@ function buildOutboxMessage(
           {
             student: fieldValue(payload.studentName),
             program: t("vs_program", lang, { hours: String(payload.hours ?? "") }),
-            expiry: dateField(payload.expiryDate),
+            expiry: fieldValue(payload.months) ? `${fieldValue(payload.months)} Months` : undefined, // her sample `3 Months`; every package is 3 / 6 / 9 (no singular case)
           },
           lang,
         ).map((l) => `${l}\n`).join("") +

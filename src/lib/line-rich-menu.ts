@@ -15,7 +15,8 @@ import { countMenuUsers } from "./line-menu-users";
 
 export interface RichMenuArea {
   bounds: { x: number; y: number; width: number; height: number };
-  action: { type: "postback"; data: string; label?: string };
+  // 🔻 TASK-734 (option A) — `displayText`: LINE shows it in the chat as the user's own message when the cell is pressed (the postback data stays what the webhook reads). Only the «คุยกับแอดมิน» cell sets it.
+  action: { type: "postback"; data: string; label?: string; displayText?: string };
 }
 export interface RichMenuDef {
   size: { width: number; height: number };
@@ -38,10 +39,12 @@ export interface AdminMenuDef extends Omit<RichMenuDef, "areas"> {
 /** Anything this module can hand to LINE. */
 export type AnyMenuDef = RichMenuDef | AdminMenuDef;
 
-const cell = (x: number, y: number, w: number, h: number, data: string): RichMenuArea => ({
+const cell = (x: number, y: number, w: number, h: number, data: string, displayText?: string): RichMenuArea => ({
   bounds: { x, y, width: w, height: h },
-  action: { type: "postback", data },
+  action: { type: "postback", data, ...(displayText ? { displayText } : {}) },
 });
+/** 🔻 TASK-734 — what pressing «คุยกับแอดมิน» shows in the chat (the button's own label). Pressing a rich-menu button otherwise leaves NO message, so the OA chat list does not bump the chat (Khwan, Q7). */
+const ADMIN_DISPLAY_TEXT = "คุยกับแอดมิน";
 
 // Parent: 3×2 grid on 2500×1686 (six 833×843 cells). check-in · leave · my children / register · lang · help.
 const W = 2500;
@@ -96,7 +99,7 @@ export const UNKNOWN_RICH_MENU: RichMenuDef = {
   chatBarText: "เมนู",
   areas: [
     cell(0, 0, W / 2, 843, "action=enter"),
-    cell(W / 2, 0, W / 2, 843, "action=admin"),
+    cell(W / 2, 0, W / 2, 843, "action=admin", ADMIN_DISPLAY_TEXT),
   ],
 };
 
@@ -120,7 +123,7 @@ export const KNOWN_RICH_MENU: RichMenuDef = {
     cell(KW * 2, 0, W - KW * 2, CH, "action=mycourses"),
     cell(0, CH, KW, CH, "action=register"),
     cell(KW, CH, KW, CH, "action=lang"),
-    cell(KW * 2, CH, W - KW * 2, CH, "action=admin"),
+    cell(KW * 2, CH, W - KW * 2, CH, "action=admin", ADMIN_DISPLAY_TEXT),
   ],
 };
 

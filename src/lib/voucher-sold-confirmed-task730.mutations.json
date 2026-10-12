@@ -1,7 +1,7 @@
 {
   "task": "TASK-730",
   "proves": "src/lib/voucher-sold-confirmed-task730.test.ts",
-  "note": "D1 (the family's CONFIRMED SCHEDULE when a voucher is sold; 📋 DRAFT, Khwan Q5). The DoD's four = V1 (the import sends) · V2 (Remark printed empty) · V3 (the expiry printed as a length) · V4 (sent twice); the rest: the sale failing with the message, a send with no family.",
+  "note": "D1 (the family's CONFIRMED SCHEDULE when a voucher is sold; 📋 DRAFT — the Program wording and Remark still wait). Khwan's Q5 answer: the expiry prints MONTHS. The DoD's four = V1 (sent twice/import) · V2 (Remark printed empty) · V3 (a date instead of months) · V4 (one account twice); the rest: the sale failing with the message, a send with no family, the one name rule, the wrong months.",
   "tests": "src/lib/voucher-sold-confirmed-task730.test.ts",
   "mutations": [
     {
@@ -36,14 +36,14 @@
     },
     {
       "id": "V3",
-      "what": "the expiry is printed as a LENGTH ('3 Months'), not a date",
+      "what": "the expiry is printed as a DATE (the provisional one) instead of MONTHS",
       "files": [
         {
           "file": "src/lib/line-message.ts",
           "edits": [
             {
-              "from": "program: t(\"vs_program\", lang, { hours: String(payload.hours ?? \"\") }),\n            expiry: dateField(payload.expiryDate),",
-              "to": "program: t(\"vs_program\", lang, { hours: String(payload.hours ?? \"\") }),\n            expiry: \"3 Months\","
+              "from": "expiry: fieldValue(payload.months) ? `${fieldValue(payload.months)} Months` : undefined,",
+              "to": "expiry: dateField(payload.expiryDate) ?? \"15-01-2027\","
             }
           ]
         }
@@ -104,6 +104,21 @@
             {
               "from": "studentName: studentNamesOf({ student: voucher.student }) ?? \"\", // the ONE name rule",
               "to": "studentName: voucher.student.name, // the ONE name rule"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V8",
+      "what": "the months are read from the wrong table row (always 3)",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "months: VOUCHER_VALIDITY_MONTHS[voucher.totalHours],",
+              "to": "months: VOUCHER_VALIDITY_MONTHS[5],"
             }
           ]
         }

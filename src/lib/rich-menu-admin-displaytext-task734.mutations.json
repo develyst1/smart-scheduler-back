@@ -1,0 +1,83 @@
+{
+  "task": "TASK-734",
+  "proves": "src/lib/rich-menu-admin-displaytext-task734.test.ts",
+  "note": "Option A: the «คุยกับแอดมิน» cell shows its own text in the chat. The DoD's two = D1 (displayText missing on a menu) · D2 (the postback data changed: the webhook path guard); the rest: displayText leaking onto another cell, the wrong text, the cell helper dropping it.",
+  "tests": "src/lib/rich-menu-admin-displaytext-task734.test.ts",
+  "mutations": [
+    {
+      "id": "D1",
+      "what": "the UNKNOWN menu's admin cell loses displayText",
+      "files": [
+        {
+          "file": "src/lib/line-rich-menu.ts",
+          "edits": [
+            {
+              "from": "cell(W / 2, 0, W / 2, 843, \"action=admin\", ADMIN_DISPLAY_TEXT),",
+              "to": "cell(W / 2, 0, W / 2, 843, \"action=admin\"),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "what": "the known menu's admin cell changes its DATA (the webhook would stop recognising it)",
+      "files": [
+        {
+          "file": "src/lib/line-rich-menu.ts",
+          "edits": [
+            {
+              "from": "cell(KW * 2, CH, W - KW * 2, CH, \"action=admin\", ADMIN_DISPLAY_TEXT),",
+              "to": "cell(KW * 2, CH, W - KW * 2, CH, \"action=admin2\", ADMIN_DISPLAY_TEXT),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "what": "displayText leaks onto another cell (the language toggle)",
+      "files": [
+        {
+          "file": "src/lib/line-rich-menu.ts",
+          "edits": [
+            {
+              "from": "cell(KW, CH, KW, CH, \"action=lang\"),",
+              "to": "cell(KW, CH, KW, CH, \"action=lang\", \"ภาษา\"),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D4",
+      "what": "the text is not the button's label",
+      "files": [
+        {
+          "file": "src/lib/line-rich-menu.ts",
+          "edits": [
+            {
+              "from": "const ADMIN_DISPLAY_TEXT = \"คุยกับแอดมิน\";",
+              "to": "const ADMIN_DISPLAY_TEXT = \"admin\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D5",
+      "what": "the cell helper drops displayText for every cell",
+      "files": [
+        {
+          "file": "src/lib/line-rich-menu.ts",
+          "edits": [
+            {
+              "from": "action: { type: \"postback\", data, ...(displayText ? { displayText } : {}) },",
+              "to": "action: { type: \"postback\", data },"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
