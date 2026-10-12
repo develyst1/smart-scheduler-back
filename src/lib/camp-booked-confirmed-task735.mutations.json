@@ -1,7 +1,7 @@
 {
   "task": "TASK-735",
   "proves": "src/lib/camp-booked-confirmed-task735.test.ts",
-  "note": "D2: the family's camp CONFIRMED SCHEDULE (booked / changed / cancelled; DRAFT, Khwan Q3). The DoD's four = G1 (the dot format back) · G2 (the half ignored: all day always) · G3 (no re-send on a change) · G4 (sent twice on one booking); the rest: Remark printed empty, a cancelled day still counted, the dates unordered, the booking failing with the message.",
+  "note": "D2: the family's camp CONFIRMED SCHEDULE (booked / changed / cancelled; DRAFT, Khwan Q3). The DoD's four = G1 (the dot format back) · G2 (the half ignored: all day always) · G3 (no re-send on a change) · G4 (sent twice on one booking); the rest: Remark printed empty, a cancelled day still counted, the dates unordered, the booking failing with the message. TEST-099 F1 (2026-10-12): the key is now chained on the LAST message and a repeated state is skipped; G3 = the old per-state key back, F2 = the skip removed, F3 = the chain constant, F4 = oldest-first; G4 was re-aimed (the duplicate-account mutant became equivalent once the skip existed).",
   "tests": "src/lib/camp-booked-confirmed-task735.test.ts",
   "mutations": [
     {
@@ -36,14 +36,14 @@
     },
     {
       "id": "G3",
-      "what": "no re-send on a change: the send-once key ignores which days are booked",
+      "what": "TEST-099 F1: the OLD per-state key is back — the key ignores the predecessor, so a return to an earlier state is dropped",
       "files": [
         {
           "file": "src/lib/camp-booked-notice.ts",
           "edits": [
             {
-              "from": ":${sorted.join(\",\")}:${lineUserId}`",
-              "to": ":${lineUserId}`"
+              "from": ":after:${last?.id ?? \"none\"}:${batch}:${key}`",
+              "to": ":${batch}:${key}`"
             }
           ]
         }
@@ -51,14 +51,14 @@
     },
     {
       "id": "G4",
-      "what": "one account gets the booking message twice",
+      "what": "the recipients share ONE chain: the last-message read ignores WHO it was sent to, so the second account is skipped because the first was told (the old 'one account twice' mutant is now caught by the skip itself — equivalent — and was re-aimed)",
       "files": [
         {
           "file": "src/lib/camp-booked-notice.ts",
           "edits": [
             {
-              "from": "for (const lineUserId of accounts) {",
-              "to": "for (const lineUserId of [...accounts, ...accounts]) {"
+              "from": "and(eq(notificationOutbox.recipientLineUserId, lineUserId), like(",
+              "to": "and(like("
             }
           ]
         }
@@ -179,6 +179,51 @@
             {
               "from": "await notifyCampBooked({ packageId, weekId: input.weekId });",
               "to": "void 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "what": "TEST-099 F1: the skip is removed — the same change triggered twice (or a state the family already holds) is sent again",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": "=== batch) continue;",
+              "to": "=== batch && false) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "what": "TEST-099 F1: the key is chained on a constant, not on the last message (a return to an earlier state collides again)",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": ":after:${last?.id ?? \"none\"}:",
+              "to": ":after:none:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F4",
+      "what": "TEST-099 F1: the last message is read OLDEST-first (the chain would point at the wrong predecessor)",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": ".orderBy(desc(notificationOutbox.createdAt))",
+              "to": ".orderBy(notificationOutbox.createdAt)"
             }
           ]
         }

@@ -9,7 +9,7 @@
 // Read-only: it reads two files and prints. Nothing is written, nothing is connected to.
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_GEOGRAPHY_PATH, loadGeography } from "../src/lib/area-codes";
+import { loadGeography } from "../src/lib/area-codes";
 import { THAI_PROVINCES } from "../src/lib/thai-provinces";
 
 const args = process.argv.slice(2);
@@ -57,7 +57,7 @@ for (const p of pickerProvinces) {
 const only = (have: Map<string, unknown>, got: Set<string>) => [...have.keys()].filter((c) => !got.has(c));
 const infoP = only(geo.provinces, seen.provinces), infoD = only(geo.districts, seen.districts), infoS = only(geo.subDistricts, seen.subDistricts);
 
-console.log(`dataset : ${flag("--dataset") ?? DEFAULT_GEOGRAPHY_PATH}`);
+console.log(`dataset : ${flag("--dataset") ?? "src/data/thai-geography.json (the embedded default)"}`);
 console.log(`picker  : ${resolve(pkg)}`);
 console.log(`dataset rows ${geo.rows.length} · provinces ${geo.provinces.size} · districts ${geo.districts.size} · sub-districts ${geo.subDistricts.size}`);
 console.log(`picker   provinces ${seen.provinces.size} · districts ${seen.districts.size} · sub-districts ${seen.subDistricts.size}`);

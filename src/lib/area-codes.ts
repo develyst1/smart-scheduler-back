@@ -1,6 +1,6 @@
 // TASK-800 (REQ-118, owner GO 2026-10-12) — THE ONE reader of the Thai administrative geography: the official DOPA codes
 // (province 2 digits · district 4 · sub-district 6) with their Thai and English names, from the static, versioned dataset
-// `src/data/thai-geography.json` (thailand-geography-json, MIT — see `src/data/thai-geography.LICENSE`).
+// `src/data/thai-geography.json` (thailand-geography-json, MIT — see `src/data/thai-geography.LICENSE`), EMBEDDED in the compiled binary by a static import (TASK-802).
 //
 // 🔑 WHY a static file and not a table: it never changes at runtime, and a table is one more thing to migrate. 🚫 NEVER hand-edited:
 // `scripts/cross-check-area-codes.ts` (THE GATE) proves every code the page's picker can send exists here with the SAME Thai name,
@@ -9,7 +9,11 @@
 //
 // Pure apart from the one file read (lazy, once). 🚫 No fuzzy matching anywhere: exact codes, exact names.
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+// 🔴 TASK-802 (TEST-099 F2) — the default dataset is a STATIC import, so `bun build --compile` EMBEDS it in the binary. It used to be read at runtime from
+// `resolve(import.meta.dir, "..", "data", …)`: inside a compiled binary `import.meta.dir` is a VIRTUAL root (`B:\~BUN\…`), the file was not there, and every
+// `/api/areas/*` call and every code PATCH answered 500 on sid — while every test passed, because under `bun run` / `bun test` that path is the real source folder.
+// 🚫 NEVER read the default dataset from the file system again (a test pins it). `loadGeography(path)` — an explicit path, for the scripts — still reads a file on purpose.
+import DATASET from "../data/thai-geography.json" with { type: "json" };
 
 export type AreaLang = "TH" | "EN";
 export type AreaTriple = { provinceCode: string; districtCode: string; subdistrictCode: string };
@@ -27,8 +31,6 @@ export type Geography = {
   subDistricts: Map<string, Named & { district: string }>;
 };
 
-export const DEFAULT_GEOGRAPHY_PATH = resolve(import.meta.dir, "..", "data", "thai-geography.json");
-export const GEOGRAPHY_MISSING = "THAI_GEOGRAPHY_MISSING";
 
 const text = (v: unknown): string => String(v ?? "").trim();
 
@@ -59,18 +61,11 @@ export function buildGeography(raw: unknown[]): Geography {
 let loaded: Geography | null = null;
 let override: Geography | null = null;
 
-/** Read the dataset (lazily, once). A missing file is a LOUD error at first use — never a silent empty geography. */
+/** The dataset (built lazily, once, from the EMBEDDED import). `path` ⇒ read THAT file instead (the scripts' `--dataset`). */
 export function loadGeography(path?: string): Geography {
   if (override && !path) return override;
   if (path) return buildGeography(JSON.parse(readFileSync(path, "utf8")));
-  if (loaded) return loaded;
-  let file: string;
-  try {
-    file = readFileSync(DEFAULT_GEOGRAPHY_PATH, "utf8");
-  } catch {
-    throw Object.assign(new Error(`${GEOGRAPHY_MISSING}: ${DEFAULT_GEOGRAPHY_PATH} is not in the build — the area-code dataset must ship with the back end`), { code: GEOGRAPHY_MISSING });
-  }
-  loaded = buildGeography(JSON.parse(file));
+  loaded ??= buildGeography(DATASET as unknown as unknown[]);
   return loaded;
 }
 /** TESTS ONLY — serve a fixture geography; `null` restores the real file. */

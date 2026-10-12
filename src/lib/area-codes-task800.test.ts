@@ -4,10 +4,10 @@
 // (`GET /api/areas/*`). The promise that replaces the cross-check: EVERY code those routes can return is accepted by the register / admin validation — walked here over ALL 77 / 928 / 7,436.
 // Two layers: a small SYNTHETIC fixture for the rule's shape (ambiguity, a missing English name) and the REAL dataset (`src/data/thai-geography.json`, 2,920,644 bytes, SHA-256 recorded in TASK-800) for the counts and the walk.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  DEFAULT_GEOGRAPHY_PATH, areaAddress, areaLevel, areaName, buildGeography, checkAreaCodes, isConsistent, listDistricts, listProvinces, listSubDistricts, loadGeography,
+  areaAddress, areaLevel, areaName, buildGeography, checkAreaCodes, isConsistent, listDistricts, listProvinces, listSubDistricts, loadGeography,
   provinceCodeByThaiName, triplesByThaiNames, useGeographyForTests,
 } from "./area-codes";
 import { THAI_PROVINCES } from "./thai-provinces";
@@ -17,7 +17,37 @@ import { checkAddress } from "../services/line-register.service";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 const FIXTURE = buildGeography(JSON.parse(readFileSync(resolve(import.meta.dir, "__fixtures__", "thai-geography.fixture.json"), "utf8")));
 afterEach(() => useGeographyForTests(null));
-const HAVE_DATA = existsSync(DEFAULT_GEOGRAPHY_PATH);
+const HAVE_DATA = true; // 🔻 TASK-802 — the default dataset is EMBEDDED (a static import): it cannot be missing, so the real-data suites always run
+
+describe("🔴 TASK-802 (TEST-099 F2) — the default dataset is EMBEDDED in the build, never read from the file system at runtime", () => {
+  // The failure this pins: sid runs the COMPILED binary, where `import.meta.dir` is a VIRTUAL root (`B:\~BUN\…`). A runtime `readFileSync(resolve(import.meta.dir, …))` found nothing ⇒ every /api/areas/* and
+  // every code PATCH answered 500 — while every test passed, because under `bun run` / `bun test` that path is the real source folder. A test cannot run inside the compiled binary, so the property is pinned by SOURCE.
+  const SRC = readFileSync(resolve(import.meta.dir, "area-codes.ts"), "utf8").replace(/\r\n/g, "\n");
+  const stripComments = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
+  const CODE = stripComments(SRC);
+  test("the default dataset is a STATIC JSON import (`bun build --compile` embeds it)", () => {
+    expect(CODE).toContain('import DATASET from "../data/thai-geography.json" with { type: "json" };');
+    expect(CODE).toContain("buildGeography(DATASET as unknown as unknown[])");
+  });
+  test("no runtime file-system read of the default: no `import.meta.dir`, no `__dirname`, no default path constant — the ONLY `readFileSync` is the explicit-path branch the scripts use", () => {
+    expect(CODE).not.toMatch(/import\.meta\.dir|__dirname|__filename|DEFAULT_GEOGRAPHY_PATH/);
+    expect([...CODE.matchAll(/readFileSync\(/g)]).toHaveLength(1);
+    expect(CODE).toContain('if (path) return buildGeography(JSON.parse(readFileSync(path, "utf8")));');
+  });
+  test("nothing else in `src/` reads the dataset file at runtime either (the same defect, anywhere else it could hide)", () => {
+    const walk = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(resolve(d, e.name)) : e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") ? [resolve(d, e.name)] : []));
+    for (const f of walk(resolve(import.meta.dir, ".."))) {
+      const code = stripComments(readFileSync(f, "utf8"));
+      const name = f.split(/[\\/]src[\\/]/).pop();
+      if (name === "lib\\area-codes.ts" || name === "lib/area-codes.ts") continue; // the loader itself — pinned by the two tests above (static import; the one explicit-path read)
+      expect({ name, readsIt: /thai-geography\.json/.test(code) && /readFileSync|Bun\.file/.test(code) }).toEqual({ name, readsIt: false });
+    }
+  });
+  test("the embedded default really serves: 7,436 rows through the no-path loader", () => {
+    expect(loadGeography().rows).toHaveLength(7436);
+  });
+});
 
 describe("the rule's shape — over the synthetic fixture", () => {
   test("areaLevel by code length (DOPA numbering: 2 / 4 / 6 digits)", () => {

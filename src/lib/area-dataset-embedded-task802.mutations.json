@@ -1,0 +1,23 @@
+{
+  "task": "TASK-802",
+  "proves": "src/lib/area-codes-task800.test.ts",
+  "note": "🔴 TEST-099 F2. E1 the default dataset is read from the file system at runtime again (the sid 500: `import.meta.dir` is virtual in the compiled binary) · E2 the static import is dropped (nothing embedded) · E3 a path constant comes back.",
+  "tests": "src/lib/area-codes-task800.test.ts",
+  "mutations": [
+    {
+      "id": "E1",
+      "what": "🔴 the default dataset is READ AT RUNTIME again — the file read that 500'd every /api/areas/* call on the compiled sid build",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  loaded ??= buildGeography(DATASET as unknown as unknown[]);", "to": "  loaded ??= buildGeography(JSON.parse(readFileSync(new URL(\"../data/thai-geography.json\", import.meta.url), \"utf8\")));" }] }]
+    },
+    {
+      "id": "E2",
+      "what": "the static import is dropped — nothing is embedded in the build",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "import DATASET from \"../data/thai-geography.json\" with { type: \"json\" };", "to": "const DATASET: unknown[] = [];" }] }]
+    },
+    {
+      "id": "E3",
+      "what": "a runtime path constant comes back (the shape of the original defect)",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "export type AreaLang = \"TH\" | \"EN\";", "to": "export const DEFAULT_GEOGRAPHY_PATH = import.meta.dir + \"/../data/thai-geography.json\";\nexport type AreaLang = \"TH\" | \"EN\";" }] }]
+    }
+  ]
+}
