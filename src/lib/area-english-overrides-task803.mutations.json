@@ -1,0 +1,55 @@
+{
+  "task": "TASK-803",
+  "proves": "src/lib/area-english-overrides-task803.test.ts",
+  "note": "DOPA English area-name overrides. A1 overrides not applied · A2 overrides read from the file system at runtime (not embedded) · A3 override with a wrong Thai name accepted · A4 override matching no row accepted · A5 case-only rows counted as WRONG (would be overridden) · A6 the override source loses the SHA-256 · A7 the approved-file gate removed · A8 DOPA's level word no longer stripped (Thai compare) · A9 the generator writes upstream English instead of DOPA's.",
+  "tests": "src/lib/area-english-overrides-task803.test.ts src/lib/area-codes-task800.test.ts",
+  "mutations": [
+    {
+      "id": "A1",
+      "what": "🔴 the overrides are not applied — upstream's wrong English is served again",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  loaded ??= buildGeography(DATASET as unknown as unknown[], EN_OVERRIDES as unknown as EnglishOverride[]);", "to": "  loaded ??= buildGeography(DATASET as unknown as unknown[]);" }] }]
+    },
+    {
+      "id": "A2",
+      "what": "🔴 the override list is read from the file system at runtime — fails in a compiled binary",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [
+        { "from": "import EN_OVERRIDES from \"../data/thai-geography.en-overrides.json\" with { type: \"json\" };", "to": "const EN_OVERRIDES: unknown[] = JSON.parse(readFileSync(new URL(\"../data/thai-geography.en-overrides.json\", import.meta.url), \"utf8\"));" }
+      ] }]
+    },
+    {
+      "id": "A3",
+      "what": "an override whose Thai name is not the row's is accepted (a code now pointing at another place)",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "      if (o.th !== th) throw", "to": "      if (false) throw" }] }]
+    },
+    {
+      "id": "A4",
+      "what": "an override that matches no row is silently ignored (half-applied list)",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "    if (missed.length) throw", "to": "    if (false) throw" }] }]
+    },
+    {
+      "id": "A5",
+      "what": "🔴 case-only rows are treated as WRONG — the 107 would be overridden against the ruling",
+      "files": [{ "file": "scripts/check-area-english.ts", "edits": [{ "from": "  else if (norm(it.en).toLowerCase() === d.en.toLowerCase()) caseOnly.push", "to": "  else if (false) caseOnly.push" }] }]
+    },
+    {
+      "id": "A6",
+      "what": "the source cited in every override loses the SHA-256",
+      "files": [{ "file": "scripts/check-area-english.ts", "edits": [{ "from": ", sha256 ${DOPA_SHA256}`;", "to": "`;" }] }]
+    },
+    {
+      "id": "A7",
+      "what": "🔴 the approved-file gate is removed — any file would be compared",
+      "files": [{ "file": "scripts/check-area-english.ts", "edits": [{ "from": "if (bytes.length !== DOPA_SIZE || sha !== DOPA_SHA256) {", "to": "if (false) {" }] }]
+    },
+    {
+      "id": "A8",
+      "what": "DOPA's level word (เขต/อำเภอ/แขวง/ตำบล) is no longer dropped — nearly every district would be LISTED",
+      "files": [{ "file": "scripts/check-area-english.ts", "edits": [{ "from": "d.th.replace(LEVEL_WORD, \"\") === it.th", "to": "false" }] }]
+    },
+    {
+      "id": "A9",
+      "what": "the generator writes the UPSTREAM English instead of DOPA's",
+      "files": [{ "file": "scripts/check-area-english.ts", "edits": [{ "from": "th: w.th, en: w.dopaEn, source", "to": "th: w.th, en: w.en, source" }] }]
+    }
+  ]
+}

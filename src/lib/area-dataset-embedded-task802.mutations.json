@@ -7,7 +7,7 @@
     {
       "id": "E1",
       "what": "🔴 the default dataset is READ AT RUNTIME again — the file read that 500'd every /api/areas/* call on the compiled sid build",
-      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  loaded ??= buildGeography(DATASET as unknown as unknown[]);", "to": "  loaded ??= buildGeography(JSON.parse(readFileSync(new URL(\"../data/thai-geography.json\", import.meta.url), \"utf8\")));" }] }]
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  loaded ??= buildGeography(DATASET as unknown as unknown[], EN_OVERRIDES as unknown as EnglishOverride[]);", "to": "  loaded ??= buildGeography(JSON.parse(readFileSync(new URL(\"../data/thai-geography.json\", import.meta.url), \"utf8\")), EN_OVERRIDES as unknown as EnglishOverride[]);" }] }]
     },
     {
       "id": "E2",

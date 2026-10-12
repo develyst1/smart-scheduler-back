@@ -27,7 +27,8 @@ describe("🔴 TASK-802 (TEST-099 F2) — the default dataset is EMBEDDED in the
   const CODE = stripComments(SRC);
   test("the default dataset is a STATIC JSON import (`bun build --compile` embeds it)", () => {
     expect(CODE).toContain('import DATASET from "../data/thai-geography.json" with { type: "json" };');
-    expect(CODE).toContain("buildGeography(DATASET as unknown as unknown[])");
+    // TASK-803: the same static dataset, now with the generated English overrides (also a static import) as the second argument
+    expect(CODE).toContain("buildGeography(DATASET as unknown as unknown[], EN_OVERRIDES as unknown as EnglishOverride[])");
   });
   test("no runtime file-system read of the default: no `import.meta.dir`, no `__dirname`, no default path constant — the ONLY `readFileSync` is the explicit-path branch the scripts use", () => {
     expect(CODE).not.toMatch(/import\.meta\.dir|__dirname|__filename|DEFAULT_GEOGRAPHY_PATH/);

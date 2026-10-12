@@ -1,0 +1,4083 @@
+[
+  {
+    "code": "16",
+    "level": "province",
+    "th": "ลพบุรี",
+    "en": "Lop Buri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "82",
+    "level": "province",
+    "th": "พังงา",
+    "en": "Phang-nga",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1008",
+    "level": "district",
+    "th": "ป้อมปราบศัตรูพ่าย",
+    "en": "Pom Prap Sattru Phai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1012",
+    "level": "district",
+    "th": "ยานนาวา",
+    "en": "Yan Nawa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1027",
+    "level": "district",
+    "th": "บึงกุ่ม",
+    "en": "Bueng Kum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1029",
+    "level": "district",
+    "th": "บางซื่อ",
+    "en": "Bang Sue",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1037",
+    "level": "district",
+    "th": "ราชเทวี",
+    "en": "Ratchathewi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1039",
+    "level": "district",
+    "th": "วัฒนา",
+    "en": "Vadhana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1043",
+    "level": "district",
+    "th": "คันนายาว",
+    "en": "Khan Na Yao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1045",
+    "level": "district",
+    "th": "วังทองหลาง",
+    "en": "Wang Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1049",
+    "level": "district",
+    "th": "ทุ่งครุ",
+    "en": "Thung Khru",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1413",
+    "level": "district",
+    "th": "บางซ้าย",
+    "en": "Bang Saai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "1913",
+    "level": "district",
+    "th": "เฉลิมพระเกียรติ",
+    "en": "Chaloem Phra Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "2409",
+    "level": "district",
+    "th": "แปลงยาว",
+    "en": "Plaeng Yao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3020",
+    "level": "district",
+    "th": "สีคิ้ว",
+    "en": "Sikhio",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3022",
+    "level": "district",
+    "th": "หนองบุญมาก",
+    "en": "Nong Bun Mak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3029",
+    "level": "district",
+    "th": "ลำทะเมนชัย",
+    "en": "Lam Thamenchai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3032",
+    "level": "district",
+    "th": "เฉลิมพระเกียรติ",
+    "en": "Chaloem Phra Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3117",
+    "level": "district",
+    "th": "โนนสุวรรณ",
+    "en": "Non Suwan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3123",
+    "level": "district",
+    "th": "เฉลิมพระเกียรติ",
+    "en": "Chaloem Phra Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3410",
+    "level": "district",
+    "th": "บุณฑริก",
+    "en": "Buntharik",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "3801",
+    "level": "district",
+    "th": "เมืองบึงกาฬ",
+    "en": "Mueang Bueng Kan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "4020",
+    "level": "district",
+    "th": "ภูผาม่าน",
+    "en": "Phu Pha Man",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "4106",
+    "level": "district",
+    "th": "หนองหาน",
+    "en": "Nong Han",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "4411",
+    "level": "district",
+    "th": "ยางสีสุราช",
+    "en": "Yang Si Surat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "4705",
+    "level": "district",
+    "th": "พังโคน",
+    "en": "Phang Khon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "4904",
+    "level": "district",
+    "th": "ดงหลวง",
+    "en": "Dong Luang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "5025",
+    "level": "district",
+    "th": "กัลยาณิวัฒนา",
+    "en": "Galyani Vadhana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "5402",
+    "level": "district",
+    "th": "ร้องกวาง",
+    "en": "Rong Kwang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "5515",
+    "level": "district",
+    "th": "เฉลิมพระเกียรติ",
+    "en": "Chaloem Phra Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "6010",
+    "level": "district",
+    "th": "พยุหะคีรี",
+    "en": "Phayuha Khiri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "6014",
+    "level": "district",
+    "th": "แม่เปิน",
+    "en": "Mae Poen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "6308",
+    "level": "district",
+    "th": "อุ้มผาง",
+    "en": "Umphang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "6608",
+    "level": "district",
+    "th": "ทับคล้อ",
+    "en": "Thap Khlo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "6612",
+    "level": "district",
+    "th": "วชิรบารมี",
+    "en": "Vajira Barami",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "7201",
+    "level": "district",
+    "th": "เมืองสุพรรณบุรี",
+    "en": "Mueang Suphan Buri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "8023",
+    "level": "district",
+    "th": "เฉลิมพระเกียรติ",
+    "en": "Chaloem Phra Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "8419",
+    "level": "district",
+    "th": "วิภาวดี",
+    "en": "Vibhavadi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "8503",
+    "level": "district",
+    "th": "กะเปอร์",
+    "en": "Kapoe",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "9001",
+    "level": "district",
+    "th": "เมืองสงขลา",
+    "en": "Mueang Songkhla",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "9603",
+    "level": "district",
+    "th": "บาเจาะ",
+    "en": "Bacho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "100105",
+    "level": "subdistrict",
+    "th": "ศาลเจ้าพ่อเสือ",
+    "en": "San Chao Pho Suea",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "100203",
+    "level": "subdistrict",
+    "th": "สวนจิตรลดา",
+    "en": "Suan Chitlada",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "100204",
+    "level": "subdistrict",
+    "th": "สี่แยกมหานาค",
+    "en": "Si Yaek Mahanak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "103605",
+    "level": "subdistrict",
+    "th": "สนามบิน",
+    "en": "Sanam Bin",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "104503",
+    "level": "subdistrict",
+    "th": "คลองเจ้าคุณสิงห์",
+    "en": "Khlong Chao Khun Sing",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "110101",
+    "level": "subdistrict",
+    "th": "ปากน้ำ",
+    "en": "Paknam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "110110",
+    "level": "subdistrict",
+    "th": "แพรกษา",
+    "en": "Phraekkasa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "110117",
+    "level": "subdistrict",
+    "th": "แพรกษาใหม่",
+    "en": "Phraekkasa Mai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "110410",
+    "level": "subdistrict",
+    "th": "บางน้ำผึ้ง",
+    "en": "Bang Namphueng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "120207",
+    "level": "subdistrict",
+    "th": "มหาสวัสดิ์",
+    "en": "Maha Sawat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "120407",
+    "level": "subdistrict",
+    "th": "พิมลราช",
+    "en": "Phimon Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "130113",
+    "level": "subdistrict",
+    "th": "สวนพริกไทย",
+    "en": "Suan Phrikthai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "130301",
+    "level": "subdistrict",
+    "th": "ประชาธิปัตย์",
+    "en": "Prachathipat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "130404",
+    "level": "subdistrict",
+    "th": "บึงชำอ้อ",
+    "en": "Bueng Cham-o",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "130603",
+    "level": "subdistrict",
+    "th": "บึงคำพร้อย",
+    "en": "Bueng Kham Phroi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "130605",
+    "level": "subdistrict",
+    "th": "บึงทองหลาง",
+    "en": "Bueng Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140103",
+    "level": "subdistrict",
+    "th": "หอรัตนไชย",
+    "en": "Ho Rattanachai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140108",
+    "level": "subdistrict",
+    "th": "ภูเขาทอง",
+    "en": "Phukhao Thong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140113",
+    "level": "subdistrict",
+    "th": "หันตรา",
+    "en": "Hantra",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140117",
+    "level": "subdistrict",
+    "th": "คลองสวนพลู",
+    "en": "Khlong Suan Phlu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140307",
+    "level": "subdistrict",
+    "th": "บางพระครู",
+    "en": "Bang Phra Khru",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140413",
+    "level": "subdistrict",
+    "th": "ห่อหมก",
+    "en": "Homok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140421",
+    "level": "subdistrict",
+    "th": "โพแตง",
+    "en": "Pho Taeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140505",
+    "level": "subdistrict",
+    "th": "มหาพราหมณ์",
+    "en": "Maha Phram",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140709",
+    "level": "subdistrict",
+    "th": "ตานิม",
+    "en": "Ta Nim",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140809",
+    "level": "subdistrict",
+    "th": "กุฎี",
+    "en": "Kudi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140903",
+    "level": "subdistrict",
+    "th": "ระโสม",
+    "en": "Ra Som",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "140908",
+    "level": "subdistrict",
+    "th": "พระแก้ว",
+    "en": "Phre Kaeo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141207",
+    "level": "subdistrict",
+    "th": "มารวิชัย",
+    "en": "Manwichai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141301",
+    "level": "subdistrict",
+    "th": "บางซ้าย",
+    "en": "Bang Saai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141401",
+    "level": "subdistrict",
+    "th": "คานหาม",
+    "en": "Khanham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141411",
+    "level": "subdistrict",
+    "th": "ข้าวเม่า",
+    "en": "Khaomao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141503",
+    "level": "subdistrict",
+    "th": "มหาราช",
+    "en": "Maha Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "141504",
+    "level": "subdistrict",
+    "th": "น้ำเต้า",
+    "en": "Nam Tao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150111",
+    "level": "subdistrict",
+    "th": "โพสะ",
+    "en": "Phosa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150203",
+    "level": "subdistrict",
+    "th": "ชัยฤทธิ์",
+    "en": "Chai Rit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150205",
+    "level": "subdistrict",
+    "th": "ราชสถิตย์",
+    "en": "Rat Sathit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150308",
+    "level": "subdistrict",
+    "th": "โผงเผง",
+    "en": "Phongpheng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150410",
+    "level": "subdistrict",
+    "th": "ยางช้าย",
+    "en": "Yang Sai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150603",
+    "level": "subdistrict",
+    "th": "ไผ่ดำพัฒนา",
+    "en": "Phai Dam Phatthana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150604",
+    "level": "subdistrict",
+    "th": "สาวร้องไห้",
+    "en": "Sao Ronghai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150701",
+    "level": "subdistrict",
+    "th": "สามโก้",
+    "en": "Samko",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150703",
+    "level": "subdistrict",
+    "th": "อบทม",
+    "en": "Op Thom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "150705",
+    "level": "subdistrict",
+    "th": "มงคลธรรมนิมิต",
+    "en": "Mongkhon Tham Nimit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "160117",
+    "level": "subdistrict",
+    "th": "บางขันหมาก",
+    "en": "Bang Khanmak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "160618",
+    "level": "subdistrict",
+    "th": "มหาสอน",
+    "en": "Maha Son",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "160802",
+    "level": "subdistrict",
+    "th": "มหาโพธิ",
+    "en": "Maha Phot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "180407",
+    "level": "subdistrict",
+    "th": "หาดอาษา",
+    "en": "Hat Asa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "180601",
+    "level": "subdistrict",
+    "th": "หันคา",
+    "en": "Hankha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "180701",
+    "level": "subdistrict",
+    "th": "หนองมะโมง",
+    "en": "Nong Ma Mong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "190105",
+    "level": "subdistrict",
+    "th": "ดาวเรือง",
+    "en": "Daorueang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "190901",
+    "level": "subdistrict",
+    "th": "พระพุทธบาท",
+    "en": "Phra Phutthabat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "191010",
+    "level": "subdistrict",
+    "th": "เริงราง",
+    "en": "Roengrang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "191201",
+    "level": "subdistrict",
+    "th": "แสลงพัน",
+    "en": "Salaengphan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "191306",
+    "level": "subdistrict",
+    "th": "หน้าพระลาน",
+    "en": "Na Phra Lan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "200207",
+    "level": "subdistrict",
+    "th": "หนองอิรุณ",
+    "en": "Nong Irun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "200602",
+    "level": "subdistrict",
+    "th": "หน้าพระธาตุ",
+    "en": "Na Phra That",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "200706",
+    "level": "subdistrict",
+    "th": "เขาคันทรง",
+    "en": "Khao Khansong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "200801",
+    "level": "subdistrict",
+    "th": "ท่าเทววงษ์",
+    "en": "Tha Devawongse",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "200905",
+    "level": "subdistrict",
+    "th": "แสมสาร",
+    "en": "Samaesan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "201102",
+    "level": "subdistrict",
+    "th": "ท่าบุญมี",
+    "en": "Tha Bun Mi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210114",
+    "level": "subdistrict",
+    "th": "มาบตาพุด",
+    "en": "Map Taphut",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210201",
+    "level": "subdistrict",
+    "th": "สำนักท้อน",
+    "en": "Samnak Thong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210202",
+    "level": "subdistrict",
+    "th": "พลา",
+    "en": "Phala",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210303",
+    "level": "subdistrict",
+    "th": "ชากโดน",
+    "en": "Chakkadon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210306",
+    "level": "subdistrict",
+    "th": "ชากพง",
+    "en": "Chakkaphong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210313",
+    "level": "subdistrict",
+    "th": "ปากน้ำกระแส",
+    "en": "Paknam Krasae",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210402",
+    "level": "subdistrict",
+    "th": "ชุมแสง",
+    "en": "Chum Sang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210404",
+    "level": "subdistrict",
+    "th": "พลงตาเอี่ยม",
+    "en": "Phlong Ta-iam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210507",
+    "level": "subdistrict",
+    "th": "ชากบก",
+    "en": "Chakkabok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "210703",
+    "level": "subdistrict",
+    "th": "ชำฆ้อ",
+    "en": "Cham Kho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "220105",
+    "level": "subdistrict",
+    "th": "คมบาง",
+    "en": "Khom Bang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "220506",
+    "level": "subdistrict",
+    "th": "ฉมัน",
+    "en": "Chaman",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "230104",
+    "level": "subdistrict",
+    "th": "หนองคันทรง",
+    "en": "Nong Khansong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "230113",
+    "level": "subdistrict",
+    "th": "ชำราก",
+    "en": "Chamrak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "240107",
+    "level": "subdistrict",
+    "th": "คลองจุกกระเฌอ",
+    "en": "Khlong Chuk Krachoe",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "240210",
+    "level": "subdistrict",
+    "th": "ท่าทองหลาง",
+    "en": "Tha Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "240211",
+    "level": "subdistrict",
+    "th": "สาวชะโงก",
+    "en": "Sao Cha-ngok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "240801",
+    "level": "subdistrict",
+    "th": "คู้ยายหมี",
+    "en": "Ku Yai Mi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250107",
+    "level": "subdistrict",
+    "th": "ดงพระราม",
+    "en": "Dong Phra Ram",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250111",
+    "level": "subdistrict",
+    "th": "ดงขี้เหล็ก",
+    "en": "Dong Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250302",
+    "level": "subdistrict",
+    "th": "สำพันตา",
+    "en": "Samphanta",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250305",
+    "level": "subdistrict",
+    "th": "แก่งดินสอ",
+    "en": "Kaeng Din So",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250607",
+    "level": "subdistrict",
+    "th": "บางปลาร้า",
+    "en": "Bang Plara",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250801",
+    "level": "subdistrict",
+    "th": "ศรีมหาโพธิ",
+    "en": "Si Maha Phot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "250904",
+    "level": "subdistrict",
+    "th": "ไผ่ชะเลือด",
+    "en": "Phai Cha Lueat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "260304",
+    "level": "subdistrict",
+    "th": "อาษา",
+    "en": "Asa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "260305",
+    "level": "subdistrict",
+    "th": "ทองหลาง",
+    "en": "Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "260410",
+    "level": "subdistrict",
+    "th": "ชุมพล",
+    "en": "Chumphon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270306",
+    "level": "subdistrict",
+    "th": "ทัพราช",
+    "en": "Thap Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270309",
+    "level": "subdistrict",
+    "th": "โคคลาน",
+    "en": "Kho Khlan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270406",
+    "level": "subdistrict",
+    "th": "ทุ่งมหาเจริญ",
+    "en": "Thung Maha Charoen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270504",
+    "level": "subdistrict",
+    "th": "โนนหมากเค็ง",
+    "en": "Non Makkheng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270601",
+    "level": "subdistrict",
+    "th": "อรัญประเทศ",
+    "en": "Aranyaprathet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "270804",
+    "level": "subdistrict",
+    "th": "โนนหมากมุ่น",
+    "en": "Non Makmun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "300114",
+    "level": "subdistrict",
+    "th": "พุดซา",
+    "en": "Phutsa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "300209",
+    "level": "subdistrict",
+    "th": "ลำเพียก",
+    "en": "Lam Phiak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "300603",
+    "level": "subdistrict",
+    "th": "ทองหลาง",
+    "en": "Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "300604",
+    "level": "subdistrict",
+    "th": "สีสุก",
+    "en": "Sisuk",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "300908",
+    "level": "subdistrict",
+    "th": "สายออ",
+    "en": "Sai O",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301010",
+    "level": "subdistrict",
+    "th": "จันอัด",
+    "en": "Chan At",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301016",
+    "level": "subdistrict",
+    "th": "ลำมูล",
+    "en": "Lam Mun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301101",
+    "level": "subdistrict",
+    "th": "ขามสะแกแสง",
+    "en": "Kham Sakaesaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301105",
+    "level": "subdistrict",
+    "th": "พะงาด",
+    "en": "Pha-ngat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301208",
+    "level": "subdistrict",
+    "th": "โนนทองหลาง",
+    "en": "Non Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301604",
+    "level": "subdistrict",
+    "th": "หลุ่งตะเคียน",
+    "en": "Lug Takhian",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "301804",
+    "level": "subdistrict",
+    "th": "บุ่งขี้เหล็ก",
+    "en": "Bung Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "302002",
+    "level": "subdistrict",
+    "th": "บ้านหัน",
+    "en": "Ban Hun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "302103",
+    "level": "subdistrict",
+    "th": "จันทึก",
+    "en": "Chanthuek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "302108",
+    "level": "subdistrict",
+    "th": "โป่งตาลอง",
+    "en": "Pong Talong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "302304",
+    "level": "subdistrict",
+    "th": "สีสุก",
+    "en": "Sisuk",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "302904",
+    "level": "subdistrict",
+    "th": "ไพล",
+    "en": "Phlai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "303203",
+    "level": "subdistrict",
+    "th": "พระพุทธ",
+    "en": "Phra Phut",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310102",
+    "level": "subdistrict",
+    "th": "อิสาณ",
+    "en": "Isan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310112",
+    "level": "subdistrict",
+    "th": "พระครู",
+    "en": "Phra Khru",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310120",
+    "level": "subdistrict",
+    "th": "ชุมเห็ด",
+    "en": "Chumhet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310707",
+    "level": "subdistrict",
+    "th": "ปังกู",
+    "en": "Pangku",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310714",
+    "level": "subdistrict",
+    "th": "ตะโกตาพิ",
+    "en": "Tako Ta Phi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "310808",
+    "level": "subdistrict",
+    "th": "จันทบเพชร",
+    "en": "Chanthop Phet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "311003",
+    "level": "subdistrict",
+    "th": "แสลงพัน",
+    "en": "Salaengphan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "311011",
+    "level": "subdistrict",
+    "th": "ผไทรินทร์",
+    "en": "Phathairin",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "311902",
+    "level": "subdistrict",
+    "th": "ทองหลาง",
+    "en": "Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320106",
+    "level": "subdistrict",
+    "th": "สลักได",
+    "en": "Salakdai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320107",
+    "level": "subdistrict",
+    "th": "ตาอ็อง",
+    "en": "Ta Ong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320113",
+    "level": "subdistrict",
+    "th": "สวาย",
+    "en": "Sawai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320116",
+    "level": "subdistrict",
+    "th": "เทนมีย์",
+    "en": "Thenmi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320402",
+    "level": "subdistrict",
+    "th": "เมืองลีง",
+    "en": "Mueang Ling",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320503",
+    "level": "subdistrict",
+    "th": "ไพล",
+    "en": "Phlai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320512",
+    "level": "subdistrict",
+    "th": "เชื้อเพลิง",
+    "en": "Chueaphloeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320516",
+    "level": "subdistrict",
+    "th": "กันตวจระมวล",
+    "en": "Kantuat Ramuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320701",
+    "level": "subdistrict",
+    "th": "รัตนบุรี",
+    "en": "Rattanaburi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "320905",
+    "level": "subdistrict",
+    "th": "แตล",
+    "en": "Taen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321007",
+    "level": "subdistrict",
+    "th": "พระแก้ว",
+    "en": "Phre Kaeo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321011",
+    "level": "subdistrict",
+    "th": "ตาตุม",
+    "en": "Ta Tum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321012",
+    "level": "subdistrict",
+    "th": "ทับทัน",
+    "en": "Thap Than",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321103",
+    "level": "subdistrict",
+    "th": "อู่โลก",
+    "en": "Ulok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321104",
+    "level": "subdistrict",
+    "th": "ตรำดม",
+    "en": "Tram Dom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321301",
+    "level": "subdistrict",
+    "th": "บัวเชด",
+    "en": "Buachet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321502",
+    "level": "subdistrict",
+    "th": "แจนแวน",
+    "en": "Chaenwaen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "321601",
+    "level": "subdistrict",
+    "th": "เขวาสินรินทร์",
+    "en": "Khwao Sinarin",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330112",
+    "level": "subdistrict",
+    "th": "โพนค้อ",
+    "en": "Phon Khao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330202",
+    "level": "subdistrict",
+    "th": "ลิ้นฟ้า",
+    "en": "Linfa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330502",
+    "level": "subdistrict",
+    "th": "จะกง",
+    "en": "Chakong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330709",
+    "level": "subdistrict",
+    "th": "สวาย",
+    "en": "Sawai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330809",
+    "level": "subdistrict",
+    "th": "กันทรอม",
+    "en": "Kanthrom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "330912",
+    "level": "subdistrict",
+    "th": "ส้มป่อย",
+    "en": "Sompoi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "331002",
+    "level": "subdistrict",
+    "th": "อี่หล่ำ",
+    "en": "Ilam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "331010",
+    "level": "subdistrict",
+    "th": "ตาเกษ",
+    "en": "Ta Ket",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "331017",
+    "level": "subdistrict",
+    "th": "ปะอาว",
+    "en": "Pa Ao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "331201",
+    "level": "subdistrict",
+    "th": "ห้วยทับทัน",
+    "en": "Huai Thap Than",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "331703",
+    "level": "subdistrict",
+    "th": "ห้วยตึ๊กชู",
+    "en": "Huai Tuekchu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340107",
+    "level": "subdistrict",
+    "th": "ปทุม",
+    "en": "Phathum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340119",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340209",
+    "level": "subdistrict",
+    "th": "หนามแท่ง",
+    "en": "Namthaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340404",
+    "level": "subdistrict",
+    "th": "ก่อเอ้",
+    "en": "Ko E",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340406",
+    "level": "subdistrict",
+    "th": "ชีทวน",
+    "en": "Chi Thuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "340503",
+    "level": "subdistrict",
+    "th": "ขามป้อม",
+    "en": "Khampom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341003",
+    "level": "subdistrict",
+    "th": "คอแลน",
+    "en": "Kholaen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341104",
+    "level": "subdistrict",
+    "th": "กุศกร",
+    "en": "Kutsakon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341201",
+    "level": "subdistrict",
+    "th": "ข้าวปุ้น",
+    "en": "Khaopun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341204",
+    "level": "subdistrict",
+    "th": "กาบิน",
+    "en": "Ka Bin",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341510",
+    "level": "subdistrict",
+    "th": "คำน้ำแซบ",
+    "en": "Kham Nam Saep",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "341520",
+    "level": "subdistrict",
+    "th": "หนองกินเพล",
+    "en": "Nong Kin Phen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "342504",
+    "level": "subdistrict",
+    "th": "นิคมสร้างตนเองลำโดมน้อย",
+    "en": "Nikhom Sang Ton-eng Lam Dom Noi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "343303",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "350106",
+    "level": "subdistrict",
+    "th": "ดู่ทุ่ง",
+    "en": "Duthung",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "350108",
+    "level": "subdistrict",
+    "th": "ขั้นไดใหญ่",
+    "en": "Khandai Yai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "350903",
+    "level": "subdistrict",
+    "th": "ส้มผ่อ",
+    "en": "Sompho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "360107",
+    "level": "subdistrict",
+    "th": "ชีลอง",
+    "en": "Chi Long",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "360613",
+    "level": "subdistrict",
+    "th": "ส้มป่อย",
+    "en": "Sompoi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "361009",
+    "level": "subdistrict",
+    "th": "โอโล",
+    "en": "Olo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "361305",
+    "level": "subdistrict",
+    "th": "ทุ่งลุยลาย",
+    "en": "Thung Luilai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "370113",
+    "level": "subdistrict",
+    "th": "โนนหนามแท่ง",
+    "en": "Non Namthaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "370501",
+    "level": "subdistrict",
+    "th": "เสนางคนิคม",
+    "en": "Senangkhanikhom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "370608",
+    "level": "subdistrict",
+    "th": "รัตนวารี",
+    "en": "Rattanawari",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380101",
+    "level": "subdistrict",
+    "th": "บึงกาฬ",
+    "en": "Bueng Kan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380102",
+    "level": "subdistrict",
+    "th": "โนนสมบูรณ์",
+    "en": "Non Sombun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380103",
+    "level": "subdistrict",
+    "th": "โนนสว่าง",
+    "en": "Non Sawang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380104",
+    "level": "subdistrict",
+    "th": "หอคำ",
+    "en": "Ho Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380105",
+    "level": "subdistrict",
+    "th": "หนองเลิง",
+    "en": "Nong Loeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380106",
+    "level": "subdistrict",
+    "th": "โคกก่อง",
+    "en": "Khok Kong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380107",
+    "level": "subdistrict",
+    "th": "นาสวรรค์",
+    "en": "Na Sawan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380108",
+    "level": "subdistrict",
+    "th": "ไคสี",
+    "en": "Khai Si",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380109",
+    "level": "subdistrict",
+    "th": "ชัยพร",
+    "en": "Chaiyaphon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380401",
+    "level": "subdistrict",
+    "th": "เซกา",
+    "en": "Seka",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380402",
+    "level": "subdistrict",
+    "th": "ซาง",
+    "en": "Sang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380403",
+    "level": "subdistrict",
+    "th": "ท่ากกแดง",
+    "en": "Tha Kok Daeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380404",
+    "level": "subdistrict",
+    "th": "บ้านต้อง",
+    "en": "Ban Tong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380405",
+    "level": "subdistrict",
+    "th": "ป่งไฮ",
+    "en": "Pong Hai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380406",
+    "level": "subdistrict",
+    "th": "น้ำจั้น",
+    "en": "Nam Chan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380501",
+    "level": "subdistrict",
+    "th": "ปากคาด",
+    "en": "Pak Khat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380502",
+    "level": "subdistrict",
+    "th": "หนองยอง",
+    "en": "Nong Yong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380503",
+    "level": "subdistrict",
+    "th": "นากั้ง",
+    "en": "Na Kang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380504",
+    "level": "subdistrict",
+    "th": "โนนศิลา",
+    "en": "Non Sila",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "380505",
+    "level": "subdistrict",
+    "th": "สมสนุก",
+    "en": "Som Sanuk",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "390110",
+    "level": "subdistrict",
+    "th": "ลำภู",
+    "en": "Lumphu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "390402",
+    "level": "subdistrict",
+    "th": "ศรีบุญเรือง",
+    "en": "Si Bun Rueang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "390506",
+    "level": "subdistrict",
+    "th": "สุวรรณคูหา",
+    "en": "Suwannakhuha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "390507",
+    "level": "subdistrict",
+    "th": "บุญทัน",
+    "en": "Bun Than",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "400305",
+    "level": "subdistrict",
+    "th": "ขามป้อม",
+    "en": "Khampom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "400803",
+    "level": "subdistrict",
+    "th": "เขื่อนอุบลรัตน์",
+    "en": "Khuean Ubolratana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "401103",
+    "level": "subdistrict",
+    "th": "ขามป้อม",
+    "en": "Khampom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "401502",
+    "level": "subdistrict",
+    "th": "คึมชาด",
+    "en": "Khuemchat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "401706",
+    "level": "subdistrict",
+    "th": "นาข่า",
+    "en": "Na Kha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "401806",
+    "level": "subdistrict",
+    "th": "ศรีบุญเรือง",
+    "en": "Si Bun Rueang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "401902",
+    "level": "subdistrict",
+    "th": "ดงเมืองแอม",
+    "en": "Dong Mueang Aem",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410101",
+    "level": "subdistrict",
+    "th": "หมากแข้ง",
+    "en": "Makkhaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410202",
+    "level": "subdistrict",
+    "th": "ปะโค",
+    "en": "Pa Kho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410303",
+    "level": "subdistrict",
+    "th": "อูบมุง",
+    "en": "Upmung",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410404",
+    "level": "subdistrict",
+    "th": "แชแล",
+    "en": "Chaelae",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410409",
+    "level": "subdistrict",
+    "th": "เสอเพลอ",
+    "en": "Soephloe",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410410",
+    "level": "subdistrict",
+    "th": "สีออ",
+    "en": "Si O",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410411",
+    "level": "subdistrict",
+    "th": "ปะโค",
+    "en": "Pa Kho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410413",
+    "level": "subdistrict",
+    "th": "ผาสุก",
+    "en": "Phasuk",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "410801",
+    "level": "subdistrict",
+    "th": "ไชยวาน",
+    "en": "Chai Wan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "411003",
+    "level": "subdistrict",
+    "th": "บะยาว",
+    "en": "Ba Yao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "411004",
+    "level": "subdistrict",
+    "th": "ผาสุก",
+    "en": "Phasuk",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "411706",
+    "level": "subdistrict",
+    "th": "ข้าวสาร",
+    "en": "Khaosan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "411707",
+    "level": "subdistrict",
+    "th": "จำปาโมง",
+    "en": "Champa Mong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "412401",
+    "level": "subdistrict",
+    "th": "บ้านจีต",
+    "en": "Ban Chit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "420506",
+    "level": "subdistrict",
+    "th": "อิปุ่ม",
+    "en": "Ipum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "420706",
+    "level": "subdistrict",
+    "th": "สานตม",
+    "en": "San Tom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "420803",
+    "level": "subdistrict",
+    "th": "อาฮี",
+    "en": "Ahi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "421007",
+    "level": "subdistrict",
+    "th": "ภูกระดึง",
+    "en": "Phukradueng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "421104",
+    "level": "subdistrict",
+    "th": "ห้วยสีเสียด",
+    "en": "Huai Sisiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430113",
+    "level": "subdistrict",
+    "th": "พระธาตุบังพวน",
+    "en": "Phra That Bangphuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430117",
+    "level": "subdistrict",
+    "th": "ปะโค",
+    "en": "Pa Kho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430208",
+    "level": "subdistrict",
+    "th": "นาข่า",
+    "en": "Na Kha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430501",
+    "level": "subdistrict",
+    "th": "จุมพล",
+    "en": "Chumphon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430509",
+    "level": "subdistrict",
+    "th": "เซิม",
+    "en": "Soem",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "430704",
+    "level": "subdistrict",
+    "th": "พระพุทธบาท",
+    "en": "Phra Phutthabat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "431401",
+    "level": "subdistrict",
+    "th": "สระใคร",
+    "en": "Sakhrai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "431601",
+    "level": "subdistrict",
+    "th": "รัตนวาปี",
+    "en": "Rattanawapi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "431604",
+    "level": "subdistrict",
+    "th": "พระบาทนาสิงห์",
+    "en": "Phra Bat Na Sing",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440102",
+    "level": "subdistrict",
+    "th": "เขวา",
+    "en": "Khwao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440304",
+    "level": "subdistrict",
+    "th": "เขวาไร่",
+    "en": "Khwao Rai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440402",
+    "level": "subdistrict",
+    "th": "คันธารราษฎร์",
+    "en": "Khanthararat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440405",
+    "level": "subdistrict",
+    "th": "นาสีนวน",
+    "en": "Na Sinuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440407",
+    "level": "subdistrict",
+    "th": "เขวาใหญ่",
+    "en": "Khwao Yai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440409",
+    "level": "subdistrict",
+    "th": "กุดใส้จ่อ",
+    "en": "Kut Saicho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440606",
+    "level": "subdistrict",
+    "th": "กำพี้",
+    "en": "Kam Phi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440704",
+    "level": "subdistrict",
+    "th": "เขวาไร่",
+    "en": "Khwao Rai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440710",
+    "level": "subdistrict",
+    "th": "สันป่าตอง",
+    "en": "San Pa Tong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440802",
+    "level": "subdistrict",
+    "th": "ก้ามปู",
+    "en": "Kampu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440805",
+    "level": "subdistrict",
+    "th": "นาสีนวล",
+    "en": "Na Sinuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440810",
+    "level": "subdistrict",
+    "th": "หนองบัวแก้ว",
+    "en": "Nong Buakaeo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440820",
+    "level": "subdistrict",
+    "th": "ภารแอ่น",
+    "en": "Phan Aen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440902",
+    "level": "subdistrict",
+    "th": "ขามป้อม",
+    "en": "Khampom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440909",
+    "level": "subdistrict",
+    "th": "นาข่า",
+    "en": "Na Kha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "440915",
+    "level": "subdistrict",
+    "th": "โคกสีทองหลาง",
+    "en": "Khok Si Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "441009",
+    "level": "subdistrict",
+    "th": "พระธาตุ",
+    "en": "Phra That",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "441101",
+    "level": "subdistrict",
+    "th": "ยางสีสุราช",
+    "en": "Yang Si Surat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "441106",
+    "level": "subdistrict",
+    "th": "สร้างแซ่ง",
+    "en": "Sangsaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450308",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450410",
+    "level": "subdistrict",
+    "th": "ลิ้นฟ้า",
+    "en": "Linfa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450510",
+    "level": "subdistrict",
+    "th": "เขวาทุ่ง",
+    "en": "Khwao Thung",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450804",
+    "level": "subdistrict",
+    "th": "อัคคะคำ",
+    "en": "Akkha Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450903",
+    "level": "subdistrict",
+    "th": "ภูเขาทอง",
+    "en": "Phukhao Thong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "450909",
+    "level": "subdistrict",
+    "th": "ท่าสีดา",
+    "en": "Tha Sida",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "451102",
+    "level": "subdistrict",
+    "th": "ดอกไม้",
+    "en": "Dok Mai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "451409",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "451803",
+    "level": "subdistrict",
+    "th": "พระธาตุ",
+    "en": "Phra That",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "451804",
+    "level": "subdistrict",
+    "th": "พระเจ้า",
+    "en": "Phra Chao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "451903",
+    "level": "subdistrict",
+    "th": "ดูกอึ่ง",
+    "en": "Duk-ueng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460105",
+    "level": "subdistrict",
+    "th": "ลำปาว",
+    "en": "Lam Pao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460106",
+    "level": "subdistrict",
+    "th": "ลำพาน",
+    "en": "Lam Phan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460508",
+    "level": "subdistrict",
+    "th": "นาขาม",
+    "en": "Na Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460510",
+    "level": "subdistrict",
+    "th": "นาโก",
+    "en": "Na Ko",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460606",
+    "level": "subdistrict",
+    "th": "กุดสิมคุ้มใหม่",
+    "en": "Kut Sim Khum Mai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460608",
+    "level": "subdistrict",
+    "th": "สระพังทอง",
+    "en": "Saphang Thong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "460706",
+    "level": "subdistrict",
+    "th": "อิตื้อ",
+    "en": "Itue",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "461304",
+    "level": "subdistrict",
+    "th": "มหาไชย",
+    "en": "Maha Chai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470101",
+    "level": "subdistrict",
+    "th": "ธาตุเชิงชุม",
+    "en": "That Choeng Chum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470116",
+    "level": "subdistrict",
+    "th": "ธาตุนาเวง",
+    "en": "That Na Weng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470204",
+    "level": "subdistrict",
+    "th": "โพธิไพศาล",
+    "en": "Pho Phaisan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470409",
+    "level": "subdistrict",
+    "th": "บะฮี",
+    "en": "Ba Hi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470504",
+    "level": "subdistrict",
+    "th": "ไฮหย่อง",
+    "en": "Haiyong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470704",
+    "level": "subdistrict",
+    "th": "สุวรรณคาม",
+    "en": "Suwannakham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "470802",
+    "level": "subdistrict",
+    "th": "เดื่อศรีคันไชย",
+    "en": "Duea Sikhanchai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "471107",
+    "level": "subdistrict",
+    "th": "บะหว้า",
+    "en": "Ba Wa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "471802",
+    "level": "subdistrict",
+    "th": "หลุบเลา",
+    "en": "Lup Lao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "480203",
+    "level": "subdistrict",
+    "th": "กุตาไก้",
+    "en": "Kutakai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "480206",
+    "level": "subdistrict",
+    "th": "มหาชัย",
+    "en": "Maha Chai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "480311",
+    "level": "subdistrict",
+    "th": "เวินพระบาท",
+    "en": "Woen Phra Bat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "480609",
+    "level": "subdistrict",
+    "th": "นาขาม",
+    "en": "Na Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "480905",
+    "level": "subdistrict",
+    "th": "เหล่าพัฒนา",
+    "en": "Lao Phatthana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "490102",
+    "level": "subdistrict",
+    "th": "ศรีบุญเรือง",
+    "en": "Si Bun Rueang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "490108",
+    "level": "subdistrict",
+    "th": "นาสีนวน",
+    "en": "Na Sinuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "490110",
+    "level": "subdistrict",
+    "th": "คำอาฮวน",
+    "en": "Kham Ahuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "490207",
+    "level": "subdistrict",
+    "th": "ร่มเกล้า",
+    "en": "Rom Klao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "490503",
+    "level": "subdistrict",
+    "th": "บ้านซ่ง",
+    "en": "Ban Song",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500108",
+    "level": "subdistrict",
+    "th": "สุเทพ",
+    "en": "Suthep",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500601",
+    "level": "subdistrict",
+    "th": "สันมหาพน",
+    "en": "San Maha Phon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500603",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500704",
+    "level": "subdistrict",
+    "th": "ขี้เหล็ก",
+    "en": "Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500805",
+    "level": "subdistrict",
+    "th": "ยั้งเมิน",
+    "en": "Yang Moen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500905",
+    "level": "subdistrict",
+    "th": "แม่สูน",
+    "en": "Mae Sun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "500911",
+    "level": "subdistrict",
+    "th": "แม่ข่า",
+    "en": "Mae Khaa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "501403",
+    "level": "subdistrict",
+    "th": "สันพระเนตร",
+    "en": "San Phra Net",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "501805",
+    "level": "subdistrict",
+    "th": "แม่หลอง",
+    "en": "Mae Long",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "501904",
+    "level": "subdistrict",
+    "th": "ไชยสถาน",
+    "en": "Chai Sathan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "502403",
+    "level": "subdistrict",
+    "th": "ยางคราม",
+    "en": "Yong Khram",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "502502",
+    "level": "subdistrict",
+    "th": "แม่แดด",
+    "en": "Mae Daet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "502503",
+    "level": "subdistrict",
+    "th": "แจ่มหลวง",
+    "en": "Chaem Luang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "510202",
+    "level": "subdistrict",
+    "th": "ทาสบเส้า",
+    "en": "Tha Sop Sao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "520105",
+    "level": "subdistrict",
+    "th": "พระบาท",
+    "en": "Phra Bat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "520708",
+    "level": "subdistrict",
+    "th": "วังทรายคำ",
+    "en": "Wang Sai Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "520904",
+    "level": "subdistrict",
+    "th": "พระบาทวังตวง",
+    "en": "Phra Bat Wang Tuang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "521303",
+    "level": "subdistrict",
+    "th": "ทุ่งกว๋าว",
+    "en": "Thung Kwao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "530901",
+    "level": "subdistrict",
+    "th": "ผักขวง",
+    "en": "Phak Khung",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "530904",
+    "level": "subdistrict",
+    "th": "น้ำพี้",
+    "en": "Nam Phi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "540204",
+    "level": "subdistrict",
+    "th": "ร้องเข็ม",
+    "en": "Rong Khem",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "540207",
+    "level": "subdistrict",
+    "th": "ทุ่งศรี",
+    "en": "Thung Si",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550104",
+    "level": "subdistrict",
+    "th": "ไชยสถาน",
+    "en": "Chai Sathan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550105",
+    "level": "subdistrict",
+    "th": "ถืมตอง",
+    "en": "Thuem Tong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550116",
+    "level": "subdistrict",
+    "th": "บ่อสวก",
+    "en": "Bo Suak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550407",
+    "level": "subdistrict",
+    "th": "น้ำตก",
+    "en": "Nam Tok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550506",
+    "level": "subdistrict",
+    "th": "อวน",
+    "en": "Uan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550509",
+    "level": "subdistrict",
+    "th": "ไชยวัฒนา",
+    "en": "Chai Wattana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550514",
+    "level": "subdistrict",
+    "th": "วรนคร",
+    "en": "Woranakhon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550711",
+    "level": "subdistrict",
+    "th": "อ่ายนาไลย",
+    "en": "Ai Na Lai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550712",
+    "level": "subdistrict",
+    "th": "ส้านนาหนองใหม่",
+    "en": "San Na Nong Mai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550904",
+    "level": "subdistrict",
+    "th": "พระธาตุ",
+    "en": "Phra That",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "550909",
+    "level": "subdistrict",
+    "th": "พระพุทธบาท",
+    "en": "Phra Phutthabat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "560112",
+    "level": "subdistrict",
+    "th": "จำป่าหวาย",
+    "en": "Cham Pa Wai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "560207",
+    "level": "subdistrict",
+    "th": "พระธาตุขิงแกง",
+    "en": "Phra That Khing Kaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "560510",
+    "level": "subdistrict",
+    "th": "บุญเกิด",
+    "en": "Bun Koet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570208",
+    "level": "subdistrict",
+    "th": "เมืองชุม",
+    "en": "Mlueang Chum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570304",
+    "level": "subdistrict",
+    "th": "บุญเรือง",
+    "en": "Bun Rueang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570413",
+    "level": "subdistrict",
+    "th": "หนองแรด",
+    "en": "Ngng Raet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570702",
+    "level": "subdistrict",
+    "th": "จันจว้า",
+    "en": "Chan Chwa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570706",
+    "level": "subdistrict",
+    "th": "ท่าข้าวเปลือก",
+    "en": "Tha Khao Pluek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "570712",
+    "level": "subdistrict",
+    "th": "จันจว้าใต้",
+    "en": "Chan Chwa Tai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "571001",
+    "level": "subdistrict",
+    "th": "แม่สรวย",
+    "en": "Mae Suai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "571803",
+    "level": "subdistrict",
+    "th": "หนองป่าก่อ",
+    "en": "Nogn Pa Ko",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "580109",
+    "level": "subdistrict",
+    "th": "ห้วยปูลิง",
+    "en": "Huai Puling",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "580203",
+    "level": "subdistrict",
+    "th": "เมืองปอน",
+    "en": "Nueang Pon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "580206",
+    "level": "subdistrict",
+    "th": "แม่อูคอ",
+    "en": "Mae Ukho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600101",
+    "level": "subdistrict",
+    "th": "ปากน้ำโพ",
+    "en": "Paknam Pho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600103",
+    "level": "subdistrict",
+    "th": "เกรียงไกร",
+    "en": "Kriangkrai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600311",
+    "level": "subdistrict",
+    "th": "ฆะมัง",
+    "en": "Khamang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600601",
+    "level": "subdistrict",
+    "th": "มหาโพธิ",
+    "en": "Maha Phot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600701",
+    "level": "subdistrict",
+    "th": "ตาคลี",
+    "en": "Takhli",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600703",
+    "level": "subdistrict",
+    "th": "จันเสน",
+    "en": "Chansen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600805",
+    "level": "subdistrict",
+    "th": "วังมหากร",
+    "en": "Wang Maha Kon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "600807",
+    "level": "subdistrict",
+    "th": "ทำนบ",
+    "en": "Thamnop",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "601110",
+    "level": "subdistrict",
+    "th": "เนินขี้เหล็ก",
+    "en": "Noen Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "610201",
+    "level": "subdistrict",
+    "th": "ทัพทัน",
+    "en": "Thap Than",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "610210",
+    "level": "subdistrict",
+    "th": "ตลุกดู่",
+    "en": "Taluk Du",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "610403",
+    "level": "subdistrict",
+    "th": "หนองนางนวล",
+    "en": "Nong Nangnuan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "610501",
+    "level": "subdistrict",
+    "th": "หนองขาหย่าง",
+    "en": "Nong Khayang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620102",
+    "level": "subdistrict",
+    "th": "ไตรตรึงษ์",
+    "en": "Traitrueng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620106",
+    "level": "subdistrict",
+    "th": "ทรงธรรม",
+    "en": "Song Tham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620111",
+    "level": "subdistrict",
+    "th": "คณฑี",
+    "en": "Khonthi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620112",
+    "level": "subdistrict",
+    "th": "นิคมทุ่งโพธิ์ทะเล",
+    "en": "Nikhom Thung Phothale",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620202",
+    "level": "subdistrict",
+    "th": "หนองคล้า",
+    "en": "Nang Khla",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620205",
+    "level": "subdistrict",
+    "th": "มหาชัย",
+    "en": "Maha Chai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620406",
+    "level": "subdistrict",
+    "th": "สลกบาตร",
+    "en": "Salokbat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "620705",
+    "level": "subdistrict",
+    "th": "ประชาสุขสันต์",
+    "en": "Pracha Suk San",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630303",
+    "level": "subdistrict",
+    "th": "ยกกระบัตร",
+    "en": "Yokkrabat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630403",
+    "level": "subdistrict",
+    "th": "ขะเนจื้อ",
+    "en": "Khanechue",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630406",
+    "level": "subdistrict",
+    "th": "พระธาตุ",
+    "en": "Phra That",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630506",
+    "level": "subdistrict",
+    "th": "แม่อุสุ",
+    "en": "Mae U-su",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630608",
+    "level": "subdistrict",
+    "th": "มหาวัน",
+    "en": "Maha Wan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630610",
+    "level": "subdistrict",
+    "th": "พระธาตุผาแดง",
+    "en": "Phra That Pha Daeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630801",
+    "level": "subdistrict",
+    "th": "อุ้มผาง",
+    "en": "Umphang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "630803",
+    "level": "subdistrict",
+    "th": "โมโกร",
+    "en": "Mokro",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "640110",
+    "level": "subdistrict",
+    "th": "วังทองแดง",
+    "en": "Wang Thongdaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "640704",
+    "level": "subdistrict",
+    "th": "วังพิณพาทย์",
+    "en": "Wang Phinphat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "640711",
+    "level": "subdistrict",
+    "th": "ปากน้ำ",
+    "en": "Paknam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "650404",
+    "level": "subdistrict",
+    "th": "วังอิทก",
+    "en": "Wang Ithok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "650703",
+    "level": "subdistrict",
+    "th": "ท้อแท้",
+    "en": "Thothae",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "650905",
+    "level": "subdistrict",
+    "th": "บ้านน้อยซุ้มขี้เหล็ก",
+    "en": "Ban Noi Sum Khilek",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "660111",
+    "level": "subdistrict",
+    "th": "ฆะมัง",
+    "en": "Khamang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "660603",
+    "level": "subdistrict",
+    "th": "ทะนง",
+    "en": "Thanong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "670202",
+    "level": "subdistrict",
+    "th": "ดงขุย",
+    "en": "Dong Khui",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "670209",
+    "level": "subdistrict",
+    "th": "ตะกุดไร",
+    "en": "Takut Rai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "670804",
+    "level": "subdistrict",
+    "th": "กันจุ",
+    "en": "Kanchu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "671102",
+    "level": "subdistrict",
+    "th": "แคมป์สน",
+    "en": "Camp Son",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "671105",
+    "level": "subdistrict",
+    "th": "สะเดาะพง",
+    "en": "Sado Phong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "700402",
+    "level": "subdistrict",
+    "th": "ประสาทสิทธิ์",
+    "en": "Prasat Sit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "700409",
+    "level": "subdistrict",
+    "th": "แพงพวย",
+    "en": "Phaengphuai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "700413",
+    "level": "subdistrict",
+    "th": "ดอนไผ่",
+    "en": "Don Phai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "700705",
+    "level": "subdistrict",
+    "th": "คลองตาคต",
+    "en": "Khlong Ta Khot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "700712",
+    "level": "subdistrict",
+    "th": "สร้อยฟ้า",
+    "en": "Soifa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "710207",
+    "level": "subdistrict",
+    "th": "บ้องตี้",
+    "en": "Bongti",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "710702",
+    "level": "subdistrict",
+    "th": "ปิล๊อก",
+    "en": "Pilok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "710704",
+    "level": "subdistrict",
+    "th": "ลิ่นถิ่น",
+    "en": "Linthin",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "710802",
+    "level": "subdistrict",
+    "th": "ปรังเผล",
+    "en": "Prangphle",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "710803",
+    "level": "subdistrict",
+    "th": "ไล่โว่",
+    "en": "Laiwo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "720101",
+    "level": "subdistrict",
+    "th": "ท่าพี่เลี้ยง",
+    "en": "Tha Philiang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "720205",
+    "level": "subdistrict",
+    "th": "ปากน้ำ",
+    "en": "Paknam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "720301",
+    "level": "subdistrict",
+    "th": "หนองมะค่าโมง",
+    "en": "Nong Makhamong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "720708",
+    "level": "subdistrict",
+    "th": "เนินพระปรางค์",
+    "en": "Noen Phra Prang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "720912",
+    "level": "subdistrict",
+    "th": "สระพังลาน",
+    "en": "Saphang Lan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "730201",
+    "level": "subdistrict",
+    "th": "ทุ่งกระพังโหม",
+    "en": "Thung Kraphanghom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "730314",
+    "level": "subdistrict",
+    "th": "ศรีมหาโพธิ์",
+    "en": "Si Maha Pho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "730513",
+    "level": "subdistrict",
+    "th": "นราภิรมย์",
+    "en": "Naraphirom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "730514",
+    "level": "subdistrict",
+    "th": "ลำพญา",
+    "en": "Lum Phaya",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "730703",
+    "level": "subdistrict",
+    "th": "มหาสวัสดิ์",
+    "en": "Maha Sawat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "740103",
+    "level": "subdistrict",
+    "th": "โกรกกราก",
+    "en": "Krokkrak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "740105",
+    "level": "subdistrict",
+    "th": "บางโทรัด",
+    "en": "Bang Tho Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "740118",
+    "level": "subdistrict",
+    "th": "ชัยมงคล",
+    "en": "Chai Mongkon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "740303",
+    "level": "subdistrict",
+    "th": "ยกกระบัตร",
+    "en": "Yokkrabat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "750201",
+    "level": "subdistrict",
+    "th": "กระดังงา",
+    "en": "Kradangnga",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "750310",
+    "level": "subdistrict",
+    "th": "แพรกหนามแดง",
+    "en": "Phraek Namdaeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "750311",
+    "level": "subdistrict",
+    "th": "ยี่สาร",
+    "en": "Yisan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "760105",
+    "level": "subdistrict",
+    "th": "ธงชัย",
+    "en": "Thongchai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "760202",
+    "level": "subdistrict",
+    "th": "สระพัง",
+    "en": "Saphang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "770505",
+    "level": "subdistrict",
+    "th": "ไชยราช",
+    "en": "Chai Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "770604",
+    "level": "subdistrict",
+    "th": "ปากน้ำปราณ",
+    "en": "Paknam Pran",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "770804",
+    "level": "subdistrict",
+    "th": "ศาลาลัย",
+    "en": "Salalai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "800612",
+    "level": "subdistrict",
+    "th": "เขาพระบาท",
+    "en": "Khao Phra Bat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "800807",
+    "level": "subdistrict",
+    "th": "โมคลาน",
+    "en": "Mokkhalan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "800910",
+    "level": "subdistrict",
+    "th": "น้ำตก",
+    "en": "Nam Tok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "801702",
+    "level": "subdistrict",
+    "th": "บ้านลำนาว",
+    "en": "Ban Lam Nao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "801903",
+    "level": "subdistrict",
+    "th": "ควนหนองคว้า",
+    "en": "Khuan Nong Khwa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "810203",
+    "level": "subdistrict",
+    "th": "สินปุน",
+    "en": "Sinpun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "810802",
+    "level": "subdistrict",
+    "th": "เกาะศรีบอยา",
+    "en": "Ko Siboya",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "820502",
+    "level": "subdistrict",
+    "th": "บางนายสี",
+    "en": "Bang Na Si",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "820505",
+    "level": "subdistrict",
+    "th": "ตำตัว",
+    "en": "Tam Tua",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "820507",
+    "level": "subdistrict",
+    "th": "คึกคัก",
+    "en": "Khuekkhak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "820601",
+    "level": "subdistrict",
+    "th": "คุระ",
+    "en": "Khura",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "820704",
+    "level": "subdistrict",
+    "th": "ถ้ำทองหลาง",
+    "en": "Tham Thonglang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "830202",
+    "level": "subdistrict",
+    "th": "ป่าตอง",
+    "en": "Pa Tong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "830301",
+    "level": "subdistrict",
+    "th": "เทพกระษัตรี",
+    "en": "Thepkrasattri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "830302",
+    "level": "subdistrict",
+    "th": "ศรีสุนทร",
+    "en": "Sisunthon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "840105",
+    "level": "subdistrict",
+    "th": "บางใบไม้",
+    "en": "Bang Baimai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "840302",
+    "level": "subdistrict",
+    "th": "ชลคราม",
+    "en": "Chonlakhram",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "840603",
+    "level": "subdistrict",
+    "th": "เลม็ด",
+    "en": "Lamet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "841211",
+    "level": "subdistrict",
+    "th": "เพิ่มพูนทรัพย์",
+    "en": "Phoemphun Sap",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "841402",
+    "level": "subdistrict",
+    "th": "พ่วงพรมคร",
+    "en": "Phuang Phrom Khon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "841404",
+    "level": "subdistrict",
+    "th": "อรัญคามวารี",
+    "en": "Aranyakham Wari",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "841601",
+    "level": "subdistrict",
+    "th": "อิปัน",
+    "en": "I-pan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "841703",
+    "level": "subdistrict",
+    "th": "ลีเล็ด",
+    "en": "Lilet",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "850105",
+    "level": "subdistrict",
+    "th": "ปากน้ำ",
+    "en": "Paknam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "850406",
+    "level": "subdistrict",
+    "th": "จ.ป.ร.",
+    "en": "Choporo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "860202",
+    "level": "subdistrict",
+    "th": "คุริง",
+    "en": "Khuring",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "860307",
+    "level": "subdistrict",
+    "th": "เขาไชยราช",
+    "en": "Khao Chai Rat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "860404",
+    "level": "subdistrict",
+    "th": "นาขา",
+    "en": "Na Kha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "860604",
+    "level": "subdistrict",
+    "th": "พระรักษ์",
+    "en": "Phra Rak",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900102",
+    "level": "subdistrict",
+    "th": "เขารูปช้าง",
+    "en": "Khao Rup Chang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900201",
+    "level": "subdistrict",
+    "th": "จะทิ้งพระ",
+    "en": "Chathing Phra",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900202",
+    "level": "subdistrict",
+    "th": "กระดังงา",
+    "en": "Kradang-nga",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900205",
+    "level": "subdistrict",
+    "th": "ชุมพล",
+    "en": "Chumphon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900206",
+    "level": "subdistrict",
+    "th": "คลองรี",
+    "en": "Khlong Ri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900210",
+    "level": "subdistrict",
+    "th": "บ่อแดง",
+    "en": "Bo Daeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900211",
+    "level": "subdistrict",
+    "th": "บ่อดาน",
+    "en": "Bo Dan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900304",
+    "level": "subdistrict",
+    "th": "สะกอม",
+    "en": "Sakom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900310",
+    "level": "subdistrict",
+    "th": "จะโหนง",
+    "en": "Chanong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900403",
+    "level": "subdistrict",
+    "th": "นาหมอศรี",
+    "en": "Na Mo Si",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900504",
+    "level": "subdistrict",
+    "th": "ลำไพล",
+    "en": "Lam Phlai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900507",
+    "level": "subdistrict",
+    "th": "สะกอม",
+    "en": "Sakom",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900601",
+    "level": "subdistrict",
+    "th": "สะบ้าย้อย",
+    "en": "Saba Yoi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900605",
+    "level": "subdistrict",
+    "th": "จะแหน",
+    "en": "Chanae",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900606",
+    "level": "subdistrict",
+    "th": "คูหา",
+    "en": "Khuha",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900701",
+    "level": "subdistrict",
+    "th": "ระโนด",
+    "en": "Ranot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900706",
+    "level": "subdistrict",
+    "th": "บ่อตรุ",
+    "en": "Bo Tru",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900709",
+    "level": "subdistrict",
+    "th": "ระวะ",
+    "en": "Rawa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900712",
+    "level": "subdistrict",
+    "th": "แดนสงวน",
+    "en": "Daen Sa-nguan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900801",
+    "level": "subdistrict",
+    "th": "เกาะใหญ่",
+    "en": "Ko Yai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900902",
+    "level": "subdistrict",
+    "th": "ท่าชะมวง",
+    "en": "Tha Chamuang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "900903",
+    "level": "subdistrict",
+    "th": "คูหาใต้",
+    "en": "Khuha Tai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901007",
+    "level": "subdistrict",
+    "th": "ปาดังเบซาร์",
+    "en": "Padang Besa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901009",
+    "level": "subdistrict",
+    "th": "เขามีเกียรติ",
+    "en": "Khao Mi Kiat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901107",
+    "level": "subdistrict",
+    "th": "คลองอู่ตะเภา",
+    "en": "Khlong U Taphao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901118",
+    "level": "subdistrict",
+    "th": "พะตง",
+    "en": "Phatong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901301",
+    "level": "subdistrict",
+    "th": "รัตภูมิ",
+    "en": "Rattaphum",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "901503",
+    "level": "subdistrict",
+    "th": "ทำนบ",
+    "en": "Thamnop",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910108",
+    "level": "subdistrict",
+    "th": "เจ๊ะบิลัง",
+    "en": "Che Bilang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910112",
+    "level": "subdistrict",
+    "th": "เกตรี",
+    "en": "Ket Tri",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910402",
+    "level": "subdistrict",
+    "th": "แป-ระ",
+    "en": "Paera",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910504",
+    "level": "subdistrict",
+    "th": "ปากน้ำ",
+    "en": "Paknam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910604",
+    "level": "subdistrict",
+    "th": "ทุ่งบุหลัง",
+    "en": "Thung Bulang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "910701",
+    "level": "subdistrict",
+    "th": "ปาล์มพัฒนา",
+    "en": "Palm Phatthana",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "920104",
+    "level": "subdistrict",
+    "th": "นาพละ",
+    "en": "Na Phla",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "920106",
+    "level": "subdistrict",
+    "th": "นาบินหลา",
+    "en": "Na Binla",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "920410",
+    "level": "subdistrict",
+    "th": "ลิพัง",
+    "en": "Liphang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930101",
+    "level": "subdistrict",
+    "th": "คูหาสวรรค์",
+    "en": "Khuha Sawan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930105",
+    "level": "subdistrict",
+    "th": "โคกชะงาย",
+    "en": "Khok Cha-ngai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930109",
+    "level": "subdistrict",
+    "th": "ลำปำ",
+    "en": "Lampam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930111",
+    "level": "subdistrict",
+    "th": "ควนมะพร้าว",
+    "en": "Khuan Maphrao",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930203",
+    "level": "subdistrict",
+    "th": "คลองเฉลิม",
+    "en": "Khlong Chaloem",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930205",
+    "level": "subdistrict",
+    "th": "สมหวัง",
+    "en": "Somwang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930302",
+    "level": "subdistrict",
+    "th": "ควนขนุน",
+    "en": "Khuan Khanun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930305",
+    "level": "subdistrict",
+    "th": "จองถนน",
+    "en": "Chong Thanon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930401",
+    "level": "subdistrict",
+    "th": "แม่ขรี",
+    "en": "Mae Khari",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930402",
+    "level": "subdistrict",
+    "th": "ตะโหมด",
+    "en": "Tamot",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930501",
+    "level": "subdistrict",
+    "th": "ควนขนุน",
+    "en": "Khuan Khanun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930504",
+    "level": "subdistrict",
+    "th": "นาขยาด",
+    "en": "Na Khayat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930508",
+    "level": "subdistrict",
+    "th": "ปันแต",
+    "en": "Pan Tae",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930601",
+    "level": "subdistrict",
+    "th": "ปากพะยูน",
+    "en": "Pak Phayun",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930603",
+    "level": "subdistrict",
+    "th": "เกาะนางคำ",
+    "en": "Ko Nang Kham",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930605",
+    "level": "subdistrict",
+    "th": "ฝาละมี",
+    "en": "Falami",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930703",
+    "level": "subdistrict",
+    "th": "ตะแพน",
+    "en": "Taphaen",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "930902",
+    "level": "subdistrict",
+    "th": "นาปะขอ",
+    "en": "Na Pa Kho",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940102",
+    "level": "subdistrict",
+    "th": "อาเนาะรู",
+    "en": "Ano Ru",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940107",
+    "level": "subdistrict",
+    "th": "กะมิยอ",
+    "en": "Kamiyo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940113",
+    "level": "subdistrict",
+    "th": "ปุยุด",
+    "en": "Puyut",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940208",
+    "level": "subdistrict",
+    "th": "ทุ่งพลา",
+    "en": "Thung Phala",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940311",
+    "level": "subdistrict",
+    "th": "ยาบี",
+    "en": "Yabi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940505",
+    "level": "subdistrict",
+    "th": "ลุโบะยิไร",
+    "en": "Luboyirai",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940509",
+    "level": "subdistrict",
+    "th": "ปะโด",
+    "en": "Pado",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940513",
+    "level": "subdistrict",
+    "th": "ปานัน",
+    "en": "Panan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940604",
+    "level": "subdistrict",
+    "th": "ปากู",
+    "en": "Paku",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940803",
+    "level": "subdistrict",
+    "th": "ตะโละไกรทอง",
+    "en": "Talo Kraithong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940904",
+    "level": "subdistrict",
+    "th": "ตันหยงจึงงา",
+    "en": "Tanyong Chueng-nga",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940905",
+    "level": "subdistrict",
+    "th": "ตอหลัง",
+    "en": "Tolang",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "940908",
+    "level": "subdistrict",
+    "th": "ยามู",
+    "en": "Yamu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "941011",
+    "level": "subdistrict",
+    "th": "กอลำ",
+    "en": "Kolam",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950102",
+    "level": "subdistrict",
+    "th": "บุดี",
+    "en": "Budi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950103",
+    "level": "subdistrict",
+    "th": "ยุโป",
+    "en": "Yupo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950104",
+    "level": "subdistrict",
+    "th": "ลิดล",
+    "en": "Lidon",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950303",
+    "level": "subdistrict",
+    "th": "ตาเนาะปูเต๊ะ",
+    "en": "Tanao Pute",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950506",
+    "level": "subdistrict",
+    "th": "ตาชี",
+    "en": "Tachi",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950508",
+    "level": "subdistrict",
+    "th": "กาตอง",
+    "en": "Ka Tong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950606",
+    "level": "subdistrict",
+    "th": "เกะรอ",
+    "en": "Kero",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950607",
+    "level": "subdistrict",
+    "th": "จะกว๊ะ",
+    "en": "Cha-kwa",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950615",
+    "level": "subdistrict",
+    "th": "อาซ่อง",
+    "en": "Asong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950802",
+    "level": "subdistrict",
+    "th": "สะเอะ",
+    "en": "Sa-e",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "950804",
+    "level": "subdistrict",
+    "th": "ปุโรง",
+    "en": "Purong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960102",
+    "level": "subdistrict",
+    "th": "ลำภู",
+    "en": "Lumphu",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960201",
+    "level": "subdistrict",
+    "th": "เจ๊ะเห",
+    "en": "Chehe",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960202",
+    "level": "subdistrict",
+    "th": "ไพรวัน",
+    "en": "Phraiwan",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960208",
+    "level": "subdistrict",
+    "th": "โฆษิต",
+    "en": "Kosit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960406",
+    "level": "subdistrict",
+    "th": "ตะปอเยาะ",
+    "en": "Tapoyo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960510",
+    "level": "subdistrict",
+    "th": "มะรือโบตก",
+    "en": "Maruebo Tok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960606",
+    "level": "subdistrict",
+    "th": "ลาโละ",
+    "en": "Lalo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960701",
+    "level": "subdistrict",
+    "th": "ซากอ",
+    "en": "Sako",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960702",
+    "level": "subdistrict",
+    "th": "ตะมะยูง",
+    "en": "Tamayung",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960803",
+    "level": "subdistrict",
+    "th": "ฆอเลาะ",
+    "en": "Kholo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960804",
+    "level": "subdistrict",
+    "th": "โละจูด",
+    "en": "Lochut",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960901",
+    "level": "subdistrict",
+    "th": "มาโมง",
+    "en": "Mamong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "960904",
+    "level": "subdistrict",
+    "th": "ภูเขาทอง",
+    "en": "Phukhao Thong",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961001",
+    "level": "subdistrict",
+    "th": "สุไหงโก-ลก",
+    "en": "Su-ngai Kolok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961002",
+    "level": "subdistrict",
+    "th": "ปาเสมัส",
+    "en": "Pasemat",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961003",
+    "level": "subdistrict",
+    "th": "มูโนะ",
+    "en": "Muno",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961103",
+    "level": "subdistrict",
+    "th": "โต๊ะเด็ง",
+    "en": "Todeng",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961105",
+    "level": "subdistrict",
+    "th": "ริโก๋",
+    "en": "Riko",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961202",
+    "level": "subdistrict",
+    "th": "ดุซงญอ",
+    "en": "Dusong Yo",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961302",
+    "level": "subdistrict",
+    "th": "บูกิต",
+    "en": "Bukit",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  },
+  {
+    "code": "961303",
+    "level": "subdistrict",
+    "th": "มะรือโบออก",
+    "en": "Maruebo Ok",
+    "source": "DOPA ทำเนียบท้องที่ ccaatt.xlsx, file dated 2023-10-02, https://stat.bora.dopa.go.th/dload/ccaatt.xlsx, sha256 5977e39e689d229668dabb2ff47f1a1a4bec341bd1efa0792cb45cad8e16d6e9"
+  }
+]
