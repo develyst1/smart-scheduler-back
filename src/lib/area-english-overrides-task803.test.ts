@@ -50,7 +50,9 @@ describe("TASK-803 — the override list", () => {
       const out = join(dir, "overrides.json");
       const r = Bun.spawnSync(["bun", "run", "scripts/check-area-english.ts", "--dataset", "src/data/thai-geography.json", "--write-overrides", out], { cwd: ROOT, stdout: "pipe", stderr: "pipe" });
       expect(r.exitCode).toBe(0);
-      expect(sha(readFileSync(out))).toBe(sha(bytes("src/data/thai-geography.en-overrides.json")));
+      // TASK-804: content with line endings normalised — Git (core.autocrlf) writes this file with CRLF on Windows checkouts; the committed blob is the generator's LF output
+      const lf = (b: Buffer) => sha(Buffer.from(b.toString("utf8").replace(/\r\n/g, "\n")));
+      expect(lf(readFileSync(out))).toBe(lf(bytes("src/data/thai-geography.en-overrides.json")));
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 60000);
 

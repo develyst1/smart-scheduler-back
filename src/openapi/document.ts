@@ -392,7 +392,10 @@ export const openApiDocument = {
         tags: ["reports"],
         summary: "รายงานสรุปรายวัน",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "date", in: "query", required: true, schema: { type: "string", format: "date" } }],
+        parameters: [
+          { name: "date", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "teacherId", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "Filters EVERY counter (REQ-119): a row belongs to a coach if he is the primary coach or an extra one." },
+        ],
         responses: { "200": { description: "DailyReport" } },
       },
     },

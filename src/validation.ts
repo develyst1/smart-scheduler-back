@@ -77,7 +77,7 @@ export const calendarQuery = z.object({
     .transform((v) => v === "true"),
 });
 
-export const reportQuery = z.object({ date: DATE });
+export const reportQuery = z.object({ date: DATE, teacherId: z.string().uuid().optional() }); // 🔻 TASK-737 (REQ-119): `teacherId` filters every counter
 
 // Booking dropdown: search students by name / nickname / parent phone.
 export const studentsQuery = z.object({

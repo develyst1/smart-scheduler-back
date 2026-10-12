@@ -14,7 +14,8 @@ import * as series from "../services/other-series.service";
 import * as lineLib from "./line";
 import { db } from "../db";
 import { bookings, campWeekDays, campWeeks } from "../db/schema";
-import { fmtDate, addDays } from "./time";
+import { addDays } from "./time";
+import { bangkokNow } from "./bangkok-time";
 import { readSrc } from "./read-src";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -36,7 +37,7 @@ const SCHED = code(src("src/services/scheduler.service.ts"));
 const W1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", D1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", T1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc", T2 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd", K = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); delete process.env.SKIP_AUTH; });
-const TODAY = fmtDate(new Date()); // the service's own "today" (Bangkok = local on this box; the rule is `date < today`)
+const TODAY = bangkokNow().date; // the service's own "today" — Bangkok, whatever the process clock (TASK-804: UTC made this red 00:00–07:00 Bangkok); the rule is `date < today`
 
 /** A camp fake tx: the week + a day; the teachers read; a clash at `clashAt` arrives as `insertBooking`'s 409 — and then, as on a
  *  real Postgres, EVERY further read on the tx throws (`25P02`, the aborted transaction). */

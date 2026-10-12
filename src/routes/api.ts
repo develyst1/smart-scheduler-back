@@ -12,6 +12,7 @@ import * as attention from "../services/attention.service";
 import * as otherSeries from "../services/other-series.service";
 import * as teacherLink from "../services/teacher-link.service";
 import * as som from "../services/som-report.service";
+import * as dailyReport from "../services/daily-report.service"; // 🔻 TASK-737 (REQ-119)
 import * as settings from "../services/settings.service";
 import * as rental from "../services/rental.service";
 import { calendarUrls } from "../lib/calendar-link";
@@ -309,9 +310,10 @@ export const api = new Hono()
   .get("/bookings", zValidator("query", v.bookingsQuery), async (c) =>
     c.json(await svc.getBookings(c.req.valid("query"), scopeOf(c.get("user")))), // TASK-406
   )
-  .get("/reports/daily", zValidator("query", v.reportQuery), async (c) =>
-    c.json(await svc.getDailyReport(c.req.valid("query").date)),
-  )
+  .get("/reports/daily", zValidator("query", v.reportQuery), async (c) => {
+    const q = c.req.valid("query"); // 🔻 TASK-737 (REQ-119) — Palm's contract; `teacherId` filters every counter. The old `svc.getDailyReport` stays for the SOM report + the day-end job.
+    return c.json(await dailyReport.getDailyReportContract(q.date, q.teacherId));
+  })
   // REQ-013: the SOM dashboard in ONE snapshot — no params, "today"/"this month" resolved server-side.
   .get("/reports/som", async (c) => c.json(await som.getSomReport()))
   .post("/bookings", zValidator("json", v.createBooking), async (c) => {

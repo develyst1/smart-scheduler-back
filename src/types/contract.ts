@@ -287,7 +287,7 @@ export interface BookingsResponse {
   total: number;
 }
 
-/** GET /api/reports/daily?date=YYYY-MM-DD */
+/** GET /api/reports/daily?date=YYYY-MM-DD[&teacherId=…] */
 export interface DailyReportResponse {
   date: IsoDate;
   totalBooked: number;
@@ -296,6 +296,14 @@ export interface DailyReportResponse {
   pending: number;
   cancelled: number;
   byBookingType: Array<{ type: BookingType; count: number }>;
+  // 🔻 TASK-737 (REQ-119) — Palm's contract (`docs/backend-daily-report.md` §5): ALL of these ship in ONE release (the front switches on `awaiting`); integers only.
+  confirmed: number;
+  awaiting: number;
+  attendanceRate: number;
+  noShow: number;
+  byBookingTypeAttended: Array<{ type: BookingType; count: number }>;
+  byBookingTypeConfirmed: Array<{ type: BookingType; count: number }>;
+  byTeacher: Array<{ teacherId: string; count: number; attended: number; total: number }>;
 }
 
 // ═════════════════════════════ WRITE requests ═════════════════════════════
