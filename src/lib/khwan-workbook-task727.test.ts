@@ -115,13 +115,11 @@ describe("🔴 TASK-727 §2 — the camp renderers (P25 / P27 by value; P26 only
     expect(render(p, {}, "TH", "teacher")).toBe("⏱️TODAY'S SCHEDULE:\n\nCamp : Week 1\nDate : 15-10-2026\nStudents : 3 (ทั้งวัน 1 ·เช้า 1 · บ่าย 1)\n  - Student A\n  - Student B\n  - Student C");
     expect(render(p, {}, "EN", "teacher")).toBe("⏱️TODAY'S SCHEDULE:\n\nCamp : Week 1\nDate : 15-10-2026\nStudents : 3 (Full day 1 · Morning 1 · Afternoon 1)\n  - Student A\n  - Student B\n  - Student C");
   });
-  test("P26 camp_reminder (family) — only the TH label `Camp :` here; the Time line is NOT touched (the real hours wait on the SA)", () => {
+  test("P26 camp_reminder (family) — the TH label `Camp :` (the Time line is TASK-736's: the real hours, pinned in camp-hours-task736.test.ts)", () => {
     const p = { kind: "camp_reminder", audience: "parent", rows: [{ child: "Student A", weekName: "Week 1", date: "2026-10-15", half: "AM" }] };
     const th = render(p, {}, "TH", "parent");
     expect(th).toContain("\nCamp : Week 1\n");
     expect(th).not.toContain("แคมป์");
-    expect(th).toContain("ช่วง : ช่วงเช้า"); // unchanged
-    expect(render(p, {}, "EN", "parent")).toContain("Time : Morning (AM)"); // unchanged
   });
   test("P27 camp_deduction — her title, ENGLISH ONLY for both languages", () => {
     const body = { studentName: "Student A", date: "2026-10-15", remainingDays: 1, totalDays: 5 };

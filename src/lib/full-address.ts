@@ -11,7 +11,11 @@
 // Pure — no DB, no clock, no copy.
 import { THAI_PROVINCES, isThaiProvince } from "./thai-provinces";
 
-export type AddressParts = { province?: string | null; district?: string | null; subDistrict?: string | null };
+export type AddressParts = {
+  province?: string | null; district?: string | null; subDistrict?: string | null;
+  /** 🔻 TASK-800 (REQ-118) — the three DOPA area codes; when present they ARE the address (the writer stores them and derives `province`), and the names are not read. */
+  codes?: { provinceCode: string; districtCode: string; subdistrictCode: string } | null;
+};
 /** A checked address: the three parts, and the ONE line both doors store (the page's `joinAddress` order and spelling). */
 export type FullAddress = { province: string; district: string; subDistrict: string; line: string };
 export type AddressCheck =

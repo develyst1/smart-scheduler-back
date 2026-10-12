@@ -1,0 +1,14 @@
+{
+  "task": "TASK-736",
+  "proves": "src/lib/camp-hours-task736.test.ts",
+  "note": "P26: the camp family reminder prints the fixed hours per half with a COLON (one map shared with TASK-735). The DoD's three = H1 (the dot format back) · H2 (the old 'Morning (AM)' back) · H3 (the half ignored: always all day); the rest: the afternoon wrong, an unknown half guessed, the old Thai label.",
+  "tests": "src/lib/camp-hours-task736.test.ts src/lib/khwan-workbook-task727.test.ts",
+  "mutations": [
+    { "id": "H1", "what": "the DOT format is back (Khwan's 10.00, not the house colon)", "files": [{ "file": "src/lib/camp-hours.ts", "edits": [{ "from": "AM: \"10:00-12:00\", PM: \"13:00-15:00\", FULL: \"10:00-15:00\" } as const;", "to": "AM: \"10.00-12.00\", PM: \"13.00-15.00\", FULL: \"10.00-15.00\" } as const;" }] }] },
+    { "id": "H2", "what": "the old `Morning (AM)` words are back on the Time line", "files": [{ "file": "src/lib/line-message.ts", "edits": [{ "from": "[`${t(\"cp_time\", lang)} : ${campHoursOf(r.half)}`]", "to": "[`${t(\"cp_time\", lang)} : ${t(\"cp_half_am\", lang)}`]" }] }] },
+    { "id": "H3", "what": "the half is ignored — every child is told the all-day hours", "files": [{ "file": "src/lib/camp-hours.ts", "edits": [{ "from": "return half && Object.prototype.hasOwnProperty.call(CAMP_HALF_HOURS, half) ? CAMP_HALF_HOURS[half as keyof typeof CAMP_HALF_HOURS] : undefined;", "to": "return half && Object.prototype.hasOwnProperty.call(CAMP_HALF_HOURS, half) ? CAMP_HALF_HOURS.FULL : undefined;" }] }] },
+    { "id": "H4", "what": "the afternoon is told the morning's hours", "files": [{ "file": "src/lib/camp-hours.ts", "edits": [{ "from": "PM: \"13:00-15:00\"", "to": "PM: \"10:00-12:00\"" }] }] },
+    { "id": "H5", "what": "an unknown half is GUESSED as all day (a hour nobody confirmed)", "files": [{ "file": "src/lib/camp-hours.ts", "edits": [{ "from": "CAMP_HALF_HOURS[half as keyof typeof CAMP_HALF_HOURS] : undefined;", "to": "CAMP_HALF_HOURS[half as keyof typeof CAMP_HALF_HOURS] : CAMP_HALF_HOURS.FULL;" }] }] },
+    { "id": "H6", "what": "the Thai label `ช่วง` is back (her TH label is `Time :`)", "files": [{ "file": "src/lib/line-i18n.ts", "edits": [{ "from": "cp_time: { TH: \"Time\", EN: \"Time\" },", "to": "cp_time: { TH: \"ช่วง\", EN: \"Time\" }," }] }] }
+  ]
+}

@@ -4325,7 +4325,7 @@ export async function updateBookingStatus(
       // teacher's leave uses. CONFIRMED-only (the sender's gate), every seat's family on a GROUP row.
       // 🔻 TASK-548 — MOVED below the re-plan (same transaction, nothing else reordered): a cancelled make-up's notice may name the
       // class the re-plan ACTUALLY appended, and that result exists only after the re-plan ran.
-      if (!slot.family) await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);
+      if (!slot.family) await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? (current.isMakeup === true && reasonCode === "TEACHER_LEAVE" ? "TEACHER_LEAVE" : null), replanned?.appended ?? []); // 🔻 TEST-098 (TASK-731): the admin's «ครูลา» on a COURSE make-up reaches the family NOTICE only — `enumReason` (STORED, and the +1 week) is deliberately NOT widened
     } else if (action === "sick-leave" && current.status === "ATTENDED") {
       // ═══ SPEC-073 / TASK-258 (REQ-083) — UNDO an attendance. It sits here, beside the `attend` branch it
       // reverses, so the undo behaves identically however it is reached (§6). 🔻 TASK-497: it now ends CONFIRMED (below).

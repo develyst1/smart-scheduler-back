@@ -78,6 +78,10 @@ const EVIDENCE: Record<string, { how: "exercised" | "literal"; why: string }> = 
   "POST /api/register/lookup": { how: "literal", why: "`{ ok, outcome, phone (masked), children: childView }` — childView = { id, name, nickname }" },
   "POST /api/register/link": { how: "literal", why: "`{ ok, outcome, isNew, children: childView, canAddMore }`" },
   "POST /api/register/create": { how: "literal", why: "`{ ok, … }` literals" },
+  // 🔻 TASK-800 (REQ-118, ruled B) — the pickers' area lists: public ON PURPOSE (the LIFF page has no admin token), answered by an ALLOW-LIST of three fields per row from the static dataset — walked below
+  "GET /api/areas/provinces": { how: "exercised", why: "geography only: `[{ code, nameTh, nameEn }]` from the static dataset — walked below" },
+  "GET /api/areas/districts": { how: "exercised", why: "geography only: `[{ code, nameTh, nameEn }]` for one province code — walked below" },
+  "GET /api/areas/subdistricts": { how: "exercised", why: "geography only: `[{ code, nameTh, nameEn }]` for one district code — walked below" },
 };
 const TEACH = (u: Unguarded) => [
   "",
@@ -180,6 +184,9 @@ const PROBES: Record<string, () => Promise<{ status: number; body: any }>> = {
   "POST /api/checkin/camp": () => call("POST", "/api/checkin/camp", { token: "ctoken-123456" }),
   "POST /api/checkin/shopfront/lookup": () => call("POST", "/api/checkin/shopfront/lookup", { phone: PHONE }),
   "POST /api/checkin/shopfront": () => call("POST", "/api/checkin/shopfront", { phone: PHONE, bookingId: BID }),
+  "GET /api/areas/provinces": () => call("GET", "/api/areas/provinces"), // 🔻 TASK-800
+  "GET /api/areas/districts": () => call("GET", "/api/areas/districts?province=10"),
+  "GET /api/areas/subdistricts": () => call("GET", "/api/areas/subdistricts?district=1001"),
   "POST /api/checkin/shopfront/batch": () => call("POST", "/api/checkin/shopfront/batch", { phone: PHONE, items: [{ bookingId: BID }, { campDayId: CID }] }),
 };
 describe("🔑 the EXERCISED routes — key 59's promise checked WHERE THE MASK DOES NOT RUN", () => {

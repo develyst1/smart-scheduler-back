@@ -175,12 +175,11 @@ export function nextStep(current: AddStudentStep, outcome: DuplicateOutcome = "o
       return outcome === "more-detail" ? "AWAIT_STUDENT_DETAIL" : "AWAIT_STUDENT_BIRTHDATE";
     case "AWAIT_STUDENT_DETAIL":
       return "AWAIT_STUDENT_BIRTHDATE";
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat asks NO address: the birthday goes STRAIGHT to the confirm. The three address steps stay in `ADD_STUDENT_STEPS` ONLY so a session parked on one before the deploy
+    // is still routed to the wizard (which sends it to the summary); nothing moves INTO them any more.
     case "AWAIT_STUDENT_BIRTHDATE":
-      return "AWAIT_STUDENT_PROVINCE";
     case "AWAIT_STUDENT_PROVINCE":
-      return "AWAIT_STUDENT_DISTRICT";
     case "AWAIT_STUDENT_DISTRICT":
-      return "AWAIT_STUDENT_SUBDISTRICT";
     case "AWAIT_STUDENT_SUBDISTRICT":
       return "AWAIT_STUDENT_CONFIRM";
     case "AWAIT_STUDENT_CONFIRM":

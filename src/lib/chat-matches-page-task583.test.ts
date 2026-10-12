@@ -31,16 +31,17 @@ describe("🔑 every ข้าม SHAPE in the chat, DERIVED — each use of the
     const callers = ALL.flatMap(([f, s]) => [...s.matchAll(/isSkip\(([^)]*)\)/g)].map((m) => `${f}: isSkip(${m[1]})`)).filter((x) => !x.includes("export const isSkip"));
     // 🔻 TASK-590 (F-C) — the one address answer became three questions; the province is resolved to one of the 77 (a skip word is
     // simply not a province), the district and sub-district refuse a skip word by name.
-    expect(callers).toEqual(["src/lib/line-add-student.ts: isSkip(raw)", "src/services/line-webhook.service.ts: isSkip(district)", "src/services/line-webhook.service.ts: isSkip(subDistrict)"]);
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat asks NO address any more: the district / sub-district questions (and their isSkip refusals) are GONE.
+    expect(callers).toEqual(["src/lib/line-add-student.ts: isSkip(raw)"]);
     // (1) the birthday parser reads a skip word as "no date" — and BOTH doors refuse "no date"
     expect(parseBirthDate("ข้าม")).toEqual({ ok: true, value: null });
     expect(WEBHOOK).toContain('if (parsed.value == null) return strikeOrPrompt(lineUserId, session, replyToken, t("add_birthdate_prompt", lang), lang);');
     expect(read("src/services/line-register.service.ts")).toContain('if (parsed.value == null) return { ok: false, refusal: { outcome: "birthdate-required" } };');
-    // (2) the address steps
-    expect(WEBHOOK).toContain('if (!province) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_province_bad", lang), lang);');
+    // (2) the address steps — 🔻 TASK-800 (REQ-118, owner ruling 2): GONE from the chat. A skip word is still never a province (the pure helper is unchanged) but nothing in the chat asks for one.
     for (const w of SKIP) expect(provinceFromTyped(w)).toBeNull();
-    expect(WEBHOOK).toContain('if (!district || isSkip(district)) return strikeOrPrompt(');
-    expect(WEBHOOK).toContain('if (!subDistrict || isSkip(subDistrict)) return strikeOrPrompt(');
+    expect(WEBHOOK).not.toContain("provinceFromTyped");
+    expect(WEBHOOK).not.toContain("isSkip(district)");
+    expect(WEBHOOK).not.toContain("isSkip(subDistrict)");
     expect(WEBHOOK).not.toContain("isSkip(text) ? null");
     for (const w of SKIP) expect(isSkip(w)).toBe(true); // the whole vocabulary is caught, not only ข้าม
   });
@@ -59,13 +60,13 @@ describe("🔑 every ข้าม SHAPE in the chat, DERIVED — each use of the
   test("the CONFIRM carries no hole to the write: a draft missing its birthday or address goes BACK to that question first", () => {
     const confirm = WEBHOOK.slice(WEBHOOK.indexOf('if (session.step === "AWAIT_STUDENT_CONFIRM") {'));
     // 🔻 TASK-590 — the address hole is "not a full address by THE rule" (three parts), not "no province"
-    const order = ["if (!draft.birthDate) {", 'setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", draft)', "if (!addressOnFile && !checkFullAddress(draft).ok) {", 'setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", draft)', "registerFamilyWithFirstChild(", "createStudentFromLine(parent!, {"];
+    const order = ["if (!draft.birthDate) {", 'setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", draft)', "registerFamilyWithFirstChild(", "createStudentFromLine(parent!, {"];
     const at = order.map((o) => confirm.indexOf(o));
     expect({ missing: order.filter((_, i) => at[i]! < 0) }).toEqual({ missing: [] }); // PRESENT, each — a -1 would pass the order check below
     for (let i = 1; i < order.length; i++) expect(at[i - 1]!).toBeLessThan(at[i]!);
   });
   test("the HINTS: no string the chat's registration shows advertises ข้าม / skip any more (the `added_more` key went with its sender)", () => {
-    for (const k of ["add_birthdate_prompt", "add_birthdate_bad", "add_addr_province_prompt", "add_addr_province_bad", "add_addr_district_prompt", "add_addr_subdistrict_prompt", "add_student_name_prompt", "add_dup_detail", "add_summary_confirm", "add_another_hint", "add_phone_now_registered"]) {
+    for (const k of ["add_birthdate_prompt", "add_birthdate_bad", "add_student_name_prompt", "add_dup_detail", "add_summary_confirm", "add_another_hint", "add_phone_now_registered"]) {
       for (const lang of ["TH", "EN"] as const) expect({ k, lang, skip: /ข้าม|\bskip\b/i.test(t(k, lang)) }).toEqual({ k, lang, skip: false });
     }
     expect(read("src/lib/line-i18n.ts")).not.toMatch(/^\s*added_more:/m);

@@ -13,6 +13,7 @@ import { ApiException, badRequest, conflict, notFound } from "../lib/http";
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
+import { notifyCampBooked } from "../lib/camp-booked-notice"; // 🔻 TASK-735
 import { validateSaleDiscount } from "../lib/discount-plan";
 import { CAMP_WINDOW_DEFAULT, assertCampWindow, campSlotDiff, wantedCampSlots, assertDayTransition, campScanOutcome, campTokenExpiry, creditOf, datesOfWeek, isUndo, MAX_WEEK_DAYS, packageUnits, saleQuantity, unitsDelta, unitsPerDay, type CampHalf, type CampKind, type CampPlan, type CampDayStatus } from "../lib/camp";
 import { generateCheckinToken } from "../lib/checkin";
@@ -395,6 +396,7 @@ export async function createPackage(
     if (input.firstWeek) planned = await planDays(tx, p!.id, input.firstWeek, input.actor ?? null);
     return { id: p!.id, planned };
   });
+  if (input.firstWeek) await notifyCampBooked({ packageId: result.id, weekId: input.firstWeek.weekId }); // 🔻 TASK-735 (D2): the family is told what is booked; it can never fail the booking
   void recordSale(ref, qty, { refId: result.id, idempotencyKey: `camp-sale:${result.id}`, discount: discount ?? undefined }).catch((e) =>
     console.error(`[camp] sale NOT POSTED — package ${result.id} ${ref} × ${qty}: ${e?.message ?? e}`),
   );
@@ -448,6 +450,7 @@ export async function redeemDays(packageId: string, input: { weekId: string; dat
     await assertHouseholdNotSuspended(tx, p.studentId);
     return planDays(tx, packageId, input, actor);
   });
+  await notifyCampBooked({ packageId, weekId: input.weekId }); // 🔻 TASK-735 (D2): days added later = a changed booking ⇒ the family is told again
   return { planned, package: await packageDTO(packageId) };
 }
 
@@ -459,7 +462,7 @@ export async function redeemDays(packageId: string, input: { weekId: string; dat
  */
 export async function markDay(dayId: string, status: CampDayStatus, by: Provenance, reason?: string | null) { // TASK-488 — channel + actor
   const { date: today } = bangkokNow();
-  const packageId = await db.transaction(async (tx) => {
+  const marked = await db.transaction(async (tx) => {
     const d = await tx.query.campDays.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, dayId) });
     if (!d) throw notFound("ไม่พบวันแคมป์");
     assertDayTransition(d.status, status, d.date, today);
@@ -471,8 +474,10 @@ export async function markDay(dayId: string, status: CampDayStatus, by: Provenan
       // TASK-496 — `sql` arithmetic, floored: the value is never read into JS and written back (two marks at once lost a count).
       await tx.update(campPackages).set({ usedUnits: sql`GREATEST(${campPackages.usedUnits} + ${delta}, 0)` }).where(eq(campPackages.id, d.campPackageId));
     }
-    return d.campPackageId;
+    return { packageId: d.campPackageId as string, weekId: d.campWeekId as string, date: d.date as string, half: d.half as string }; // 🔻 TASK-735: the day's week + date + half leave the tx for the cancel notice
   });
+  const packageId = marked.packageId;
+  if (status === "CANCELLED") await notifyCampBooked({ packageId, weekId: marked.weekId, cancelled: { date: marked.date, half: marked.half } }); // 🔻 TASK-735 (D2): a cancel ⇒ the family is told again, reflecting what is left
   return { package: await packageDTO(packageId) };
 }
 

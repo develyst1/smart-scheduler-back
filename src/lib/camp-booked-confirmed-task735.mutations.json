@@ -1,0 +1,188 @@
+{
+  "task": "TASK-735",
+  "proves": "src/lib/camp-booked-confirmed-task735.test.ts",
+  "note": "D2: the family's camp CONFIRMED SCHEDULE (booked / changed / cancelled; DRAFT, Khwan Q3). The DoD's four = G1 (the dot format back) · G2 (the half ignored: all day always) · G3 (no re-send on a change) · G4 (sent twice on one booking); the rest: Remark printed empty, a cancelled day still counted, the dates unordered, the booking failing with the message.",
+  "tests": "src/lib/camp-booked-confirmed-task735.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "the DOT hours are back (Khwan's 10.00, not the colon)",
+      "files": [
+        {
+          "file": "src/lib/camp-hours.ts",
+          "edits": [
+            {
+              "from": "AM: \"10:00-12:00\", PM: \"13:00-15:00\", FULL: \"10:00-15:00\" } as const;",
+              "to": "AM: \"10.00-12.00\", PM: \"13.00-15.00\", FULL: \"10.00-15.00\" } as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "what": "the half is ignored — every booking is told the all-day hours",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "time: campHoursOf(payload.half as string) },",
+              "to": "time: campHoursOf(\"FULL\") },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "what": "no re-send on a change: the send-once key ignores which days are booked",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": ":${sorted.join(\",\")}:${lineUserId}`",
+              "to": ":${lineUserId}`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "what": "one account gets the booking message twice",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": "for (const lineUserId of accounts) {",
+              "to": "for (const lineUserId of [...accounts, ...accounts]) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "what": "Remark is printed with no value",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "extra(t(\"ob_f_note\", lang), fieldValue(payload.note))\n      );\n    }\n    default:",
+              "to": "t(\"ob_f_note\", lang) + \" :\\n\"\n      );\n    }\n    default:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "what": "a cancelled / attended day is still counted as booked (the PLANNED filter is dropped)",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": "and(eq(x.campPackageId, input.packageId), eq(x.status, \"PLANNED\"), eq(x.campWeekId, input.weekId))",
+              "to": "and(eq(x.campPackageId, input.packageId), eq(x.campWeekId, input.weekId))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G7",
+      "what": "the dates are not ordered, so the range can read last - first",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "const dates = Array.isArray(payload.dates) ? (payload.dates as string[]).filter(Boolean).sort() : [];\n      const range",
+              "to": "const dates = Array.isArray(payload.dates) ? (payload.dates as string[]).filter(Boolean) : [];\n      const range"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G8",
+      "what": "the booking fails when the notice fails (the guard removed)",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": "} catch (e) {\n    console.error(\"[camp-booked]",
+              "to": "} finally {\n    console.error(\"[camp-booked]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G9",
+      "what": "the last-day cancel is lost: nothing is sent when no day is left",
+      "files": [
+        {
+          "file": "src/lib/camp-booked-notice.ts",
+          "edits": [
+            {
+              "from": "if (!days.length && !lastCancel) return;",
+              "to": "if (!days.length) return;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G10",
+      "what": "the last-day cancel wears the CONFIRMED title (not the approved cancel title)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "t(payload.cancelled === true ? \"cl_title\" : \"ob_course_title\", lang)",
+              "to": "t(\"ob_course_title\", lang)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G11",
+      "what": "markDay tells the family on every mark (an attend would send)",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "if (status === \"CANCELLED\") await notifyCampBooked({ packageId, weekId: marked.weekId,",
+              "to": "await notifyCampBooked({ packageId, weekId: marked.weekId,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G12",
+      "what": "redeemDays no longer tells the family of added days",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "await notifyCampBooked({ packageId, weekId: input.weekId });",
+              "to": "void 0;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

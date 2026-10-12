@@ -52,7 +52,7 @@ describe("🔴 §1 — does the chat link at the PHONE step? NO. The code path, 
 });
 
 describe("🔴 §2 — the chat's address questions render in BOTH languages, like the screens they replace", () => {
-  const SCREENS = ["add_student_prompt", "add_student_name_prompt", "add_birthdate_prompt", "add_addr_province_prompt", "add_addr_district_prompt", "add_addr_subdistrict_prompt", "add_addr_on_file", "add_summary_head", "add_summary_confirm", "add_l_name", "add_l_birthdate", "add_l_province", "add_l_none", "added_done", "add_another_hint", "verify_parent_ok_new"];
+  const SCREENS = ["add_student_prompt", "add_student_name_prompt", "add_birthdate_prompt", "add_addr_on_file", "add_summary_head", "add_summary_confirm", "add_l_name", "add_l_birthdate", "add_l_province", "add_l_none", "added_done", "add_another_hint", "verify_parent_ok_new"];
   test("by value: every §17c SCREEN the wizard renders is byte-identical in TH and EN (the customer wrote both languages into one string)", () => {
     const differ = SCREENS.filter((k) => t(k, "TH") !== t(k, "EN"));
     expect(differ).toEqual([]);
@@ -69,7 +69,7 @@ describe("🔴 §2 — the chat's address questions render in BOTH languages, li
     const screens = new Set(Object.keys(REGISTRATION_COPY));
     const perLanguage = keys.filter((k) => !screens.has(k)).sort();
     expect(perLanguage).toEqual([
-      "add_addr_province_bad", // 🔻 TASK-594 — a REFUSAL, the same shape as `add_birthdate_bad` beside it
+      // 🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — `add_addr_province_bad` (a refusal of the typed province) is REMOVED with the chat's address questions.
       "add_birthdate_bad",
       "add_cancelled",
       "add_dup_detail",

@@ -139,6 +139,10 @@ export const parents = pgTable(
     lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
     /** Household address — kept on the PARENT, not duplicated per student (REQ-019 / TASK-048). */
     province: text("province"),
+    /** 🔻 TASK-800 (REQ-118, `0069`) — the address as the official DOPA AREA CODES (2 / 4 / 6 digits), nullable: set together by the doors, or all NULL. `province` above stays and is written FROM the code. */
+    provinceCode: text("province_code"),
+    districtCode: text("district_code"),
+    subdistrictCode: text("subdistrict_code"),
     /** Reversible "off" switch — nothing is ever deleted. Null = active. Enforced server-side: a suspended
      *  parent can't use the LINE bot and no new bookings can be made for their students (TASK-048). */
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),

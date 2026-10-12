@@ -1,0 +1,78 @@
+{
+  "task": "TASK-800",
+  "proves": "src/services/parent-area-codes-task800.test.ts",
+  "note": "🔴 REQ-118. M1 the codes are not stored · M2 the district-in-province check off · M3 the sub-district-in-district check off · M4 `province` is not derived from the code (the admin door writes the body's name) · M5 the chat still asks (the birthday goes to the province question) · M6 the backfill parses a non-province row · M7 the backfill guesses an ambiguous triple · M8 the dry run writes · M9 the pickers' sub-district list is keyed wrongly (a served code is not accepted — what the gate-as-a-test catches) · M10 the admin door accepts a half triple · M11 a name EQUAL to the stored one wipes the codes · M12 the register door does not let codes win · M13 the register route drops the codes (the first reproduction) · M14 a new family from the chat is refused for having no address.",
+  "tests": "src/services/parent-area-codes-task800.test.ts src/lib/area-codes-task800.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "🔴 the register writer does not store the codes — only `province` (the page's codes thrown away, as before)",
+      "files": [{ "file": "src/services/line-register.service.ts", "edits": [{ "from": "province: area.province, provinceCode: area.triple.provinceCode, districtCode: area.triple.districtCode, subdistrictCode: area.triple.subdistrictCode }", "to": "province: area.province }" }] }]
+    },
+    {
+      "id": "M2",
+      "what": "🔴 the consistency check off: a district that is not inside the province is accepted",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  if (!d || d.province !== triple.provinceCode) return { ok: false, outcome: \"district-invalid\" };", "to": "  if (!d) return { ok: false, outcome: \"district-invalid\" };" }] }]
+    },
+    {
+      "id": "M3",
+      "what": "🔴 the consistency check off: a sub-district that is not inside the district is accepted",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "  if (!s || s.district !== triple.districtCode) return { ok: false, outcome: \"subdistrict-invalid\" };", "to": "  if (!s) return { ok: false, outcome: \"subdistrict-invalid\" };" }] }]
+    },
+    {
+      "id": "M4",
+      "what": "🔴 `province` is not derived from the code — the admin door writes the name the body carried",
+      "files": [{ "file": "src/services/parent.service.ts", "edits": [{ "from": "    return { province: c.province, provinceCode: c.triple.provinceCode,", "to": "    return { province: input.province ?? null, provinceCode: c.triple.provinceCode," }] }]
+    },
+    {
+      "id": "M5",
+      "what": "🔴 the chat still asks for an address — the birthday goes to the province question again",
+      "files": [{ "file": "src/services/line-webhook.service.ts", "edits": [{ "from": "    return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, addressOnFile ?", "to": "    await setDraft(lineUserId, \"AWAIT_STUDENT_PROVINCE\", { ...draft, birthDate: parsed.value });\n    return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, addressOnFile ?" }] }]
+    },
+    {
+      "id": "M6",
+      "what": "🔴 the backfill PARSES a row whose `province` is not one of the 77 (the 3 known uat rows are listed, never parsed)",
+      "files": [{ "file": "src/lib/area-backfill.ts", "edits": [{ "from": "  if (!SEVENTY_SEVEN.has(province)) return { id: row.id, action: \"none\", unmatched: \"province-not-one-of-77\" }; // never parsed\n", "to": "" }] }]
+    },
+    {
+      "id": "M7",
+      "what": "🔴 the backfill GUESSES an ambiguous triple (takes the first of two)",
+      "files": [{ "file": "src/lib/area-backfill.ts", "edits": [{ "from": "  if (triples.size !== 1) return", "to": "  if (triples.size < 1) return" }] }]
+    },
+    {
+      "id": "M8",
+      "what": "🔴 the dry run WRITES — the early exit before the first update is gone",
+      "files": [{ "file": "scripts/backfill-area-codes.ts", "edits": [{ "from": "process.exit(0); }\n\nlet written", "to": "}\n\nlet written" }] }]
+    },
+    {
+      "id": "M9",
+      "what": "🔴 the pickers' sub-district list is keyed on the wrong parent — a served triple is not a real one (what THE GATE AS A TEST exists to catch)",
+      "files": [{ "file": "src/lib/area-codes.ts", "edits": [{ "from": "const l = subDistrictsOf.get(sd.district) ?? []; l.push(opt(code, sd)); subDistrictsOf.set(sd.district, l);", "to": "const l = subDistrictsOf.get(sd.district.slice(0, 2)) ?? []; l.push(opt(code, sd)); subDistrictsOf.set(sd.district.slice(0, 2), l);" }] }]
+    },
+    {
+      "id": "M10",
+      "what": "🔴 the admin door accepts a HALF triple (a key missing)",
+      "files": [{ "file": "src/services/parent.service.ts", "edits": [{ "from": "    if (keys.some((v) => v === undefined)) throw ADDRESS_REFUSED();\n", "to": "" }] }]
+    },
+    {
+      "id": "M11",
+      "what": "🔴 a name EQUAL to the stored one is treated as a change — the current admin form wipes the codes (and refuses the 3 bad uat rows) on every save",
+      "files": [{ "file": "src/services/parent.service.ts", "edits": [{ "from": "    if (name === (current?.province?.trim() || null)) return {}; // unchanged ⇒ nothing (keeps the codes; never refuses a row for text it already holds)\n", "to": "" }] }]
+    },
+    {
+      "id": "M12",
+      "what": "🔴 codes do NOT win at the register door — the names path is taken even when the three codes are present",
+      "files": [{ "file": "src/services/line-register.service.ts", "edits": [{ "from": "  if (given.some(Boolean)) {", "to": "  if (false) {" }] }]
+    },
+    {
+      "id": "M13",
+      "what": "🔴 the register ROUTE throws the codes away (the first reproduction)",
+      "files": [{ "file": "src/routes/register.ts", "edits": [{ "from": " provinceCode: provinceCode ?? null, districtCode: districtCode ?? null, subdistrictCode: subdistrictCode ?? null,", "to": "" }] }]
+    },
+    {
+      "id": "M14",
+      "what": "a new family from the chat is refused for having no address (the chat's `addressOptional` dropped)",
+      "files": [{ "file": "src/services/line-webhook.service.ts", "edits": [{ "from": "{ name: draft.name!, birthDate: ddmmyyyy(draft.birthDate) }, { addressOptional: true });", "to": "{ name: draft.name!, birthDate: ddmmyyyy(draft.birthDate) });" }] }]
+    }
+  ]
+}

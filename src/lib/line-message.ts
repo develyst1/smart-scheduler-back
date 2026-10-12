@@ -11,6 +11,7 @@ import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
 import { renderWeeklySchedule, type WeekRow } from "./weekly-digest";
 import { renderCampDeduction } from "./camp-deduction";
+import { campHoursOf } from "./camp-hours"; // 🔻 TASK-736
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
   notifyTypeOf,
@@ -493,7 +494,6 @@ function buildOutboxMessage(
     // Blocks are separated by a blank line. 🔑 `Students`, never `Kids`.
     case "camp_reminder": {
       const rows = (payload.rows as any[]) ?? [];
-      const half = (h: string) => t(h === "AM" ? "cp_half_am" : h === "PM" ? "cp_half_pm" : "cp_half_full", lang);
       const blocks = payload.audience === "teacher"
         ? rows.map((r) => {
             const names: string[] = r.names ?? [];
@@ -501,7 +501,7 @@ function buildOutboxMessage(
             const more = names.length > CAMP_NAMES_MAX ? [`  +${names.length - CAMP_NAMES_MAX}`] : [];
             return [`${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_students", lang)} : ${r.total} (${t("cp_split", lang, { full: r.full, am: r.am, pm: r.pm })})`, ...shown, ...more].join("\n");
           })
-        : rows.map((r) => [`${t("ob_f_student", lang)} : ${r.child}`, `${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, `${t("cp_time", lang)} : ${half(r.half)}`].join("\n"));
+        : rows.map((r) => [`${t("ob_f_student", lang)} : ${r.child}`, `${t("cp_camp", lang)} : ${r.weekName}`, `${t("ob_f_date", lang)} : ${ddmmyyyy(r.date)}`, ...(campHoursOf(r.half) ? [`${t("cp_time", lang)} : ${campHoursOf(r.half)}`] : [])].join("\n")); // 🔻 TASK-736 (P26): the REAL hours (fixed per half, a COLON), her `Time :` label in both languages
       return [t("ob_today_title", lang), ...blocks].join("\n\n");
     }
     // SPEC-066 / TASK-201 (REQ-072) — ONE message for a whole course.
@@ -882,6 +882,21 @@ function buildOutboxMessage(
         ).map((l) => `${l}\n`).join("") +
         extra(t("ob_f_note", lang), fieldValue(payload.note))
       );
+    // 🔻 TASK-735 (D2, Khwan's row 46; 📋 DRAFT — Q3: the `Program` wording) — the family's camp «CONFIRMED SCHEDULE»: sent when days are booked, changed or cancelled (it always says what is booked NOW).
+    // Her layout, ONE text for both languages: Student / Program (the package's sale name) / Date (first - last; one day ⇒ that date) / Time (the FIXED hours of the half, a COLON) / Remark (only when there is one).
+    case "camp_booked_parent": {
+      const dates = Array.isArray(payload.dates) ? (payload.dates as string[]).filter(Boolean).sort() : [];
+      const range = dates.length ? (dates.length === 1 ? ddmmyyyy(dates[0]!) : `${ddmmyyyy(dates[0]!)} - ${ddmmyyyy(dates[dates.length - 1]!)}`) : undefined;
+      return (
+        t(payload.cancelled === true ? "cl_title" : "ob_course_title", lang) + "\n" + // the LAST day cancelled ⇒ the approved cancel title (chat language), her layout beneath
+        fieldLines(
+          ["student", "program", "date", "time"],
+          { student: fieldValue(payload.studentName), program: fieldValue(payload.program), date: range, time: campHoursOf(payload.half as string) },
+          lang,
+        ).map((l) => `${l}\n`).join("") +
+        extra(t("ob_f_note", lang), fieldValue(payload.note))
+      );
+    }
     default:
       return t("ob_default", lang);
   }

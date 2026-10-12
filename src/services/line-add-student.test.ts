@@ -152,10 +152,9 @@ describe("🔴 AC-9 — a duplicate asks for MORE DETAIL; it never demands a ren
 describe("the step machine — one place, so no branch can skip the confirm", () => {
   test("the happy path always ends at CONFIRM", () => {
     expect(nextStep("AWAIT_STUDENT_NAME")).toBe("AWAIT_STUDENT_BIRTHDATE");
-    expect(nextStep("AWAIT_STUDENT_BIRTHDATE")).toBe("AWAIT_STUDENT_PROVINCE");
-    expect(nextStep("AWAIT_STUDENT_PROVINCE")).toBe("AWAIT_STUDENT_DISTRICT"); // 🔻 TASK-590 (F-C): three address questions
-    expect(nextStep("AWAIT_STUDENT_DISTRICT")).toBe("AWAIT_STUDENT_SUBDISTRICT");
-    expect(nextStep("AWAIT_STUDENT_SUBDISTRICT")).toBe("AWAIT_STUDENT_CONFIRM");
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the birthday goes STRAIGHT to the confirm; the three old address steps stay only for a session parked on one before the deploy — they too lead to the confirm.
+    expect(nextStep("AWAIT_STUDENT_BIRTHDATE")).toBe("AWAIT_STUDENT_CONFIRM");
+    for (const old of ["AWAIT_STUDENT_PROVINCE", "AWAIT_STUDENT_DISTRICT", "AWAIT_STUDENT_SUBDISTRICT"] as const) expect(nextStep(old)).toBe("AWAIT_STUDENT_CONFIRM");
     expect(nextStep("AWAIT_STUDENT_CONFIRM")).toBe("AWAIT_STUDENT_CONFIRM");
   });
 

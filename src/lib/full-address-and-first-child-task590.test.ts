@@ -62,7 +62,7 @@ describe("🔴 F-C — THE one address rule (`checkFullAddress`): three parts, t
     const REG = read("src/services/line-register.service.ts");
     expect(REG).toContain("const c = checkFullAddress(input);"); // the page's refusal codes (checkAddress)
     expect(REG).toContain("const checked = given ? checkFullAddress(given) : null;"); // the writer's floor
-    expect(read("src/services/line-webhook.service.ts")).toContain("if (!addressOnFile && !checkFullAddress(draft).ok) {");
+    expect(read("src/services/line-webhook.service.ts")).not.toContain("checkFullAddress"); // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat no longer applies the address rule: it asks no address
     expect(REG).not.toMatch(/isThaiProvince\(/); // no second province check beside the rule
   });
 });
@@ -216,7 +216,7 @@ describe("💬 the CHAT's half (by source — the chat has no DB harness): the n
   });
   test("confirm: a new family ⇒ `registerFamilyWithFirstChild` (the birthday back in the customer's day-first form for the shared parser), THEN the menus", () => {
     const confirm = W.slice(W.indexOf('if (session.step === "AWAIT_STUDENT_CONFIRM") {'));
-    expect(confirm).toContain("await registerFamilyWithFirstChild(lineUserId, newPhone, { name: draft.name!, birthDate: ddmmyyyy(draft.birthDate), ...address });");
+    expect(confirm).toContain("await registerFamilyWithFirstChild(lineUserId, newPhone, { name: draft.name!, birthDate: ddmmyyyy(draft.birthDate) }, { addressOptional: true });"); // 🔻 TASK-800 (REQ-118, owner ruling 2) — no address from the chat
     expect(confirm.indexOf("registerFamilyWithFirstChild(")).toBeLessThan(confirm.indexOf('await settleLinkedRole(lineUserId, "customer");'));
     expect(W).toContain('const newPhone = !parent && typeof draft.newPhone === "string" ? draft.newPhone : null;');
   });

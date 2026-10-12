@@ -18,6 +18,7 @@ import { lineWebhook } from "./routes/webhooks";
 import { publicCheckin } from "./routes/checkin";
 import { publicCalendar } from "./routes/calendar";
 import { publicRegister } from "./routes/register";
+import { publicAreas } from "./routes/areas"; // TASK-800 (REQ-118) — the pickers' area lists
 import { internalJobs } from "./routes/internal";
 import { apiDocs, rootDocs } from "./routes/docs";
 
@@ -91,6 +92,7 @@ app.route("/api/webhooks", lineWebhook); // POST /api/webhooks/line (LINE Develo
 app.route("/api", publicCheckin);
 app.route("/api", publicCalendar); // GET /api/calendar/<token>.ics — token is the credential (REQ-017)
 app.route("/api", publicRegister); // POST /api/register/{lookup,link,create} — the LIFF ID token is the credential (REQ-088, TASK-347)
+app.route("/api", publicAreas); // GET /api/areas/{provinces,districts,subdistricts} — TASK-800: geography only (an allow-list of code + names), no credential needed
 // Legacy path without /api prefix (direct to BE port, local tunnel, etc.)
 app.route("/webhooks", lineWebhook);
 // Internal job trigger (UC-012) — secret-guarded, not JWT. Called by Task Scheduler exe.

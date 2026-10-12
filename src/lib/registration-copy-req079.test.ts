@@ -76,7 +76,7 @@ describe("🔑 TASK-310 §2 — the eight screens, BYTE-FOR-BYTE against §17c",
 
   test("screens 5 · 6 — the birthdate and the ADDRESS", () => {
     expect(t("add_birthdate_prompt", "TH")).toBe(SCREEN[5]);
-    expect(t("add_province_prompt", "TH")).toBe(SCREEN[6]);
+    // 🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — screen 6 (the address prompt) is REMOVED from the chat; the screen's text stays in the customer's document only.
   });
 
   test("screen 7 — head, the three labels, confirm", () => {
@@ -145,7 +145,6 @@ describe("🔴 TASK-310 §3 — `REQ-085 §5`: the assertion that matters is an 
     t("verify_parent_ok_new", "TH", { phone: "082-503-1502" }),
     t("add_student_prompt", "TH"),
     t("add_birthdate_prompt", "TH"),
-    t("add_province_prompt", "TH"),
     t("add_summary_head", "TH"),
     t("add_l_name", "TH"),
     t("add_l_birthdate", "TH"),
@@ -206,9 +205,10 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     // `§17e`'s correction said "a prompt that lists parts is not a schema" — and F-C (the owner: province + district + sub-district,
     // on the form AND the chat, from ONE rule) is exactly the decision that makes the parts required. The storage did NOT move:
     // `province` + the one line in `note`.
-    expect(SVC).toContain("const province = provinceFromTyped(text);");
-    expect(SVC).toContain("if (!district || isSkip(district)) return strikeOrPrompt(");
-    expect(SVC).toContain("if (!subDistrict || isSkip(subDistrict)) return strikeOrPrompt(");
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat's three address questions are REMOVED (the page's picker is the address door): their handlers must not come back.
+    expect(SVC).not.toContain("const province = provinceFromTyped(text);");
+    expect(SVC).not.toContain("isSkip(district)");
+    expect(SVC).not.toContain("isSkip(subDistrict)");
     // 🔻 TASK-347 (`REQ-088`) — the household `province` write moved to `line-register.service.ts`, the ONE home of the registration
     // decisions, called by the chat AND the page. **The claim is unchanged; the file it lives in is not.**
     // 📌 It JOINED the one writer rather than sitting beside it: the page would otherwise need a second call.
@@ -218,7 +218,7 @@ describe("🚫 TASK-310 §4 — what this pass must NOT have moved", () => {
     // prompt names parts as GUIDANCE and the answer stays ONE free-text value — it is just that the value's home is
     // now `note`, and the chat never writes `province` at all. Storage unchanged: no new column.
     // 🔻 TASK-590 — the chat now sends the three parts (its province RESOLVED to one of the 77), and the writer builds the one line
-    expect(SVC).toContain("{ province: draft.province, district: draft.district, subDistrict: draft.subDistrict }");
+    expect(SVC).not.toContain("{ province: draft.province, district: draft.district, subDistrict: draft.subDistrict }"); // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat writes no address
     const REG = src("src/services/line-register.service.ts");
     expect(REG).toContain("householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })"); // the rule is pure and unit-tested
     expect(src("src/db/schema.ts")).toContain("province");

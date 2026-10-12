@@ -188,7 +188,7 @@ describe("🔴 TASK-548 — a cancelled make-up names the new class ONLY when th
     const S = code(readFileSync(resolve(root, "src/services/scheduler.service.ts"), "utf8"));
     const c = S.slice(S.indexOf('} else if (action === "cancel") {'), S.indexOf('} else if (action === "sick-leave"'));
     const replan = c.indexOf("replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}), holdConfirmNotices: heldConfirm });");
-    const notice = c.indexOf("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? null, replanned?.appended ?? []);");
+    const notice = c.indexOf("await sendClassCancelledToFamilies(tx, { ...current, seats: seatsBefore }, enumReason ?? (current.isMakeup === true && reasonCode === \"TEACHER_LEAVE\" ? \"TEACHER_LEAVE\" : null), replanned?.appended ?? []);"); // 🔻 TEST-098: the make-up-only notice value
     expect(replan).toBeGreaterThan(-1);
     expect(notice).toBeGreaterThan(replan);
     expect((c.match(/await sendClassCancelledToFamilies\(/g) ?? []).length).toBe(1); // moved, not duplicated

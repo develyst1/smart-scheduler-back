@@ -446,6 +446,10 @@ export const createParent = z.object({
   phone: z.string().trim().min(9),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
+  // 🔻 TASK-800 (REQ-118, contract 2026-10-12) — the three DOPA area codes, ALL or NONE (the service refuses a half triple); `null` ×3 clears the address.
+  provinceCode: z.string().trim().max(8).nullish(),
+  districtCode: z.string().trim().max(8).nullish(),
+  subdistrictCode: z.string().trim().max(8).nullish(),
   // 🔻 TASK-354 (`REQ-088 §10`) — 2000, not 500: `REQ-088 §9` made the MACHINE append addresses to this note, and
   // a cap the machine can exceed means the ADMIN cannot save what the SYSTEM wrote. 2000 ≈ 25 lines — room for
   // ten appended addresses plus a staff note, still a guard against a runaway append. The number is @Sober's.
@@ -456,6 +460,9 @@ export const updateParent = z.object({
   phone: z.string().trim().min(9).optional(),
   name: z.string().trim().max(128).nullish(),
   province: z.string().trim().max(64).nullish(),
+  provinceCode: z.string().trim().max(8).nullish(), // 🔻 TASK-800 — see createParent
+  districtCode: z.string().trim().max(8).nullish(),
+  subdistrictCode: z.string().trim().max(8).nullish(),
   note: z.string().trim().max(2000).nullish(), // 🔻 TASK-354 — the parent's note, same cap as on create
 });
 

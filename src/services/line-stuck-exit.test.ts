@@ -112,7 +112,7 @@ describe("🔴 1 — there is a way OUT, from every step", () => {
     }
     // 🚫 And the two exceptions are asserted as exceptions — so "the hint is gone" cannot quietly spread.
     // 🔻 TASK-590 (F-C) — the customer's ADDRESS screen is three questions now; §16.2's "no hint" goes with it to all three.
-    for (const key of ["add_birthdate_prompt", "add_addr_province_prompt", "add_addr_district_prompt", "add_addr_subdistrict_prompt"]) {
+    for (const key of ["add_birthdate_prompt"]) { // 🔻 TASK-800 (REQ-118, owner ruling 2) — the three address prompts are gone with the chat's address steps
       const uses = [...CODE.matchAll(new RegExp('\\btb?\\("' + key + '"', "g"))];
       expect(uses.length).toBeGreaterThan(0);
       for (const m of uses) expect(CODE.slice(m.index! - 9, m.index!)).not.toBe("withExit(");
@@ -238,7 +238,7 @@ describe("🔴 3 — the invariant: no rejection bypasses the strike counter", (
   test("⚠️ a valid answer CLEARS the count — one fumble must not follow a parent through the flow", () => {
     // Without this, a mistyped date at step 2 plus a mistyped anything at step 4 hands over a parent who has
     // been answering correctly for two turns.
-    const accepted = ["AWAIT_STUDENT_BIRTHDATE", "AWAIT_STUDENT_PROVINCE"];
+    const accepted = ["AWAIT_STUDENT_BIRTHDATE"]; // 🔻 TASK-800 (REQ-118, owner ruling 2) — the province answer no longer exists
     for (const step of accepted) {
       const branch = WIZARD.slice(WIZARD.indexOf(step));
       expect(branch.slice(0, branch.indexOf("setDraft"))).toContain("resetStrikes(lineUserId)");

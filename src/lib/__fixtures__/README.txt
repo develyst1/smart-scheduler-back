@@ -1,0 +1,1 @@
+fixture: a SYNTHETIC extract in the dataset's shape — Bangkok/Nonthaburi/Chiang Mai/Phuket rows; ids and the duplicated name «บางซ้ำ» (two codes in one district) are test inventions for the backfill's 'ambiguous' case, NOT real geography.

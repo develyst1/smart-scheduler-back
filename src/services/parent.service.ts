@@ -5,7 +5,9 @@
 import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, parents, students, vouchers } from "../db/schema";
-import { badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { ApiException, badRequest, conflict, notFound, pgErrorCode } from "../lib/http";
+import { areaAddress, checkAreaCodes } from "../lib/area-codes"; // 🔻 TASK-800 (REQ-118)
+import { isThaiProvince } from "../lib/thai-provinces";
 import { blockedBySuspension, isSuspended } from "../lib/suspend";
 import { bangkokNow } from "../lib/bangkok-time";
 import { COURSE_LIVE_STATUSES } from "../lib/course-plan";
@@ -422,7 +424,7 @@ export async function listParents(q?: string, limit = 50, offset = 0, archived =
   const withKids = await Promise.all(
     rows.map(async (p) => {
       const all = await listStudentsOfParent(p.id, db, { includeArchived: true }); // TASK-392: one read, split
-      return { ...p, students: all.filter((s) => !s.archivedAt), archivedStudents: all.filter((s) => !!s.archivedAt) };
+      return { ...p, ...parentAddressView(p), students: all.filter((s) => !s.archivedAt), archivedStudents: all.filter((s) => !!s.archivedAt) }; // 🔻 TASK-800: + addressTh / addressEn
     }),
   );
   return { parents: withKids, total };
@@ -439,7 +441,7 @@ export async function getParent(id: string, opts: { archived?: boolean } = {}) {
   // screen said nothing at all until now — which is why "contact an admin" pointed at someone with no
   // information as well as no button.
   const lineAccounts = await familyLineUserIds(id);
-  return { ...row, lineAccounts: lineAccounts.length, lineLinked: lineAccounts.length > 0 };
+  return { ...row, ...parentAddressView(row), lineAccounts: lineAccounts.length, lineLinked: lineAccounts.length > 0 }; // 🔻 TASK-800: + addressTh / addressEn (the codes are columns of the row)
 }
 
 /**
@@ -454,10 +456,51 @@ export async function clearParentLineLink(id: string, actor: string | null) {
   return { cleared: cleared.length };
 }
 
+/** 🔻 TASK-800 (REQ-118) — the admin door's address input: the three area codes (all or none) and/or the old Thai province NAME. */
+export type ParentAddressInput = { province?: string | null; provinceCode?: string | null; districtCode?: string | null; subdistrictCode?: string | null };
+/** No new words: the approved FLOOR sentence of the address rule (COPY-REVIEW-2026-09-29.md:370), as the writer's own floor uses it. */
+const ADDRESS_REFUSED = (code = "VALIDATION") => new ApiException(400, code, "ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง");
+
+/**
+ * 🔻 TASK-800 (REQ-118) — THE admin door's address rule, pure given the dataset: what to WRITE for the address columns, or a refusal.
+ *  · any code key present ⇒ ALL THREE keys must be present (a half triple is refused); all empty/null ⇒ the address is CLEARED (the three codes AND `province` become NULL); all three given ⇒ they must be a
+ *    CONSISTENT triple (the district inside the province, the sub-district inside the district) and `province` is DERIVED from the code (a name in the same body is ignored — codes win).
+ *  · only the old `province` NAME ⇒ it must be one of the 77 (`PROVINCE_UNKNOWN`: today's PATCH checked nothing — which is how 3 uat rows hold non-province text). A NAME CHANGE makes any stored codes stale, so they are cleared with it;
+ *    a name EQUAL to what the row already holds changes nothing (the current admin form re-sends the province on every save — until Fern's half lands that must not wipe the codes, nor refuse the row's other edits).
+ */
+export function parentAddressPatch(input: ParentAddressInput, current?: { province?: string | null } | null): Record<string, unknown> {
+  const keys = [input.provinceCode, input.districtCode, input.subdistrictCode];
+  if (keys.some((v) => v !== undefined)) {
+    if (keys.some((v) => v === undefined)) throw ADDRESS_REFUSED();
+    const vals = keys.map((v) => (v ?? "").toString().trim());
+    if (vals.every((v) => v === "")) return { province: null, provinceCode: null, districtCode: null, subdistrictCode: null };
+    if (vals.some((v) => v === "")) throw ADDRESS_REFUSED();
+    const c = checkAreaCodes({ provinceCode: vals[0]!, districtCode: vals[1]!, subdistrictCode: vals[2]! });
+    if (!c.ok) throw ADDRESS_REFUSED(c.outcome === "province-unknown" ? "PROVINCE_UNKNOWN" : "VALIDATION");
+    return { province: c.province, provinceCode: c.triple.provinceCode, districtCode: c.triple.districtCode, subdistrictCode: c.triple.subdistrictCode };
+  }
+  if (input.province !== undefined) {
+    const name = input.province?.trim() || null;
+    if (name === (current?.province?.trim() || null)) return {}; // unchanged ⇒ nothing (keeps the codes; never refuses a row for text it already holds)
+    if (name !== null && !isThaiProvince(name)) throw ADDRESS_REFUSED("PROVINCE_UNKNOWN");
+    return { province: name, provinceCode: null, districtCode: null, subdistrictCode: null };
+  }
+  return {};
+}
+
+/** 🔻 TASK-800 — the parent as the API returns it: the three codes (columns, already on the row) + the address rendered in each language (`null` when there are no codes). Callers spread it. */
+export const parentAddressView = (p: { provinceCode?: string | null; districtCode?: string | null; subdistrictCode?: string | null }) => ({
+  addressTh: areaAddress(p, "TH"),
+  addressEn: areaAddress(p, "EN"),
+});
+
 export async function createParent(input: {
   phone: string;
   name?: string | null;
   province?: string | null;
+  provinceCode?: string | null;
+  districtCode?: string | null;
+  subdistrictCode?: string | null;
   note?: string | null;
 }) {
   const phone = normalizePhone(input.phone);
@@ -471,19 +514,24 @@ export async function createParent(input: {
       name: input.name ?? null,
       province: input.province ?? null,
       note: input.note ?? null,
+      ...parentAddressPatch(input), // 🔻 TASK-800 — codes win; the name alone must be one of the 77
     })
     .returning();
-  return { ...row, students: [] };
+  return { ...row, ...parentAddressView(row), students: [] };
 }
 
 export async function updateParent(
   id: string,
-  input: { name?: string | null; phone?: string; province?: string | null; note?: string | null },
+  input: { name?: string | null; phone?: string; province?: string | null; provinceCode?: string | null; districtCode?: string | null; subdistrictCode?: string | null; note?: string | null },
 ) {
   await assertParentActive(db, id); // TASK-411
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
-  if (input.province !== undefined) patch.province = input.province;
+  // 🔻 TASK-800 (REQ-118) — the address: codes (all or none; null ×3 clears) or the old name (one of the 77), never both ways at once. Judged BEFORE any write.
+  if ([input.province, input.provinceCode, input.districtCode, input.subdistrictCode].some((v) => v !== undefined)) {
+    const current = await db.query.parents.findFirst({ columns: { province: true }, where: (p: any, { eq: e }: any) => e(p.id, id) });
+    Object.assign(patch, parentAddressPatch(input, current));
+  }
   if (input.note !== undefined) patch.note = input.note;
   if (input.phone !== undefined) {
     const phone = normalizePhone(input.phone);

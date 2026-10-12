@@ -27,8 +27,8 @@
           "file": "src/lib/line-message.ts",
           "edits": [
             {
-              "from": "extra(t(\"ob_f_note\", lang), fieldValue(payload.note))\n      );\n    default:",
-              "to": "t(\"ob_f_note\", lang) + \" :\\n\"\n      );\n    default:"
+              "from": "extra(t(\"ob_f_note\", lang), fieldValue(payload.note))\n      );\n    // 🔻 TASK-735 (D2, Khwan's row 46",
+              "to": "t(\"ob_f_note\", lang) + \" :\\n\"\n      );\n    // 🔻 TASK-735 (D2, Khwan's row 46"
             }
           ]
         }

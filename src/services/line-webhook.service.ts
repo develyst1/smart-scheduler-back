@@ -47,7 +47,6 @@ import {
   isAddStudentStep,
   isCancel,
   isConfirm,
-  isSkip,
   parseAddCommand,
   parseBirthDate,
   summaryLines,
@@ -99,7 +98,6 @@ import {
   normalizePhone,
 } from "./parent.service";
 import { ddmmyyyy, hhmm, weekRange } from "../lib/time";
-import { checkFullAddress, provinceFromTyped } from "../lib/full-address"; // TASK-590 (F-C) — THE one address rule
 import { renderTeacherSchedule, type TeacherSchedRow } from "../lib/teacher-schedule"; // TASK-486 — the ONE teacher formatter
 import { nextSessionTeacher, renderMyCourses } from "../lib/line-course-view";
 import { checkinLine, joinItems, leaveLine } from "../lib/line-v2-lines";
@@ -538,12 +536,15 @@ async function setDraft(lineUserId: string, step: string, draft: StudentDraft) {
 async function showStudentSummary(lineUserId: string, draft: StudentDraft, replyToken: string, lang: Lang, addressText: string | null) {
   await setDraft(lineUserId, "AWAIT_STUDENT_CONFIRM", draft);
   const next = { ...draft, province: addressText }; // the ADDRESS line shown back (the three parts joined, or the one on file)
+  const provinceLabel = t("add_l_province", lang);
   const lines = summaryLines(next, {
     name: t("add_l_name", lang),
     birthDate: t("add_l_birthdate", lang),
-    province: t("add_l_province", lang),
+    province: provinceLabel,
     none: t("add_l_none", lang),
-  });
+  })
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the chat asks no address, so the summary carries an address line ONLY when one is ON FILE (the existing words); otherwise no address line at all.
+    .filter((l) => addressText !== null || !l.startsWith(`${provinceLabel}:`));
   return reply(
     replyToken,
     `${t("add_summary_head", lang)}\n${lines.join("\n")}\n\n${withExit(t("add_summary_confirm", lang), lang)}`,
@@ -657,40 +658,20 @@ async function handleAddStudentStep(
     // wrote it (§16.2: no exit hint on this screen) — the exit still WORKS (checked first), and two strikes fetch a person.
     if (parsed.value == null) return strikeOrPrompt(lineUserId, session, replyToken, t("add_birthdate_prompt", lang), lang);
     await resetStrikes(lineUserId);
-    // 🔻 TASK-590 (F-C) — a household with an address ON FILE is not asked again (as on the page): straight to the summary.
-    if (addressOnFile) return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, `${parent!.province} ${t("add_addr_on_file", lang)}`);
-    await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", { ...draft, birthDate: parsed.value });
-    // 🔻 TASK-323 (`§16.2`) — no exit hint on the address question. The exit still works; see the birthdate note.
-    return reply(replyToken, t("add_addr_province_prompt", lang));
+    // 🔻 TASK-800 (REQ-118, OWNER RULING 2, 2026-10-12) — **the LINE chat asks NO address.** The three typed questions (province · district · sub-district) are GONE: after the birthday the parent goes STRAIGHT to the
+    // summary, and the child is created with no address — the page (a picker that sends area codes) is the address door, and the admin fills the rest. The summary shows an address line ONLY when one is already ON FILE
+    // (the existing words, TASK-590); otherwise there is no address line.
+    return showStudentSummary(lineUserId, { ...draft, birthDate: parsed.value }, replyToken, lang, addressOnFile ? `${parent!.province} ${t("add_addr_on_file", lang)}` : null);
   }
 
-  // 🔴 TASK-590 (F-C, ruling 4: the chat matches the page) — the address is THREE questions, answered into THE one rule
-  // (`checkFullAddress`, which the page's body meets too): province · district · sub-district, each required, no skip.
-  // 🔴 THE LIMIT: the province is resolved to one of the 77 (`provinceFromTyped`: "จังหวัด" dropped, Bangkok's everyday spellings
-  // known); the district and sub-district are what the parent TYPED — NOT checked against the province (no geography, by ruling).
-  if (session.step === "AWAIT_STUDENT_PROVINCE") {
-    const province = provinceFromTyped(text);
-    if (!province) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_province_bad", lang), lang);
-    await resetStrikes(lineUserId);
-    await setDraft(lineUserId, "AWAIT_STUDENT_DISTRICT", { ...draft, province });
-    return reply(replyToken, t("add_addr_district_prompt", lang));
-  }
-
-  if (session.step === "AWAIT_STUDENT_DISTRICT") {
-    const district = text.trim();
-    if (!district || isSkip(district)) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_district_prompt", lang), lang);
-    await resetStrikes(lineUserId);
-    await setDraft(lineUserId, "AWAIT_STUDENT_SUBDISTRICT", { ...draft, district });
-    return reply(replyToken, t("add_addr_subdistrict_prompt", lang));
-  }
-
-  if (session.step === "AWAIT_STUDENT_SUBDISTRICT") {
-    const subDistrict = text.trim();
-    if (!subDistrict || isSkip(subDistrict)) return strikeOrPrompt(lineUserId, session, replyToken, t("add_addr_subdistrict_prompt", lang), lang);
-    await resetStrikes(lineUserId);
-    const next = { ...draft, subDistrict };
-    const full = checkFullAddress(next);
-    return showStudentSummary(lineUserId, next, replyToken, lang, full.ok ? full.address.line : null);
+  // 🔻 TASK-800 — a chat session started BEFORE this deploy can still be parked on one of the three removed address steps. It is not dropped and not re-asked: it goes to the summary with what it has (a name and a
+  // birthday), and an unfinished draft goes back to the question it is missing. No new words.
+  if (session.step === "AWAIT_STUDENT_PROVINCE" || session.step === "AWAIT_STUDENT_DISTRICT" || session.step === "AWAIT_STUDENT_SUBDISTRICT") {
+    if (!draft.birthDate) {
+      await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", draft);
+      return reply(replyToken, t("add_birthdate_prompt", lang));
+    }
+    return showStudentSummary(lineUserId, draft, replyToken, lang, addressOnFile ? `${parent!.province} ${t("add_addr_on_file", lang)}` : null);
   }
 
   if (session.step === "AWAIT_STUDENT_CONFIRM") {
@@ -707,11 +688,6 @@ async function handleAddStudentStep(
       await setDraft(lineUserId, "AWAIT_STUDENT_BIRTHDATE", draft);
       return reply(replyToken, t("add_birthdate_prompt", lang));
     }
-    // 🔻 TASK-590 (F-C) — when the address is asked (none on file), all THREE parts, meeting THE rule; else back to the province.
-    if (!addressOnFile && !checkFullAddress(draft).ok) {
-      await setDraft(lineUserId, "AWAIT_STUDENT_PROVINCE", draft);
-      return reply(replyToken, t("add_addr_province_prompt", lang));
-    }
     if (!isConfirm(text)) {
       // An unrecognised answer at the last step is an unrecognised in-flow reply like any other — same
       // two-strikes rule as everywhere else, rather than a bespoke retry loop (TASK-231).
@@ -722,11 +698,12 @@ async function handleAddStudentStep(
       // LINE-side creator both doors call. Same call, same order, same content; only the home changed.
       // 🔻 TASK-590 (F-C) — the address is THREE parts now, checked by THE rule in the writer; the province is one of the 77, so the
       // chat now fills `parents.province` too (resolved, never guessed) and the one line goes to `note`, APPENDED (TASK-352).
-      const address = addressOnFile ? null : { province: draft.province, district: draft.district, subDistrict: draft.subDistrict };
+      // 🔻 TASK-800 (owner ruling 2) — the chat writes NO address: `null` for a linked family, and `addressOptional` for a new one (the page is the address door; the admin fills it later).
+      const address = null;
       let student: { name: string }, count: number;
       if (newPhone) {
         // 🔴 TASK-590 (D11 a) — a NEW family: parent + binding + this child in ONE transaction, or nothing (`registerFamilyWithFirstChild`).
-        const r = await registerFamilyWithFirstChild(lineUserId, newPhone, { name: draft.name!, birthDate: ddmmyyyy(draft.birthDate), ...address });
+        const r = await registerFamilyWithFirstChild(lineUserId, newPhone, { name: draft.name!, birthDate: ddmmyyyy(draft.birthDate) }, { addressOptional: true });
         if (r.outcome !== "registered") {
           await clearSession(lineUserId);
           const key = r.outcome === "phone-now-registered" ? "add_phone_now_registered" : r.outcome === "line-bound-to-other-family" ? "verify_parent_other_family" : r.outcome === "phone-archived" ? "verify_parent_archived" : "add_generic_err";

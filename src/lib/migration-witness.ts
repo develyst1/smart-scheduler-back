@@ -693,6 +693,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "file creates, so a half-applied file reads as not applied and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; no data is written.",
     rerunnable: true,
   },
+  {
+    tag: "0069_parent_area_codes",
+    probe: { kind: "column", table: "parents", column: "subdistrict_code" },
+    why:
+      "TASK-800 (REQ-118). The parent's address as AREA CODES: `parents.province_code` / `district_code` / `subdistrict_code` (nullable text, the DOPA codes). The probe is the LAST column the file adds, " +
+      "so a half-applied file reads as not applied and re-runs. Rerunnable: every statement is ADD COLUMN IF NOT EXISTS; NO data is written (the backfill is a separate owner-run script).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

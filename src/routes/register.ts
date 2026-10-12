@@ -17,6 +17,7 @@ import { deliver2faCode, generate2faCode, matches2faCode } from "../lib/line-2fa
 import { formatPhoneForDisplay } from "../lib/line-webhook";
 import { ddmmyyyy } from "../lib/time";
 import { t } from "../lib/line-i18n"; // TASK-583 — the duplicate sentence, from the chat's own table
+import { checkAreaCodes } from "../lib/area-codes"; // TASK-800 (REQ-118) — the province on file is derived from the code
 import { MAX_STUDENTS_PER_PARENT } from "../services/parent.service";
 import {
   addChildForLineParent,
@@ -44,6 +45,10 @@ const createBody = withToken.extend({
   province: z.string().optional(), // the PICKED province, full form, one of the 77 → `parents.province`
   district: z.string().optional(),
   subDistrict: z.string().optional(),
+  // 🔻 TASK-800 (REQ-118, contract ruled 2026-10-12) — the page ALSO sends the three DOPA codes its picker holds. Codes present ⇒ they WIN (checked as a triple, `province` derived from the code, the names ignored); names only ⇒ today's behaviour.
+  provinceCode: z.string().optional(),
+  districtCode: z.string().optional(),
+  subdistrictCode: z.string().optional(),
   // 🔻 TASK-590 (D11 a) — a NEW family's phone: the family is created WITH this child, in one transaction (`/link` answered `new`).
   phone: z.string().trim().optional(),
   detailProvided: z.boolean().optional(),
@@ -162,14 +167,17 @@ export const publicRegister = new Hono()
 
   // ── §C3 create — add a child to MY family. THE ONE WRITER. ───────────────────────────────────────────────
   .post("/register/create", zValidator("json", createBody), async (c) => {
-    const { idToken, name, birthDate, province, district, subDistrict, phone, detailProvided } = c.req.valid("json");
+    const { idToken, name, birthDate, province, district, subDistrict, provinceCode, districtCode, subdistrictCode, phone, detailProvided } = c.req.valid("json");
     const who = await verifyLiffIdToken(idToken);
     if (!who.ok) return refuse(c, TOKEN_STATUS[who.code]!, who.code);
-    const child = { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, district: district ?? null, subDistrict: subDistrict ?? null, detailProvided };
+    const child = { name: name ?? "", birthDate: birthDate ?? null, province: province ?? null, district: district ?? null, subDistrict: subDistrict ?? null, provinceCode: provinceCode ?? null, districtCode: districtCode ?? null, subdistrictCode: subdistrictCode ?? null, detailProvided };
     // 🔴 TASK-590 (D11 a) — an account with NO family, carrying the phone \`/link\` answered \`new\` for ⇒ the family is created WITH this
     // child, in ONE transaction, or not at all. A LINKED account ⇒ the family is \`sub\`'s, and \`phone\` is ignored (never re-pointed).
     if (phone && !(await linkStatus(who.sub)).linked) {
       const n = await registerFamilyWithFirstChild(who.sub, phone, child);
+      // 🔻 TASK-800 — codes win: the province the family now has on file is the one DERIVED from the code (the body's name is ignored); names only ⇒ the posted name, as before.
+      const area = provinceCode || districtCode || subdistrictCode ? checkAreaCodes({ provinceCode: provinceCode ?? "", districtCode: districtCode ?? "", subdistrictCode: subdistrictCode ?? "" }) : null;
+      const onFileProvince = area ? (area.ok ? area.province : null) : province?.trim() || null;
       if (n.outcome !== "registered") {
         const [status, code] = REFUSAL[n.outcome]!;
         const extra = n.outcome === "name-reserved" ? { word: n.word } : n.outcome === "province-unknown" ? { province: n.province } : n.outcome === "address-incomplete" ? { missing: n.missing } : {};
@@ -178,7 +186,7 @@ export const publicRegister = new Hono()
       // The chat's post-link ORDER, after the commit: seed the language → link the rich menus → THEN the session.
       await settleLinkedRole(who.sub, "customer");
       await clearLinkSession(who.sub);
-      return c.json({ ok: true, outcome: "created", registered: true, student: n.student, birthDate: ddmmyyyy(n.birthDate), count: n.count, atMax: false, canAddMore: true, ...householdAddressOf({ province: province?.trim() || null }) }); // the full address was required, so it is on file now
+      return c.json({ ok: true, outcome: "created", registered: true, student: n.student, birthDate: ddmmyyyy(n.birthDate), count: n.count, atMax: false, canAddMore: true, ...householdAddressOf({ province: onFileProvince }) }); // the full address was required, so it is on file now
     }
     // 🔑 The family is `sub`'s — no id from the body. The guards run in the CHAT's order inside this one call.
     const r = await addChildForLineParent(who.sub, child);

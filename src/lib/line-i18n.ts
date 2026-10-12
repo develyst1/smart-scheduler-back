@@ -179,26 +179,7 @@ export const REGISTRATION_COPY = {
   add_student_name_prompt: 'กรุณาระบุชื่อนักเรียน เช่น "ส้ม"\nPlease enter the student\'s name, e.g. "Emily".',
   /** §17c screen 5. ⚠️ `(วัน-เดือน-ปีค.ศ. )` is their spacing, kept — Gregorian, day-first, the owner's ruling. */
   add_birthdate_prompt: "กรุณาระบุวันเกิดของนักเรียนค่ะ\n(วัน-เดือน-ปีค.ศ. )\nPlease enter the date of birth in (DD-MM-YYYY)",
-  /**
-   * §17c screen 6. 🚫 **The FIELD does not change** (`§17e`'s correction): the prompt names District /
-   * Sub-district / Province as GUIDANCE and the answer is, and stays, one free-text value.
-   * ⚠️ Their English block is wrapped in a `"` … `"` pair in the source document. **Not reproduced** — a
-   * quotation mark opening one line and closing another reads as a typo on a phone, and by `§17f`'s own
-   * reasoning it is document punctuation rather than copy. **Reported; it is the only byte I changed.**
-   */
-  add_province_prompt:
-    "กรุณาระบุ เขต แขวง จังหวัด เช่น พระโขนงเหนือ วัฒนา กทม\nPlease enter your address: District, Sub-district, Province\nEg. Prakanueng Nuea, Wattana, BKK",
-  /**
-   * 🔴 TASK-590 (F-C) / 🔻 TASK-594 §2 — screen 6 asked in THREE questions, because one typed line cannot be three checked parts.
-   * 🔑 They live HERE, beside the screen they replace, so they are BILINGUAL like it: every §17c screen carries both languages in one
-   * string (the customer wrote them that way, for a reader whose language we do not yet know). They were keyed `{TH,EN}` when they
-   * shipped, so a session rendered ONE language between two bilingual screens — Tanya read that as "Thai-only in an EN chat".
-   * 🚫 Their REFUSALS are not here: a refusal answers inside a session whose language IS known (`add_addr_province_bad`, the same
-   * shape as `add_birthdate_bad`). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700).
-   */
-  add_addr_province_prompt: "กรุณาระบุจังหวัดค่ะ เช่น กรุงเทพมหานคร\nPlease enter your province, e.g. Bangkok",
-  add_addr_district_prompt: "กรุณาระบุอำเภอ/เขต เช่น วัฒนา\nPlease enter your district, e.g. Watthana",
-  add_addr_subdistrict_prompt: "กรุณาระบุตำบล/แขวง เช่น พระโขนงเหนือ\nPlease enter your sub-district, e.g. Phra Khanong Nuea",
+  // 🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — the LINE chat asks NO address: screen 6 and the three address questions (+ their refusal) are REMOVED. The page's picker is the address door.
   /** 🔻 TASK-594 §2 — shown INSIDE screen 7's address line, so it is bilingual like the screen that carries it. ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700). */
   add_addr_on_file: "(ที่อยู่เดิมของครอบครัว) / (the address we have on file)",
   /** §17c screen 7, head. */
@@ -398,12 +379,6 @@ const TABLE: Record<string, Entry> = {
     TH: "มีน้องลงทะเบียนชื่อนี้แล้ว — กรุณาใช้ชื่อเล่น + ชื่อจริงของน้องค่ะ",
     EN: "This name is already registered. Please use your child’s nickname + first name.",
   },
-  // 🔻 TASK-594 §2 — the three address PROMPTS and the summary's on-file note MOVED to `REGISTRATION_COPY` (bilingual): they replace
-  // and sit inside the customer's §17c screens, and a one-language question between two bilingual ones is what Tanya read as
-  // "Thai-only". 🔑 `add_addr_province_bad` STAYS here, in the session's own language, because it is a REFUSAL — the same shape as
-  // `add_birthdate_bad` beside it (the wizard knows the session's language; §17c screens are bilingual because the customer wrote
-  // them that way). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 (COPY §18).
-  add_addr_province_bad: { TH: "ไม่พบจังหวัดนี้ค่ะ กรุณาพิมพ์ชื่อจังหวัดเต็ม เช่น เชียงใหม่ หรือ กรุงเทพมหานคร", EN: "We could not find that province. Please type its full name, e.g. เชียงใหม่ or กรุงเทพมหานคร" },
   // 🔴 TASK-590 (D11 a) — the phone became a family between the phone step and the confirm (another account, another tab). ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370
   add_phone_now_registered: { TH: "เบอร์นี้เพิ่งถูกลงทะเบียนไว้แล้วค่ะ ยังไม่ได้บันทึกนักเรียน กรุณาพิมพ์ \"สมัคร\" แล้วใส่เบอร์อีกครั้ง", EN: "This phone number was just registered. The student was not saved — please type \"Register\" and enter the number again." },
   add_birthdate_bad: {
@@ -808,7 +783,7 @@ const TABLE: Record<string, Entry> = {
   cp_camp: { TH: "Camp", EN: "Camp" }, // 🔻 TASK-727 (P25/P26) — her TH label is the English word, as in her sample
   cp_split: { TH: "ทั้งวัน {full} ·เช้า {am} · บ่าย {pm}", EN: "Full day {full} · Morning {am} · Afternoon {pm}" }, // 🔻 TASK-727 (P25) — verbatim, incl. the missing space before เช้า
   cp_students: { TH: "Students", EN: "Students" },
-  cp_time: { TH: "ช่วง", EN: "Time" },
+  cp_time: { TH: "Time", EN: "Time" }, // 🔻 TASK-736 (P26): her TH label is `Time :` (was `ช่วง`)
   cp_half_full: { TH: "เต็มวัน", EN: "Full day" },
   cp_half_am: { TH: "ช่วงเช้า", EN: "Morning (AM)" },
   cp_half_pm: { TH: "ช่วงบ่าย", EN: "Afternoon (PM)" },

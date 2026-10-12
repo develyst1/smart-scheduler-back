@@ -11,16 +11,8 @@ const raw = (f: string) => readSrc(readFileSync(resolve(root, f), "utf8")).repla
 
 describe("🔴 TASK-700 — the three aligned strings, by value", () => {
   const R: any = REGISTRATION_COPY;
-  test("district prompt — NO `ค่ะ`; the EN half and the newline join are unchanged", () => {
-    expect(R.add_addr_district_prompt).toBe("กรุณาระบุอำเภอ/เขต เช่น วัฒนา\nPlease enter your district, e.g. Watthana");
-    expect(R.add_addr_district_prompt).not.toContain("ค่ะ");
-  });
-  test("sub-district prompt — NO `ค่ะ`", () => {
-    expect(R.add_addr_subdistrict_prompt).toBe("กรุณาระบุตำบล/แขวง เช่น พระโขนงเหนือ\nPlease enter your sub-district, e.g. Phra Khanong Nuea");
-    expect(R.add_addr_subdistrict_prompt).not.toContain("ค่ะ");
-  });
-  test("the province prompt is UNCHANGED (its words already equalled the approved ones)", () => {
-    expect(R.add_addr_province_prompt).toBe("กรุณาระบุจังหวัดค่ะ เช่น กรุงเทพมหานคร\nPlease enter your province, e.g. Bangkok");
+  test("🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — the three address prompts (province · district · sub-district) were REMOVED with the chat's address steps; the on-file note stays", () => {
+    for (const key of ["add_addr_province_prompt", "add_addr_district_prompt", "add_addr_subdistrict_prompt", "add_addr_province_bad", "add_province_prompt"]) expect({ key, present: key in R }).toEqual({ key, present: false });
   });
   test("the on-file note — the approved words, each half in its own parentheses, joined by ` / ` (inside one address line)", () => {
     expect(R.add_addr_on_file).toBe("(ที่อยู่เดิมของครอบครัว) / (the address we have on file)");
@@ -40,7 +32,7 @@ describe("📋 TASK-700 — the labels, told true", () => {
     expect(t("ob_course_expiry_changed", "TH")).toContain("แจ้งเปลี่ยนวันหมดอายุคอร์สค่ะ:");
   });
   test("the prompts and the on-file note are labelled APPROVED (aligned TASK-700)", () => {
-    expect(I.split("✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700)").length - 1).toBe(2);
+    expect(I.split("✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:190–201 (aligned TASK-700)").length - 1).toBe(1); // 🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — the prompts' block is gone: only the on-file note carries it
   });
   test("ADMIN_LEAVE_FUTURE_ONLY is labelled by the NEW rule: engineer wording, LISTED not approved — and the trigger to return to the queue is stated", () => {
     expect(TL).toContain("📋 ENGINEER WORDING — LISTED, NOT APPROVED (owner rule 2026-10-07: a refusal no screen can reach).");

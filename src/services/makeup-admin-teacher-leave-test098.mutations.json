@@ -1,0 +1,53 @@
+{
+  "task": "TASK-731 (TEST-098 follow-up)",
+  "proves": "src/services/makeup-admin-teacher-leave-test098.test.ts",
+  "note": "The admin's «ครูลา» on a COURSE make-up reaches the family NOTICE only. T1 is the guard the TASK asked for: the reason WIDENED into enumReason (the STORED value, which drives the re-plan / the +1 week) bites on the stored-reason pin. T2 = the notice loses the reason; T3 = the reason leaks to an ordinary (non make-up) course cancel.",
+  "tests": "src/services/makeup-admin-teacher-leave-test098.test.ts",
+  "mutations": [
+    {
+      "id": "T1",
+      "what": "enumReason is WIDENED to carry TEACHER_LEAVE for a course (the stored reason / the week logic would change)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "current.bookingType === \"COURSE_PACKAGE\" && reasonCode === SCHOOL_ISSUE",
+              "to": "current.bookingType === \"COURSE_PACKAGE\" && (reasonCode === SCHOOL_ISSUE || reasonCode === \"TEACHER_LEAVE\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "what": "the notice loses the admin's «ครูลา» (the TEST-098 bug is back)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "enumReason ?? (current.isMakeup === true && reasonCode === \"TEACHER_LEAVE\" ? \"TEACHER_LEAVE\" : null)",
+              "to": "enumReason ?? null"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "what": "the reason leaks to an ordinary (non make-up) course cancel notice",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "enumReason ?? (current.isMakeup === true && reasonCode === \"TEACHER_LEAVE\" ? \"TEACHER_LEAVE\" : null)",
+              "to": "enumReason ?? (reasonCode === \"TEACHER_LEAVE\" ? \"TEACHER_LEAVE\" : null)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

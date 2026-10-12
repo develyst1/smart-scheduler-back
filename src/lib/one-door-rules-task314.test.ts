@@ -135,7 +135,7 @@ describe("✅ TASK-314 — the wizard's BEHAVIOUR is byte-identical: a move, not
     const successClear = confirm.indexOf("clearSession(lineUserId)", confirm.indexOf("createStudentFromLine(parent!, {"));
     expect(successClear).toBeGreaterThan(-1);
     expect(successClear).toBeLessThan(confirm.indexOf('t("added_done", lang'));
-    const order = ["isConfirm(text)", "const address = addressOnFile ? null :", "registerFamilyWithFirstChild(", "createStudentFromLine(parent!, {", "const atMax = count >= MAX_STUDENTS_PER_PARENT;", 't("added_done", lang'];
+    const order = ["isConfirm(text)", "const address = null;", "registerFamilyWithFirstChild(", "createStudentFromLine(parent!, {", "const atMax = count >= MAX_STUDENTS_PER_PARENT;", 't("added_done", lang'];
     const at = order.map((o) => confirm.indexOf(o));
     expect({ missing: order.filter((_, i) => at[i]! < 0) }).toEqual({ missing: [] });
     for (let i = 1; i < order.length; i++) expect(at[i - 1]!).toBeLessThan(at[i]!);

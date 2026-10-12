@@ -54,7 +54,7 @@ describe("🔻 TASK-278 §2 — §17b's sentences, RE-POINTED at §17c (TASK-310
     expect(en("code_customer")).toContain("Please enter your phone number.");
     expect(en("code_customer")).not.toContain("to continue");
     expect(en("add_birthdate_prompt")).not.toContain("skip");
-    expect(en("add_province_prompt")).toContain("District, Sub-district, Province");
+    // 🔻 TASK-800 (REQ-118, owner ruling 2, Porter's grant 2026-10-12) — screen 6 (the address prompt) is REMOVED from the chat.
   });
 
   // 🔴 TASK-601 — DECLARED: this test PINNED THE DEFECT. It asserted that BOTH keys claim *"Registration completed ✅"*, which was
@@ -208,7 +208,6 @@ describe("TASK-278 §5 — nothing else moved", () => {
       "code_customer",
       "verify_parent_ok_new",
       "add_student_name_prompt",
-      "add_province_prompt",
       "add_summary_head",
       "add_summary_confirm",
       "added_done",

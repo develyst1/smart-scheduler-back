@@ -184,7 +184,8 @@ describe("🔴 AC-18 — two strikes, then a human", () => {
     // 🔻 TASK-583 (ruling 4: no ข้าม) — an EIGHTH and NINTH: a skip word at the birthday and at the address is now a REFUSAL, so it
     // counts as a strike like every other refusal (two, then a person).
     // 🔻 TASK-590 (F-C) — the one address refusal became THREE (an unknown province · an empty/skipped district · sub-district).
-    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(12); // the declaration + eleven call sites
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the three address refusals are GONE with the chat's address questions: the declaration + eight call sites.
+    expect(SVC.match(/strikeOrPrompt\(/g)!.length).toBe(9);
     // 🔻 TASK-310 — the sixth argument is no longer a PICKER: `REQ-079 §17c`'s screen 2 offers one path
     // (type `Next`) so that a parent never learns the other roles exist, and a role picker is a role list
     // you cannot look away from. ✅ **The wiring this test guards is unchanged either way** — the role

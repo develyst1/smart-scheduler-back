@@ -42,8 +42,8 @@ describe("🔴 the migration — 0043, counted, three NULLABLE adds, the partial
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0043_camp_checkin_token.sql"), "utf8");
   test("56 = 56: `0043_camp_checkin_token` is the 44th file, idx 43 (TASK-406 added 0044 after it); the order 0038 → 0043 and 'expects 44' in the header", () => {
-    expect(files.length).toBe(69); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068
-    expect(journal.entries.length).toBe(69); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068
+    expect(files.length).toBe(70); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
+    expect(journal.entries.length).toBe(70); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
     expect(files[43]).toBe("0043_camp_checkin_token.sql");
     expect(journal.entries[43]).toMatchObject({ idx: 43, tag: "0043_camp_checkin_token" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → `0042` → THIS");
@@ -222,14 +222,14 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
   test("🔴 TASK-405 — the parent block by VALUE: Student / Camp / Date / Time, one block per child, the three halves in both languages", () => {
     const parent = sends.find((s) => s.personId === "p1")!.payload;
     expect(formatOutboxMessage(parent as any, {}, "EN", "parent")).toBe(
-      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nTime : Morning (AM)\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nTime : Full day",
+      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nTime : 10:00-12:00\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nTime : 10:00-15:00", // 🔻 TASK-736: the real hours (a colon)
     );
     expect(formatOutboxMessage(parent as any, {}, "TH", "parent")).toBe(
-      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nช่วง : ช่วงเช้า\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nช่วง : เต็มวัน",
+      "⏱️TODAY'S SCHEDULE:\n\nStudent : น้องเอ\nCamp : Camp A\nDate : 05-10-2026\nTime : 10:00-12:00\n\nStudent : น้องบี\nCamp : Camp A\nDate : 05-10-2026\nTime : 10:00-15:00", // 🔻 TASK-736: her TH label is `Time :`
     );
     const pm = { kind: "camp_reminder", audience: "parent", rows: [{ child: "น้องซี", weekName: "Camp A", date: "2026-10-05", half: "PM" }] };
-    expect(formatOutboxMessage(pm as any, {}, "EN", "parent")).toContain("Time : Afternoon (PM)");
-    expect(formatOutboxMessage(pm as any, {}, "TH", "parent")).toContain("ช่วง : ช่วงบ่าย");
+    expect(formatOutboxMessage(pm as any, {}, "EN", "parent")).toContain("Time : 13:00-15:00"); // 🔻 TASK-736
+    expect(formatOutboxMessage(pm as any, {}, "TH", "parent")).toContain("Time : 13:00-15:00"); // 🔻 TASK-736
   });
   test("🔴 TASK-405 — the +n rule by VALUE: 13 children ⇒ 12 names then `  +1`; 12 ⇒ all, no +; two weeks ⇒ two blocks; `Kids` absent everywhere", () => {
     const names = Array.from({ length: 13 }, (_, i) => `เด็ก${i + 1}`);
@@ -253,7 +253,7 @@ describe("🔴 the camp-day reminder — the pure builder by value, the words by
     for (const k of ["cp_camp:", "cp_students:", "cp_time:", "cp_half_full:", "cp_half_am:", "cp_half_pm:"]) expect(I).toContain(k);
     expect(I).toContain('cp_students: { TH: "Students", EN: "Students" },');
     expect(I).toContain('cp_camp: { TH: "Camp", EN: "Camp" },');
-    expect(I).toContain('cp_time: { TH: "ช่วง", EN: "Time" },');
+    expect(I).toContain('cp_time: { TH: "Time", EN: "Time" },'); // 🔻 TASK-736 (P26)
     // the builder carries the names on the teacher row ONLY; the parent row names its own child
     const B = code(src("src/lib/camp-reminder.ts"));
     expect(B).toContain("names: mine.map((d) => d.studentName)");

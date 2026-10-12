@@ -24,6 +24,7 @@ import type { Lang } from "../lib/line-i18n";
 import { notifyAdmins } from "../lib/line-admin";
 import { isReservedWord } from "../lib/line-commands";
 import { decideDuplicate, parseBirthDate } from "../lib/line-add-student";
+import { checkAreaCodes } from "../lib/area-codes"; // 🔻 TASK-800 (REQ-118) — the address as area codes
 import { type AddressParts, checkFullAddress } from "../lib/full-address"; // TASK-590 (F-C) — THE one address rule
 import { badRequest } from "../lib/http";
 import { moveRosterLink } from "../lib/roster-link";
@@ -318,11 +319,19 @@ export async function createStudentFromLine(
   // HERE at the write (the doors ask first, for their own codes). 🔴 THE LIMIT (see lib/full-address.ts): the SHAPE is checked —
   // three parts, the province one of the 77 — NOT that the district belongs to the province. `parents.province` ← the province;
   // `parents.note` ← the one line (the page's order and spelling), APPENDED — never overwriting a staff note (TASK-352).
-  const given = input.address && (input.address.province || input.address.district || input.address.subDistrict) ? input.address : null;
+  // 🔻 TASK-800 (REQ-118) — CODES WIN: an address carrying the three area codes is written as codes (`parents.province_code/district_code/subdistrict_code`) with `province` DERIVED from the code and NO line appended to
+  // `note` (the codes ARE the address now). The doors checked first; the writer asks AGAIN here — the floor. Names only (no codes) ⇒ exactly today's path below.
+  const codes = input.address?.codes ?? null;
+  const area = codes ? checkAreaCodes(codes) : null;
+  if (area && !area.ok) throw badRequest("ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง"); // the same floor sentence as the names path (✅ APPROVED 2026-10-01 — COPY-REVIEW-2026-09-29.md:370) — no new words
+  const given = !codes && input.address && (input.address.province || input.address.district || input.address.subDistrict) ? input.address : null;
   const checked = given ? checkFullAddress(given) : null;
   if (checked && !checked.ok) throw badRequest("ที่อยู่ต้องมีจังหวัด อำเภอ/เขต และตำบล/แขวง"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the floor; doors refuse first
   const created = await createStudentForParent(parent.id, { name: input.name, birthDate: input.birthDate }, exec);
-  if (checked?.ok) {
+  if (area?.ok) {
+    // 🔻 TASK-800 — CODES: the three codes + `province` derived from the code. NO line appended to `note` — the codes ARE the address.
+    await exec.update(parents).set({ province: area.province, provinceCode: area.triple.provinceCode, districtCode: area.triple.districtCode, subdistrictCode: area.triple.subdistrictCode }).where(eq(parents.id, parent.id));
+  } else if (checked?.ok) {
     // Read the row's note NOW rather than trusting the `parent` handed in — a note a staff member wrote since must survive too.
     const [row] = await exec.select({ note: parents.note }).from(parents).where(eq(parents.id, parent.id)).limit(1);
     await exec.update(parents).set(householdPatch(row?.note ?? null, { province: checked.address.province, address: checked.address.line })).where(eq(parents.id, parent.id));
@@ -345,7 +354,11 @@ export type AddChild =
   | { outcome: "province-unknown"; province: string };
 
 /** The child's fields as both doors collect them (🔻 TASK-590: the address is THREE parts, never a pre-joined line). */
-export type ChildInput = { name: string; birthDate?: string | null; province?: string | null; district?: string | null; subDistrict?: string | null; detailProvided?: boolean };
+export type ChildInput = {
+  name: string; birthDate?: string | null; province?: string | null; district?: string | null; subDistrict?: string | null; detailProvided?: boolean;
+  /** 🔻 TASK-800 (REQ-118) — the three DOPA area codes the page's picker holds. PRESENT ⇒ they win (the names are ignored); ABSENT ⇒ today's names-only path, exactly. */
+  provinceCode?: string | null; districtCode?: string | null; subdistrictCode?: string | null;
+};
 
 /** The name + birthday half of every door's checks — pure, so the page, the chat's confirm and the one-transaction register agree. */
 function checkNameAndBirthday(input: ChildInput): { ok: true; name: string; birthDate: string } | { ok: false; refusal: AddChild } {
@@ -362,7 +375,20 @@ function checkNameAndBirthday(input: ChildInput): { ok: true; name: string; birt
 }
 
 /** The address half: THE rule (`checkFullAddress`), mapped to the page's outcomes. */
-function checkAddress(input: ChildInput): { ok: true; address: AddressParts } | { ok: false; refusal: AddChild } {
+export function checkAddress(input: ChildInput): { ok: true; address: AddressParts } | { ok: false; refusal: AddChild } {
+  // 🔻 TASK-800 (REQ-118) — CODES WIN. Any code present ⇒ the address is judged as codes: all three needed, the triple consistent (the district inside the province, the sub-district inside the district).
+  // The refusals REUSE today's outcomes, no new words: an unknown province code ⇒ `province-unknown`; a half triple, or a district / sub-district that is not inside its parent ⇒ `address-incomplete` naming the part.
+  const given = [input.provinceCode, input.districtCode, input.subdistrictCode].map((v) => (v ?? "").toString().trim());
+  if (given.some(Boolean)) {
+    const missing = ([["province", given[0]], ["district", given[1]], ["subDistrict", given[2]]] as const).filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length) return { ok: false, refusal: { outcome: "address-incomplete", missing: [...missing] } };
+    const area = checkAreaCodes({ provinceCode: given[0]!, districtCode: given[1]!, subdistrictCode: given[2]! });
+    if (!area.ok) {
+      if (area.outcome === "province-unknown") return { ok: false, refusal: { outcome: "province-unknown", province: area.code } };
+      return { ok: false, refusal: { outcome: "address-incomplete", missing: [area.outcome === "district-invalid" ? "district" : "subDistrict"] } };
+    }
+    return { ok: true, address: { province: area.province, codes: area.triple } };
+  }
   const c = checkFullAddress(input);
   if (c.ok) return { ok: true, address: c.address };
   if (c.outcome === "address-required") return { ok: false, refusal: { outcome: "address-required" } };
@@ -431,12 +457,13 @@ export type RegisterFamily =
  * failure inside it rolls ALL of it back — no parent, no binding, no child, no notice: nothing left behind.
  * Both doors call it: the page's `/register/create` (with `phone`) and the chat's CONFIRM (the phone parked on its draft).
  */
-export async function registerFamilyWithFirstChild(lineUserId: string, phoneText: string, input: ChildInput): Promise<RegisterFamily> {
+export async function registerFamilyWithFirstChild(lineUserId: string, phoneText: string, input: ChildInput, opts: { addressOptional?: boolean } = {}): Promise<RegisterFamily> {
   const phone = normalizePhone(phoneText);
   if (phone.length < 9) return { outcome: "phone-invalid" };
   const nb = checkNameAndBirthday(input);
   if (!nb.ok) return nb.refusal as RegisterFamily;
-  const a = checkAddress(input); // a NEW household has nothing on file: the address is required
+  // a NEW household has nothing on file: the address is required — 🔻 TASK-800 (owner ruling 2): EXCEPT from the LINE chat, which asks NO address (`addressOptional`): the child is created with none and the admin fills it later.
+  const a = opts.addressOptional ? ({ ok: true, address: null } as const) : checkAddress(input);
   if (!a.ok) return a.refusal as RegisterFamily;
   if (await findArchivedParentByPhone(phone)) return { outcome: "phone-archived" }; // TASK-411 — never a silent restore
   if (await findParentByPhone(phone)) return { outcome: "phone-now-registered" };

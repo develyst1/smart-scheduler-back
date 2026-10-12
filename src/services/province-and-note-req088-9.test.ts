@@ -73,8 +73,9 @@ describe("🔴 §9 — the one writer applies the rule, and the CHAT changed by 
     // TASK-352's "the chat never writes `province`" rested on "a typed line cannot pick one". The chat now asks the province ALONE and
     // resolves it to one of the 77 (`provinceFromTyped`) — the same list the page picks from — so it is not a guess any more.
     const confirm = fnIn(CHAT, "async function handleAddStudentStep(");
-    expect(confirm).toContain("const address = addressOnFile ? null : { province: draft.province, district: draft.district, subDistrict: draft.subDistrict };");
-    expect(confirm).toContain("const province = provinceFromTyped(text);");
+    // 🔻 TASK-800 (REQ-118, owner ruling 2) — the CHAT no longer collects an address, so there is no province to resolve: it writes none (`address = null`); the page / admin doors resolve it from codes.
+    expect(confirm).toContain("const address = null;");
+    expect(confirm).not.toContain("provinceFromTyped");
     expect(confirm).toContain("await createStudentFromLine(parent!, { name: draft.name!, birthDate: draft.birthDate ?? null, address })");
   });
 
@@ -120,7 +121,7 @@ describe("🚫 §9.1 — what this task deliberately does NOT do", () => {
     // The owner MOVED the addresses himself and is LEAVING `province` dirty ON PURPOSE, so a visibly broken
     // dashboard gets fixed by the admins who know the family. If anyone proposes a script, `§9.1` is the answer.
     const journal = await Bun.file(new URL("../../drizzle/meta/_journal.json", import.meta.url)).text();
-    expect((journal.match(/"tag"/g) ?? []).length).toBe(69); // TASK-497: +0059 // 🔻 0035 … 0053 added since — none a province script · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068
+    expect((journal.match(/"tag"/g) ?? []).length).toBe(70); // TASK-497: +0059 // 🔻 0035 … 0053 added since — none a province script · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
     expect(REG).not.toMatch(/UPDATE parents SET province/i);
   });
 });
