@@ -477,6 +477,13 @@
       "when": 1783000000063,
       "tag": "0067_users_line_link",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1783000000064,
+      "tag": "0068_vouchers_note",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@ import { enqueueLine } from "./line";
 import { VOUCHER_VALIDITY_MONTHS } from "./voucher"; // 🔻 TASK-730 rework — the table that decides the real expiry also decides what the sale says
 
 export async function notifyVoucherSold(
-  voucher: { id: string; totalHours: number; student: { id: string; name: string; nickname?: string | null } },
+  voucher: { id: string; totalHours: number; note?: string | null; student: { id: string; name: string; nickname?: string | null } },
   exec: any = db,
 ): Promise<void> {
   try {
@@ -18,6 +18,7 @@ export async function notifyVoucherSold(
       hours: voucher.totalHours,
       // 🔻 Khwan's Q5 answer: the expiry shows MONTHS ("3 Months"). Truer at the sale too: validity counts from the FIRST BOOKING, so a date would be provisional.
       months: VOUCHER_VALIDITY_MONTHS[voucher.totalHours],
+      ...(voucher.note ? { note: voucher.note } : {}), // 🔻 TASK-732 — the sale's Remark; no key at all when there is none (the payload is then byte-identical to 730's)
     };
     for (const lineUserId of await householdLineUserIds(exec, [voucher.student.id])) {
       // one key per voucher and account: a retry of the same sale can never send twice (the key is used on the default connection, not inside a tx)

@@ -394,8 +394,8 @@ describe("🔴 the migration `0067` — three nullable columns, two PARTIAL uniq
   });
   test("journal + witness registered: idx 67, the code-hash index is the probe, rerunnable; the schema carries the same columns and indexes", () => {
     const J = JSON.parse(read("drizzle/meta/_journal.json"));
-    expect(J.entries.at(-1)).toMatchObject({ idx: 67, tag: "0067_users_line_link", breakpoints: true });
-    expect(SCHEDULING_WITNESSES.at(-1)).toMatchObject({ tag: "0067_users_line_link", probe: { kind: "index", index: "users_line_link_code_hash_uq" }, rerunnable: true });
+    expect(J.entries.find((e: any) => e.idx === 67)).toMatchObject({ idx: 67, tag: "0067_users_line_link", breakpoints: true }); // 🔻 TASK-732: by idx / tag, not .at(-1) (0068 is the last now)
+    expect(SCHEDULING_WITNESSES.find((w: any) => w.tag === "0067_users_line_link")).toMatchObject({ tag: "0067_users_line_link", probe: { kind: "index", index: "users_line_link_code_hash_uq" }, rerunnable: true });
     const schema = read("src/db/schema.ts");
     expect(schema).toContain('lineUserId: text("line_user_id"),');
     expect(schema).toContain('lineLinkCodeHash: text("line_link_code_hash"),');

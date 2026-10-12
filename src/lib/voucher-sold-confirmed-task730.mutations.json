@@ -12,8 +12,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await notifyVoucherSold(result.voucher); // 🔻 TASK-730",
-              "to": "await notifyVoucherSold(result.voucher); await notifyVoucherSold(result.voucher); // 🔻 TASK-730"
+              "from": "await notifyVoucherSold({ ...result.voucher, note: saleNote }); // 🔻 TASK-730",
+              "to": "await notifyVoucherSold({ ...result.voucher, note: saleNote }); await notifyVoucherSold({ ...result.voucher, note: saleNote }); // 🔻 TASK-730"
             }
           ]
         }

@@ -81,7 +81,7 @@ describe("🔴 TASK-730 — only a SALE sends (by source)", () => {
   test("`createVoucher` calls the notifier exactly once, after the transaction; `importVoucher` never does; nobody else does", () => {
     expect((S.match(/notifyVoucherSold\(/g) ?? []).length).toBe(1);
     const create = region("export async function createVoucher(", "// ───────────────────────── Overbooking a leave slot");
-    expect(create).toContain("await notifyVoucherSold(result.voucher);");
+    expect(create).toContain("await notifyVoucherSold({ ...result.voucher, note: saleNote });");
     expect(create.indexOf("db.transaction(")).toBeLessThan(create.indexOf("await notifyVoucherSold("));
     expect(create.indexOf("await notifyVoucherSold(")).toBeLessThan(create.indexOf("void recordSale("));
     expect(region("export async function importVoucher(", "\n}\n")).not.toContain("notifyVoucherSold");

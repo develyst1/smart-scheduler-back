@@ -162,9 +162,10 @@ describe("🔴 TASK-548 — a cancelled make-up names the new class ONLY when th
     for (const p of fam) expect(p).toEqual({ kind: "makeup_cancelled_parent", bookingId: M1, bookingType: "COURSE_PACKAGE", size: 4, newClassDates: ["2026-11-13"] });
     const th = formatOutboxMessage(fam[0], CTX as any, "TH", "parent").split("\n");
     const en = formatOutboxMessage(fam[0], CTX as any, "EN", "parent").split("\n");
-    expect(th.at(-1)).toMatch(/^Note : .*13-11-2026/); // the SHAPE (✅ FINAL words since TASK-550, by value in `approved-copy-task550.test.ts`): the appended line, the date present
-    expect(en.at(-1)).toMatch(/^Note : .*13-11-2026/);
-    expect([...th, ...en].join("\n")).not.toMatch(/ชดเชย|make-up|makeup|replac/i); // the "never make-up" rule still holds
+    // 🔻 TASK-731 (P11; Khwan's answer 2026-10-12): her Note ("a make-up session has been added"), WITHOUT the new class's date — printed only because a class WAS appended (this test's case).
+    expect(th.at(-1)).toBe("Note : ระบบเพิ่มคาบชดเชยให้แล้ว");
+    expect(en.at(-1)).toBe("Note : A make-up session has been added to the schedule.");
+    expect([...th, ...en].join("\n")).not.toMatch(/13-11-2026|2026-11-13/); // the date is GONE (she said "ไม่ต้องมี")
     expect([th[0], en[0]]).toEqual([t("mc_title", "TH"), t("mc_title", "EN")]); // the title unchanged
   });
   test("🔑 NO append ⇒ NO line: the payload is TASK-537's, byte for byte (no field at all), and nothing is appended to the message", async () => {

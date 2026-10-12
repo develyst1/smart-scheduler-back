@@ -405,6 +405,8 @@ export const vouchers = pgTable("vouchers", {
     .notNull()
     .references(() => students.id, { onDelete: "restrict" }),
   totalHours: smallint("total_hours").notNull(), // 5 | 10 | 15
+  // 🔻 TASK-732 (`0068`) — the sale's own Remark (Khwan's Q5: "Remark เอามาจากตอนสร้างค่ะ"): optional, trimmed, ≤ 200; printed in the family's «voucher sold» confirm only when non-empty.
+  note: text("note"),
   usedHours: integer("used_hours").notNull().default(0),
   expiryDate: date("expiry_date").notNull(),
   source: text("source").notNull().default("SALE"), // SALE | IMPORT — see course_packages.source

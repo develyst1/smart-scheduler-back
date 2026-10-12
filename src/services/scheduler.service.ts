@@ -2916,6 +2916,7 @@ export async function createVoucher(input: any) {
     listPriceMinor(voucherItemRef(input.totalHours)) ?? 0,
     input.actor ?? null,
   );
+  const saleNote: string | null = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null; // 🔻 TASK-732 — blank ⇒ null
   const result = await db.transaction(async (tx) => {
     const studentId = await resolveStudentId(tx, input.student);
     await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new voucher
@@ -2928,6 +2929,7 @@ export async function createVoucher(input: any) {
         studentId,
         totalHours: input.totalHours,
         expiryDate: voucherExpiry(input.totalHours, fmtDate(new Date())),
+        note: saleNote, // 🔻 TASK-732 — the sale's Remark (blank ⇒ null)
       })
       .returning({ id: vouchers.id });
     const row = await tx.query.vouchers.findFirst({
@@ -2937,7 +2939,7 @@ export async function createVoucher(input: any) {
     return { voucher: toVoucherDTO(row) };
   });
 
-  await notifyVoucherSold(result.voucher); // 🔻 TASK-730 (D1; 📋 DRAFT — Khwan Q5): the family is told ONCE, after the commit; it can never fail the sale. `importVoucher` sends nothing.
+  await notifyVoucherSold({ ...result.voucher, note: saleNote }); // 🔻 TASK-730 (D1; 📋 DRAFT — Khwan Q5): the family is told ONCE, after the commit; it can never fail the sale. `importVoucher` sends nothing.
 
   // Phase 2: a voucher sale → record revenue on its INCOME item ("voucher-{hours}").
   void recordSale(voucherItemRef(input.totalHours), 1, {
@@ -3461,7 +3463,7 @@ export async function classCancelledFamilyAccounts(
     const newClassDates: string[] = appended.length
       ? (await tx.query.bookings.findMany({ columns: { date: true }, where: (b: any, { inArray: inA }: any) => inA(b.id, [...appended]) })).map((r: any) => r.date as string).sort()
       : [];
-    await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload: { kind: "makeup_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, ...(newClassDates.length ? { newClassDates } : {}) } });
+    await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload: { kind: "makeup_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, ...(newClassDates.length ? { newClassDates } : {}), ...(cancelReason === "TEACHER_LEAVE" ? { cancelReason } : {}) /* 🔻 TASK-731 (P11): the `Reason` line — a teacher's leave only, as the class cancel */ } });
     return accounts;
   }
   const payload = { kind: "class_cancelled_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null, cancelReason };

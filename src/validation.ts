@@ -405,6 +405,8 @@ export const createVoucher = z.object({
   totalHours: z.union([z.literal(5), z.literal(10), z.literal(15)]),
   // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
   discount: discountInput.optional(),
+  // 🔻 TASK-732 — the sale's Remark: the attendee-note rule (trim, max 200). Refused BEFORE the sale (a 400), never a half-sale.
+  note: attendeeNote.optional(),
 });
 
 /** TASK-492 — the admin Undo: an optional reason, recorded on the append-only `booking_undos` row. */

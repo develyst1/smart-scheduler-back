@@ -1,7 +1,7 @@
 {
   "task": "TASK-727",
   "proves": "src/lib/khwan-workbook-task727.test.ts",
-  "note": "Khwan's approved LINE wording. K1-K4 are the DoD's four kinds (an old text restored · P18 prints an empty Remark · a P40-P42 notice falls back to the bell · a NOT-approved row changed = the scope guard); the rest are the other places a row can go wrong: the family's Coach line, EN leaking into the TH-only P18, the two-children join, the one-line P21 title, the camp split and title, the producer's names and its never-fail catch. `tests` = the new by-value file + the TASK-529 move pins.",
+  "note": "Khwan's approved LINE wording. K1-K4 are the DoD's four kinds (an old text restored · P18 prints an empty Remark · a P40-P42 notice falls back to the bell · a NOT-approved row changed = the scope guard); the rest are the other places a row can go wrong: the family's Coach line, EN leaking into the TH-only P18, the two-children join, the one-line P21 title, the camp split and title, the producer's names and its never-fail catch. `tests` = the new by-value file + the TASK-529 move pins. (K4 — 'P11 changed' as a scope guard — was RETIRED on 2026-10-12: P11 was approved by Khwan's answers (TASK-731), so changing it is no longer out of scope; its pins live in khwan-answers-task731. K12 (R35) remains the live scope guard.)",
   "tests": "src/lib/khwan-workbook-task727.test.ts src/services/announce-move-task516.test.ts src/lib/other-series-req101.test.ts src/lib/line-notices-both-names-req095-13.test.ts",
   "mutations": [
     {
@@ -44,21 +44,6 @@
             {
               "from": "return name ? `🔔 Student: ${name} registered` : t(\"ob_default\", lang);",
               "to": "return t(\"ob_default\", lang);"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "K4",
-      "what": "SCOPE GUARD — P11 (NOT approved: waits on Khwan) is changed to her cell",
-      "files": [
-        {
-          "file": "src/lib/line-i18n.ts",
-          "edits": [
-            {
-              "from": "mc_title: { TH: \"❌ ยกเลิกคาบเรียน:\"",
-              "to": "mc_title: { TH: \"CLASS CANCELLED / ยกเลิกคาบ ‼️\""
             }
           ]
         }

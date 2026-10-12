@@ -685,6 +685,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "file reads as not applied and re-runs. Rerunnable: every statement is IF NOT EXISTS; no data is written.",
     rerunnable: true,
   },
+  {
+    tag: "0068_vouchers_note",
+    probe: { kind: "column", table: "vouchers", column: "note" },
+    why:
+      "TASK-732. The voucher sale carries a Remark: `vouchers.note` (nullable text; printed in the family's «voucher sold» confirm only when non-empty). The probe is the column itself, the only object the " +
+      "file creates, so a half-applied file reads as not applied and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; no data is written.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

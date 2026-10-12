@@ -1,0 +1,113 @@
+{
+  "task": "TASK-732",
+  "proves": "src/lib/voucher-note-task732.test.ts",
+  "note": "The voucher sale's Remark (vouchers.note, 0068). The DoD's three = N1 (the note not stored) · N2 (printed when empty) · N3 (whitespace kept); the rest: the validator's cap, the confirm losing the note, the migration/witness/journal drifting, an import writing a note.",
+  "tests": "src/lib/voucher-note-task732.test.ts src/lib/voucher-sold-confirmed-task730.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "the sale does not store the note",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "note: saleNote, // 🔻 TASK-732 — the sale's Remark (blank ⇒ null)",
+              "to": "// note not stored"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "the family confirm prints the Remark label even when the sale had no note",
+      "files": [
+        {
+          "file": "src/lib/voucher-sold-notice.ts",
+          "edits": [
+            {
+              "from": "...(voucher.note ? { note: voucher.note } : {}),",
+              "to": "note: voucher.note ?? \"\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "a whitespace-only note is kept (not turned into null)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "typeof input.note === \"string\" && input.note.trim() ? input.note.trim() : null;",
+              "to": "typeof input.note === \"string\" ? input.note : null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "the validator's cap is gone (a 201-character note is accepted)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "note: attendeeNote.optional(),\n});\n\n/** TASK-492",
+              "to": "note: z.string().trim().optional(),\n});\n\n/** TASK-492"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "the sale does not hand the note to the family confirm",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await notifyVoucherSold({ ...result.voucher, note: saleNote });",
+              "to": "await notifyVoucherSold({ ...result.voucher });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "the witness probes the wrong column",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "probe: { kind: \"column\", table: \"vouchers\", column: \"note\" },",
+              "to": "probe: { kind: \"column\", table: \"vouchers\", column: \"notes\" },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "the schema loses the column",
+      "files": [
+        {
+          "file": "src/db/schema.ts",
+          "edits": [
+            {
+              "from": "  // 🔻 TASK-732 (`0068`) — the sale's own Remark (Khwan's Q5: \"Remark เอามาจากตอนสร้างค่ะ\"): optional, trimmed, ≤ 200; printed in the family's «voucher sold» confirm only when non-empty.\n  note: text(\"note\"),\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

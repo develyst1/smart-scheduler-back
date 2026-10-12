@@ -70,7 +70,7 @@ describe("🔴 the widening is NARROW — only the admin menu opens a link", () 
   test("…and by TYPE: `RichMenuArea` stays postback-only; the uri area is its own type", () => {
     const S = src("src/lib/line-rich-menu.ts");
     const area = region(S, "export interface RichMenuArea {", "\n}\n");
-    expect(area).toContain('action: { type: "postback"; data: string; label?: string };');
+    expect(area).toContain('action: { type: "postback"; data: string; label?: string; displayText?: string };'); // 🔻 TASK-734: + displayText (the admin cell only)
     expect(area).not.toContain('"uri"');
     expect(S).toContain("export interface AdminMenuDef extends Omit<RichMenuDef, \"areas\"> {\n  areas: [UriMenuArea];");
   });
@@ -180,8 +180,8 @@ describe("🔑 the link door — an admin gets the admin menu at verify, through
 
 describe("🚫 what must not move", () => {
   test("the unknown, customer and teacher menus — byte-identical definitions", () => {
-    expect(JSON.stringify(UNKNOWN_MENU)).toBe('{"size":{"width":2500,"height":843},"selected":false,"name":"smart-scheduler-unknown","chatBarText":"เมนู | Menu","areas":[{"bounds":{"x":0,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=enter"}},{"bounds":{"x":1250,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=admin"}}]}');
-    expect(JSON.stringify(CUSTOMER_MENU)).toBe('{"size":{"width":2500,"height":1686},"selected":false,"name":"smart-scheduler-customer","chatBarText":"เมนู | Menu","areas":[{"bounds":{"x":0,"y":0,"width":833,"height":843},"action":{"type":"postback","data":"action=leave"}},{"bounds":{"x":833,"y":0,"width":833,"height":843},"action":{"type":"postback","data":"action=checkin"}},{"bounds":{"x":1666,"y":0,"width":834,"height":843},"action":{"type":"postback","data":"action=mycourses"}},{"bounds":{"x":0,"y":843,"width":833,"height":843},"action":{"type":"postback","data":"action=register"}},{"bounds":{"x":833,"y":843,"width":833,"height":843},"action":{"type":"postback","data":"action=lang"}},{"bounds":{"x":1666,"y":843,"width":834,"height":843},"action":{"type":"postback","data":"action=admin"}}]}');
+    expect(JSON.stringify(UNKNOWN_MENU)).toBe('{"size":{"width":2500,"height":843},"selected":false,"name":"smart-scheduler-unknown","chatBarText":"เมนู | Menu","areas":[{"bounds":{"x":0,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=enter"}},{"bounds":{"x":1250,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=admin","displayText":"คุยกับแอดมิน"}}]}'); // 🔻 TASK-734: the admin cell shows its text
+    expect(JSON.stringify(CUSTOMER_MENU)).toBe('{"size":{"width":2500,"height":1686},"selected":false,"name":"smart-scheduler-customer","chatBarText":"เมนู | Menu","areas":[{"bounds":{"x":0,"y":0,"width":833,"height":843},"action":{"type":"postback","data":"action=leave"}},{"bounds":{"x":833,"y":0,"width":833,"height":843},"action":{"type":"postback","data":"action=checkin"}},{"bounds":{"x":1666,"y":0,"width":834,"height":843},"action":{"type":"postback","data":"action=mycourses"}},{"bounds":{"x":0,"y":843,"width":833,"height":843},"action":{"type":"postback","data":"action=register"}},{"bounds":{"x":833,"y":843,"width":833,"height":843},"action":{"type":"postback","data":"action=lang"}},{"bounds":{"x":1666,"y":843,"width":834,"height":843},"action":{"type":"postback","data":"action=admin","displayText":"คุยกับแอดมิน"}}]}'); // 🔻 TASK-734
     expect(JSON.stringify(TEACHER_MENU)).toBe('{"size":{"width":2500,"height":843},"selected":false,"name":"smart-scheduler-teacher","chatBarText":"เมนู | Menu","areas":[{"bounds":{"x":0,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=schedule"}},{"bounds":{"x":1250,"y":0,"width":1250,"height":843},"action":{"type":"postback","data":"action=lang"}}]}');
   });
   test("the ACCOUNT DEFAULT stays the unknown menu — it is what keeps sign-up alive for new visitors", () => {
