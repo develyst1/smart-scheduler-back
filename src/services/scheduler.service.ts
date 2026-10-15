@@ -2145,6 +2145,14 @@ export async function getSellablePackages() {
   };
 }
 
+/** TASK-805 (REQ-121) — EVERY active program, for `GET /api/subjects`: the teacher form must offer a program nobody teaches yet (its picker used to be the union of
+ *  subjects already on some teacher, so an unassigned program could never be assigned — and DUO's Program dropdown stayed empty). 🔴 Deliberately not `/sellable-packages`:
+ *  that answers "what can be sold" (per price package, gated by the booking menus); this answers "what can be taught". Active only, by name; `kind` as TASK-437. */
+export async function listSubjects() {
+  const rows = await db.select({ id: subjects.id, name: subjects.name, kind: subjects.kind }).from(subjects).where(eq(subjects.active, true)).orderBy(asc(subjects.name));
+  return { subjects: rows.map((s) => ({ id: s.id, name: s.name, kind: s.kind ?? "PRIVATE" })) };
+}
+
 // ─────────────────── Import an in-progress entitlement (SPEC-025 / TASK-079) ───────────────────
 //
 // 🔴 **A separate VERB, not a flag on the sale path.** Since TASK-066 revenue posts at the point of sale, so

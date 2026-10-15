@@ -185,6 +185,7 @@ export const api = new Hono()
     c.json(await svc.getCourseExpiryHistory(c.req.param("id"))),
   )
   .get("/sellable-packages", async (c) => c.json(await svc.getSellablePackages()))
+  .get("/subjects", async (c) => c.json(await svc.listSubjects())) // TASK-805 (REQ-121) — every ACTIVE program, for the teacher form
   // SPEC-070 / TASK-225 (REQ-078 AC-6) — the BACKOFFICE catalogue (active INCOME `bo.item`s), for the อื่นๆ
   // charge picker. Read-only. 🔴 Deliberately not `/sellable-packages`: those are the frontoffice product
   // codes, and charging an อื่นๆ booking as "a course-6" would post course revenue with no course behind it.

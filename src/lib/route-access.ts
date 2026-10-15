@@ -131,6 +131,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── the booking FORM's reads (opened from both pages) ──
   "POST /rentals": act(CAL_BOOK, "action:calendar.rental-sale"), // + `action:sales.discount` (service)
   "GET /sellable-packages": read(CAL_BOOK),
+  "GET /subjects": read(TEACHERS), // 🔻 TASK-805 (REQ-121) — every ACTIVE program for the teacher form: the Teachers menu ONLY (not the booking menus)
   "GET /catalog-items": read(CAL_BOOK),
   "GET /slots/availability": read(CAL_BOOK),
   "GET /entitlements/:id/plan": read([...CAL_BOOK, "menu:overview"]),

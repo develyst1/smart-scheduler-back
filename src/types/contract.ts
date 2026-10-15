@@ -477,6 +477,10 @@ export interface CreateVoucherResponse {
   voucher: VoucherSummary;
 }
 
+/** TASK-805 (REQ-121) — `GET /api/subjects`: every ACTIVE program (assigned to a teacher or not), by name. */
+export interface SubjectListItemDTO { id: string; name: string; kind: "PRIVATE" | "DUO" }
+export interface SubjectListResponse { subjects: SubjectListItemDTO[] }
+
 /**
  * GET/PATCH /api/teachers/type-order — persisted global ordering of the 3 teacher
  * types (B.2). Drives calendar column + teacher-group order, server-side authoritative.

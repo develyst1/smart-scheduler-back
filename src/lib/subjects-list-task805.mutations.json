@@ -1,0 +1,128 @@
+{
+  "task": "TASK-805",
+  "proves": "src/lib/subjects-list-task805.test.ts",
+  "note": "REQ-121 GET /api/subjects. B1 the ACTIVE filter dropped (a retired program would be offered) · B2 `kind` dropped (always PRIVATE) · B3 the door moved to the booking menus · B4 the door widened to Teachers + booking menus · B5 only programs already assigned to a teacher (the very bug) · B6 order changed · B7 the route gone · B8 `kind` key dropped from listSubjects — must ALSO bite TASK-437's pin (subject-kind-req095-13-4a), Porter's condition. (Set lives beside its test, like every set in this repo.)",
+  "tests": "src/lib/subjects-list-task805.test.ts src/lib/subject-kind-req095-13-4a.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "🔴 the ACTIVE filter is dropped — a retired program would be offered",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".from(subjects).where(eq(subjects.active, true)).orderBy(asc(subjects.name));\n  return { subjects: rows.map",
+              "to": ".from(subjects).orderBy(asc(subjects.name));\n  return { subjects: rows.map"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "what": "🔴 `kind` is dropped — every program answers PRIVATE",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "kind: s.kind ?? \"PRIVATE\" })) };",
+              "to": "kind: \"PRIVATE\" })) };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "what": "the door is moved to the booking menus — a Teachers-only admin gets 403",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"GET /subjects\": read(TEACHERS),",
+              "to": "\"GET /subjects\": read(CAL_BOOK),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "what": "🔴 the door is widened to the booking menus as well",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"GET /subjects\": read(TEACHERS),",
+              "to": "\"GET /subjects\": read([...TEACHERS, ...CAL_BOOK]),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "what": "🔴 only programs already assigned to a teacher — the exact REQ-121 bug",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".from(subjects).where(eq(subjects.active, true)).orderBy(asc(subjects.name));\n  return { subjects: rows.map",
+              "to": ".from(subjects).innerJoin(teacherSubjects, eq(teacherSubjects.subjectId, subjects.id)).where(eq(subjects.active, true)).orderBy(asc(subjects.name));\n  return { subjects: rows.map"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "what": "the order is reversed (by name, descending)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".where(eq(subjects.active, true)).orderBy(asc(subjects.name));\n  return { subjects: rows.map",
+              "to": ".where(eq(subjects.active, true)).orderBy(desc(subjects.name));\n  return { subjects: rows.map"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "what": "the route is gone (renamed)",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": ".get(\"/subjects\", async",
+              "to": ".get(\"/subjectz\", async"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "what": "🔴 the `kind` key is dropped from listSubjects — must bite BOTH this task's test and TASK-437's builder-count pin",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "return { subjects: rows.map((s) => ({ id: s.id, name: s.name, kind: s.kind ?? \"PRIVATE\" })) };",
+              "to": "return { subjects: rows.map((s) => ({ id: s.id, name: s.name })) };"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

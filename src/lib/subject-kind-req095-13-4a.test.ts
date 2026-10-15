@@ -67,7 +67,7 @@ describe("🔴 the migration — 0050, counted, the column with its default on a
   });
 });
 
-describe("🔴 the two readers carry `kind`; no third subject reader exists; the rule by value; the refusals at both creates BEFORE the tx", () => {
+describe("🔴 the readers carry `kind` (picker mapper · /sellable-packages · GET /subjects — TASK-805); no unlisted subject reader exists; the rule by value; the refusals at both creates BEFORE the tx", () => {
   test("`teacher.subjects[]` (the ONE picker mapper) and `GET /sellable-packages` carry `kind` (PRIVATE when a row has none)", async () => {
     const dto: any = toTeacherDTO({ id: T1, name: "Bank", nickname: "Bank", type: "FULL_TIME", workDays: [1], teacherSubjects: [{ subject: { id: "s1", name: "Balance Bike", active: true, kind: "DUO" } }, { subject: { id: "s2", name: "Bike", active: true } }] });
     expect(dto.subjects).toEqual([{ id: "s1", name: "Balance Bike", kind: "DUO" }, { id: "s2", name: "Bike", kind: "PRIVATE" }]);
@@ -77,9 +77,10 @@ describe("🔴 the two readers carry `kind`; no third subject reader exists; the
     const duo4 = pk.packages.find((p: any) => p.priceGroup === "balance-duo" && p.size === 4);
     expect(duo4.subjects).toEqual([{ id: "s1", name: "Duo SURFSKATE", kind: "DUO" }]);
     expect(pk.packages.find((p: any) => p.priceGroup === "bike-skate" && p.size === 4).subjects).toEqual([{ id: "s2", name: "Skate", kind: "PRIVATE" }]);
-    // no third reader: the `{ id, name }` subject shape is built in exactly these two places
+    // no UNLISTED reader: the `{ id, name, kind }` subject shape is built in exactly these places — the picker mapper (1) and, in the scheduler service, `getSellablePackages` + the
+    // LISTED third, `GET /subjects` (`listSubjects`, 🔻 TASK-805 / REQ-121) = 2. A builder that drops `kind` falls out of the count, so each still carries it.
     expect((code(src("src/db/mappers.ts")).match(/name: ts\.subject\.name,\n\s+kind: ts\.subject\.kind \?\? "PRIVATE",/g) ?? []).length).toBe(1);
-    expect((SCHED.match(/\.map\(\(s\) => \(\{ id: s\.id, name: s\.name, kind: s\.kind \?\? "PRIVATE" \}\)\)/g) ?? []).length).toBe(1);
+    expect((SCHED.match(/\.map\(\(s\) => \(\{ id: s\.id, name: s\.name, kind: s\.kind \?\? "PRIVATE" \}\)\)/g) ?? []).length).toBe(2);
   });
   test("`assertSubjectKindForCourse` by value: DUO ⇔ DUO passes; DUO on PRIVATE ⇒ NOT_A_DUO_SUBJECT; Private on DUO ⇒ DUO_SUBJECT; a row without a kind reads PRIVATE", () => {
     expect(() => assertSubjectKindForCourse({ kind: "DUO" }, true)).not.toThrow();
