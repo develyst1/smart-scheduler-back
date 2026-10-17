@@ -1027,7 +1027,7 @@ export async function assertHouseholdNotSuspended(exec: any, studentId: string) 
  * weekday, and (if FREELANCE) has a budget set. ONE definition — used by `insertBooking` (new bookings),
  * `moveBooking` and `applyPlanChange` (per-session edits) so a move can't skip what an insert enforces.
  */
-export async function assertTeacherBookable(exec: any, teacherId: string, date: string) { // TASK-428: exported — the series doors
+export async function assertTeacherBookable(exec: any, teacherId: string, date: string, opts: { allowLeave?: boolean } = {}) { // TASK-428: exported — the series doors · TASK-813: `allowLeave`
   const teacher = await exec.query.teachers.findFirst({
     where: (t: any, { eq }: any) => eq(t.id, teacherId),
   });
@@ -1040,7 +1040,11 @@ export async function assertTeacherBookable(exec: any, teacherId: string, date: 
   }
   // 🔴 TASK-561 (REQ-110 item 2) — an ADVANCE leave blocks the whole day for new work with this teacher (THE reader; only
   // today or later — a back-dated write passes). Seam A: every `insertBooking` caller + every move / swap / co-teacher door.
-  if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);
+  // 🔻 TASK-813 (REQ-123 §4) — `allowLeave` skips THIS ONE check and nothing else: ONLY `insertBooking` passes it, ONLY for a row born as a planned absence (a week the family ticked at
+  // course create — not a class, so the teacher's leave does not clash with it). Exists / archived / workday / budget above and below still run; the reader and its text stay the one.
+  if (!opts.allowLeave) {
+    if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);
+  }
   // SPEC-005 server backstop to the FE `bookable` gate: a FREELANCE teacher with no budget row can't be
   // booked (FT/PT are not gated — salary deferred).
   if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {
@@ -1274,7 +1278,10 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
   input: any,
   opts: { pendingSlot?: boolean } = {},
 ): Promise<string> {
-  await assertTeacherBookable(exec, input.teacherId, input.date);
+  // 🔻 TASK-813 (REQ-123 §4) — a row born as a PLANNED ABSENCE (`SICK_LEAVE` + `plannedAtCreation`, the course create's ticked week) is not a class: the teacher's advance leave does not refuse it.
+  // Every other row — a normal week, a voucher, a camp row — still meets the leave check below, exactly as before.
+  if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true });
+  else await assertTeacherBookable(exec, input.teacherId, input.date);
   // TASK-420 — THE chokepoint for the course's second child: a course-linked row copies `co_student_id` from its course
   // (one read, unless the caller already knows it), so every per-row reader sees both kids without the course.
   const coStudentId: string | null = input.coStudentId ?? (input.courseId ? await courseCoStudentId(exec, input.courseId) : null);

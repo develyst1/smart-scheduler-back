@@ -1,0 +1,48 @@
+{
+  "task": "TASK-813",
+  "proves": "src/lib/planned-absence-vs-leave-task813.test.ts",
+  "note": "REQ-123 §4. C1 the skip removed (the sid 409 returns) · C2 the leave check skipped for EVERY row · C3 keyed on SICK_LEAVE alone (no plannedAtCreation) · C4 keyed on plannedAtCreation alone (no SICK_LEAVE) · C5 the leave row deleted at create · C6 allowLeave skips the freelance-budget check too · C7 allowLeave skips the archived/workday checks too · C8 a second door (the plan editor's move) passes allowLeave. Note on C3: no OTHER insertBooking caller inserts a SICK_LEAVE row today (only the course create does), so C3 bites through the by-value insertBooking test, not through a service path.",
+  "tests": "src/lib/planned-absence-vs-leave-task813.test.ts src/lib/teacher-leave-day-task561.test.ts src/services/resume-picks-teacher-req089.test.ts",
+  "mutations": [
+    {
+      "id": "C1",
+      "what": "🔴 the skip is removed — a ticked week on a leave day is refused again (the sid 409)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true });", "to": "await assertTeacherBookable(exec, input.teacherId, input.date, {});" }] }]
+    },
+    {
+      "id": "C2",
+      "what": "🔴 the leave check is skipped for EVERY row — an un-ticked week on a leave day is created",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date))", "to": "  if (false) {\n    if (await teacherLeaveOn(exec, teacher.id, date))" }] }]
+    },
+    {
+      "id": "C3",
+      "what": "the skip is keyed on SICK_LEAVE alone — any sick-leave row would pass a leave day",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (input.status === \"SICK_LEAVE\" && input.plannedAtCreation === true) await assertTeacherBookable", "to": "if (input.status === \"SICK_LEAVE\") await assertTeacherBookable" }] }]
+    },
+    {
+      "id": "C4",
+      "what": "the skip is keyed on plannedAtCreation alone — a CONFIRMED row carrying the flag would pass a leave day",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (input.status === \"SICK_LEAVE\" && input.plannedAtCreation === true) await assertTeacherBookable", "to": "if (input.plannedAtCreation === true) await assertTeacherBookable" }] }]
+    },
+    {
+      "id": "C5",
+      "what": "🔴 the teacher's leave day is deleted at create — the leave must stay recorded",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "        const groupId = input.groupKey && !absent ? await seatOnGroup(tx, input.groupKey, s.date) : null;\n        await insertBooking(tx, studentId, {\n          ...(absent ?", "to": "        const groupId = input.groupKey && !absent ? await seatOnGroup(tx, input.groupKey, s.date) : null;\n        if (absent) await liftAdvanceLeave(tx, s.teacherId, s.date).catch(() => {});\n        await insertBooking(tx, studentId, {\n          ...(absent ?" }] }]
+    },
+    {
+      "id": "C6",
+      "what": "allowLeave also skips the freelance-budget check — a teacher with no budget would pass for a planned absence",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {\n    throw badRequest(`ครู ${teacher.nickname} ยังไม่ได้ตั้งงบ", "to": "  if (!opts.allowLeave && await isFreelanceSetupIncomplete(exec, teacher.id, teacher.type)) {\n    throw badRequest(`ครู ${teacher.nickname} ยังไม่ได้ตั้งงบ" }] }]
+    },
+    {
+      "id": "C7",
+      "what": "allowLeave also skips the archived check — an archived teacher would pass for a planned absence",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (teacher.archived) throw badRequest(`ครู ${teacher.nickname} ถูกปิดการใช้งานแล้ว`);", "to": "  if (teacher.archived && !opts.allowLeave) throw badRequest(`ครู ${teacher.nickname} ถูกปิดการใช้งานแล้ว`);" }] }]
+    },
+    {
+      "id": "C8",
+      "what": "🔴 a second door (the resume-booking move onto a teacher) also passes allowLeave — a normal move onto a leave day would pass",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date);", "to": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowLeave: true });" }] }]
+    }
+  ]
+}
