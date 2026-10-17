@@ -1,0 +1,597 @@
+{
+  "task": "TASK-741",
+  "proves": "src/lib/som-contract-task741.test.ts",
+  "note": "REQ-124 (1/3): GET /reports/som serves Palm's contract (filters + Today + Existing Customers + Demographic + Activity/Program). The DoD's six = M1-M4 the badge filter dropped from one section · M5 courseEligible's idea of active · M6/M7 CANCELLED counted · M8 the old age bands · M10/M11 the person-once rule broken · M12 month ignored; M38/M39 Today's rate (review 1: attended ÷ confirmed); the rest: the past-month rebuild, the declared defaults flipped, the READ's filters, the merge, the validator, and the old report touched.",
+  "tests": "src/lib/som-contract-task741.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "the badge filter is dropped from the PERSON sections (Demographic / Activity read every attended session)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "inMonth(b.date) && passes(b));",
+              "to": "inMonth(b.date));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the badge filter is dropped from TODAY",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date === today && !b.isSeat && passes(b))",
+              "to": "b.date === today && !b.isSeat)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the badge filter is dropped from the ENTITLEMENTS (a course / voucher is in every branch)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(rowsOfEntitlement.get(entitlementId) ?? []).some(passes);",
+              "to": "(rowsOfEntitlement.get(entitlementId) ?? []).length > 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "the badge filter is dropped from the TRIAL / 1 HR classes",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date > to || !passes(b)) continue;",
+              "to": "b.date > to) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "`courseEligible`'s idea of active: an ENDED / PAUSED course still counts (courseStatus no longer decides)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "at.courseStatus(c, asOf) === \"ACTIVE\" && inBranch(c.id)",
+              "to": "[\"ACTIVE\", \"CANCELLED\", \"DROPPED\"].includes(at.courseStatus(c, asOf) ?? \"\") && inBranch(c.id)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "a CANCELLED trial / 1 HR is counted",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.bookingType !== type || b.status === \"CANCELLED\" ||",
+              "to": "if (b.bookingType !== type ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "a CANCELLED row makes a course «in a branch»",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.status === \"CANCELLED\") continue;\n    const id = b.courseId ?? b.voucherId;\n    if (!id) continue;",
+              "to": "const id = b.courseId ?? b.voucherId;\n    if (!id) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "the OLD age bands: the first band is `0-5` again",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "{ key: \"1-2\", min: 0, max: 2 },",
+              "to": "{ key: \"0-5\", min: 0, max: 5 },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "an infant (age 0) is not filed under `1-2` (falls to unknown)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "{ key: \"1-2\", min: 0, max: 2 },",
+              "to": "{ key: \"1-2\", min: 1, max: 2 },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "what": "the person-once rule is broken in Demographic (a child with 3 sessions counts 3 times)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "[...new Set(attended.flatMap((b) => [...b.studentIds]))]",
+              "to": "attended.flatMap((b) => [...b.studentIds])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "what": "the person-once rule is broken in Active Course (a child with 2 courses counts twice)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "activeCourse: unit === \"PEOPLE\" ? courseHolders.size : activeCourses.length,",
+              "to": "activeCourse: activeCourses.length,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "what": "`month` is ignored: every month-bound section reads the CURRENT month",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const monthFrom = `${month}-01`;",
+              "to": "const monthFrom = `${today.slice(0, 7)}-01`;"
+            },
+            {
+              "from": "const monthTo = monthEnd(month);",
+              "to": "const monthTo = monthEnd(today.slice(0, 7));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M13",
+      "what": "a past month is not rebuilt: the rows delivered AFTER the month end stay on the counter",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "USED_STATUSES.has(b.status) && b.date > date).length;",
+              "to": "USED_STATUSES.has(b.status) && b.date > \"9999-12-31\").length;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M14",
+      "what": "the expiry IN FORCE that day is ignored (always today's expiry)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return later[0]?.fromDate ?? current;",
+              "to": "return current;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M15",
+      "what": "a course bought AFTER the month end counts for that month",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "bangkokDate(c.createdAt) > date // not bought yet",
+              "to": "false // not bought yet"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M16",
+      "what": "a course ended / paused AFTER the month end is treated as ended for it",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(when != null && bangkokDate(when) <= date ? when : null)",
+              "to": "when"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M17",
+      "what": "the 3-month window is 2 months (recentFrom = month − 1)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const recentFrom = addMonths(month, -2);",
+              "to": "const recentFrom = addMonths(month, -1);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M18",
+      "what": "a VOUCHER bought after the trial moves it out (Q2.2 flipped)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const TRIAL_MOVES_OUT_ON_VOUCHER = false;",
+              "to": "export const TRIAL_MOVES_OUT_ON_VOUCHER = true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M19",
+      "what": "a course moves a 1 HR out (Q2.3 flipped)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const SINGLE_SESSION_MOVES_OUT = false;",
+              "to": "export const SINGLE_SESSION_MOVES_OUT = true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M20",
+      "what": "a course bought the SAME day as the trial no longer moves it out (`>=` becomes `>`)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) >= fromDate",
+              "to": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) > fromDate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M21",
+      "what": "K1 flipped: Active Course / Voucher count PACKAGES by default",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "\"PEOPLE\" | \"PACKAGES\" = \"PEOPLE\";",
+              "to": "\"PEOPLE\" | \"PACKAGES\" = \"PACKAGES\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M22",
+      "what": "a GROUP's seat is a row of TODAY",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date === today && !b.isSeat && passes(b))",
+              "to": "b.date === today && passes(b))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M23",
+      "what": "a NO_SHOW is an attended session (Demographic / Activity)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "isLesson(b) && b.status === \"ATTENDED\"",
+              "to": "isLesson(b) && (b.status === \"ATTENDED\" || b.status === \"NO_SHOW\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M24",
+      "what": "a district code that is not in the dataset becomes a bucket with no name",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return labelOfDistrict.get(s.districtCode) ? s.districtCode : null;",
+              "to": "return s.districtCode;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M25",
+      "what": "`unknown` is no longer last in Activity / Program",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(a.key === UNKNOWN_KEY ? 1 : 0) - (b.key === UNKNOWN_KEY ? 1 : 0) || ",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M26",
+      "what": "an INACTIVE subject with no sessions is listed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (s.active) catOf(s.id, s.name);",
+              "to": "catOf(s.id, s.name);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M27",
+      "what": "the merge drops the old `today.expected`",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "today: { ...old.today, ...fresh.today },",
+              "to": "today: fresh.today,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M28",
+      "what": "the READ takes pending_slot rows",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "where: (b: any, { eq }: any) => eq(b.pendingSlot, false),",
+              "to": "where: undefined,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M29",
+      "what": "the READ loses the seat flag (a seat becomes a row of the day)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "isSeat: b.groupId != null,",
+              "to": "isSeat: false,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M30",
+      "what": "the READ names only the PRIMARY child of a DUO booking",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "studentIds: duoStudentIds(b),",
+              "to": "studentIds: [b.studentId],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M31",
+      "what": "the READ names only the PRIMARY child of a DUO course",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "studentIds: duoStudentIds(c),",
+              "to": "studentIds: [c.studentId],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M32",
+      "what": "the READ hands the counters no expiry moves",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "expiryChanges: courseMovesBy.get(c.id) ?? [],",
+              "to": "expiryChanges: [],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M33",
+      "what": "the READ takes ARCHIVED parents too (no `activeParentWhere`)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "db.query.parents.findMany({ where: activeParentWhere() })",
+              "to": "db.query.parents.findMany()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M34",
+      "what": "the district label loses its province",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "return district && province ? `${district}, ${province}` : null;",
+              "to": "return district ? district : null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M35",
+      "what": "a FUTURE month is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": ".refine((m) => m <= bangkokNow().date.slice(0, 7), \"เดือนต้องไม่เป็นอนาคต\")",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M36",
+      "what": "the route does not forward the filters to the new service",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "somContract.getSomContract(q)",
+              "to": "somContract.getSomContract()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M38",
+      "what": "Today's rate is the Daily Report's circle again (÷ confirmed + on leave) instead of attended ÷ confirmed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "attendanceRate: day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0 }",
+              "to": "attendanceRate: day.attendanceRate }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M39",
+      "what": "Today's rate loses its confirmed = 0 guard (NaN)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0",
+              "to": "Math.round((day.attended / day.confirmed) * 100)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M37",
+      "what": "the OLD getSomReport is edited (7 test files pin its text; the front still reads it)",
+      "files": [
+        {
+          "file": "src/services/som-report.service.ts",
+          "edits": [
+            {
+              "from": "const RECENT_TRIAL_DAYS = 90; // ~3 months",
+              "to": "const RECENT_TRIAL_DAYS = 91; // ~3 months"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

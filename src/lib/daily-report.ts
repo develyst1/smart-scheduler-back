@@ -104,3 +104,113 @@ export function countDaily(rowsOfDay: readonly ReportRow[], opts: { teacherId?: 
     byTeacher,
   };
 }
+
+// ═════════════════════ 🔻 TASK-743 (REQ-124 3/3) — «Others Program»: `kidsByProgram` (Palm `backend-daily-report.md` §10) ═════════════════════
+// Counts CHILDREN (not classes) of the day's group work, in 4 fixed programs. Pure: the service reads the rows (+ the group's seats, + the camp week's kid count) and hands them here.
+
+/** The four programs, ALWAYS all present and in this order (an empty one is `{program, total: null, items: []}`). */
+export const PROGRAMS = ["GROUP", "ECA", "CAMP", "OTHER"] as const;
+export type Program = (typeof PROGRAMS)[number];
+
+/**
+ * 🔒 D1 (Porter, 2026-10-18: ONCE PER CLASS). An ECA / Other class is stored as ONE ROW PER HOUR and `headCount` repeats on each hour row of the same class (CHECK M10), so Palm's literal per-row sum
+ * would show 10 for a 2-hour class of 5 kids. true = `headCount` once per class (same series / title + coach + date + CONTIGUOUS hours; two separate rounds still add: 5 + 6 = 11);
+ * false = Palm's per-row sum. ONE switch, so a ruling is a one-line flip + its pin.
+ */
+export const KIDS_ONCE_PER_CLASS = true;
+/** A row in one of these statuses is out of the section entirely (Palm §10.3). */
+export const PROGRAM_EXCLUDED_STATUSES: ReadonlySet<string> = new Set(["CANCELLED", "PAUSED"]);
+/** A GROUP's seat in one of these is not a child of the group today (M9: the seats are the kids, `headCount` is only the CAP). */
+export const SEAT_NOT_A_KID_STATUSES: ReadonlySet<string> = new Set(["CANCELLED", "SICK_LEAVE", "PAUSED"]);
+
+/** A day row with what the program counters need on top of `ReportRow`. Every extra field is optional: the 737 counters read none of them. */
+export interface ProgramRow extends ReportRow {
+  teacherId?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  otherKind?: string | null;
+  /** `other_title` — the group's name, the school (ECA), the booking's title. */
+  title?: string | null;
+  headCount?: number | null;
+  seriesKey?: string | null;
+  /** A camp hour row's WEEK (via its `camp_week_day_id`). */
+  campWeekId?: string | null;
+  /** A GROUP row's seats' statuses (null / empty = no seat data). */
+  seatStatuses?: readonly string[] | null;
+}
+export interface ProgramItem { name: string; kids: number | null }
+export interface ProgramBlock { program: Program; total: number | null; items: ProgramItem[] }
+/** The camp weeks of the day: their name and `camp_days` count for that date (the calendar's `campKidCount`, one number per week per date). */
+export type CampKids = Readonly<Record<string, { name: string; kids: number | null }>>;
+
+const hhmm5 = (t: string | undefined): string => (t ?? "").slice(0, 5);
+/** `null + n = n`; all null / nothing ⇒ null (never 0 for «not recorded»). */
+const addKids = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : a + b);
+
+/** The program a row belongs to, or null for a lesson (not this section's business). */
+function programOf(r: ProgramRow): Program | null {
+  if (r.bookingType === "GROUP") return "GROUP";
+  if (r.bookingType !== "OTHER") return null;
+  if (r.campWeekId || r.otherKind === "CAMP") return "CAMP";
+  return r.otherKind === "ECA" ? "ECA" : "OTHER";
+}
+
+/**
+ * D1 in ONE function: collapse a program's hour rows into CLASSES — same series (else title) + coach + date and the next hour starting exactly where the last ended. A class carries its `headCount` once
+ * (the first recorded one). With the switch off every row is its own class (Palm's per-row sum).
+ */
+export function classesOf(rows: readonly ProgramRow[], oncePerClass: boolean = KIDS_ONCE_PER_CLASS): Array<{ name: string; kids: number | null }> {
+  const name = (r: ProgramRow) => (r.title ?? "").trim() || r.otherKind || "OTHER";
+  if (!oncePerClass) return rows.map((r) => ({ name: name(r), kids: r.headCount ?? null }));
+  const key = (r: ProgramRow) => `${r.seriesKey ?? name(r)}|${r.teacherId ?? ""}|${r.date ?? ""}`;
+  const sorted = [...rows].sort((a, b) => key(a).localeCompare(key(b)) || hhmm5(a.startTime).localeCompare(hhmm5(b.startTime)));
+  const out: Array<{ name: string; kids: number | null; k: string; end: string }> = [];
+  for (const r of sorted) {
+    const last = out[out.length - 1];
+    if (last && last.k === key(r) && last.end === hhmm5(r.startTime)) {
+      last.end = hhmm5(r.endTime);
+      last.kids = last.kids ?? r.headCount ?? null; // the same number repeats on each hour row
+    } else out.push({ name: name(r), kids: r.headCount ?? null, k: key(r), end: hhmm5(r.endTime) });
+  }
+  return out.map(({ name: n, kids }) => ({ name: n, kids }));
+}
+
+/** Merge items of the same name (Palm K1: two rounds of «STA» in a day are ONE item, 5 + 6 = 11), kids descending (not recorded last), then name. */
+function mergeItems(items: readonly ProgramItem[]): ProgramItem[] {
+  const byName = new Map<string, number | null>();
+  for (const i of items) byName.set(i.name, addKids(byName.get(i.name) ?? null, i.kids));
+  return [...byName].map(([name, kids]) => ({ name, kids })).sort((a, b) => (b.kids ?? -1) - (a.kids ?? -1) || a.name.localeCompare(b.name));
+}
+
+/**
+ * The whole section from the day's rows. `teacherId` filters it (Palm K2): a row belongs to a coach if he is the primary coach OR an extra one — and a booking is ONE row, so an ECA with two coaches
+ * is counted once. `camp` carries each camp week's name and kid count for the date.
+ */
+export function kidsByProgram(rowsOfDay: readonly ProgramRow[], opts: { teacherId?: string; camp?: CampKids; oncePerClass?: boolean } = {}): ProgramBlock[] {
+  const rows = rowsOfDay.filter((r) => !PROGRAM_EXCLUDED_STATUSES.has(r.status) && (!opts.teacherId || r.coachIds.includes(opts.teacherId)));
+  const of = (p: Program) => rows.filter((r) => programOf(r) === p);
+
+  const items: Record<Program, ProgramItem[]> = { GROUP: [], ECA: [], CAMP: [], OTHER: [] };
+  // GROUP: the kids are the SEATS that are live or delivered — never `headCount`, which on a group row is the cap
+  for (const r of of("GROUP")) {
+    const seats = r.seatStatuses ?? [];
+    items.GROUP.push({ name: (r.title ?? "").trim() || "GROUP", kids: seats.length ? seats.filter((s) => !SEAT_NOT_A_KID_STATUSES.has(s)).length : null });
+  }
+  items.ECA = classesOf(of("ECA"), opts.oncePerClass);
+  items.OTHER = classesOf(of("OTHER"), opts.oncePerClass);
+  // CAMP: ONE item per camp WEEK, its kid count of the date — never multiplied by the hour rows
+  const weeks = new Set<string>();
+  for (const r of of("CAMP")) {
+    const wk = r.campWeekId ?? `title:${(r.title ?? "").trim()}`;
+    if (weeks.has(wk)) continue;
+    weeks.add(wk);
+    const w = r.campWeekId ? opts.camp?.[r.campWeekId] : undefined;
+    items.CAMP.push({ name: w?.name ?? ((r.title ?? "").trim() || "CAMP"), kids: w?.kids ?? null });
+  }
+
+  return PROGRAMS.map((program) => {
+    const merged = mergeItems(items[program]);
+    return { program, total: merged.reduce<number | null>((t, i) => addKids(t, i.kids), null), items: merged };
+  });
+}

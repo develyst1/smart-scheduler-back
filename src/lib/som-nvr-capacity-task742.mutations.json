@@ -1,0 +1,698 @@
+{
+  "task": "TASK-742",
+  "proves": "src/lib/som-nvr-capacity-task742.test.ts",
+  "note": "REQ-124 (2/3): SOM New vs Renewing (6 cards + the list endpoint) and Coach Capacity. The DoD's six = N1 a voucher counted without an ended course · N2 the purchase month used instead of the trial month · N3 renew without an ended course · N4 the list ≠ the card · N5 leave days not subtracted · N6 byType as an average of percentages; the rest: the weekday / weekend split, what counts as booked, the trial / renew / not-renewed rules, the READ, the route and its access.",
+  "tests": "src/lib/som-nvr-capacity-task742.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "a voucher is a RENEW whatever the child's history (no ended course needed)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "kindOf([v.studentId], day) !== \"RENEW\") continue;",
+              "to": "false) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "the course's PURCHASE month is used instead of the 1st Trial's month",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const assigned = trial ? trial.date.slice(0, 7) : day.slice(0, 7);",
+              "to": "const assigned = day.slice(0, 7);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "a renew without an ended course (any earlier course makes it a renew)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return earlier.every((o) => RENEW_ENDED_STATUSES.has(at.courseStatus(o, day) ?? \"\")) ? \"RENEW\" : \"NEITHER\";",
+              "to": "return \"RENEW\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "the card is not its list (firstTrial is one more than its rows)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "firstTrial: firstTrial.length,",
+              "to": "firstTrial: firstTrial.length + 1,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "the advance-leave days are not taken off the available hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (!t.workDays.includes(dayOfWeek(d)) || leave.has(`${t.id}|${d}`)) continue;",
+              "to": "if (!t.workDays.includes(dayOfWeek(d))) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "byType's weekday % is the AVERAGE of its coaches' percentages, not computed from the sums",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }) };",
+              "to": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }), weekdayPct: mine.length ? Math.round(mine.reduce((s, p) => s + p.weekdayPct, 0) / mine.length) : 0 };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "Saturday counts as a weekday (the weekend is Sunday only)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "dayOfWeek(date) === 0 || dayOfWeek(date) === 6;",
+              "to": "dayOfWeek(date) === 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N8",
+      "what": "a CANCELLED row counts as booked hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "CAPACITY_NOT_COUNTED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\"]);",
+              "to": "CAPACITY_NOT_COUNTED_STATUSES: ReadonlySet<string> = new Set([]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N9",
+      "what": "a group's SEAT counts as booked hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES.has(b.status)",
+              "to": "if (CAPACITY_NOT_COUNTED_STATUSES.has(b.status)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N10",
+      "what": "an ECA / camp (OTHER) row counts as booked hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "|| !(isLesson(b) || b.bookingType === \"GROUP\") ||",
+              "to": "|| false ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N11",
+      "what": "the extra coaches of a row are ignored",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "[b.teacherId, ...(b.extraTeacherIds ?? [])]",
+              "to": "[b.teacherId]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N12",
+      "what": "the badge filter is dropped from the booked hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date > monthEnd(month) || !passes(b)) continue;",
+              "to": "b.date > monthEnd(month)) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N13",
+      "what": "an INACTIVE / archived coach is listed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(input.teachers ?? []).filter((t) => t.active && !t.archived)",
+              "to": "(input.teachers ?? [])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N14",
+      "what": "the coaches are no longer ordered Full-time → Part-time → Freelance",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "TEACHER_TYPE_ORDER.indexOf(x.t.type) - TEACHER_TYPE_ORDER.indexOf(y.t.type) || ",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N15",
+      "what": "a percentage can pass 100",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "Math.min(CAPACITY_PCT_CAP, Math.round((booked / available) * 100))",
+              "to": "Math.round((booked / available) * 100)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N16",
+      "what": "a working day is 8 hours, not 9",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_HOURS_PER_DAY = 9;",
+              "to": "export const CAPACITY_HOURS_PER_DAY = 8;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N17",
+      "what": "booked minutes are cut down to whole hours (floor), not rounded",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "Math.round((minutes.get(t.id)?.wd ?? 0) / 60)",
+              "to": "Math.floor((minutes.get(t.id)?.wd ?? 0) / 60)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N18",
+      "what": "a child's 1st Trial is their LATEST trial, not the earliest",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const id of b.studentIds) if (!trialOf.has(id)) trialOf.set(id,",
+              "to": "for (const id of b.studentIds) trialOf.set(id,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N19",
+      "what": "a CANCELLED trial counts as a 1st Trial",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.bookingType !== \"FIRST_TRIAL\" || b.status === \"CANCELLED\") continue;",
+              "to": "if (b.bookingType !== \"FIRST_TRIAL\") continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N20",
+      "what": "a VOUCHER converts a trial (Q3.4 reversed)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "buyDay(c) >= t.date)) trialNotConverted.push(r);",
+              "to": "buyDay(c) >= t.date) && !vouchers.some((x) => x.studentId === id)) trialNotConverted.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N21",
+      "what": "a course bought BEFORE the trial converts it",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) >= t.date)) trialNotConverted.push(r);",
+              "to": "if (!courses.some((c) => c.studentIds.includes(id))) trialNotConverted.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N22",
+      "what": "two courses bought on the SAME day see each other as «earlier» (both stop being new)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "&& buyDay(o) < day); // strictly an earlier DAY",
+              "to": "&& buyDay(o) <= day); // strictly an earlier DAY"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N23",
+      "what": "a PAUSED earlier course counts as ENDED",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\"]);",
+              "to": "new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\", \"DROPPED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N24",
+      "what": "a no-trial course can fall in «previous month»",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "else if (trial && assigned === prevMonth)",
+              "to": "else if (assigned === prevMonth)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N25",
+      "what": "a trial AFTER the purchase is used as «where he came from»",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "!!t && t.date <= day)",
+              "to": "!!t)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N26",
+      "what": "the first session's coach is not the earliest (rows in insertion order)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": ".sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? \"\").localeCompare(b.startTime ?? \"\"))[0];",
+              "to": "[0];"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N27",
+      "what": "a CANCELLED row can be the pack's first session",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.status === \"CANCELLED\") continue;\n    const id = b.courseId ?? b.voucherId;\n    if (id) rowsOf.set",
+              "to": "const id = b.courseId ?? b.voucherId;\n    if (id) rowsOf.set"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N28",
+      "what": "not-renewed counts from the end day itself, not the day after",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const from = addDays(endDay, 1);",
+              "to": "const from = endDay;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N29",
+      "what": "a later renewal does NOT remove a pack from not-renewed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "from > today || renewedLater(ids, boughtDay)) return;",
+              "to": "from > today) return;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N30",
+      "what": "a voucher bought the SAME day counts as a renewal",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "vouchers.some((o) => ids.includes(o.studentId) && buyDay(o) > day);",
+              "to": "vouchers.some((o) => ids.includes(o.studentId) && buyDay(o) >= day);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N31",
+      "what": "a PAUSED course is treated as ended in not-renewed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const st = at.courseStatus(c, today);",
+              "to": "const st = at.courseStatus(c, today) === \"DROPPED\" ? \"EXPIRED\" : at.courseStatus(c, today);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N32",
+      "what": "not-renewed files a pack under the month it ended, not the month counting starts",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (from.slice(0, 7) !== month ||",
+              "to": "if (endDay.slice(0, 7) !== month ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N33",
+      "what": "a renew is counted in every month, not its purchase month",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (day.slice(0, 7) === month) renewCourse.push(",
+              "to": "if (true) renewCourse.push("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N34",
+      "what": "a voucher renew is counted in every month",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (day.slice(0, 7) !== month || !inBranch(v.id) || kindOf",
+              "to": "if (!inBranch(v.id) || kindOf"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N35",
+      "what": "the badge filter is dropped from the packs (a course is in every branch)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(rowsOf.get(id) ?? []).some(passes);",
+              "to": "(rowsOf.get(id) ?? []).length > 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N36",
+      "what": "the badge filter is dropped from the trials",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "teacherId: b.teacherId ?? null, passes: passes(b) });",
+              "to": "teacherId: b.teacherId ?? null, passes: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N37",
+      "what": "a DUO course's two names are joined with a comma",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": ".join(\" & \");",
+              "to": ".join(\", \");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N38",
+      "what": "the child's name ignores the nickname",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return (s?.nickname || s?.name || id);",
+              "to": "return (s?.name || id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N39",
+      "what": "the earlier course's status is judged TODAY, not on the purchase day",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "at.courseStatus(o, day) ?? \"\"",
+              "to": "at.courseStatus(o, today) ?? \"\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N40",
+      "what": "the merge drops the old newVsRenewing fields",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "newVsRenewing: { ...old.newVsRenewing, ...fresh.newVsRenewing },",
+              "to": "newVsRenewing: fresh.newVsRenewing,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N41",
+      "what": "the READ does not hand over the leave days",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "leaveDays: leaveRows.map((l: any) => ({ teacherId: l.teacherId, date: l.date })),",
+              "to": "leaveDays: [],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N42",
+      "what": "the READ does not hand over the extra coaches",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "extraTeacherIds: (b.additionalTeachers ?? []).map((x: any) => x.teacherId),",
+              "to": "extraTeacherIds: [],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N43",
+      "what": "the READ loses the rows' end time (a 2-hour row counts 0)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "endTime: b.endTime,",
+              "to": "endTime: b.startTime,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N44",
+      "what": "the list route ignores the :bucket",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "getNvrRows(c.req.valid(\"param\").bucket,",
+              "to": "getNvrRows(\"firstTrial\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N45",
+      "what": "the list route has no access entry",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "  \"GET /reports/som/new-vs-renewing/:bucket\": read([\"menu:som\"]), // 🔻 TASK-742 — the same menu as the page\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N46",
+      "what": "any bucket name is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "z.enum(NVR_BUCKETS)",
+              "to": "z.string()"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

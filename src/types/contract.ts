@@ -304,6 +304,53 @@ export interface DailyReportResponse {
   byBookingTypeAttended: Array<{ type: BookingType; count: number }>;
   byBookingTypeConfirmed: Array<{ type: BookingType; count: number }>;
   byTeacher: Array<{ teacherId: string; count: number; attended: number; total: number }>;
+  // 🔻 TASK-743 (REQ-124, Palm §10) — «Others Program»: CHILDREN (not classes) of the day's group work; ALWAYS the 4 programs in this order; `null` = not recorded (never 0); also filtered by `teacherId`.
+  kidsByProgram: Array<{ program: "GROUP" | "ECA" | "CAMP" | "OTHER"; total: number | null; items: Array<{ name: string; kids: number | null }> }>;
+}
+
+/**
+ * GET /api/reports/som?month=YYYY-MM[&badgeValueIds=a,b] — 🔻 TASK-741 (REQ-124, Palm's `docs/backend-som-dashboard.md`). ONLY the sections built so far are typed here; the old fields
+ * (`sportShare`, `newVsRenewing`, …) ride along unchanged until the front switches. `month` is echoed in each section; integers only.
+ */
+export interface SomBreakdown {
+  buckets: Array<{ key: string; label?: string; count: number }>;
+  known: number;
+  unknown: number;
+  total: number;
+}
+export interface SomReportResponse {
+  today: { date: IsoDate; confirmed: number; attended: number; attendanceRate: number; expected: number };
+  existingCustomers: { month: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
+  demographics: { month: string; gender: SomBreakdown; ageBand: SomBreakdown; nationality: SomBreakdown; province: SomBreakdown; district: SomBreakdown };
+  activityProgram: {
+    month: string;
+    categories: Array<{ key: string; label: string; course: number; voucher: number; singleSession: number; typeTotal: number; firstTrial: number; total: number }>;
+  };
+  // 🔻 TASK-742 — Palm §3 / §4. The old `newVsRenewing.{newByFirstTrial,newByRegistration,renewing}` ride along until the front switches.
+  newVsRenewing: { month: string; firstTrial: number; newCourseThisMonth: number; newCoursePrevMonth: number; renewCourse: number; trialNotConverted: number; notRenewed: number };
+  coachCapacity: {
+    month: string;
+    byPerson: SomCapacityPerson[];
+    byType: Array<Omit<SomCapacityPerson, "teacherId"> & { coaches: number }>;
+  };
+}
+export interface SomCapacityPerson {
+  teacherId: string;
+  teacherType: "FULL_TIME" | "PART_TIME" | "FREELANCE";
+  bookedHours: number; availableHours: number;
+  weekdayBookedHours: number; weekdayAvailableHours: number; weekdayPct: number;
+  weekendBookedHours: number; weekendAvailableHours: number; weekendPct: number;
+}
+/** GET /api/reports/som/new-vs-renewing/:bucket — `rows.length` equals that card's number. `remark` is null until K5 is built. */
+export interface NvrDetailRow {
+  studentId: string;
+  studentName: string;
+  packageLabel: string | null;
+  courseTeacherId: string | null;
+  trialTeacherId: string | null;
+  trialDate: IsoDate | null;
+  date: IsoDate | null;
+  remark: null;
 }
 
 // ═════════════════════════════ WRITE requests ═════════════════════════════

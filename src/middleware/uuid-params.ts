@@ -24,6 +24,7 @@ export const FREE_FORM_PARAMS: Readonly<Record<string, readonly string[]>> = {
   "/api/teachers/me/leave/:date": ["date"], // 🔻 TASK-582 — the advance-leave day being lifted; its route validates YYYY-MM-DD (`v.leaveDateParam`)
   "/api/teacher-leave-days/:teacherId/:date": ["date"], // 🔻 TASK-608 — the ADMIN's lift: the business date (`:teacherId` stays a uuid; `v.teacherLeaveDayParam`)
   "/api/calendar/:file": ["file"], // `<token>.ics` — mounted before this guard, declared so this map is the COMPLETE list
+  "/api/reports/som/new-vs-renewing/:bucket": ["bucket"], // 🔻 TASK-742 — one of the six card names (`v.nvrBucketParam` validates it)
   "/api/users/line-admins/:ref": ["ref"], // 🔻 TASK-538 — an opaque 16-hex handle for one LINE admin link (never the LINE id); the service validates its shape
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

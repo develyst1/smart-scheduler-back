@@ -76,7 +76,7 @@ describe("🔴 (d) a malformed `:id` is a 400 at the boundary — zero queries, 
     expect(isUuid(`${W}x`)).toBe(false);
     // the API's own param census: every `:id` / `:…Id` in the route table is a uuid, `:key` and `:date` are the only others
     const names = [...new Set(Object.keys(ROUTE_ACCESS).flatMap((k) => k.split("/").filter((s) => s.startsWith(":")).map((s) => s.slice(1))))].sort();
-    expect(names).toEqual(["date", "id", "key", "teacherId"]);
+    expect(names).toEqual(["bucket", "date", "id", "key", "teacherId"]); // 🔻 TASK-742: + `bucket` (a SOM card name, declared free-form per ROUTE)
   });
   test("🔴 through the ROOT app: `/camp/weeks/undefined/days` ⇒ 400 with the envelope and the service never runs", async () => {
     process.env.SKIP_AUTH = "true";

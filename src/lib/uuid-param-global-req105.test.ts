@@ -89,7 +89,7 @@ describe("🔴 the GLOBAL mount — every route, not just camp", () => {
 describe("🔴 the census — the API has FOUR param names, and a fifth must not slip in quietly", () => {
   test("`date · id · key · teacherId` — and the free-form ones are declared per ROUTE, not excluded by NAME", () => {
     const names = [...new Set(Object.keys(ROUTE_ACCESS).flatMap((k) => k.split("/").filter((s) => s.startsWith(":")).map((s) => s.slice(1))))].sort();
-    expect(names).toEqual(["date", "id", "key", "teacherId"]);
+    expect(names).toEqual(["bucket", "date", "id", "key", "teacherId"]); // 🔻 TASK-742: + `bucket` (a SOM card name, declared free-form per ROUTE)
     // 🔴 TASK-463 (DEF-2) — this test used to pin the exclusion BY NAME (`date`, `key` never checked). That rule is
     // exactly what let `/other-series/undefined` reach Postgres: the series routes named a UUID `:key`. So the claim
     // moves: every route with a free-form param is LISTED, and every other param in the table is a uuid.

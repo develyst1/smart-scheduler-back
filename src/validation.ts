@@ -6,6 +6,8 @@ import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
 import { END_REASONS, SESSION_CANCEL_REASONS, plannedRowExists } from "./lib/course-plan";
 import { isPhoneShaped } from "./lib/phone";
+import { bangkokNow } from "./lib/bangkok-time";
+import { NVR_BUCKETS } from "./lib/som-contract";
 
 // TASK-160: declared early so the sale schemas below can reference it.
 export const discountInput = z.object({
@@ -78,6 +80,22 @@ export const calendarQuery = z.object({
 });
 
 export const reportQuery = z.object({ date: DATE, teacherId: z.string().uuid().optional() }); // 🔻 TASK-737 (REQ-119): `teacherId` filters every counter
+
+// 🔻 TASK-741 (REQ-124, Palm §0.1) — `GET /reports/som?month=YYYY-MM&badgeValueIds=a,b`. `month` is a real month, never in the future (Bangkok); `badgeValueIds` is a comma list of uuids (OR); neither sent = this month, every branch.
+// 🔻 TASK-742 — the `:bucket` of `GET /reports/som/new-vs-renewing/:bucket` (the six cards' field names).
+export const nvrBucketParam = z.object({ bucket: z.enum(NVR_BUCKETS) });
+export const somQuery = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "ต้องเป็นรูปแบบ YYYY-MM")
+    .refine((m) => m <= bangkokNow().date.slice(0, 7), "เดือนต้องไม่เป็นอนาคต")
+    .optional(),
+  badgeValueIds: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []))
+    .pipe(z.array(z.string().uuid())),
+});
 
 // Booking dropdown: search students by name / nickname / parent phone.
 export const studentsQuery = z.object({

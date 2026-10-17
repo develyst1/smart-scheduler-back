@@ -96,6 +96,7 @@ describe("🔴 the payload writers and the other booking-row name sites — by s
       "src/services/jobs.service.ts:seats", // the reminder's seats — same
       "src/services/camp.service.ts", // a camp PACKAGE names its one child
       "src/services/line-register.service.ts", // a registered student (no booking)
+      "src/lib/som-contract.ts", // 🔻 TASK-742 — a SOM list row names ONE child (`nickname || name`), no booking involved
       "src/lib/daily-reminder.ts", // carries the job's value (already through the rule)
     ]);
     const bad: string[] = [];

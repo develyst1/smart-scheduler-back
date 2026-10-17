@@ -87,8 +87,8 @@
           "file": "src/lib/daily-report.ts",
           "edits": [
             {
-              "from": "new Set([\"CANCELLED\", \"PAUSED\"])",
-              "to": "new Set([\"CANCELLED\"])"
+              "from": "NOT_BOOKED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"PAUSED\"])",
+              "to": "NOT_BOOKED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\"])"
             }
           ]
         }

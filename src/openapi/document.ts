@@ -396,7 +396,32 @@ export const openApiDocument = {
           { name: "date", in: "query", required: true, schema: { type: "string", format: "date" } },
           { name: "teacherId", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "Filters EVERY counter (REQ-119): a row belongs to a coach if he is the primary coach or an extra one." },
         ],
-        responses: { "200": { description: "DailyReport" } },
+        responses: { "200": { description: "DailyReport — incl. `kidsByProgram` (REQ-124): the children of the day's group work in 4 fixed programs GROUP · ECA · CAMP · OTHER, `null` = not recorded" } },
+      },
+    },
+    "/api/reports/som": {
+      get: {
+        tags: ["reports"],
+        summary: "SOM dashboard (REQ-013 · REQ-124)",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "month", in: "query", required: false, schema: { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$" }, description: "YYYY-MM, never in the future (Bangkok). Default: this month. Applies to every section except Today (REQ-124)." },
+          { name: "badgeValueIds", in: "query", required: false, schema: { type: "string" }, description: "Comma list of badge value uuids — OR. A student is counted once per response. Default: every branch (REQ-124)." },
+        ],
+        responses: { "200": { description: "SomReport" } },
+      },
+    },
+    "/api/reports/som/new-vs-renewing/{bucket}": {
+      get: {
+        tags: ["reports"],
+        summary: "SOM — the rows behind one New-vs-Renewing card (REQ-124)",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "bucket", in: "path", required: true, schema: { type: "string", enum: ["firstTrial", "newCourseThisMonth", "newCoursePrevMonth", "renewCourse", "trialNotConverted", "notRenewed"] } },
+          { name: "month", in: "query", required: false, schema: { type: "string", pattern: "^\d{4}-(0[1-9]|1[0-2])$" }, description: "YYYY-MM, never in the future (Bangkok). Default: this month." },
+          { name: "badgeValueIds", in: "query", required: false, schema: { type: "string" }, description: "Comma list of badge value uuids — OR." },
+        ],
+        responses: { "200": { description: "{ rows: NvrDetailRow[] } — rows.length equals the card's number" } },
       },
     },
     "/api/webhooks/line": {

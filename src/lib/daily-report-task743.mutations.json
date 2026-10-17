@@ -1,0 +1,338 @@
+{
+  "task": "TASK-743",
+  "proves": "src/lib/daily-report-task743.test.ts",
+  "note": "REQ-124 (3/3): GET /reports/daily gains kidsByProgram (Others Program, Palm §10). The DoD's five = P1 headCount used for GROUP · P2 camp counted per hour · P3 a cancelled seat counted · P4 a program missing · P5 null turned into 0; the rest: D1 (P6-P9), K1 merge (P10), the excluded statuses, the teacher filter, the program mapping, and the READ.",
+  "tests": "src/lib/daily-report-task743.test.ts",
+  "mutations": [
+    {
+      "id": "P1",
+      "what": "`headCount` is used for a GROUP (the seat CAP, not the kids)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "kids: seats.length ? seats.filter((s) => !SEAT_NOT_A_KID_STATUSES.has(s)).length : null });",
+              "to": "kids: r.headCount ?? null });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "a camp is counted per HOUR row (8 kids × 5 hours = 40)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (weeks.has(wk)) continue;",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "a CANCELLED seat is counted as a kid",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "SEAT_NOT_A_KID_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"SICK_LEAVE\", \"PAUSED\"]);",
+              "to": "SEAT_NOT_A_KID_STATUSES: ReadonlySet<string> = new Set([\"SICK_LEAVE\", \"PAUSED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "a program is missing (CAMP is not in the fixed four)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "export const PROGRAMS = [\"GROUP\", \"ECA\", \"CAMP\", \"OTHER\"] as const;",
+              "to": "export const PROGRAMS = [\"GROUP\", \"ECA\", \"OTHER\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "not recorded becomes 0 (`null + n` and an all-null total)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "(a === null ? b : b === null ? a : a + b);",
+              "to": "((a ?? 0) + (b ?? 0));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "what": "D1 flipped: Palm's per-row sum by default",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "export const KIDS_ONCE_PER_CLASS = true;",
+              "to": "export const KIDS_ONCE_PER_CLASS = false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "what": "contiguity ignored: two rounds with a gap merge into one class",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "last.end === hhmm5(r.startTime)",
+              "to": "true"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "what": "the coach is not part of the class key",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "|${r.teacherId ?? \"\"}|${r.date ?? \"\"}",
+              "to": "|${r.date ?? \"\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "what": "the date is not part of the class key",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "|${r.teacherId ?? \"\"}|${r.date ?? \"\"}",
+              "to": "|${r.teacherId ?? \"\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "what": "the same name twice in a day is NOT merged (Palm K1)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "byName.set(i.name, addKids(byName.get(i.name) ?? null, i.kids));",
+              "to": "byName.set(i.name + \"#\" + byName.size, i.kids);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "what": "a CANCELLED row counts",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "PROGRAM_EXCLUDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"PAUSED\"]);",
+              "to": "PROGRAM_EXCLUDED_STATUSES: ReadonlySet<string> = new Set([\"PAUSED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "what": "a PAUSED row counts",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "PROGRAM_EXCLUDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"PAUSED\"]);",
+              "to": "PROGRAM_EXCLUDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P13",
+      "what": "`teacherId` does not filter the section",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "!PROGRAM_EXCLUDED_STATUSES.has(r.status) && (!opts.teacherId || r.coachIds.includes(opts.teacherId))",
+              "to": "!PROGRAM_EXCLUDED_STATUSES.has(r.status)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "what": "an ECA row is filed under OTHER",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "return r.otherKind === \"ECA\" ? \"ECA\" : \"OTHER\";",
+              "to": "return \"OTHER\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "what": "a camp row with no week is not a camp",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (r.campWeekId || r.otherKind === \"CAMP\") return \"CAMP\";",
+              "to": "if (r.campWeekId) return \"CAMP\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P16",
+      "what": "the camp item takes the row's title, not the week's name",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "name: w?.name ?? ((r.title ?? \"\").trim() || \"CAMP\"), kids: w?.kids ?? null",
+              "to": "name: (r.title ?? \"\").trim() || \"CAMP\", kids: w?.kids ?? null"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P17",
+      "what": "the READ does not load a GROUP's seats",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "seatStatuses: b.bookingType === \"GROUP\" ? (b.seats ?? []).map((x: any) => x.status) : null,",
+              "to": "seatStatuses: null,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P18",
+      "what": "the READ never asks for the camp week's kids",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "if (programRows.some((r) => r.campWeekId)) {",
+              "to": "if (false) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P19",
+      "what": "the READ asks the camp tables on EVERY day",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "if (programRows.some((r) => r.campWeekId)) {",
+              "to": "if (true) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P20",
+      "what": "the service does not forward `teacherId` to the section",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "kidsByProgram(programRows, { teacherId, camp })",
+              "to": "kidsByProgram(programRows, { camp })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P21",
+      "what": "the READ drops the row title (every name falls back to its kind)",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "title: b.otherTitle ?? null,",
+              "to": "title: null,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P22",
+      "what": "the camp week's kid count is always 0",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "kids: Number(w.dayCounts?.[date] ?? 0)",
+              "to": "kids: 0"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

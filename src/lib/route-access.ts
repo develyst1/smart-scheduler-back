@@ -231,6 +231,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /attention": read(["menu:attention"]),
   "GET /reports/daily": read(["menu:reports"]),
   "GET /reports/som": read(["menu:som"]),
+  "GET /reports/som/new-vs-renewing/:bucket": read(["menu:som"]), // 🔻 TASK-742 — the same menu as the page
   "GET /settings": read(SETTINGS),
   "PUT /settings/:key": act(SETTINGS, "action:settings.edit"),
   "DELETE /settings/:key": act(SETTINGS, "action:settings.edit"), // reset to default — the same act

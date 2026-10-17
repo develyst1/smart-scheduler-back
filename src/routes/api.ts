@@ -13,6 +13,7 @@ import * as otherSeries from "../services/other-series.service";
 import * as teacherLink from "../services/teacher-link.service";
 import * as som from "../services/som-report.service";
 import * as dailyReport from "../services/daily-report.service"; // 🔻 TASK-737 (REQ-119)
+import * as somContract from "../services/som-contract.service"; // 🔻 TASK-741 (REQ-124)
 import * as settings from "../services/settings.service";
 import * as rental from "../services/rental.service";
 import { calendarUrls } from "../lib/calendar-link";
@@ -329,8 +330,17 @@ export const api = new Hono()
     const q = c.req.valid("query"); // 🔻 TASK-737 (REQ-119) — Palm's contract; `teacherId` filters every counter. The old `svc.getDailyReport` stays for the SOM report + the day-end job.
     return c.json(await dailyReport.getDailyReportContract(q.date, q.teacherId));
   })
-  // REQ-013: the SOM dashboard in ONE snapshot — no params, "today"/"this month" resolved server-side.
-  .get("/reports/som", async (c) => c.json(await som.getSomReport()))
+  // REQ-013: the SOM dashboard in ONE snapshot — "today"/"this month" resolved server-side.
+  // 🔻 TASK-741 (REQ-124) — Palm's contract: `?month` + `?badgeValueIds`; the NEW sections are merged over the old result (the old `getSomReport` is untouched, every old field stays).
+  .get("/reports/som", zValidator("query", v.somQuery), async (c) => {
+    const q = c.req.valid("query");
+    const [old, fresh] = await Promise.all([som.getSomReport(), somContract.getSomContract(q)]);
+    return c.json(somContract.mergeSom(old, fresh));
+  })
+  // 🔻 TASK-742 — the rows behind one New-vs-Renewing card; the same filters as the page (Palm §3.2).
+  .get("/reports/som/new-vs-renewing/:bucket", zValidator("param", v.nvrBucketParam), zValidator("query", v.somQuery), async (c) =>
+    c.json(await somContract.getNvrRows(c.req.valid("param").bucket, c.req.valid("query"))),
+  )
   .post("/bookings", zValidator("json", v.createBooking), async (c) => {
     const body = c.req.valid("json");
     // TASK-162: same admin-only rule and same token-sourced actor as the at-sale discounts.
