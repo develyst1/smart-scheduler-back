@@ -6,7 +6,7 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
-import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
+import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
@@ -2857,6 +2857,11 @@ export async function previewCoursePackage(input: {
     sessions.push({ date, ...ref, absent: absent.has(sessions.length + 1), makeup: true });
   }
   const live = sessions.filter((s) => !s.absent);
+  // 🔻 TASK-815 (REQ-123 Phase 1, P1) — each drawn week says whether the teacher is on an ADVANCE LEAVE that day, from THE reader (`teacherLeaveOn` — no second date check), so the
+  // front can warn BEFORE Create (TEST-107: the preview looked fine and Create then failed with 409 TEACHER_ON_LEAVE). A week already ticked as planned absence still carries the flag:
+  // that absence is created fine on the leave day (TASK-813), and the front can say so. A post-pass over the drawn weeks, read-only — the preview writes nothing.
+  const onLeave = await Promise.all(sessions.map((s) => teacherLeaveOn(db, input.teacherId, s.date)));
+  const flagged = sessions.map((s, i) => ({ ...s, teacherOnLeave: onLeave[i] != null }));
   // 🔴 REQ-085 §12 (TASK-309 §2) — **the preview reports the boundary the plan actually NEEDS, and refuses
   // nothing.**
   //
@@ -2898,7 +2903,7 @@ export async function previewCoursePackage(input: {
     // 📌 Left as the computation rather than a literal `false`, so the day someone narrows the ceiling again
     // this starts telling the truth instead of lying quietly.
     exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling)),
-    sessions,
+    sessions: flagged,
   };
 }
 
@@ -3616,13 +3621,32 @@ async function sendClassCancelledToOtherTeachers(
  * `onBehalf` says only WHO acted, never WHAT happens: it decides whether the teacher is TOLD (they need no notice of their own act),
  * and nothing else. 🚫 It must never reach the fork.
  */
+/**
+ * 🔻 TASK-817 (REQ-123 P2) — an admin records an advance leave over a DATE RANGE (`from`..`to`, one reason): one row per day, one shared `range_id`, ONE transaction (a past day anywhere rolls back the lot —
+ * but the door's future-only line has already refused it). Days already recorded are skipped and reported. The answer gives PER DAY the live classes (the same list as the single-day act) and whether
+ * the day was new. 🚫 Cancels nothing, tells no family. ⭐ The teacher is told ONCE for the whole range (one `teacher_leave_recorded` carrying `to`), only on behalf, and not when every day was already there.
+ */
+async function reportTeacherLeaveRange(teacherId: string, input: { from: string; to: string; reason: string }, actor: string | null, opts: { onBehalf: boolean }) {
+  const r = await db.transaction((tx) => recordAdvanceLeaveRange(tx, teacherId, input, actor));
+  const fresh = r.days.filter((d) => !d.alreadyRecorded).length;
+  const classes = r.days.reduce((n, d) => n + d.bookings.length, 0);
+  const notified = opts.onBehalf && fresh > 0 ? await notifyTeacherOfLeaveDay(teacherId, { kind: "teacher_leave_recorded", date: input.from, to: input.to, classes, actor }) : 0;
+  return {
+    mode: "advance-range" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0,
+    rangeId: r.rangeId, from: input.from, to: input.to,
+    days: r.days.map((d) => ({ date: d.date, alreadyRecorded: d.alreadyRecorded, bookings: d.bookings })),
+    recordedDays: fresh, alreadyRecordedDays: r.days.length - fresh, teacherNotified: notified,
+  };
+}
+
 export async function reportTeacherLeave(
   teacherId: string,
-  input: { date: string; sessionIds?: string[]; reason: string },
+  input: { date: string; to?: string; sessionIds?: string[]; reason: string },
   actor: string | null,
   opts: { onBehalf: boolean },
 ) {
   const me = teacherId;
+  if (input.to !== undefined) return reportTeacherLeaveRange(me, { from: input.date, to: input.to, reason: input.reason }, actor, opts); // 🔻 TASK-817 — the admin door's RANGE body (`date` = its first day, already guarded future-only at the door)
   // 🔴 TASK-582 — THE FORK (the owner: for FUTURE dates the new act REPLACES the auto-cancel). A date strictly after today ⇒ the
   // advance-leave act: the WHOLE day blocked for new bookings, its live classes LISTED, 🚫 nothing cancelled, nobody notified.
   // Today or the past ⇒ everything below, unchanged. `sessionIds` picks classes to CANCEL, so it has no meaning for a whole-day
@@ -3681,7 +3705,7 @@ export async function reportTeacherLeave(
 // 🔴 The count is READ FROM THE RESULT, never re-derived from the teacher row: deciding "linked or not" a second time here is
 // how the number and the outbox row start disagreeing. 📌 `duplicate` counts as told — the message is already queued for them.
 // ⚠️ The LIFT (`teacher_leave_lifted`) comes through this same function, so it is fixed and pinned by the same line.
-async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; classes?: number; actor: string | null }): Promise<number> {
+async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; to?: string; classes?: number; actor: string | null }): Promise<number> {
   const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });
   const sent = await enqueueLine({ recipientType: "teacher", recipientLineUserId: teacher?.lineUserId ?? null, payload });
   return sent.status === "skipped" ? 0 : 1;
@@ -3737,10 +3761,16 @@ export const ownLeaveDays = (me: string) => ownAdvanceLeaves(db, me);
 /** TASK-582 — lift one of MY recorded days: deletes that leave row only; 🚫 restores nothing, cancels nothing. */
 export const liftOwnLeave = (me: string, date: string) => liftTeacherLeave(me, date, { onBehalf: false });
 /** TASK-587 (a) — the admin's list of recorded leave days (from today by default, 60 days on), each with its live classes. A read. */
-export const listRecordedLeaveDays = (q: { from?: string; to?: string }) => {
+export const listRecordedLeaveDays = (q: { from?: string; to?: string; teacherId?: string }) => {
   const from = q.from ?? bangkokNow().date;
-  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60));
+  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId); // 🔻 TASK-819: + the optional teacher
 };
+/** 🔻 TASK-819 — the admin lifts a whole RANGE (future days only). ONE `teacher_leave_lifted` LINE for the days lifted (a span when there are several); nothing when nothing was lifted. */
+export async function liftTeacherLeaveRange(rangeId: string, opts: { onBehalf: boolean }) {
+  const r = await liftAdvanceLeaveRange(db, rangeId);
+  const notified = opts.onBehalf && r.lifted.length ? await notifyTeacherOfLeaveDay(r.teacherId, { kind: "teacher_leave_lifted", date: r.lifted[0]!, to: r.lifted[r.lifted.length - 1], actor: null }) : 0;
+  return { rangeId, lifted: r.lifted, kept: r.kept, teacherNotified: notified };
+}
 
 // TASK-439 (REQ-103): `course` is `{ id, size }` on purpose — a whole-voucher cancel passes `{ id: voucherId, size: totalHours }` and
 // `cause: "voucher_ended"`, so a coach reads the SAME message for the same loss (`<subject> <hours> HR`, no new bytes).

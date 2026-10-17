@@ -138,8 +138,9 @@ describe("⭐ TASK-608 — the teacher is told, and ONLY the teacher", () => {
 
 describe("🔑 TASK-608 — the key: NO new one, and `action:calendar.status` is the narrowest that fits", () => {
   test("both admin routes carry the status key and the status door's menus; 🚫 no new key was registered", () => {
-    for (const r of ["POST /teacher-leave-days", "DELETE /teacher-leave-days/:teacherId/:date"]) {
-      expect({ r, access: ROUTE_ACCESS[r] }).toEqual({ r, access: { menus: ["menu:calendar", "menu:bookings"], action: "action:calendar.status" } });
+    // 🔻 TASK-819 follow-up — the per-day LIFT also opens to the Teachers menu (its panel cancels single days); the status key is unchanged on both
+    for (const [r, menus] of [["POST /teacher-leave-days", ["menu:calendar", "menu:bookings"]], ["DELETE /teacher-leave-days/:teacherId/:date", ["menu:calendar", "menu:bookings", "menu:teachers"]]] as const) {
+      expect({ r, access: ROUTE_ACCESS[r] }).toEqual({ r, access: { menus, action: "action:calendar.status" } });
     }
     // the SAME key and menus the cancel door already carries — this act grants its holder no power they lack
     expect(ROUTE_ACCESS["PATCH /bookings/:id/status"]).toEqual({ menus: ["menu:calendar", "menu:bookings"], action: "action:calendar.status" });

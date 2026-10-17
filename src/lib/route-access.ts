@@ -110,7 +110,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
   "GET /teachers/me/leave": read(["menu:calendar"]), // TASK-582 — a read of MY OWN recorded days (a GET carries no action; the route asserts the link)
   "DELETE /teachers/me/leave/:date": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-582 — lifting is the same act undone
-  "GET /teacher-leave-days": read(["menu:calendar"]), // TASK-587 — the admin's list: the calendar's read key (the same rows the grid shows), no new key
+  "GET /teacher-leave-days": read(["menu:calendar", "menu:teachers"]), // TASK-587 — the admin's list: the calendar's read key (the same rows the grid shows), no new key · 🔻 TASK-819: + the Teachers menu (its per-teacher leave list)
   // 🔴 TASK-608 (REQ-111 C) — an ADMIN records / lifts a teacher's leave. ✅ NO NEW KEY, and `action:calendar.status` is the NARROWEST
   // existing one that satisfies the owner's *"any admin who can already edit the schedule"*:
   //   · it is the key on `PATCH /bookings/:id/status`, whose own list of actions includes `ลาป่วย` and `ยกเลิก` — so for TODAY and the
@@ -123,7 +123,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // 🔴 Hung off the admin's OWN noun, not `/teachers/:id/leave`: a wildcard sibling of the literal `/teachers/me/leave` is resolved
   // from the OTHER END of the match list by `accessGuard`, which revoked the coach's own door. See the routes for the mechanism.
   "POST /teacher-leave-days": act(CAL_BOOK, "action:calendar.status"),
-  "DELETE /teacher-leave-days/:teacherId/:date": act(CAL_BOOK, "action:calendar.status"),
+  "DELETE /teacher-leave-days/:teacherId/:date": act([...CAL_BOOK, ...TEACHERS], "action:calendar.status"), // 🔻 TASK-819 follow-up: + the Teachers menu (its panel cancels single days; the same as the range lift)
+  "DELETE /teacher-leave-ranges/:id": act([...CAL_BOOK, ...TEACHERS], "action:calendar.status"), // 🔻 TASK-819 — lift a whole recorded range (future days): the SAME key as the per-day lift; the Teachers menu too, where its panel lives
   "POST /bookings/:id/undo": UNDO_ACCESS, // TASK-492 — a linked account never (the route asserts)
   "GET /bookings/:id/undo-preview": UNDO_ACCESS, // 🔻 TASK-546 — the dry run of the Undo: THE SAME entry (a preview of a privileged act is a privileged read)
   "PATCH /bookings/:id/status": act(CAL_BOOK, "action:calendar.status"), // + `action:calendar.leave-override` on its `override` flag (route)

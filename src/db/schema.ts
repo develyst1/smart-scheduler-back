@@ -1277,6 +1277,8 @@ export const teacherLeaveDays = pgTable(
     reason: text("reason"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /** TASK-817 (`0070`) — the RECORD this day belongs to when an admin entered a date RANGE (one row per day, one shared id). NULL = recorded as a single day. */
+    rangeId: uuid("range_id"),
   },
   (t) => [uniqueIndex("teacher_leave_days_teacher_date_uq").on(t.teacherId, t.date)],
 );

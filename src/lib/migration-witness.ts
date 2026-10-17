@@ -701,6 +701,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "so a half-applied file reads as not applied and re-runs. Rerunnable: every statement is ADD COLUMN IF NOT EXISTS; NO data is written (the backfill is a separate owner-run script).",
     rerunnable: true,
   },
+  {
+    tag: "0070_teacher_leave_range",
+    probe: { kind: "column", table: "teacher_leave_days", column: "range_id" },
+    why:
+      "TASK-817 (REQ-123 P2). An advance leave recorded as a date RANGE: one `teacher_leave_days` row per day, all sharing a nullable `range_id`. The probe is the column itself, the ONLY object the file adds, so a " +
+      "half-applied file reads as not applied and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; NO data is written (existing rows keep NULL = a single-day record).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

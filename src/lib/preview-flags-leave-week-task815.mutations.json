@@ -1,0 +1,14 @@
+{
+  "task": "TASK-815",
+  "proves": "src/lib/preview-flags-leave-week-task815.test.ts",
+  "note": "REQ-123 Phase 1 P1. E1 the flag always false (today's silence) · E2 the flag inverted · E3 the flagged list not returned (the field never reaches the response) · E4 a ticked absence week not flagged · E5 a second reader that ignores the 'advance only' rule (reads the table directly) · E6 the flag keyed on the wrong teacher.",
+  "tests": "src/lib/preview-flags-leave-week-task815.test.ts src/lib/advance-leave-on-extended-req089.test.ts",
+  "mutations": [
+    { "id": "E1", "what": "🔴 the flag is always false — the preview stays silent and Create still fails", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "teacherOnLeave: onLeave[i] != null }));", "to": "teacherOnLeave: false }));" }] }] },
+    { "id": "E2", "what": "the flag is inverted", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "teacherOnLeave: onLeave[i] != null }));", "to": "teacherOnLeave: onLeave[i] == null }));" }] }] },
+    { "id": "E3", "what": "🔴 the flagged list is not returned — the field never reaches the response", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "    sessions: flagged,\n  };", "to": "    sessions,\n  };" }] }] },
+    { "id": "E4", "what": "a week already ticked as planned absence is not flagged", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "teacherOnLeave: onLeave[i] != null }));", "to": "teacherOnLeave: onLeave[i] != null && !s.absent }));" }] }] },
+    { "id": "E5", "what": "🔴 a SECOND reader: the table is read directly, ignoring the reader's 'today or later' rule", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "teacherLeaveOn(db, input.teacherId, s.date)));", "to": "db.query.teacherLeaveDays.findFirst({ where: (l: any, { and: a, eq: e }: any) => a(e(l.teacherId, input.teacherId), e(l.date, s.date)) })));" }] }] },
+    { "id": "E6", "what": "the flag is keyed on the wrong teacher (the reader is asked about nobody)", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "teacherLeaveOn(db, input.teacherId, s.date)));", "to": "teacherLeaveOn(db, \"nobody\", s.date)));" }] }] }
+  ]
+}

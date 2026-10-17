@@ -1,0 +1,263 @@
+{
+  "task": "TASK-819",
+  "proves": "src/lib/leave-list-detail-task819.test.ts",
+  "note": "REQ-123 P3 + P5. G1 DUO's second child reads the first child's id · G2 inCourse flipped · G3 the teacher filter dropped · G4 rangeId missing from the list item · G5 a past window clamped to today · G6 the list's Teachers-menu door removed · G7 the range lift deletes EVERY day (past/today too) · G8 a hand-written date comparison in the lift · G9 one LINE per lifted day · G10 told when nothing was lifted · G11 an empty lift not refused · G12 the range lift loses its action key · G13 the delete forgets the range id (any teacher's same dates) · G14 the program sub-select reads the wrong column. G15 the per-day lift loses the Teachers menu again. G16 the approved range open-again text differs · G17 its APPROVED marker turned back into DRAFT.",
+  "tests": "src/lib/leave-list-detail-task819.test.ts src/lib/leave-range-task817.test.ts src/lib/admin-leave-future-only-task648.test.ts src/lib/admin-records-teacher-leave-task608.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "DUO's second child reads the FIRST child's id — a DUO class would list one child twice",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "coChildName: sql<string | null>`(select ${students.name} from ${students} where ${students.id} = ${bookings.coStudentId})`",
+              "to": "coChildName: sql<string | null>`(select ${students.name} from ${students} where ${students.id} = ${bookings.studentId})`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "what": "inCourse is flipped — a course class reads as a one-off",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "`${bookings.courseId} is not null`",
+              "to": "`${bookings.courseId} is null`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "what": "🔴 the teacher filter is dropped — the per-teacher list shows everybody",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "...(teacherId ? [eq(teacherLeaveDays.teacherId, teacherId)] : [])",
+              "to": "...([])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "what": "🔴 rangeId is missing from the list item — the panel could not group 'this leave'",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "createdBy: teacherLeaveDays.createdBy, rangeId: teacherLeaveDays.rangeId })",
+              "to": "createdBy: teacherLeaveDays.createdBy })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "what": "a past window is clamped to today — history can no longer be read back",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const from = q.from ?? bangkokNow().date;\n  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId);",
+              "to": "  const from = q.from && q.from > bangkokNow().date ? q.from : bangkokNow().date;\n  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "what": "the Teachers menu is taken off the list's door",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"GET /teacher-leave-days\": read([\"menu:calendar\", \"menu:teachers\"]),",
+              "to": "\"GET /teacher-leave-days\": read([\"menu:calendar\"]),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G7",
+      "what": "🔴 the range lift deletes EVERY day of the range — a day that has begun or passed is lifted too",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "const future = rows.filter((r) => isAdvanceLeave(r.date)).map((r) => r.date);",
+              "to": "const future = rows.map((r) => r.date);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G8",
+      "what": "a hand-written date comparison instead of the one predicate",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "rows.filter((r) => isAdvanceLeave(r.date))",
+              "to": "rows.filter((r) => r.date > new Date().toISOString().slice(0, 10))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G9",
+      "what": "🔴 the teacher gets one LINE per lifted day",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "? await notifyTeacherOfLeaveDay(r.teacherId, { kind: \"teacher_leave_lifted\", date: r.lifted[0]!, to: r.lifted[r.lifted.length - 1], actor: null }) : 0;",
+              "to": "? (await Promise.all(r.lifted.map((d) => notifyTeacherOfLeaveDay(r.teacherId, { kind: \"teacher_leave_lifted\", date: d, actor: null })))).length : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G10",
+      "what": "the teacher is told even when nothing was lifted",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "opts.onBehalf && r.lifted.length ?",
+              "to": "opts.onBehalf ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G11",
+      "what": "an empty lift is not refused — a 200 with nothing lifted",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "    if (!out.lifted.length) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G12",
+      "what": "🔴 the range lift loses its action key — any viewer with a menu could lift a leave",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"DELETE /teacher-leave-ranges/:id\": act([...CAL_BOOK, ...TEACHERS], \"action:calendar.status\"),",
+              "to": "\"DELETE /teacher-leave-ranges/:id\": read([...CAL_BOOK, ...TEACHERS]),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G13",
+      "what": "🔴 the delete forgets the range id — it would remove ANY teacher's rows on those dates",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "where(and(eq(teacherLeaveDays.rangeId, rangeId), inArray(teacherLeaveDays.date, future)))",
+              "to": "where(inArray(teacherLeaveDays.date, future))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G14",
+      "what": "the program sub-select reads the wrong column (the course id)",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "where ${subjects.id} = ${bookings.subjectId})`",
+              "to": "where ${subjects.id} = ${bookings.courseId})`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G15",
+      "what": "the per-day lift loses the Teachers menu again — Fern's Teachers-page panel gets 403 on a single day",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"DELETE /teacher-leave-days/:teacherId/:date\": act([...CAL_BOOK, ...TEACHERS], \"action:calendar.status\"),",
+              "to": "\"DELETE /teacher-leave-days/:teacherId/:date\": act(CAL_BOOK, \"action:calendar.status\"),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G16",
+      "what": "the approved Thai text of the range open-again line differs",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "ช่วงวันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว",
+              "to": "ช่วงวันนั้นรับจองคาบกับคุณได้แล้ว"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G17",
+      "what": "the APPROVED marker on the range open-again line turned back into DRAFT",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "// 🔻 TASK-819 — ✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim: the range version of ob_tl_open_again",
+              "to": "// 🔻 TASK-819 — DRAFT (owner approval pending): the range version of ob_tl_open_again"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

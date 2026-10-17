@@ -145,7 +145,7 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
   });
   test("🚫 nothing here cancels or moves: the leave module writes ONLY `teacher_leave_days` (🔻 TASK-582: the writer + the lift), never a booking", () => {
     const M = code(read("src/lib/teacher-leave.ts"));
-    expect([...M.matchAll(/\.(insert|update|delete)\((\w+)\)/g)].map((m) => `${m[1]}:${m[2]}`)).toEqual(["insert:teacherLeaveDays", "delete:teacherLeaveDays"]);
+    expect([...M.matchAll(/\.(insert|update|delete)\((\w+)\)/g)].map((m) => `${m[1]}:${m[2]}`)).toEqual(["insert:teacherLeaveDays", "delete:teacherLeaveDays", "delete:teacherLeaveDays"]); // 🔻 TASK-819: + the range lift's one delete
     expect(M).not.toMatch(/\.update\(|CANCELLED|enqueueLine|notifyAdmins/);
     // 🔻 TASK-582 — `reportOwnLeave` now FORKS (the owner ruled the question); its two sides are pinned in teacher-leave-act-task582
     // 🔻 TASK-608 — ANCHORED ON THE ACT (`reportTeacherLeave`): `reportOwnLeave` is now a one-line delegation, and an anchor on it silently stopped this pin.

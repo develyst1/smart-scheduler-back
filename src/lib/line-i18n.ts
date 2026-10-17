@@ -795,6 +795,8 @@ const TABLE: Record<string, Entry> = {
   ob_teacher_leave_recorded_title: { TH: "🗓️ แอดมินบันทึกวันลาของคุณแล้ว", EN: "🗓️ LEAVE RECORDED" }, // 🔻 TASK-731 (P33/P34; Khwan's answer 2: "LEAVE RECORDED")
   ob_teacher_leave_lifted_title: { TH: "🗓️ แอดมินยกเลิกวันลาของคุณแล้ว", EN: "🗓️ LEAVE CANCELLED" },
   ob_tl_blocked: { TH: "วันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class will be booked." }, // 🔻 TASK-731 (P33/P34): her EN line
+  ob_tl_blocked_range: { TH: "ช่วงวันนั้นจะไม่มีการจองคาบใหม่กับคุณ", EN: "No new class will be booked on those days." }, // 🔻 TASK-817 — ✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim: the range version of ob_tl_blocked
+  ob_tl_open_again_range: { TH: "ช่วงวันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again on those days." }, // 🔻 TASK-819 — ✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim: the range version of ob_tl_open_again
   ob_tl_open_again: { TH: "วันนั้นรับจองคาบกับคุณได้ตามปกติแล้ว", EN: "Bookings with you are open again." },
   ob_tl_nothing_cancelled: {
     TH: "คาบที่จองไว้แล้ว {n} คาบยังอยู่ในตารางและยังไม่ได้ยกเลิก — กรุณาถือว่าสอนตามปกติจนกว่าแอดมินจะแจ้ง",

@@ -31,6 +31,9 @@ const assertMayUndo = (c: any) => {
 };
 import { hideLedgerRows, viewerOf } from "../lib/budget-visibility";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
+// 🔻 TASK-814 (REQ-123 §4) — the refusal when the admin tries to cancel a leave day that is today or past. APPROVED by the owner 2026-10-17 (COPY-REVIEW-2026-09-29.md).
+// EN (the error channel is Thai-only): Only a future leave day can be cancelled. Today's or a past leave can't be cancelled
+const LIFT_FUTURE_ONLY_MESSAGE = "ยกเลิกได้เฉพาะวันลาล่วงหน้า (วันถัดไปเป็นต้นไป) — วันลาของวันนี้หรือวันที่ผ่านมาแล้วยกเลิกไม่ได้";
 
 // Chained so `typeof api` carries every route for Hono's RPC client (hc<AppType>).
 export const api = new Hono()
@@ -213,7 +216,7 @@ export const api = new Hono()
   // absent from `TEACHER_ALLOWED`, so the guard refused a LINKED COACH on the coach's OWN door and the handler was never reached.
   // 🔑 A noun with no literal sibling cannot be shadowed. 🚫 Re-ordering was rejected: it only moves the break from the guard to the
   // handler. (Caught by the suite before it shipped; `tsc` cannot see it.)
-  .post("/teacher-leave-days", zValidator("json", v.adminTeacherLeave), async (c) => {
+  .post("/teacher-leave-days", zValidator("json", v.adminTeacherLeaveBody), async (c) => {
     const { teacherId, ...input } = c.req.valid("json");
     // 🔴 TASK-648 — FUTURE DAYS ONLY, at the door, with the SAME predicate the act forks on (`isAdvanceLeave`). 🚫 Never a second
     // date comparison, and 🚫 never inside the act: the teacher's own door shares it and must keep accepting today.
@@ -222,9 +225,20 @@ export const api = new Hono()
     if (!isAdvanceLeave(input.date)) throw ADMIN_LEAVE_FUTURE_ONLY();
     return c.json(await svc.reportTeacherLeave(teacherId, input, actorOf(c), { onBehalf: true }));
   })
-  .delete("/teacher-leave-days/:teacherId/:date", zValidator("param", v.teacherLeaveDayParam), async (c) =>
-    c.json(await svc.liftTeacherLeave(c.req.valid("param").teacherId, c.req.valid("param").date, { onBehalf: true })),
-  )
+  .delete("/teacher-leave-days/:teacherId/:date", zValidator("param", v.teacherLeaveDayParam), async (c) => {
+    // 🔴 TASK-814 (REQ-123 §4) — the admin lifts a FUTURE leave day only, at the door, with the SAME predicate the record door and the act fork on (`isAdvanceLeave`).
+    // 🚫 Never a second date comparison, never inside `liftTeacherLeave` (the teacher's own lift shares it). Lifting a day that has already begun is out of scope tonight
+    // (owner, REQ-123 §4): the classes of that day may already have been handled by hand — so this door does not offer it.
+    if (!isAdvanceLeave(c.req.valid("param").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);
+    return c.json(await svc.liftTeacherLeave(c.req.valid("param").teacherId, c.req.valid("param").date, { onBehalf: true }));
+  })
+  // 🔻 TASK-819 (REQ-123 P4/P5) — lift a whole recorded RANGE: its FUTURE days only (THE predicate, in the lib), one LINE to the teacher. A noun with no literal sibling (`/teacher-leave-ranges`), so it
+  // can never be shadowed by `/teacher-leave-days/:teacherId/:date` (the trap noted above). Nothing left to lift (every day has begun or passed) ⇒ the SAME approved refusal as the per-day door.
+  .delete("/teacher-leave-ranges/:id", zValidator("param", v.leaveRangeParam), async (c) => {
+    const out = await svc.liftTeacherLeaveRange(c.req.valid("param").id, { onBehalf: true });
+    if (!out.lifted.length) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);
+    return c.json(out);
+  })
   .get("/teachers", zValidator("query", v.teachersQuery), async (c) =>
     c.json(await svc.getTeachers({ archived: c.req.valid("query").archived }, viewerOf(c))), // TASK-426
   )

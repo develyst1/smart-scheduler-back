@@ -158,6 +158,7 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // ⚠️ If the ACT ever starts touching a course's rows, BOTH pairs change together — that is the point of saying "the same act".
   "POST /teacher-leave-days": "unrelated",
   "DELETE /teacher-leave-days/:teacherId/:date": "unrelated",
+  "DELETE /teacher-leave-ranges/:id": "unrelated", // 🔻 TASK-819 — lifts a whole recorded range's FUTURE leave rows; touches no booking (the same class as the per-day lift above)
   // TASK-411 (REQ-098) — archive/restore a PARENT: refused while any live future session exists, else it writes
   // parents + students only (no booking, course or voucher row moves). Classified deliberately, not by default.
   "POST /parents/:id/archive": "unrelated",

@@ -165,6 +165,6 @@ describe("🔴 the script and the publish warning — the plan is the deliverabl
     out = await publishRelinkWarning();
     expect(out[0]).toContain("Followers still hold the menu ids of the PREVIOUS publish");
     expect(out[0]).not.toContain("null");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(70); // TASK-497: +0059 // no migration · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(71); // TASK-497: +0059 // no migration · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
   });
 });

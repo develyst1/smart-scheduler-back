@@ -1,0 +1,248 @@
+{
+  "task": "TASK-817",
+  "proves": "src/lib/leave-range-task817.test.ts",
+  "note": "REQ-123 P2. F1 each day gets its OWN range id · F2 the range id is not stored · F3 a single-day row is written with rangeId null (not as before) · F4 an already-recorded day is refused instead of skipped · F5 one notice PER DAY · F6 the teacher is told even when every day was already there · F7 no transaction (a failing day leaves earlier days) · F8 no 31-day limit at the door · F9 the future-only line reads the LAST day (a past start slips through) · F10 an ambiguous body (date + from/to) is accepted · F11 the lift notice shows a span · F12 the range blocked line never used · F13 the last day dropped. F14 a refusal text differs from the approved one · F15 the backstop text differs · F16 the APPROVED marker turned back into DRAFT.",
+  "tests": "src/lib/leave-range-task817.test.ts src/lib/admin-records-teacher-leave-task608.test.ts src/lib/admin-leave-future-only-task648.test.ts",
+  "mutations": [
+    {
+      "id": "F1",
+      "what": "🔴 each day gets its OWN range id — the front could not show or cancel 'this leave' as one thing",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "{ date, reason: input.reason, rangeId }, actor)",
+              "to": "{ date, reason: input.reason, rangeId: randomUUID() }, actor)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "what": "🔴 the range id is not stored on the row",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "...(input.rangeId ? { rangeId: input.rangeId } : {})",
+              "to": "...({})"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "what": "a single-day row is written with an explicit rangeId null (no longer exactly as before)",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "...(input.rangeId ? { rangeId: input.rangeId } : {})",
+              "to": "rangeId: input.rangeId ?? null"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F4",
+      "what": "an already-recorded day is REFUSED instead of skipped",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "    days.push({ date, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });",
+              "to": "    if (r.alreadyRecorded) throw badRequest(\"x\");\n    days.push({ date, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F5",
+      "what": "🔴 the teacher gets one LINE per day, not one for the range",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_recorded\", date: input.from, to: input.to, classes, actor }) : 0;",
+              "to": "? (await Promise.all(r.days.map((d) => notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_recorded\", date: d.date, classes, actor })))).length : 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F6",
+      "what": "the teacher is told again even when every day was already recorded",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "opts.onBehalf && fresh > 0 ?",
+              "to": "opts.onBehalf ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F7",
+      "what": "🔴 no transaction — a failing day leaves the earlier days recorded",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await db.transaction((tx) => recordAdvanceLeaveRange(tx, teacherId, input, actor))",
+              "to": "await recordAdvanceLeaveRange(db, teacherId, input, actor)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F8",
+      "what": "no 31-day limit at the door",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "leaveRangeDays(b.from, b.to) > MAX_LEAVE_RANGE_DAYS",
+              "to": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F9",
+      "what": "🔴 the door's future-only line reads the LAST day — a range that STARTS in the past slips through",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "? { teacherId: b.teacherId, date: b.from, to: b.to, reason: b.reason }",
+              "to": "? { teacherId: b.teacherId, date: b.to, to: b.to, reason: b.reason }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F10",
+      "what": "an ambiguous body (date together with from/to) is accepted as a single day",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "if (b.date !== undefined || b.sessionIds !== undefined || b.from === undefined || b.to === undefined) {",
+              "to": "if (b.from === undefined || b.to === undefined) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F11",
+      "what": "a lifted RANGE still reads with the single-day open-again line",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(toDate ? \"ob_tl_open_again_range\" : \"ob_tl_open_again\")",
+              "to": "\"ob_tl_open_again\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F12",
+      "what": "the range blocked line is never used",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(toDate ? \"ob_tl_blocked_range\" : \"ob_tl_blocked\")",
+              "to": "\"ob_tl_blocked\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F13",
+      "what": "the last day of the range is dropped (off by one)",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "for (let d = input.from; d <= input.to &&",
+              "to": "for (let d = input.from; d < input.to &&"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F14",
+      "what": "a refusal text differs from the owner's approved one (a word dropped)",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม",
+              "to": "วันที่สิ้นสุดต้องไม่ก่อนเริ่ม"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F15",
+      "what": "the writer's backstop text differs from the approved one",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "badRequest(\"ช่วงวันลาไม่ถูกต้อง\")",
+              "to": "badRequest(\"ช่วงวันลาไม่ถูกต้อง!\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F16",
+      "what": "the approved marker is turned back into a DRAFT on the range line",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "// 🔻 TASK-817 — ✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim: the range version of ob_tl_blocked",
+              "to": "// 🔻 TASK-817 — DRAFT (owner approval pending): the range version of ob_tl_blocked"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

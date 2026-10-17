@@ -736,9 +736,10 @@ export const leaveDateParam = z.object({ date: DATE }); // TASK-582 — lifting 
 export const teacherLeaveDayParam = z.object({ teacherId: ID, date: DATE }); // TASK-608 — an admin lifting ONE teacher's day
 // TASK-587 (a) — the admin's window over recorded leave days: both optional (from = today, to = from + 60); at most 92 days, in order.
 export const leaveDaysQuery = z
-  .object({ from: DATE.optional(), to: DATE.optional() })
+  .object({ from: DATE.optional(), to: DATE.optional(), teacherId: ID.optional() }) // 🔻 TASK-819: + the optional teacher
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "วันเริ่มต้องไม่หลังวันสิ้นสุด" })
   .refine((q) => !q.from || !q.to || (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000 <= 92, { message: "ช่วงวันที่ยาวเกิน 92 วัน" });
+export const leaveRangeParam = z.object({ id: ID }); // the range id rides the API's existing `:id` param name // 🔻 TASK-819 — lifting a whole recorded range
 export const teacherLeave = z.object({
   date: DATE,
   sessionIds: z.array(ID).min(1).max(50).optional(),
@@ -746,6 +747,42 @@ export const teacherLeave = z.object({
 });
 // TASK-608 — the ADMIN's door: the same body as the teacher's own, plus WHOSE day it is (the actor is the signed-in admin, never a field).
 export const adminTeacherLeave = teacherLeave.extend({ teacherId: ID });
+// 🔻 TASK-817 (REQ-123 P2) — the SAME door also takes a date RANGE with ONE reason: `{ teacherId, from, to, reason }`. The single-day body above is unchanged and stays valid.
+// `from ≤ to`, at most `MAX_LEAVE_RANGE_DAYS` (31) days; a range body carries NO `date` and NO `sessionIds` (classes are never picked for a whole-day block) and the single body refuses
+// `from` / `to`, so an ambiguous body is a 400, never a silent pick. The parsed range comes out as `{ teacherId, date: from, to, reason }`: the door's ONE future-only predicate reads `input.date`
+// (the first day — if it is future, all are), so a range cannot slip past the guard TASK-648 put on that line.
+// 📋 The two refusal sentences below are ✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim; the 31-day limit is the owner's too ("อนุมัติทั้งหมด 31 วัน A").
+export const MAX_LEAVE_RANGE_DAYS = 31;
+const leaveRangeDays = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+// ONE object (not a union): a union swallows every refinement message into a generic «Invalid input», and the approved refusal sentences below would never reach the admin.
+export const adminTeacherLeaveBody = z
+  .object({
+    teacherId: ID,
+    reason: z.string().trim().min(3).max(200),
+    date: DATE.optional(), // the single-day body
+    sessionIds: z.array(ID).min(1).max(50).optional(), // the single-day body only
+    from: DATE.optional(), // the range body
+    to: DATE.optional(),
+  })
+  .superRefine((b, ctx) => {
+    const isRange = b.from !== undefined || b.to !== undefined;
+    if (!isRange) {
+      if (b.date === undefined) ctx.addIssue({ code: "custom", message: "Invalid input", path: ["date"] });
+      return;
+    }
+    // a range is `from` + `to` and nothing of the single-day shape: an ambiguous body is a 400, never a silent pick
+    if (b.date !== undefined || b.sessionIds !== undefined || b.from === undefined || b.to === undefined) {
+      ctx.addIssue({ code: "custom", message: "Invalid input" });
+      return;
+    }
+    if (b.from > b.to) ctx.addIssue({ code: "custom", message: "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม", path: ["to"] });
+    else if (leaveRangeDays(b.from, b.to) > MAX_LEAVE_RANGE_DAYS) ctx.addIssue({ code: "custom", message: `ลาล่วงหน้าได้ไม่เกิน ${MAX_LEAVE_RANGE_DAYS} วันต่อครั้ง`, path: ["to"] });
+  })
+  .transform((b) =>
+    b.from !== undefined
+      ? { teacherId: b.teacherId, date: b.from, to: b.to, reason: b.reason } // a range: `date` is its FIRST day — the door's future-only line reads it
+      : { teacherId: b.teacherId, date: b.date!, ...(b.sessionIds ? { sessionIds: b.sessionIds } : {}), reason: b.reason },
+  );
 export const resetPassword = z.object({ password: z.string() });
 // TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.
 export const setUserMenus = z.object({ keys: z.array(z.string()) });

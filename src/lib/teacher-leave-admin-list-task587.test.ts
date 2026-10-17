@@ -65,7 +65,7 @@ describe("🔴 (a) THE ADMIN'S LIST — recorded days in a window, each with its
     expect(asked.map((a) => a[1])).toEqual([["2026-10-01", "2026-11-30"], ["2026-11-01", "2026-11-07"]]);
   });
   test("the KEY: the calendar's read key (`menu:calendar`) — the same rows the grid already shows that viewer; no action, no new key; a linked teacher is NOT allowed", () => {
-    expect(ROUTE_ACCESS["GET /teacher-leave-days"]).toEqual({ menus: ["menu:calendar"] });
+    expect(ROUTE_ACCESS["GET /teacher-leave-days"]).toEqual({ menus: ["menu:calendar", "menu:teachers"] }); // 🔻 TASK-819: + the Teachers menu (its per-teacher leave list)
     expect(TEACHER_ALLOWED.has("GET /teacher-leave-days")).toBe(false); // the route sweep (TASK-406's) 403s it for a linked account
   });
   test("through the ROOT app: the list reaches the service with the window; a backwards or >92-day window ⇒ 400", async () => {

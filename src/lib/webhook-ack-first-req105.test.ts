@@ -164,7 +164,7 @@ describe("🔴 §3 a duplicate event has NO side effect", () => {
 
   test("the store: `0055`, 56 = 56, and the table is its own witness", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(journal.entries.length).toBe(70); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
+    expect(journal.entries.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
     expect(journal.entries[55]).toMatchObject({ idx: 55, tag: "0055_line_webhook_events" });
     const sql = readFileSync(resolve(root, "drizzle/0055_line_webhook_events.sql"), "utf8");
     expect(sql).toContain(`"webhook_event_id" text PRIMARY KEY`);

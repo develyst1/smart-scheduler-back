@@ -477,6 +477,71 @@ export interface CreateVoucherResponse {
   voucher: VoucherSummary;
 }
 
+/** TASK-819 (REQ-123 P3) — one class on a teacher's leave day, in the shape the admin handles it by hand: the booking id, the time, WHO (the child; DUO: both) and WHAT (program, or the title of an อื่นๆ row), in a course or not. */
+export interface LeaveClassDTO {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  bookingType: string;
+  childName: string | null;
+  childNickname: string | null;
+  /** DUO's second child; null for every other class. */
+  coChildName: string | null;
+  coChildNickname: string | null;
+  program: string | null;
+  title: string | null;
+  inCourse: boolean;
+}
+
+/** TASK-819 (REQ-123 P5) — one recorded leave DAY in `GET /api/teacher-leave-days[?from&to&teacherId]`: `rangeId` is the record it belongs to (null = recorded as a single day) — group by it to show "this leave". */
+export interface RecordedLeaveDayDTO {
+  teacherId: string;
+  teacherName: string;
+  date: string;
+  reason: string | null;
+  createdBy: string | null;
+  rangeId: string | null;
+  bookings: LeaveClassDTO[];
+}
+export interface RecordedLeaveListResponse { items: RecordedLeaveDayDTO[] }
+
+/** TASK-817 (REQ-123 P2) — the answer of `POST /api/teacher-leave-days` for a DATE RANGE body `{ teacherId, from, to, reason }`. */
+export interface RecordLeaveRangeResponse {
+  mode: "advance-range";
+  /** the shared id of the new rows; null when every day was already recorded. */
+  rangeId: string | null;
+  from: string;
+  to: string;
+  recordedDays: number;
+  alreadyRecordedDays: number;
+  teacherNotified: number;
+  cancelled: 0;
+  bookingIds: string[];
+  familiesNotified: 0;
+  days: Array<{ date: string; alreadyRecorded: boolean; bookings: LeaveClassDTO[] }>;
+}
+
+/** TASK-819 (REQ-123 P4/P5) — `DELETE /api/teacher-leave-ranges/:id`: only the FUTURE days of the record are lifted; `kept` lists the days that had begun or passed. Nothing lifted ⇒ 400 (the approved future-only refusal). */
+export interface LiftLeaveRangeResponse {
+  rangeId: string;
+  lifted: string[];
+  kept: string[];
+  teacherNotified: number;
+}
+
+/** TASK-815 (REQ-123 Phase 1) — one drawn week of `POST /api/courses/preview`. `teacherOnLeave`: the teacher has an ADVANCE leave recorded that day (THE reader, `teacherLeaveOn`), also true on a week already sent as planned absence. */
+export interface CoursePreviewSessionDTO {
+  date: string;
+  startTime: string;
+  teacher: { id: string; name: string; nickname: string | null } | null;
+  subject: SubjectRef | null;
+  absent: boolean;
+  makeup: boolean;
+  teacherOnLeave: boolean;
+}
+
 /** TASK-805 (REQ-121) — `GET /api/subjects`: every ACTIVE program (assigned to a teacher or not), by name. */
 export interface SubjectListItemDTO { id: string; name: string; kind: "PRIVATE" | "DUO" }
 export interface SubjectListResponse { subjects: SubjectListItemDTO[] }

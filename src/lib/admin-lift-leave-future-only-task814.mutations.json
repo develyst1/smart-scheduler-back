@@ -1,0 +1,113 @@
+{
+  "task": "TASK-814",
+  "proves": "src/lib/admin-lift-leave-future-only-task814.test.ts",
+  "note": "REQ-123 §4 BE half. D1 the guard removed (the door stands open again) · D2 a hand-written date comparison instead of isAdvanceLeave · D3 the guard AFTER the lift (the row is gone, then 400) · D4 the guard inverted (future refused) · D5 the guard also on the teacher's own lift · D6 the refusal text differs from the owner's approved one · D7 today passes (>= instead of the predicate's >).",
+  "tests": "src/lib/admin-lift-leave-future-only-task814.test.ts src/lib/admin-records-teacher-leave-task608.test.ts src/lib/admin-leave-future-only-task648.test.ts",
+  "mutations": [
+    {
+      "id": "D1",
+      "what": "🔴 the guard is removed — a today/past leave row can be deleted by one call again",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "    if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "what": "a hand-written date comparison instead of the one predicate",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);",
+              "to": "if (c.req.valid(\"param\").date <= new Date().toISOString().slice(0, 10)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "what": "🔴 the guard runs AFTER the lift — the row is deleted and the teacher told, then 400",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "    if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);\n    return c.json(await svc.liftTeacherLeave(c.req.valid(\"param\").teacherId, c.req.valid(\"param\").date, { onBehalf: true }));",
+              "to": "    const out = await svc.liftTeacherLeave(c.req.valid(\"param\").teacherId, c.req.valid(\"param\").date, { onBehalf: true });\n    if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);\n    return c.json(out);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D4",
+      "what": "the guard is inverted — a future day is refused, today passes",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);",
+              "to": "if (isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D5",
+      "what": "🔴 the guard is also on the teacher's OWN lift — a coach could no longer lift today's day",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "    c.json(await svc.liftOwnLeave(assertLinked(c.get(\"user\")), c.req.valid(\"param\").date)),",
+              "to": "    c.json(isAdvanceLeave(c.req.valid(\"param\").date) ? await svc.liftOwnLeave(assertLinked(c.get(\"user\")), c.req.valid(\"param\").date) : (() => { throw badRequest(LIFT_FUTURE_ONLY_MESSAGE); })()),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D6",
+      "what": "the refusal text differs from the owner's approved one (a word dropped)",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "วันลาของวันนี้หรือวันที่ผ่านมาแล้วยกเลิกไม่ได้",
+              "to": "วันลาของวันนี้ยกเลิกไม่ได้"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D7",
+      "what": "today passes — the predicate is loosened at the route",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "if (!isAdvanceLeave(c.req.valid(\"param\").date)) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);",
+              "to": "if (!isAdvanceLeave(c.req.valid(\"param\").date, \"2000-01-01\")) throw badRequest(LIFT_FUTURE_ONLY_MESSAGE);"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

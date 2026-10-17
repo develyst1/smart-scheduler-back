@@ -80,8 +80,8 @@ describe("🔴 the migration — 0049, counted, ONE nullable column + the partia
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0049_other_series_key.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0049_other_series_key` is the 50th file, idx 49 (TASK-437 added 0050 after it); 'expects 50'", () => {
-    expect(files.length).toBe(70); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
-    expect(journal.entries.length).toBe(70); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069
+    expect(files.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(journal.entries.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
     expect(files[49]).toBe("0049_other_series_key.sql");
     expect(journal.entries[49]).toMatchObject({ idx: 49, tag: "0049_other_series_key" });
     expect(sql).toContain("`db:verify` expects 50");

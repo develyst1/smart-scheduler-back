@@ -796,10 +796,12 @@ function buildOutboxMessage(
     case "teacher_leave_lifted": {
       const recorded = payload.kind === "teacher_leave_recorded";
       const n = Number(payload.classes ?? 0);
+      // 🔻 TASK-817 — a RANGE (`to` after `date`) is ONE notice for the whole record: the Date line shows the span, and the blocked line says "those days" (✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim; `ob_tl_blocked_range`).
+      const toDate = payload.to && payload.date && String(payload.to) > String(payload.date) ? String(payload.to) : undefined; // 🔻 TASK-819: the LIFT of a range carries a span too
       return (
         t(recorded ? "ob_teacher_leave_recorded_title" : "ob_teacher_leave_lifted_title", lang) + "\n" +
-        line(t("ob_f_date", lang), payload.date ? ddmmyyyy(String(payload.date)) : undefined) +
-        `${t(recorded ? "ob_tl_blocked" : "ob_tl_open_again", lang)}\n` +
+        line(t("ob_f_date", lang), payload.date ? ddmmyyyy(String(payload.date)) + (toDate ? ` – ${ddmmyyyy(toDate)}` : "") : undefined) +
+        `${t(recorded ? (toDate ? "ob_tl_blocked_range" : "ob_tl_blocked") : (toDate ? "ob_tl_open_again_range" : "ob_tl_open_again"), lang)}\n` +
         (recorded && n > 0 ? `${t("ob_tl_nothing_cancelled", lang, { n })}\n` : "") +
         line(t("ob_tl_by", lang), payload.actor ? String(payload.actor) : undefined)
       );
