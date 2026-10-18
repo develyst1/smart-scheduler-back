@@ -159,11 +159,11 @@ describe("🔴 TASK-741 — Existing Customers: 1st Trial / 1 HR (3 FULL months,
     const b = [trial(S1, "2026-08-31"), trial(S2, "2026-07-31"), trial(S3, "2026-10-02", "CANCELLED"), trial(S7, "2026-10-01", "PAUSED"), trial(S8, "2026-10-31")];
     expect(run({ bookings: b }).existingCustomers.recentFirstTrial).toBe(3); // S1 · S7 · S8
   });
-  test("a COURSE bought on/after the trial moves the child OUT; one bought before it does not; a VOUCHER does not (Q2.2 default)", () => {
+  test("🔻 TEST-109 N1 — ANY course bought no later than the month end moves the child OUT, whatever its order with the trial (before, same day or after); a VOUCHER does not (Q2.2 default)", () => {
     const b = [trial(S4, "2026-09-10"), trial(S5, "2026-09-10"), trial(S6, "2026-09-10"), trial(S1, "2026-09-10")];
     const courses = [course({ id: "k4", studentIds: [S4], createdAt: "2026-09-10T08:00:00Z" }), course({ id: "k6", studentIds: [S6], createdAt: "2026-09-09T03:00:00Z" })];
     const vouchers = [voucher({ id: "w5", studentId: S5, createdAt: "2026-09-11T03:00:00Z" })];
-    expect(run({ bookings: b, courses, vouchers }).existingCustomers.recentFirstTrial).toBe(3); // S5 (voucher) · S6 (course before) · S1 (nothing)
+    expect(run({ bookings: b, courses, vouchers }).existingCustomers.recentFirstTrial).toBe(2); // S5 (voucher only) · S1 (nothing) — S4 (course same day) and S6 (course BEFORE the trial) are out
   });
   test("a course bought AFTER the selected month's end does not move a past month's trial out", () => {
     const b = [trial(S4, "2026-08-10")];
@@ -191,7 +191,7 @@ describe("🔴 TASK-741 — Existing Customers: 1st Trial / 1 HR (3 FULL months,
       trial(S1, "2026-10-04"), // S1 also holds a course ⇒ once
     ];
     const r = run({ bookings: b, courses: [course({ studentIds: [S1] })], vouchers: [voucher({ studentId: S2 })] }).existingCustomers;
-    expect(r.recentFirstTrial).toBe(3); // S3 · S4 · S1 (his course was bought 1 Sep, BEFORE his 4 Oct trial ⇒ the trial stays)
+    expect(r.recentFirstTrial).toBe(2); // S3 · S4 — S1 holds a course (bought 1 Sep, BEFORE his 4 Oct trial) ⇒ he is a course customer, out of the trial box (N1)
     expect(r.recentSingleSession).toBe(1); // S5
     expect(r.totalCustomers).toBe(4); // S1 (course + trial: once) · S2 (voucher) · S4 · S5 — and NOT S3 (an August trial)
   });

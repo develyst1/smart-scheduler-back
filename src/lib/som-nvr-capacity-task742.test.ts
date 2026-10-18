@@ -152,8 +152,9 @@ describe("🔴 TASK-742 — 1st Trial and «1st Trial, no course»", () => {
     expect(ids(r.rows.firstTrial)).toEqual([S1, S4, S5, S6, S7]);
     expect(r.rows.firstTrial[0]).toEqual({ studentId: S1, studentName: "Ploy", packageLabel: null, courseTeacherId: null, trialTeacherId: TA, trialDate: "2026-10-02", date: null, remark: null });
   });
-  test("trialNotConverted: a COURSE bought on/after the trial converts; a voucher does not (Q3.4); a course bought BEFORE the trial does not", () => {
-    expect(ids(r.rows.trialNotConverted)).toEqual([S1, S5, S6, S7]);
+  test("trialNotConverted: ANY course bought no later than the month end converts, whatever its order with the trial (TEST-109 N1 — the same rule as the Existing Customers 1st Trial card); a voucher does not (Q3.4)", () => {
+    expect(ids(r.rows.trialNotConverted)).toEqual([S1, S5, S7]); // S6 holds a course bought BEFORE the trial ⇒ converted
+    expect(ids(nvr({ bookings, courses: [...courses, course({ id: "late", studentIds: [S1], createdAt: "2026-11-02T03:00:00Z" })], vouchers }).rows.trialNotConverted)).toEqual([S1, S5, S7]); // a course bought AFTER the month end converts nobody in October
   });
   test("both are people, in trial-date order", () => {
     expect(r.rows.firstTrial.map((x) => x.trialDate)).toEqual(["2026-10-02", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"]);

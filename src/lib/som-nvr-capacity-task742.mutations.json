@@ -297,8 +297,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "buyDay(c) >= t.date)) trialNotConverted.push(r);",
-              "to": "buyDay(c) >= t.date) && !vouchers.some((x) => x.studentId === id)) trialNotConverted.push(r);"
+              "from": "buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
+              "to": "buyDay(c) <= monthEnd(month)) && !vouchers.some((x) => x.studentId === id)) trialNotConverted.push(r);"
             }
           ]
         }
@@ -306,14 +306,29 @@
     },
     {
       "id": "N21",
-      "what": "a course bought BEFORE the trial converts it",
+      "what": "a course bought AFTER the month end converts a trial",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) >= t.date)) trialNotConverted.push(r);",
+              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
               "to": "if (!courses.some((c) => c.studentIds.includes(id))) trialNotConverted.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N47",
+      "what": "N1 reverted: only a course bought on/after the trial converts it",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
+              "to": "buyDay(c) <= monthEnd(month) && buyDay(c) >= t.date)) trialNotConverted.push(r);"
             }
           ]
         }

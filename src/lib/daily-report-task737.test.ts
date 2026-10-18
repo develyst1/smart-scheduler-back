@@ -10,6 +10,7 @@ import * as v from "../validation";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 const { db } = await import("../db");
 const dailySvc = await import("../services/daily-report.service");
+const campSvc = await import("../services/camp.service");
 const { api } = await import("../routes/api");
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -152,7 +153,8 @@ describe("🔴 TASK-737 — the READ (service): which rows, through the real `wh
   const mk = (o: Partial<{ id: string; date: string; pendingSlot: boolean; groupId: string | null; status: string; bookingType: string; teacherId: string; additionalTeachers: Array<{ teacherId: string }> }>) => ({ id: "x", date: D, pendingSlot: false, groupId: null, status: "CONFIRMED", bookingType: "COURSE_PACKAGE", teacherId: A, additionalTeachers: [], ...o });
   const run = async (rows: ReturnType<typeof mk>[], teacherId?: string) => {
     const spy = spyOn(db.query.bookings, "findMany").mockImplementation(fakeBookings(rows) as any);
-    try { return await dailySvc.getDailyReportContract(D, teacherId); } finally { spy.mockRestore(); }
+    const camp = spyOn(campSvc, "weeksForCalendar").mockImplementation((async () => []) as any); // 🔻 743/F2: the day's camp weeks are always read — none here
+    try { return await dailySvc.getDailyReportContract(D, teacherId); } finally { spy.mockRestore(); camp.mockRestore(); }
   };
   test("yesterday's PAUSED class is NOT today's Awaiting; today's is", async () => {
     expect((await run([mk({ status: "PAUSED", bookingType: "SINGLE_SESSION", date: Y })])).awaiting).toBe(0);

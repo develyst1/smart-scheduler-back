@@ -20,7 +20,7 @@ export async function getDailyReportContract(date: string, teacherId?: string) {
     bookingType: b.bookingType,
     coachIds: [b.teacherId, ...(b.additionalTeachers ?? []).map((a: any) => a.teacherId)],
   }));
-  // 🔻 TASK-743 (REQ-124) — «Others Program»: the children of the day's group work. A camp week's number is read ONLY when the day has a camp row.
+  // 🔻 TASK-743 (REQ-124) — «Others Program»: the children of the day's group work. The camp weeks of the day are read every time (F2).
   const programRows: ProgramRow[] = found.map((b: any, i: number) => ({
     ...rows[i]!,
     teacherId: b.teacherId, date: b.date, startTime: b.startTime, endTime: b.endTime,
@@ -28,10 +28,8 @@ export async function getDailyReportContract(date: string, teacherId?: string) {
     campWeekId: b.campWeekDay?.campWeekId ?? null,
     seatStatuses: b.bookingType === "GROUP" ? (b.seats ?? []).map((x: any) => x.status) : null,
   }));
-  let camp: CampKids = {};
-  if (programRows.some((r) => r.campWeekId)) {
-    const weeks = await weeksForCalendar({ start: date, end: date });
-    camp = Object.fromEntries(weeks.map((w) => [w.id, { name: w.name, kids: Number(w.dayCounts?.[date] ?? 0) }]));
-  }
+  // 🔻 TEST-109 F2 — the day's camp weeks are ALWAYS read: a week with kids but no coach has no hour row to point at it.
+  const weeks = await weeksForCalendar({ start: date, end: date });
+  const camp: CampKids = Object.fromEntries(weeks.map((w) => [w.id, { name: w.name, kids: Number(w.dayCounts?.[date] ?? 0) }]));
   return { date, ...countDaily(rows, { teacherId }), kidsByProgram: kidsByProgram(programRows, { teacherId, camp }) };
 }

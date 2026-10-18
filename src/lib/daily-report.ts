@@ -209,6 +209,13 @@ export function kidsByProgram(rowsOfDay: readonly ProgramRow[], opts: { teacherI
     items.CAMP.push({ name: w?.name ?? ((r.title ?? "").trim() || "CAMP"), kids: w?.kids ?? null });
   }
 
+  // 🔻 TEST-109 F2 — «kids in camp that day» (Palm §10.1): a camp week with kids but NO coach has no hour row, yet its children are there. Every week of the day with kids > 0 is an item; a week with 0
+  // kids and no row stays out. Under a coach filter only the weeks where THAT coach has a camp row show (a coach-less week belongs to no coach).
+  for (const [weekId, w] of Object.entries(opts.camp ?? {})) {
+    if (weeks.has(weekId) || opts.teacherId || (w.kids ?? 0) <= 0) continue;
+    items.CAMP.push({ name: w.name, kids: w.kids });
+  }
+
   return PROGRAMS.map((program) => {
     const merged = mergeItems(items[program]);
     return { program, total: merged.reduce<number | null>((t, i) => addKids(t, i.kids), null), items: merged };

@@ -88,6 +88,15 @@ describe("🔴 TASK-743 — the rules in detail", () => {
     const c: CampKids = { w1: { name: "Summer", kids: 8 }, w2: { name: "Winter", kids: 3 } };
     expect(block(rows, "CAMP", { camp: c })).toEqual({ program: "CAMP", total: 11, items: [{ name: "Summer", kids: 8 }, { name: "Winter", kids: 3 }, { name: "Autumn", kids: null }] });
   });
+  test("🔴 TEST-109 F2 — a camp week with kids but NO coach (no hour row) is still an item; under a coach filter it is not shown; a week WITH a coach counts once; a week with 0 kids and no row stays out", () => {
+    const weeks: CampKids = { w1: { name: "Camp 12-13 Oct", kids: 3 }, w2: { name: "Camp coached", kids: 8 }, w3: { name: "Empty week", kids: 0 } };
+    const rows = [camp("09:00", "w2"), camp("10:00", "w2")];
+    expect(block(rows, "CAMP", { camp: weeks })).toEqual({ program: "CAMP", total: 11, items: [{ name: "Camp coached", kids: 8 }, { name: "Camp 12-13 Oct", kids: 3 }] });
+    expect(block([], "CAMP", { camp: weeks })).toEqual({ program: "CAMP", total: 11, items: [{ name: "Camp coached", kids: 8 }, { name: "Camp 12-13 Oct", kids: 3 }] }); // no camp row at all
+    expect(block(rows, "CAMP", { camp: weeks, teacherId: A })).toEqual({ program: "CAMP", total: 8, items: [{ name: "Camp coached", kids: 8 }] }); // the coach-less week belongs to no coach
+    expect(block(rows, "CAMP", { camp: weeks, teacherId: B })).toEqual({ program: "CAMP", total: null, items: [] });
+    expect(block([camp("09:00", "w3")], "CAMP", { camp: weeks }).items).toEqual([{ name: "Camp coached", kids: 8 }, { name: "Camp 12-13 Oct", kids: 3 }, { name: "Empty week", kids: 0 }]); // a week WITH a row and 0 kids is shown as today (0); the rowless 0-kid ones are not
+  });
   test("🔒 D1 — a 2-hour ECA with 5 kids is 5, not 10; two SEPARATE rounds still add; a different coach / date / gap is another class", () => {
     const twoHours = [eca("STA", 5, "09:00"), eca("STA", 5, "10:00")];
     expect(block(twoHours, "ECA").total).toBe(5);
@@ -136,12 +145,14 @@ describe("🔴 TASK-743 — the READ (service) through fake db, and the route", 
     expect((await run([row({ additionalTeachers: [{ teacherId: B }] })], B)).r.kidsByProgram.find((b) => b.program === "ECA")!.total).toBe(5);
     expect((await run([row({ additionalTeachers: [{ teacherId: B }] })], "zzz")).r.kidsByProgram.find((b) => b.program === "ECA")!.total).toBeNull();
   });
-  test("the camp week's kid count of the DATE comes from the calendar's own number (`weeksForCalendar`), read only when the day has a camp row", async () => {
+  test("the camp week's kid count of the DATE comes from the calendar's own number (`weeksForCalendar`), read EVERY time (a coach-less week has no row to point at it)", async () => {
     const hours = ["09:00:00", "10:00:00", "11:00:00"].map((t, i) => row({ id: `c${i}`, otherKind: "CAMP", otherTitle: "Summer", headCount: null, startTime: t, campWeekDay: { campWeekId: "w1" } }));
     const withCamp = await run(hours, undefined, [{ id: "w1", name: "Summer camp", dayCounts: { [D]: 8, "2026-10-13": 2 } }]);
     expect(withCamp.r.kidsByProgram.find((b) => b.program === "CAMP")).toEqual({ program: "CAMP", total: 8, items: [{ name: "Summer camp", kids: 8 }] });
     expect(withCamp.weeksCalls).toBe(1);
-    expect((await run([row()])).weeksCalls).toBe(0); // no camp row ⇒ the camp tables are not touched
+    const noRow = await run([row()], undefined, [{ id: "w9", name: "Camp 19 - 23 Oct", dayCounts: { [D]: 2 } }, { id: "w8", name: "Empty", dayCounts: { [D]: 0 } }]);
+    expect(noRow.weeksCalls).toBe(1); // F2: read even though no camp row exists
+    expect(noRow.r.kidsByProgram.find((b) => b.program === "CAMP")).toEqual({ program: "CAMP", total: 2, items: [{ name: "Camp 19 - 23 Oct", kids: 2 }] });
   });
   test("the response keeps every 737 field and adds `kidsByProgram`", async () => {
     const { r } = await run([row({ bookingType: "COURSE_PACKAGE", status: "ATTENDED", otherKind: null })]);

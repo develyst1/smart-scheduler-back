@@ -295,14 +295,29 @@
     },
     {
       "id": "M20",
-      "what": "a course bought the SAME day as the trial no longer moves it out (`>=` becomes `>`)",
+      "what": "N1 reverted: a course bought BEFORE the trial no longer moves it out (the lower bound is back)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) >= fromDate",
-              "to": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) > fromDate"
+              "from": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf) ||",
+              "to": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf && bangkokDate(c.createdAt) >= (trialsRecent.get(studentId) ?? \"\")) ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M40",
+      "what": "N1: a course bought AFTER the month end moves a past month's trial out",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf) ||",
+              "to": "c.studentIds.includes(studentId)) ||"
             }
           ]
         }

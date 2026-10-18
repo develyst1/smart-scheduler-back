@@ -261,14 +261,14 @@
     },
     {
       "id": "P18",
-      "what": "the READ never asks for the camp week's kids",
+      "what": "the READ never asks for the camp weeks (a coach-less week is lost)",
       "files": [
         {
           "file": "src/services/daily-report.service.ts",
           "edits": [
             {
-              "from": "if (programRows.some((r) => r.campWeekId)) {",
-              "to": "if (false) {"
+              "from": "const weeks = await weeksForCalendar({ start: date, end: date });",
+              "to": "const weeks: any[] = [];"
             }
           ]
         }
@@ -276,14 +276,59 @@
     },
     {
       "id": "P19",
-      "what": "the READ asks the camp tables on EVERY day",
+      "what": "F2 reverted: only weeks that have a camp HOUR row are items",
       "files": [
         {
-          "file": "src/services/daily-report.service.ts",
+          "file": "src/lib/daily-report.ts",
           "edits": [
             {
-              "from": "if (programRows.some((r) => r.campWeekId)) {",
-              "to": "if (true) {"
+              "from": "if (weeks.has(weekId) || opts.teacherId || (w.kids ?? 0) <= 0) continue;",
+              "to": "continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P23",
+      "what": "F2: a coach-less week IS shown under a coach filter",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (weeks.has(weekId) || opts.teacherId || (w.kids ?? 0) <= 0) continue;",
+              "to": "if (weeks.has(weekId) || (w.kids ?? 0) <= 0) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P24",
+      "what": "F2: a coach-less week with 0 kids is shown",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (weeks.has(weekId) || opts.teacherId || (w.kids ?? 0) <= 0) continue;",
+              "to": "if (weeks.has(weekId) || opts.teacherId) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P25",
+      "what": "F2: a week that HAS a coach row is counted twice (once by its row, once as a coach-less week)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (weeks.has(weekId) || opts.teacherId || (w.kids ?? 0) <= 0) continue;",
+              "to": "if (opts.teacherId || (w.kids ?? 0) <= 0) continue;"
             }
           ]
         }

@@ -216,10 +216,11 @@ export function countSom(input: SomContractInput): SomContractSections {
   const courseHolders = new Set(activeCourses.flatMap((c) => [...c.studentIds]));
   const voucherHolders = new Set(activeVouchers.map((v) => v.studentId));
 
-  /** Did this student BUY a course (or, switch-gated, a voucher) on/after `fromDate`, no later than `asOf`? (a purchase counts whatever became of it) */
-  const boughtOnOrAfter = (studentId: string, fromDate: string, withVouchers: boolean): boolean =>
-    courses.some((c) => c.studentIds.includes(studentId) && bangkokDate(c.createdAt) >= fromDate && bangkokDate(c.createdAt) <= asOf) ||
-    (withVouchers && vouchers.some((v) => v.studentId === studentId && bangkokDate(v.createdAt) >= fromDate && bangkokDate(v.createdAt) <= asOf));
+  /** 🔻 TEST-109 N1 — has this student BOUGHT a course (or, switch-gated, a voucher) no later than `asOf`, WHATEVER THE ORDER with his trial? A child who already holds a course is a course customer and leaves
+   *  the trial box even when the course was sold before the trial was booked (or imported). A purchase counts whatever became of it. */
+  const boughtByAsOf = (studentId: string, withVouchers: boolean): boolean =>
+    courses.some((c) => c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf) ||
+    (withVouchers && vouchers.some((v) => v.studentId === studentId && bangkokDate(v.createdAt) <= asOf));
 
   /** The students with a non-cancelled class of `type` dated in [from, to] (class date, Q2.4), and each one's EARLIEST such date. */
   const classesIn = (type: string, from: string, to: string): Map<string, string> => {
@@ -232,8 +233,8 @@ export function countSom(input: SomContractInput): SomContractSections {
   };
   const trialsRecent = classesIn("FIRST_TRIAL", recentFromDate, monthTo);
   const singlesRecent = classesIn("SINGLE_SESSION", recentFromDate, monthTo);
-  const recentFirstTrial = [...trialsRecent].filter(([id, d]) => !boughtOnOrAfter(id, d, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
-  const recentSingleSession = [...singlesRecent].filter(([id, d]) => !SINGLE_SESSION_MOVES_OUT || !boughtOnOrAfter(id, d, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
+  const recentFirstTrial = [...trialsRecent].filter(([id]) => !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
+  const recentSingleSession = [...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
   // Total = the distinct names of Active Course + Active Voucher at month end + 1st Trial + 1 HR of the SELECTED month only (Q2.7 — Palm's reading).
   const totalCustomers = new Set([...courseHolders, ...voucherHolders, ...classesIn("FIRST_TRIAL", monthFrom, monthTo).keys(), ...classesIn("SINGLE_SESSION", monthFrom, monthTo).keys()]).size;
   const existingCustomers = {
@@ -402,8 +403,8 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
     if (t.date.slice(0, 7) !== month || !t.passes) continue;
     const r = row({ studentIds: [id], trialDate: t.date, trialTeacherId: t.teacherId });
     firstTrial.push(r); // stays counted even after a course (§3)
-    // Q3.4 — a VOUCHER is not a course: only a COURSE bought on/after the trial converts it
-    if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) >= t.date)) trialNotConverted.push(r);
+    // Q3.4 — a VOUCHER is not a course: only a COURSE converts it. 🔻 TEST-109 N1 — ANY course bought no later than the month end, whatever its order with the trial (the same rule as Existing Customers' 1st Trial card)
+    if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);
   }
 
   // ── packs: how each purchase classifies (inferred from the student's EARLIER purchases) ──
