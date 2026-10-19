@@ -309,6 +309,81 @@
       ]
     },
     {
+      "id": "M41",
+      "what": "744: a sub-district is counted under the WRONG district (the prefix check is gone)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "s.subdistrictCode && s.subdistrictCode.startsWith(d) && nameOf(s.subdistrictCode)",
+              "to": "s.subdistrictCode && nameOf(s.subdistrictCode)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M42",
+      "what": "744: a sub-district code outside the dataset becomes a bucket with no name",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "s.subdistrictCode.startsWith(d) && nameOf(s.subdistrictCode) ? s.subdistrictCode : null",
+              "to": "s.subdistrictCode.startsWith(d) ? s.subdistrictCode : null"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M43",
+      "what": "744: the unknown sub-districts are dropped (the district's total is no longer its count)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(s) => (s.subdistrictCode && s.subdistrictCode.startsWith(d)",
+              "to": "(s) => (!s.subdistrictCode ? 'x' : s.subdistrictCode && s.subdistrictCode.startsWith(d)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M44",
+      "what": "744: the sub-districts read EVERY student, not the district card's people (the filters are ignored)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "subdistrictByDistrict: subdistrictsOf(people, districtKey, input.subdistrictLabel),",
+              "to": "subdistrictByDistrict: subdistrictsOf(input.students.map((s) => s), districtKey, input.subdistrictLabel),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M45",
+      "what": "744: 'district' itself changes (the district card loses its unknown handling)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return labelOfDistrict.get(s.districtCode) ? s.districtCode : null; // a code outside the dataset is unknown",
+              "to": "return s.districtCode; // a code outside the dataset is unknown"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "M40",
       "what": "N1: a course bought AFTER the month end moves a past month's trial out",
       "files": [

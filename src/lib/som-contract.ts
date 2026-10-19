@@ -107,6 +107,8 @@ export interface SomStudent {
   province: string | null;
   /** The ACTIVE parent's district code (REQ-118, `0069`); null before the admins fill it. */
   districtCode: string | null;
+  /** 🔻 744 — the ACTIVE parent's sub-district code (REQ-118); null before the admins fill it. Optional: only `subdistrictByDistrict` reads it. */
+  subdistrictCode?: string | null;
 }
 export interface SomSubject { id: string; name: string; active: boolean }
 export type TeacherType = "FULL_TIME" | "PART_TIME" | "FREELANCE";
@@ -127,6 +129,8 @@ export interface SomContractInput {
   subjects: readonly SomSubject[];
   /** The label of a district code — `"<district TH>, <province TH>"`, or null when the code is not in the dataset (→ the student is `unknown`). Injected so this file reads no dataset. */
   districtLabel: (code: string) => string | null;
+  /** 🔻 744 — the Thai name of a sub-district code, or null when it is not in the dataset (→ `unknown`). Optional: absent ⇒ every sub-district is unknown. */
+  subdistrictLabel?: (code: string) => string | null;
   /** 🔻 742 — the roster and the recorded advance-leave days for Coach Capacity. */
   teachers?: readonly SomTeacher[];
   leaveDays?: ReadonlyArray<{ teacherId: string; date: string }>;
@@ -137,7 +141,7 @@ export interface SomContractInput {
 export interface SomContractSections {
   today: { date: string; confirmed: number; attended: number; attendanceRate: number };
   existingCustomers: { month: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
-  demographics: { month: string; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown };
+  demographics: { month: string; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown; subdistrictByDistrict: Record<string, Breakdown> };
   activityProgram: { month: string; categories: ActivityCategory[] };
   newVsRenewing: NvrCounts;
   coachCapacity: CoachCapacity;
@@ -267,6 +271,7 @@ export function countSom(input: SomContractInput): SomContractSections {
     nationality: breakdown(people, (s) => s.nationality),
     province: breakdown(people, (s) => s.province),
     district: breakdown(people, districtKey, (key) => labelOfDistrict.get(key) ?? undefined),
+    subdistrictByDistrict: subdistrictsOf(people, districtKey, input.subdistrictLabel),
   };
 
   // ── Activity / Program — attended SESSIONS (rows, Q6.8) of the month by each session's subject (a voucher session takes its booking's subject, M8) ──
@@ -292,6 +297,29 @@ export function countSom(input: SomContractInput): SomContractSections {
     .sort((a, b) => (a.key === UNKNOWN_KEY ? 1 : 0) - (b.key === UNKNOWN_KEY ? 1 : 0) || b.total - a.total || a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
   return { today: todaySection, existingCustomers, demographics, activityProgram: { month, categories }, newVsRenewing: countNvr(input).counts, coachCapacity: countCapacity(input) };
+}
+
+/**
+ * 🔻 TASK-744 (REQ-124 K4 = B) — the sub-district breakdown UNDER each district of the district card: the SAME people (already filtered by month + badge, each child once), keyed by the card's own
+ * district keys (`unknown` excluded). A child's sub-district counts only when its code is in the dataset AND sits inside his district (its 6-digit code starts with the 4-digit district code); anything
+ * else is that district's `unknown` — never a bucket with no name, never a sub-district under the wrong district. Every bucket is sent; `total` = the district's `count`.
+ */
+function subdistrictsOf(people: readonly SomStudent[], districtKey: (s: SomStudent) => string | null, label?: (code: string) => string | null): Record<string, Breakdown> {
+  const byDistrict = new Map<string, SomStudent[]>();
+  for (const s of people) {
+    const d = districtKey(s);
+    if (d) byDistrict.set(d, [...(byDistrict.get(d) ?? []), s]);
+  }
+  const names = new Map<string, string | null>();
+  const nameOf = (code: string): string | null => {
+    if (!names.has(code)) names.set(code, label?.(code) ?? null);
+    return names.get(code)!;
+  };
+  const out: Record<string, Breakdown> = {};
+  for (const [d, kids] of byDistrict) {
+    out[d] = breakdown(kids, (s) => (s.subdistrictCode && s.subdistrictCode.startsWith(d) && nameOf(s.subdistrictCode) ? s.subdistrictCode : null), (key) => nameOf(key) ?? undefined);
+  }
+  return out;
 }
 
 /** The 9 bands, ALL always present and in order (zeros kept), then `unknown` (no / invalid DOB). */

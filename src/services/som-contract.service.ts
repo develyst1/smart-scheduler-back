@@ -97,10 +97,11 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     })),
     students: students.map((s: any) => {
       const parent: any = s.parentId ? (parentById.get(s.parentId) ?? null) : null;
-      return { id: s.id, name: s.name, nickname: s.nickname ?? null, gender: s.gender ?? null, nationality: s.nationality ?? null, birthDate: s.birthDate ?? null, province: parent?.province ?? null, districtCode: parent?.districtCode ?? null };
+      return { id: s.id, name: s.name, nickname: s.nickname ?? null, gender: s.gender ?? null, nationality: s.nationality ?? null, birthDate: s.birthDate ?? null, province: parent?.province ?? null, districtCode: parent?.districtCode ?? null, subdistrictCode: parent?.subdistrictCode ?? null };
     }),
     subjects: subjects.map((s: any) => ({ id: s.id, name: s.name, active: s.active })),
     districtLabel,
+    subdistrictLabel: (code: string) => areaName(code, "TH"), // 🔻 744
     teachers: teachers.map((t: any) => ({ id: t.id, nickname: t.nickname, type: t.type, active: t.active, archived: t.archived, workDays: t.workDays ?? [] })),
     leaveDays: leaveRows.map((l: any) => ({ teacherId: l.teacherId, date: l.date })),
   };

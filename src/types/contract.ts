@@ -321,7 +321,7 @@ export interface SomBreakdown {
 export interface SomReportResponse {
   today: { date: IsoDate; confirmed: number; attended: number; attendanceRate: number; expected: number };
   existingCustomers: { month: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
-  demographics: { month: string; gender: SomBreakdown; ageBand: SomBreakdown; nationality: SomBreakdown; province: SomBreakdown; district: SomBreakdown };
+  demographics: { month: string; gender: SomBreakdown; ageBand: SomBreakdown; nationality: SomBreakdown; province: SomBreakdown; district: SomBreakdown; subdistrictByDistrict: Record<string, SomBreakdown> };
   activityProgram: {
     month: string;
     categories: Array<{ key: string; label: string; course: number; voucher: number; singleSession: number; typeTotal: number; firstTrial: number; total: number }>;

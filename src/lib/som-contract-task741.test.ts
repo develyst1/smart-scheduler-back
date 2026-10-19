@@ -31,9 +31,10 @@ const voucher = (o: Partial<SomVoucher> = {}): SomVoucher => ({ id: "v1", studen
 const student = (id: string, o: Partial<SomStudent> = {}): SomStudent => ({ id, gender: null, nationality: null, birthDate: null, province: null, districtCode: null, ...o });
 const LABELS: Record<string, string> = { "1001": "บางรัก, กรุงเทพมหานคร", "5001": "เมืองเชียงใหม่, เชียงใหม่" };
 const GONE = "aaaa0005-0000-4000-8000-000000000000";
+const SUBS: Record<string, string> = { "100101": "พระบรมมหาราชวัง", "100102": "วังบูรพาภิรมย์", "500101": "ศรีภูมิ" };
 const SUBJECTS = [{ id: BIKE, name: "Bike", active: true }, { id: SKATE, name: "Skate", active: true }, { id: SURF, name: "Surf", active: true }, { id: OLD, name: "Old", active: false }, { id: GONE, name: "Gone", active: false }];
 const run = (o: Partial<SomContractInput> = {}) =>
-  countSom({ month: MONTH, today: TODAY, badgeValueIds: [], bookings: [], courses: [], vouchers: [], students: [], subjects: SUBJECTS, districtLabel: (c) => LABELS[c] ?? null, ...o });
+  countSom({ month: MONTH, today: TODAY, badgeValueIds: [], bookings: [], courses: [], vouchers: [], students: [], subjects: SUBJECTS, districtLabel: (c) => LABELS[c] ?? null, subdistrictLabel: (c) => SUBS[c] ?? null, ...o });
 
 describe("🔒 TASK-741 — the dates and the declared defaults", () => {
   test("addMonths / monthEnd across a year and a leap February", () => {
@@ -281,6 +282,43 @@ describe("🔴 TASK-741 — Demographic: students who ATTENDED in the month", ()
   test("the month is echoed on every section", () => {
     const r = run({ month: "2026-09" });
     expect([r.existingCustomers.month, r.demographics.month, r.activityProgram.month]).toEqual(["2026-09", "2026-09", "2026-09"]);
+  });
+});
+
+describe("🔴 TASK-744 — demographics.subdistrictByDistrict (K4 = B): the sub-district under each district", () => {
+  const people = (specs: Array<[string | null, string | null]>, extra: Partial<SomBooking> = {}) => {
+    const ids = specs.map((_, i) => `p${i}`);
+    return { bookings: ids.map((id) => bk({ studentIds: [id], ...extra })), students: ids.map((id, i) => student(id, { districtCode: specs[i]![0], subdistrictCode: specs[i]![1] })) };
+  };
+  test("two sub-districts in one district (2 + 1) ⇒ the district's total 3, every bucket sent, `unknown` last", () => {
+    const d = run(people([["1001", "100101"], ["1001", "100101"], ["1001", "100102"]])).demographics.subdistrictByDistrict;
+    expect(d["1001"]).toEqual({ buckets: [{ key: "100101", label: "พระบรมมหาราชวัง", count: 2 }, { key: "100102", label: "วังบูรพาภิรมย์", count: 1 }, { key: "unknown", label: "ไม่ระบุ", count: 0 }], known: 3, unknown: 0, total: 3 });
+  });
+  test("a person in the district with no sub-district, a code outside the dataset, or a sub-district that belongs to ANOTHER district ⇒ that district's `unknown`", () => {
+    const d = run(people([["1001", "100101"], ["1001", null], ["1001", "999999"], ["1001", "100199"], ["1001", "500101"], ["5001", "500101"]])).demographics.subdistrictByDistrict;
+    expect(d["1001"]!.buckets).toEqual([{ key: "100101", label: "พระบรมมหาราชวัง", count: 1 }, { key: "unknown", label: "ไม่ระบุ", count: 4 }]); // null · 999999 · 100199 (inside the district but NOT in the dataset) · 500101 (another district's)
+    expect([d["1001"]!.known, d["1001"]!.unknown, d["1001"]!.total]).toEqual([1, 4, 5]);
+    expect(d["5001"]!.buckets).toEqual([{ key: "500101", label: "ศรีภูมิ", count: 1 }, { key: "unknown", label: "ไม่ระบุ", count: 0 }]); // the wrong-district code did NOT leak here
+  });
+  test("the keys are EXACTLY the district card's bucket keys (`unknown` excluded) and each total is that district's count; a child with no district is in neither", () => {
+    const r = run(people([["1001", "100101"], ["5001", null], ["9999", "100101"], [null, "100101"]])).demographics;
+    expect(Object.keys(r.subdistrictByDistrict).sort()).toEqual(r.district.buckets.filter((b) => b.key !== "unknown").map((b) => b.key).sort());
+    for (const b of r.district.buckets) if (b.key !== "unknown") expect(r.subdistrictByDistrict[b.key]!.total).toBe(b.count);
+    expect(run().demographics.subdistrictByDistrict).toEqual({}); // nobody attended
+  });
+  test("the SAME people as District: the badge OR and `month` change both together, and `district` itself is unchanged", () => {
+    const specs: Array<[string | null, string | null]> = [["1001", "100101"], ["1001", "100102"], ["5001", "500101"]];
+    const rows = people(specs);
+    rows.bookings[0] = bk({ studentIds: ["p0"], badgeIds: [BV1] });
+    rows.bookings[1] = bk({ studentIds: ["p1"], badgeIds: [BV2] });
+    rows.bookings[2] = bk({ studentIds: ["p2"], badgeIds: [BV1], date: "2026-09-10" });
+    const one = run({ ...rows, badgeValueIds: [BV1] }).demographics;
+    expect(Object.keys(one.subdistrictByDistrict)).toEqual(["1001"]);
+    expect(one.subdistrictByDistrict["1001"]!.total).toBe(1);
+    expect(one.district.buckets[0]).toMatchObject({ key: "1001", count: 1 });
+    const sep = run({ ...rows, month: "2026-09" }).demographics;
+    expect(Object.keys(sep.subdistrictByDistrict)).toEqual(["5001"]);
+    expect(run(rows).demographics.district.buckets.map((b) => [b.key, b.count])).toEqual([["1001", 2], ["unknown", 0]]); // October: p2 attended in September — and the district card is exactly as before
   });
 });
 
