@@ -568,7 +568,10 @@ export async function getCalendar(input: { date: string; view: "day" | "week"; i
   const idx = new Map<string, ReturnType<typeof toBookingDTO>>();
   for (const row of bookingRows) {
     const dto = toBookingDTO(row, { courseLast: isCourseLast(row, lastByCourse), campKidCount: row.campWeekDayId ? (kidsByWeekDate.get(`${row.campWeekDay?.campWeekId}|${row.date}`) ?? 0) : null, provenance: scope ? "masked" : "raw" }); // TASK-481 — B · 🔻 TASK-594 §4: THIS week's count
-    const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;
+    // 🔻 TASK-823 (REQ-125) — a SCOPED calendar has ONE column, mine, so every row it fetched is drawn in it: `ownScopeWhere` already decided the row is mine (primary OR extra teacher), and keying it
+    // under the PRIMARY teacher's id — a column this payload does not carry — silently dropped every class where I am the extra teacher (a multi-teacher Other/ECA, a group's extra coach). The admin
+    // payload (unscoped) keeps the primary key, byte for byte: the front puts a multi-teacher class into each assigned teacher's column from there.
+    const key = `${dto.date}|${scope ?? dto.teacher.id}|${dto.startTime}`;
     const cur = idx.get(key);
     // Overbooking a leave slot (UC-004): an active booking can now share a slot with
     // the SICK_LEAVE record it replaced — surface the active booking, not the leave one.

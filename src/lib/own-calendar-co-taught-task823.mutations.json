@@ -1,0 +1,12 @@
+{
+  "task": "TASK-823",
+  "proves": "src/lib/own-calendar-co-taught-task823.test.ts",
+  "note": "REQ-125. H1 the scoped key back to the PRIMARY (the ECA disappears from the extra teacher's own calendar) · H2 the admin payload re-keyed (indexed under the LAST assigned teacher) · H3 the predicate dropped from the scoped read · H4 the scoped column filter dropped (every teacher's column in a coach's own calendar).",
+  "tests": "src/lib/own-calendar-co-taught-task823.test.ts src/lib/teacher-own-calendar-req097.test.ts",
+  "mutations": [
+    { "id": "H1", "what": "🔴 the scoped key goes back to the PRIMARY teacher's id — a class where I am the extra teacher is fetched and never drawn (REQ-125)", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const key = `${dto.date}|${scope ?? dto.teacher.id}|${dto.startTime}`;", "to": "const key = `${dto.date}|${dto.teacher.id}|${dto.startTime}`;" }] }] },
+    { "id": "H2", "what": "🔴 the ADMIN payload is re-keyed (under the last assigned teacher) — the admin calendar changes", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const key = `${dto.date}|${scope ?? dto.teacher.id}|${dto.startTime}`;", "to": "const key = `${dto.date}|${scope ?? (dto.teachers.at(-1)?.id ?? dto.teacher.id)}|${dto.startTime}`;" }] }] },
+    { "id": "H3", "what": "the predicate is dropped from the scoped read — a coach's own calendar would fetch everybody's classes", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "        scope ? ownScopeWhere(scope) : undefined, // TASK-406 — the ONE predicate; `and` drops an undefined", "to": "        undefined, // TASK-406 — the ONE predicate; `and` drops an undefined" }] }] },
+    { "id": "H4", "what": "the scoped column filter is dropped — a coach's own calendar shows every teacher's column", "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": ".filter((t) => !scope || t.id === scope) // TASK-406: a scoped calendar is MY column", "to": ".filter((t) => true) // TASK-406: a scoped calendar is MY column" }] }] }
+  ]
+}
