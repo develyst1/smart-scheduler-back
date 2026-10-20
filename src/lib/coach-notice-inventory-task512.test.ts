@@ -65,6 +65,9 @@ const NAMED_BY_DESIGN: Record<string, string> = {
   // apply: the fact is a DAY, not a class — no booking, no `teachersOfBooking`, nothing for another coach to be told about (their
   // classes are untouched, and the families are deliberately silent — nothing was cancelled, TASK-587).
   [`${S}#notifyTeacherOfLeaveDay`]: "the ONE teacher whose day it is — a day, not a class; no other coach and no family",
+  // 🔻 TASK-827 (REQ-125 ruling B, D5) — a teacher of a CO-TAUGHT class is away and the class goes on: each REMAINING teacher is told, ONE message per coach per day. 🔑 Recipients = `remainingTeachersOf` / the
+  // collection built from it (the class's OTHER teachers who are not on leave that day) — never the leaver, never a coach on leave, never a family (a class that continues is not a cancellation). Called only by the committing paths.
+  [`${S}#sendCoLeaveNotices`]: "the REMAINING teachers of a co-taught class — a day-level notice (ruling B, D5): the collection is the class's other teachers not on leave that day; never the leaver, never a family",
 };
 /** Reaches the additional teachers TODAY, but through its own answer — a copy that currently agrees (named, not yet converged). */
 const OWN_COPY_REACHES_ALL: Record<string, string> = {

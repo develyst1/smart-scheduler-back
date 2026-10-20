@@ -524,6 +524,47 @@ export interface CreateVoucherResponse {
   voucher: VoucherSummary;
 }
 
+// ───────────────────────── REQ-125 ruling B — one teacher's leave on a multi-teacher class (TASK-824..826) ─────────────────────────
+// A co-taught class (an Other / ECA with extra teachers, or a GROUP row with extra coaches) does NOT stop when ONE of its teachers is away: that teacher comes OFF it and the class runs on with the others
+// (the families are not told). Only the LAST remaining teacher's leave keeps today's cancel (same-day) / «to handle» (advance). The lesson types (course, voucher, trial, 1 HR) have one teacher and are untouched.
+// The answers below carry the new keys ONLY when a co-taught class was involved, so a sole-teacher answer is byte-identical to before.
+
+/** A co-taught class that continues without the leaving teacher. `with` = the nicknames of the teachers it has NOW (main first); `promotedTo` = the extra who became main (D1: first in name order), else null. */
+export interface LeaveContinuedClassDTO { bookingId: string; startTime: HhMm; with: string[]; promotedTo: string | null }
+/** D4 — nobody could take the main seat (their slot is taken / they are on leave / the swap refused): the class is LEFT AS IT IS for the admin to handle. `message` = the refusal's own words, when there are any. */
+export interface LeaveToHandleClassDTO { bookingId: string; startTime: HhMm; reason: "no-eligible-main"; message?: string }
+/** D5 — one remaining coach and ALL their classes of that day that run on with them (one LINE per coach per day, TASK-827). `becameMain` = they were promoted to main of that class. */
+export interface LeaveCoachNoticeDTO { teacherId: string; classes: Array<{ bookingId: string; startTime: HhMm; becameMain: boolean }> }
+/** The three keys that ride an answer ONLY when a co-taught class was involved. */
+export interface LeaveSplitDTO { continues?: LeaveContinuedClassDTO[]; toHandle?: LeaveToHandleClassDTO[]; remainingCoaches?: LeaveCoachNoticeDTO[] }
+
+/** TASK-825 — the answer of a SAME-DAY leave (`POST /api/teachers/me/leave`, or an admin's `POST /api/teacher-leave-days` for today). `cancelled` / `bookingIds` / `familiesNotified` count ONLY the classes actually cancelled. */
+export interface SameDayLeaveResponse extends LeaveSplitDTO { cancelled: number; bookingIds: string[]; familiesNotified: number }
+
+/** TASK-826 — the answer of `POST /api/teacher-leave-days` / `POST /api/teachers/me/leave` for ONE FUTURE day (`mode: "advance"`). `bookings` = what is left to handle (the sole/last teacher's classes and the D4 ones); `continues` = taken off and running on. */
+export interface RecordLeaveDayResponse extends LeaveSplitDTO {
+  mode: "advance";
+  cancelled: 0;
+  bookingIds: string[];
+  familiesNotified: 0;
+  leave: { date: string; reason: string | null };
+  alreadyRecorded: boolean;
+  bookings: LeaveClassDTO[];
+  teacherNotified: number;
+}
+
+/** A class the teacher was put back on by Cancel leave (D2: as an extra teacher, at their old rate). */
+export interface RestoredClassDTO { bookingId: string; date: string; startTime: HhMm }
+/** TASK-826 — the answer of `DELETE /api/teacher-leave-days/:teacherId/:date` and `DELETE /api/teachers/me/leave/:date`. */
+export interface LiftLeaveDayResponse { lifted: string; teacherNotified: number; restored?: RestoredClassDTO[] }
+
+/** TASK-826 — the PREVIEW («what will saving do?», read-only, preview = act): `GET /api/teachers/me/leave?preview=YYYY-MM-DD` (the teacher's own door); and the admin's `GET /api/teacher-leave-days/preview?teacherId&from[&to]` (≤ 31 days; menus calendar · bookings · teachers). A PAST day is simply absent from `days`. */
+export type LeavePreviewOutcome = "continues" | "cancel" | "toHandle" | "cannot";
+export interface LeavePreviewClassDTO { bookingId: string; startTime: HhMm; outcome: LeavePreviewOutcome; with: string[]; promoted?: string }
+export interface LeavePreviewCountsDTO { continues: number; cancel: number; toHandle: number; cannot: number }
+export interface LeavePreviewDayDTO { date: string; mode: "same-day" | "advance"; classes: LeavePreviewClassDTO[]; counts: LeavePreviewCountsDTO }
+export interface LeavePreviewResponse { teacherId: string; days: LeavePreviewDayDTO[]; counts: LeavePreviewCountsDTO }
+
 /** TASK-819 (REQ-123 P3) — one class on a teacher's leave day, in the shape the admin handles it by hand: the booking id, the time, WHO (the child; DUO: both) and WHAT (program, or the title of an อื่นๆ row), in a course or not. */
 export interface LeaveClassDTO {
   id: string;
@@ -551,6 +592,8 @@ export interface RecordedLeaveDayDTO {
   createdBy: string | null;
   rangeId: string | null;
   bookings: LeaveClassDTO[];
+  /** 🔻 TASK-826 — present ONLY when this leave day took the teacher OFF co-taught classes that run on with others (still live). `bookings` then lists only what is left to handle. */
+  continues?: Array<{ bookingId: string; startTime: string; with: string[] }>;
 }
 export interface RecordedLeaveListResponse { items: RecordedLeaveDayDTO[] }
 
@@ -567,7 +610,10 @@ export interface RecordLeaveRangeResponse {
   cancelled: 0;
   bookingIds: string[];
   familiesNotified: 0;
-  days: Array<{ date: string; alreadyRecorded: boolean; bookings: LeaveClassDTO[] }>;
+  /** 🔻 TASK-826 — per day: `bookings` = what is left to handle; `continues` / `toHandle` / `remainingCoaches` appear ONLY when a co-taught class was involved that day. */
+  days: Array<{ date: string; alreadyRecorded: boolean; bookings: LeaveClassDTO[] } & LeaveSplitDTO>;
+  /** 🔻 TASK-826 — how many co-taught classes (over all days) the teacher was taken off; absent when none. */
+  continuedClasses?: number;
 }
 
 /** TASK-819 (REQ-123 P4/P5) — `DELETE /api/teacher-leave-ranges/:id`: only the FUTURE days of the record are lifted; `kept` lists the days that had begun or passed. Nothing lifted ⇒ 400 (the approved future-only refusal). */
@@ -576,6 +622,8 @@ export interface LiftLeaveRangeResponse {
   lifted: string[];
   kept: string[];
   teacherNotified: number;
+  /** 🔻 TASK-826 (D2) — the co-taught classes the teacher was put BACK on, as an extra teacher; absent when none. */
+  restored?: RestoredClassDTO[];
 }
 
 /** TASK-815 (REQ-123 Phase 1) — one drawn week of `POST /api/courses/preview`. `teacherOnLeave`: the teacher has an ADVANCE leave recorded that day (THE reader, `teacherLeaveOn`), also true on a week already sent as planned absence. */

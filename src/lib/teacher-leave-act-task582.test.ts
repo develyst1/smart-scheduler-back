@@ -145,11 +145,12 @@ describe("🔴 THE GATE, LIVE — the row this act writes is the row THE reader 
     await expect(sched.assertTeacherBookable(s.exec, ME, "2026-10-08")).resolves.toMatchObject({ id: ME });
     expect(await sched.findFreeExtensionDate(s.exec, ME, "10:00:00", "2026-10-01")).toBe("2026-10-08");
   });
-  test("lifting RESTORES nothing and CANCELS nothing: it deletes one leave row (by teacher AND date) and touches no booking; not recorded ⇒ 404", async () => {
+  test("lifting CANCELS nothing: it deletes one leave row (by teacher AND date) and touches no booking; with no removal rows it restores nothing (🔻 TASK-826: Cancel leave puts a teacher back only onto classes an advance leave took them off); not recorded ⇒ 404", async () => {
     today();
     const s = store();
     await recordAdvanceLeave(s.exec, ME, { date: "2026-10-08", reason: null as any }, null);
     await recordAdvanceLeave(s.exec, "someone-else", { date: "2026-10-08", reason: null as any }, null);
+    spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async () => []) as any)); // 🔻 TASK-826: a lift first asks which classes the leave took the teacher off — none in this arm
     spies.push(spyOn(db, "delete").mockImplementation(s.exec.delete));
     for (const m of ["update", "insert", "transaction"] as const) spies.push(spyOn(db as any, m).mockImplementation(trip(`the lift called db.${m}`) as any));
     spies.push(spyOn(db.query.bookings, "findMany").mockImplementation(trip("the lift read bookings") as any));

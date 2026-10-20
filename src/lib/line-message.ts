@@ -792,6 +792,15 @@ function buildOutboxMessage(
     // load a `ctx` from (the fact is a DAY), the same shape `camp_deduction` uses.
     // 🔑 On the RECORD, the "nothing was cancelled" line rides whenever classes are on the day — a teacher who reads only the title
     // must not conclude their classes are off.
+    // 🔻 TASK-827 (REQ-125 ruling B, D5) — to a REMAINING coach of a co-taught class: «{name} is away on {date}. These classes go on with you: {list}». Everything is on the payload (the fact is a DAY): the leaver's
+    // nickname, the date, and the coach's classes of that day — each `{ startTime, title, becameMain }` (the suffix «you are now the main teacher» rides only the class where they were promoted). ONE per coach per day.
+    case "teacher_coleave_continues": {
+      const classes = (Array.isArray(payload.classes) ? payload.classes : []) as Array<{ startTime?: string; title?: string | null; becameMain?: boolean }>;
+      const list = classes
+        .map((c) => [c.title ? String(c.title) : "", c.startTime ? String(c.startTime) : ""].filter(Boolean).join(" ") + (c.becameMain ? ` ${t("ob_tl_coach_now_main", lang)}` : ""))
+        .join(", ");
+      return t("ob_tl_coach_continues", lang, { name: String(payload.leaver ?? ""), date: payload.date ? ddmmyyyy(String(payload.date)) : "", list });
+    }
     case "teacher_leave_recorded":
     case "teacher_leave_lifted": {
       const recorded = payload.kind === "teacher_leave_recorded";
@@ -803,6 +812,7 @@ function buildOutboxMessage(
         line(t("ob_f_date", lang), payload.date ? ddmmyyyy(String(payload.date)) + (toDate ? ` – ${ddmmyyyy(toDate)}` : "") : undefined) +
         `${t(recorded ? (toDate ? "ob_tl_blocked_range" : "ob_tl_blocked") : (toDate ? "ob_tl_open_again_range" : "ob_tl_open_again"), lang)}\n` +
         (recorded && n > 0 ? `${t("ob_tl_nothing_cancelled", lang, { n })}\n` : "") +
+        (recorded && Number(payload.continued ?? 0) > 0 ? `${t("ob_tl_co_taught_continue", lang, { n: Number(payload.continued) })}\n` : "") + // 🔻 TASK-827: the co-taught classes that run on without them
         line(t("ob_tl_by", lang), payload.actor ? String(payload.actor) : undefined)
       );
     }

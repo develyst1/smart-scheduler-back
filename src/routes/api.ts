@@ -201,12 +201,22 @@ export const api = new Hono()
   )
   // TASK-582 — the teacher's OWN recorded advance-leave days, and lifting one (restores nothing, cancels nothing). The SAME key and
   // the same identity as recording one: the narrowest reading of the owner's ruling (he ruled the act, not a new actor).
-  .get("/teachers/me/leave", async (c) => c.json({ items: await svc.ownLeaveDays(assertLinked(c.get("user"))) }))
+  // 🔻 TASK-826 — with `?preview=DATE` this same read-only route answers «what will saving my leave on that day do?» (preview = act); without it, my recorded days as before. Same key, same TEACHER_ALLOWED entry: no new door.
+  .get("/teachers/me/leave", zValidator("query", v.ownLeaveQuery), async (c) => {
+    const me = assertLinked(c.get("user"));
+    const q = c.req.valid("query");
+    return c.json(q.preview ? await svc.previewTeacherLeave(me, q.preview) : { items: await svc.ownLeaveDays(me) });
+  })
   .delete("/teachers/me/leave/:date", zValidator("param", v.leaveDateParam), async (c) =>
     c.json(await svc.liftOwnLeave(assertLinked(c.get("user")), c.req.valid("param").date)),
   )
   // TASK-587 (a) — the ADMIN's list: recorded leave days and the live classes on each (the owner: "listed for the admin"). The
   // calendar's own read key — it shows the calendar's own rows; a linked teacher is refused (not in TEACHER_ALLOWED).
+  // 🔻 TASK-826 — the ADMIN's preview: «what will saving this teacher's leave do?» (read-only; preview = act, run inside a rolled-back transaction). A sub-path of the admin's own noun, so it cannot be shadowed by the 2-segment lift route.
+  .get("/teacher-leave-days/preview", zValidator("query", v.leavePreviewQuery), async (c) => {
+    const q = c.req.valid("query");
+    return c.json(await svc.previewTeacherLeave(q.teacherId, q.from, q.to));
+  })
   .get("/teacher-leave-days", zValidator("query", v.leaveDaysQuery), async (c) => c.json({ items: await svc.listRecordedLeaveDays(c.req.valid("query")) }))
   // 🔴 TASK-608 (REQ-111 C) — an ADMIN records / lifts a teacher's leave ON THEIR BEHALF. 🔑 The SAME act as the teacher's own door
   // (`reportTeacherLeave` / `liftTeacherLeave`), so the future-vs-today FORK is asked in ONE place for both.

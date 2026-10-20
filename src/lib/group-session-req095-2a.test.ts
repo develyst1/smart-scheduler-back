@@ -43,10 +43,10 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(files.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(j.entries.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -199,7 +199,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(F).toContain('if (live >= cap) throw conflict("GROUP_FULL", `วันที่ ${date} กลุ่มเต็ม (${live}/${cap})`);');
   });
   test("`swapGroupTeacher`: a GROUP row only · the targets by key (from here on | this date) · ONE tx · teacher-bookable per date · the group row moves (23505 ⇒ 409 naming the date, nothing moved) · its holds reconciled · EVERY live seat follows · NO notice", () => {
-    const S = region(SCHED, "export async function swapGroupTeacher(", "\n}\n");
+    const S = region(SCHED, "export async function moveGroupRowToTeacher(", "\n}\n") + region(SCHED, "export async function swapGroupTeacher(", "\n}\n"); // 🔻 TASK-824 — the per-date loop now lives in `moveGroupRowToTeacher` (moved, not copied); the region is exactly that function + `swapGroupTeacher`
     expect(S).toContain('if (current.bookingType !== "GROUP" || !current.groupKey) throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");');
     expect(S).toContain("input.fromHereOn ? g(b.date, current.date) : e(b.date, current.date)");
     expect((S.match(/db\.transaction\(/g) ?? []).length).toBe(1);

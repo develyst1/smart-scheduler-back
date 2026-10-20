@@ -203,9 +203,9 @@ describe("🔴 the migration — 0035, counted, witnessed, the lock named (sourc
   const SQL = readFileSync(resolve(root, "drizzle/0035_booking_rentals.sql"), "utf8").replace(/\r\n/g, "\n"); // the file may be CRLF on this box
 
   test("56 = 56 (0036 … 0055 added since): the 36th file is `0035_booking_rentals`, at idx 35", () => {
-    expect(files.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(files.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     expect(files[35]).toBe("0035_booking_rentals.sql"); // 🔻 TASK-377: 0036_users is the 37th
-    expect((JOURNAL.match(/"tag"/g) ?? []).length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect((JOURNAL.match(/"tag"/g) ?? []).length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
     expect(j.entries[35]).toMatchObject({ idx: 35, tag: "0035_booking_rentals" });
   });

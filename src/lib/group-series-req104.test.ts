@@ -79,8 +79,8 @@ describe("🔴 ONE module, keyed — no copied function; the OTHER callers byte-
     expect((SVC.match(/export async function (\w*Group\w*)\(/g) ?? [])).toEqual(["export async function closeGroupSeries(", "export async function swapGroupSeriesTeacher("]);
     expect((SVC.match(/reconcileBookingHolds\(tx, r\.id, r\.teacherId, "CANCELLED", false\);/g) ?? []).length).toBe(1);
     expect(code(src("src/services/scheduler.service.ts"))).toContain("export async function cancelSeatsOfGroup(tx: any, groupId: string, note: string | null, opts: { weekTrigger?: LeaveWeekTrigger; coachOff?: readonly CoachOff[]; reseat?: boolean } = {}) {");
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
-    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
+    expect(JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")).entries.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
   });
   test("the existing seat path is what the cascade reuses: status + note + `reconcileCoursePlan`; the family sender per household per seat", () => {
     const C = region(code(src("src/services/scheduler.service.ts")), "export async function cancelSeatsOfGroup(", "\n}\n");
@@ -200,7 +200,7 @@ describe("🔴 the doors by VALUE through a fake tx — the CASCADE, confirm-who
     expect(calls).toHaveLength(2);
     // the OTHER swap never moves seats — the reason the group delegates
     expect(region(SVC, "export async function swapOtherSeriesTeacher(", "\n}\n")).not.toContain("groupId");
-    expect(region(code(src("src/services/scheduler.service.ts")), "export async function swapGroupTeacher(", "\n}\n")).toContain("await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));");
+    expect(((x: string) => region(x, "export async function moveGroupRowToTeacher(", "\n}\n") + region(x, "export async function swapGroupTeacher(", "\n}\n"))(code(src("src/services/scheduler.service.ts")))).toContain("await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));");
   });
   test("the header PATCH on a group refuses a kind (400) — the validator carries no `otherKind`; title / heads / rates as OTHER", async () => {
     await expect(series.updateOtherSeries({ groupKey: K }, { otherKind: "ECA" })).rejects.toMatchObject({ status: 400 });

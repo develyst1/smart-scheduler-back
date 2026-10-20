@@ -110,6 +110,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /teachers/me/leave": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-406 — a LINKED account only (the route asserts)
   "GET /teachers/me/leave": read(["menu:calendar"]), // TASK-582 — a read of MY OWN recorded days (a GET carries no action; the route asserts the link)
   "DELETE /teachers/me/leave/:date": act(["menu:calendar"], "action:calendar.teacher-leave"), // TASK-582 — lifting is the same act undone
+  "GET /teacher-leave-days/preview": read([...CAL_BOOK, ...TEACHERS]), // 🔻 TASK-826 — the admin's «what will saving do?» (read-only): the same menus as the lift
   "GET /teacher-leave-days": read(["menu:calendar", "menu:teachers"]), // TASK-587 — the admin's list: the calendar's read key (the same rows the grid shows), no new key · 🔻 TASK-819: + the Teachers menu (its per-teacher leave list)
   // 🔴 TASK-608 (REQ-111 C) — an ADMIN records / lifts a teacher's leave. ✅ NO NEW KEY, and `action:calendar.status` is the NARROWEST
   // existing one that satisfies the owner's *"any admin who can already edit the schedule"*:

@@ -803,6 +803,11 @@ const TABLE: Record<string, Entry> = {
     EN: "The {n} class(es) that already booked, still on. ", // 🔻 TASK-731 (P33): her EN line, verbatim (her grammar: "that already booked")
   },
   ob_tl_by: { TH: "บันทึกโดย", EN: "Recorded by" },
+  // 🔻 TASK-827 (REQ-125 ruling B, D5) — ✅ APPROVED by the owner 2026-10-20 (REQ-125 ruling B), COPY-REVIEW-2026-09-29.md, verbatim. To a REMAINING coach: a teacher of a class they share is away, the class goes on with them. {list} = the classes ("<title> HH:mm", plus the suffix below when they became the main teacher).
+  ob_tl_coach_continues: { TH: "ครู {name} ลาวันที่ {date} — คาบต่อไปนี้ยังเรียนตามปกติกับคุณ: {list}", EN: "{name} is away on {date}. These classes go on with you: {list}" },
+  ob_tl_coach_now_main: { TH: "(คุณเป็นครูหลักของคาบนี้แทน)", EN: "(you are now the main teacher of this class)" },
+  // 🔻 TASK-827 — ✅ APPROVED by the owner 2026-10-20 (REQ-125 ruling B), COPY-REVIEW-2026-09-29.md, verbatim. One extra line on the LEAVING teacher's `teacher_leave_recorded`, only when n > 0.
+  ob_tl_co_taught_continue: { TH: "คาบที่สอนร่วม {n} คาบ ครูท่านอื่นจะสอนต่อ", EN: "{n} co-taught class(es) continue with the other teachers" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };
 

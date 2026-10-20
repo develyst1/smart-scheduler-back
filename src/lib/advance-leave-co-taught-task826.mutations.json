@@ -1,0 +1,233 @@
+{
+  "task": "TASK-826",
+  "proves": "src/lib/advance-leave-co-taught-task826.test.ts",
+  "note": "REQ-125 ruling B advance leave + Cancel leave + preview. M1 no removal row remembered · M2 the old rate not remembered · M3 the restore forgets the old rate · M4 the range lift never restores · M5 the per-day lift restores AFTER the leave day (and its rows) is gone · M6 the restore ignores «already on it» · M7 the restore ignores «class no longer live» · M8 a continuing class stays in the to-handle list · M9 the range answer carries the split keys on every day · M10 the list shows a cancelled class · M11 the preview opens no rolled-back transaction (it WRITES) · M12 the preview reads every day as advance · M13 the teacher door ignores ?preview. M14 a lift cancels the class it restores onto · M15 the admin preview loses the Teachers menu.",
+  "tests": "src/lib/advance-leave-co-taught-task826.test.ts src/lib/teacher-leave-act-task582.test.ts src/lib/admin-records-teacher-leave-task608.test.ts src/lib/notified-count-seam-task647.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "🔴 nothing is remembered — Cancel leave could never put the teacher back",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      await tx.insert(teacherLeaveRemovals).values({ leaveDayId: leaveId, bookingId: b.id, teacherId: me, date, wasMain: out.wasMain, rateMinor: out.oldRateMinor }).onConflictDoNothing();\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "🔴 the leaving teacher's old rate is not remembered (they would come back unpaid)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "wasMain: out.wasMain, rateMinor: out.oldRateMinor })",
+              "to": "wasMain: out.wasMain, rateMinor: null })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the restore forgets the old rate",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "insert(bookingTeachers).values({ bookingId: r.bookingId, teacherId, rateMinor: r.rateMinor }).onConflictDoNothing();",
+              "to": "insert(bookingTeachers).values({ bookingId: r.bookingId, teacherId, rateMinor: null }).onConflictDoNothing();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "🔴 the RANGE lift never restores — the hook is not called",
+      "files": [
+        {
+          "file": "src/lib/teacher-leave.ts",
+          "edits": [
+            {
+              "from": "if (future.length && beforeDelete) await beforeDelete(rows[0]!.teacherId, future);",
+              "to": "if (false) await beforeDelete!(rows[0]!.teacherId, future);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "🔴 the per-day lift restores AFTER the leave day is gone (its removal rows go with it): nobody is put back",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const restored = await restoreRemovedTeachers(db, teacherId, [date]);\n  const r = await liftAdvanceLeave(db, teacherId, date);",
+              "to": "  const r = await liftAdvanceLeave(db, teacherId, date);\n  const restored = await restoreRemovedTeachers(db, teacherId, [date]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "the restore ignores «I am already on it»",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (live && !alreadyOnIt) {",
+              "to": "if (live) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "the restore ignores «the class is no longer live» — a cancelled class gets the teacher back",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (live && !alreadyOnIt) {",
+              "to": "if (!alreadyOnIt) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "a class that CONTINUES is still in the to-handle list",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const toDo = split ? r.bookings.filter((b: any) => !split.continuedIds.has(b.id)) : r.bookings;",
+              "to": "const toDo = r.bookings;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "the range answer carries the split keys on EVERY day (a sole day changes shape)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "return s.continues.length || s.toHandle.length ? { continues: s.continues, toHandle: s.toHandle, remainingCoaches: s.remainingCoaches } : {}; };",
+              "to": "return { continues: s.continues, toHandle: s.toHandle, remainingCoaches: s.remainingCoaches }; };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "what": "the list shows a class that was cancelled meanwhile",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!b || !(COURSE_LIVE_STATUSES as readonly string[]).includes(b.status)) continue; // cancelled / ended meanwhile: nothing to show",
+              "to": "if (!b) continue; // cancelled / ended meanwhile: nothing to show"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "what": "🔴 the preview opens no rolled-back transaction — it WRITES",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    await db.transaction(async (tx) => {\n      const days: LeavePreviewDay[] = [];",
+              "to": "    await ((cb: any) => cb(db))(async (tx: any) => {\n      const days: LeavePreviewDay[] = [];"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "what": "the preview reads every day as an advance leave (a same-day class would read «toHandle», not «cancel»)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const mode: LeavePreviewDay[\"mode\"] = leaveModeOf(date);",
+              "to": "const mode: LeavePreviewDay[\"mode\"] = \"advance\" as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M13",
+      "what": "the teacher's door ignores ?preview",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "return c.json(q.preview ? await svc.previewTeacherLeave(me, q.preview) : { items: await svc.ownLeaveDays(me) });",
+              "to": "return c.json(false ? await svc.previewTeacherLeave(me, q.preview!) : { items: await svc.ownLeaveDays(me) });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M14",
+      "what": "🔴 a LIFT CANCELS the class it restores a teacher onto (Cancel leave must never cancel anything)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      restored.push({ bookingId: r.bookingId, date: r.date, startTime: hhmm(b.startTime) });",
+              "to": "      restored.push({ bookingId: r.bookingId, date: r.date, startTime: hhmm(b.startTime) });\n      await exec.update(bookings).set({ status: \"CANCELLED\" }).where(eq(bookings.id, r.bookingId));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M15",
+      "what": "the admin preview's door loses the Teachers menu (a Teachers-page admin gets 403)",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"GET /teacher-leave-days/preview\": read([...CAL_BOOK, ...TEACHERS]),",
+              "to": "\"GET /teacher-leave-days/preview\": read(CAL_BOOK),"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

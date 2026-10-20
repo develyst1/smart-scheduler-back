@@ -6,13 +6,13 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
-import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
+import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, leaveModeOf, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
 import { db } from "../db";
-import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, voucherExpiryChanges, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, teacherLeaveRemovals, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, voucherExpiryChanges, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -1750,6 +1750,30 @@ export function assertNotCampRow(row: { campWeekDayId?: string | null } | null |
   if (row?.campWeekDayId) throw CAMP_ROW_OWNED();
 }
 
+/**
+ * 🔻 TASK-824 (REQ-125 ruling B) — ONE group row moves to a new MAIN coach: the body of `swapGroupTeacher`'s per-date loop, MOVED here (not copied) so the "take one teacher off a class" building block uses the very same
+ * rule: the new coach must be bookable that date, the row + its rate move together, the freelance hold follows, and every live seat follows its group row. A refusal (`assertTeacherBookable`, the slot index, the
+ * freelance ceiling inside `reconcileBookingHolds`) is raised exactly as the swap raised it — 🔑 that is D3 ("the swap's existing refusal stands"). Runs inside the caller's transaction.
+ */
+export async function moveGroupRowToTeacher(tx: any, g: { id: string; date: string; status: string }, input: { teacherId: string }, rate: number | null) {
+  await assertTeacherBookable(tx, input.teacherId, g.date);
+  try {
+    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id)); // 🔻 TASK-632 — the rate rides the swap
+  } catch (e: any) {
+    if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${g.date} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
+    throw e;
+  }
+  await reconcileBookingHolds(tx, g.id, input.teacherId, g.status, false);
+  // every live seat of this date follows its group row (a seat is outside the index — no clash possible)
+  // 🔴 TASK-632 — the SEAT write deliberately carries NO rate, and this is an answer, not an oversight. A seat is a
+  // COURSE_PACKAGE row, where `teacher_rate_minor` is an OVERRIDE of the course's own `class_rate_minor` — a different
+  // meaning from the group row's "this is what the primary is paid", and it IS read (`rateFacts` puts it on the DTO), so
+  // it is not an unread column. 🔑 Whether changing the coach should clear a course override is `TASK-633`, a PRODUCT
+  // question with the owner, and it is the same question for the plan edit and the Move popup. 🚫 Not answered here by
+  // a side effect of a group swap. **Pinned as an absence in the test.**
+  await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+}
+
 export async function swapGroupTeacher(id: string, input: { teacherId: string; fromHereOn: boolean; rateMinor?: number }) {
   const current = await db.query.bookings.findFirst({ where: (b, { eq: e }) => e(b.id, id) });
   if (!current) throw notFound("ไม่พบคาบเรียน");
@@ -1781,26 +1805,99 @@ export async function swapGroupTeacher(id: string, input: { teacherId: string; f
   let moved = 0;
   await db.transaction(async (tx) => {
     for (const g of targets) {
-      await assertTeacherBookable(tx, input.teacherId, g.date);
-      try {
-        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id)); // 🔻 TASK-632 — the rate rides the swap
-      } catch (e: any) {
-        if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${g.date} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);
-        throw e;
-      }
-      await reconcileBookingHolds(tx, g.id, input.teacherId, g.status, false);
-      // every live seat of this date follows its group row (a seat is outside the index — no clash possible)
-      // 🔴 TASK-632 — the SEAT write deliberately carries NO rate, and this is an answer, not an oversight. A seat is a
-      // COURSE_PACKAGE row, where `teacher_rate_minor` is an OVERRIDE of the course's own `class_rate_minor` — a different
-      // meaning from the group row's "this is what the primary is paid", and it IS read (`rateFacts` puts it on the DTO), so
-      // it is not an unread column. 🔑 Whether changing the coach should clear a course override is `TASK-633`, a PRODUCT
-      // question with the owner, and it is the same question for the plan edit and the Move popup. 🚫 Not answered here by
-      // a side effect of a group swap. **Pinned as an absence in the test.**
-      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));
+      await moveGroupRowToTeacher(tx, g, input, rate);
       moved++;
     }
   });
   return { moved, booking: await loadBookingDTO(db, id) };
+}
+
+// ═══════════ TASK-824 (REQ-125 ruling B, DESIGN §1) — "take ONE teacher off ONE class" ═══════════
+//
+// A multi-teacher class (an Other / ECA with extras, or a GROUP row with extra coaches) does not stop when ONE of its teachers is away: that teacher comes OFF it and the class runs on with the others (the families are
+// not told). This is the ONE building block every leave path will call (824 is the block; 825/826 wire it) — never re-written per path.
+//
+// · I am an EXTRA  → my `booking_teachers` row goes. That is all (extras hold no slot and no freelance budget).
+// · I am the MAIN  → the next ELIGIBLE extra becomes main (D1: name order): `teacher_id` ← them, their extra row goes, THEIR OWN stored rate becomes `teacher_rate_minor` (TASK-625: a teacher is paid at their own rate,
+//   never the outgoing one's). A GROUP row moves through `moveGroupRowToTeacher` — the group swap's own internals (the seats + the freelance hold follow, its refusals stand: D3).
+// · "Eligible" = remains (not on leave that day, not leaving in the same act) AND actually able to take the main seat: the attempt runs in a SAVEPOINT, so a taken slot (`bookings_teacher_slot_uq`, the main teacher
+//   only), an unbookable coach or a freelance ceiling that cannot hold the hour just means "try the next one" — and none left is D4: the class is left AS IT IS (no change at all) and reported `cannot`.
+// · Courses, vouchers, trials, 1 HR: one teacher by construction ⇒ "no teacher remains" ⇒ `cannot`, untouched.
+// Returns what it did and the leaving teacher's OLD stored rate (TASK-826 remembers it to put them back).
+export type TakeOffOutcome =
+  | { outcome: "removedExtra"; wasMain: false; oldRateMinor: number | null }
+  | { outcome: "promoted"; wasMain: true; teacherId: string; oldRateMinor: number | null; newRateMinor: number | null }
+  | { outcome: "cannot"; wasMain: boolean; reason: "no-teacher-remains" | "no-eligible-main"; oldRateMinor: number | null; message?: string };
+
+type ClassTeachers = { id: string; date: string; teacherId: string; teacherRateMinor: number | null; bookingType: string; extras: Array<{ teacherId: string; rateMinor: number | null; nickname: string; name: string }> };
+
+async function loadClassTeachers(exec: any, bookingId: string): Promise<ClassTeachers> {
+  const row = await exec.query.bookings.findFirst({
+    where: (b: any, { eq: e }: any) => e(b.id, bookingId),
+    with: { additionalTeachers: { with: { teacher: true } } },
+  });
+  if (!row) throw notFound("ไม่พบคาบเรียน");
+  return {
+    id: row.id, date: row.date, teacherId: row.teacherId, teacherRateMinor: row.teacherRateMinor ?? null, bookingType: row.bookingType,
+    extras: (row.additionalTeachers ?? []).map((a: any) => ({ teacherId: a.teacherId, rateMinor: a.rateMinor ?? null, nickname: a.teacher?.nickname ?? "", name: a.teacher?.name ?? "" })),
+  };
+}
+
+/** The class's OTHER teachers who are still there that day: not on an advance leave (THE reader, `teacherLeaveOn`) and not leaving in the same act. "A teacher remains" = this is non-empty. */
+export async function remainingTeachersOf(exec: any, bookingId: string, leavingTeacherId: string, alsoLeaving: ReadonlySet<string> = new Set()): Promise<string[]> {
+  return (await remainingOf(exec, await loadClassTeachers(exec, bookingId), leavingTeacherId, alsoLeaving)).map((x) => x.teacherId);
+}
+async function remainingOf(exec: any, c: ClassTeachers, leavingTeacherId: string, alsoLeaving: ReadonlySet<string>) {
+  const others = [{ teacherId: c.teacherId, main: true }, ...c.extras.map((e) => ({ teacherId: e.teacherId, main: false }))].filter((t) => t.teacherId !== leavingTeacherId && !alsoLeaving.has(t.teacherId));
+  const out: Array<{ teacherId: string; main: boolean }> = [];
+  for (const t of others) if (!(await teacherLeaveOn(exec, t.teacherId, c.date))) out.push(t);
+  return out;
+}
+
+export async function takeTeacherOffClass(tx: any, bookingId: string, teacherId: string, opts: { alsoLeaving?: ReadonlySet<string> } = {}): Promise<TakeOffOutcome> {
+  const c = await loadClassTeachers(tx, bookingId);
+  const mine = c.extras.find((e) => e.teacherId === teacherId);
+  const iAmMain = c.teacherId === teacherId;
+  if (!mine && !iAmMain) throw new Error("takeTeacherOffClass: that teacher is not on this class"); // a caller bug, never a user state
+  const oldRateMinor = iAmMain ? c.teacherRateMinor : mine!.rateMinor;
+  const remaining = await remainingOf(tx, c, teacherId, opts.alsoLeaving ?? new Set());
+  if (!remaining.length) return { outcome: "cannot", wasMain: iAmMain, reason: "no-teacher-remains", oldRateMinor };
+
+  // I am an EXTRA: my row goes.
+  if (!iAmMain) {
+    await tx.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, bookingId), eq(bookingTeachers.teacherId, teacherId)));
+    return { outcome: "removedExtra", wasMain: false, oldRateMinor };
+  }
+
+  // I am the MAIN: the next eligible extra, in NAME order (D1) — the nickname the calendar sorts by, then the full name, then the id (stable).
+  const candidates = c.extras
+    .filter((e) => remaining.some((r) => r.teacherId === e.teacherId))
+    .sort((x, y) => x.nickname.localeCompare(y.nickname, "th") || x.name.localeCompare(y.name, "th") || x.teacherId.localeCompare(y.teacherId));
+  let lastMessage: string | undefined;
+  for (const cand of candidates) {
+    try {
+      await tx.transaction(async (sp: any) => {
+        const newRate = cand.rateMinor; // THEIR OWN stored rate (TASK-625) — never the outgoing coach's
+        if (c.bookingType === "GROUP") {
+          const g = await sp.query.bookings.findFirst({ columns: { id: true, date: true, status: true }, where: (b: any, { eq: e }: any) => e(b.id, bookingId) });
+          await moveGroupRowToTeacher(sp, g, { teacherId: cand.teacherId }, newRate); // the group swap's own internals: seats + freelance hold follow, its refusals stand (D3)
+        } else {
+          try {
+            await sp.update(bookings).set({ teacherId: cand.teacherId, teacherRateMinor: newRate }).where(eq(bookings.id, bookingId));
+          } catch (e: any) {
+            if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${c.date} ครูไม่ว่าง`); // the slot index (the main teacher only) — the next candidate may be free
+            throw e;
+          }
+        }
+        await sp.delete(bookingTeachers).where(and(eq(bookingTeachers.bookingId, bookingId), eq(bookingTeachers.teacherId, cand.teacherId)));
+      });
+      return { outcome: "promoted", wasMain: true, teacherId: cand.teacherId, oldRateMinor, newRateMinor: cand.rateMinor };
+    } catch (e: any) {
+      if (!(e instanceof ApiException)) throw e; // a refusal (taken slot, unbookable coach, freelance ceiling) ⇒ the next one; anything else is a real fault
+      lastMessage = e.message;
+    }
+  }
+  return { outcome: "cannot", wasMain: true, reason: "no-eligible-main", oldRateMinor, ...(lastMessage ? { message: lastMessage } : {}) }; // D4: left as it is, listed for the admin
 }
 
 // ═══════════ TASK-453 (REQ-105 §8/§8.1) — RESOLVING a clash: two ways, never forced, never automatic ═══════════
@@ -3624,21 +3721,36 @@ async function sendClassCancelledToOtherTeachers(
  * `onBehalf` says only WHO acted, never WHAT happens: it decides whether the teacher is TOLD (they need no notice of their own act),
  * and nothing else. 🚫 It must never reach the fork.
  */
+/** 🔻 TASK-826 — the single-day record's own transaction around the take-off (the range record already runs inside ITS transaction). */
+async function takeOffCoTaughtInOwnTx(me: string, leaveId: string, date: string, classes: Array<{ id: string; startTime: string; bookingType: string }>) {
+  return db.transaction((tx) => takeOffCoTaughtForLeaveDay(tx, me, leaveId, date, classes));
+}
+
 /**
  * 🔻 TASK-817 (REQ-123 P2) — an admin records an advance leave over a DATE RANGE (`from`..`to`, one reason): one row per day, one shared `range_id`, ONE transaction (a past day anywhere rolls back the lot —
  * but the door's future-only line has already refused it). Days already recorded are skipped and reported. The answer gives PER DAY the live classes (the same list as the single-day act) and whether
  * the day was new. 🚫 Cancels nothing, tells no family. ⭐ The teacher is told ONCE for the whole range (one `teacher_leave_recorded` carrying `to`), only on behalf, and not when every day was already there.
  */
 async function reportTeacherLeaveRange(teacherId: string, input: { from: string; to: string; reason: string }, actor: string | null, opts: { onBehalf: boolean }) {
-  const r = await db.transaction((tx) => recordAdvanceLeaveRange(tx, teacherId, input, actor));
+  // 🔻 TASK-826 — the SAME transaction also takes the leaver off every co-taught class of each day that runs on with a teacher remaining (and remembers it); a refusal anywhere rolls the lot back
+  const { r, splits } = await db.transaction(async (tx) => {
+    const r = await recordAdvanceLeaveRange(tx, teacherId, input, actor);
+    const splits = new Map<string, Awaited<ReturnType<typeof takeOffCoTaughtForLeaveDay>>>();
+    for (const d of r.days) splits.set(d.date, await takeOffCoTaughtForLeaveDay(tx, teacherId, d.leaveId, d.date, d.bookings));
+    return { r, splits };
+  });
   const fresh = r.days.filter((d) => !d.alreadyRecorded).length;
-  const classes = r.days.reduce((n, d) => n + d.bookings.length, 0);
-  const notified = opts.onBehalf && fresh > 0 ? await notifyTeacherOfLeaveDay(teacherId, { kind: "teacher_leave_recorded", date: input.from, to: input.to, classes, actor }) : 0;
+  const toHandleOf = (d: (typeof r.days)[number]) => d.bookings.filter((b: any) => !splits.get(d.date)!.continuedIds.has(b.id));
+  const classes = r.days.reduce((n, d) => n + toHandleOf(d).length, 0);
+  const continued = [...splits.values()].reduce((n, s) => n + s.continues.length, 0);
+  const notified = opts.onBehalf && fresh > 0 ? await notifyTeacherOfLeaveDay(teacherId, { kind: "teacher_leave_recorded", date: input.from, to: input.to, classes, ...(continued ? { continued } : {}), actor }) : 0;
+  const splitOf = (date: string) => { const s = splits.get(date)!; return s.continues.length || s.toHandle.length ? { continues: s.continues, toHandle: s.toHandle, remainingCoaches: s.remainingCoaches } : {}; };
   return {
     mode: "advance-range" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0,
     rangeId: r.rangeId, from: input.from, to: input.to,
-    days: r.days.map((d) => ({ date: d.date, alreadyRecorded: d.alreadyRecorded, bookings: d.bookings })),
+    days: r.days.map((d) => ({ date: d.date, alreadyRecorded: d.alreadyRecorded, bookings: toHandleOf(d), ...splitOf(d.date) })),
     recordedDays: fresh, alreadyRecordedDays: r.days.length - fresh, teacherNotified: notified,
+    ...(continued ? { continuedClasses: continued } : {}),
   };
 }
 
@@ -3657,12 +3769,17 @@ export async function reportTeacherLeave(
   if (isAdvanceLeave(input.date)) {
     if (input.sessionIds) throw badRequest("ลาล่วงหน้าเป็นการปิดทั้งวัน — ไม่ต้องเลือกคาบ คาบที่มีอยู่แล้วจะแสดงให้แอดมินจัดการ"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370
     const r = await recordAdvanceLeave(db, me, { date: input.date, reason: input.reason }, actor);
+    // 🔻 TASK-826 (REQ-125 ruling B) — co-taught classes of the day come OFF me (remembered for Cancel leave) when a teacher remains; opened ONLY when the day has an Other / Group row (the lesson types are never touched)
+    const coTaught = r.bookings.filter((b: any) => b.bookingType === "OTHER" || b.bookingType === "GROUP");
+    const split = coTaught.length ? await takeOffCoTaughtInOwnTx(me, r.leaveId, input.date, coTaught) : null;
+    const toDo = split ? r.bookings.filter((b: any) => !split.continuedIds.has(b.id)) : r.bookings;
     // ⭐ TASK-608 — a day blocked ON SOMEONE'S BEHALF is a change to THEIR week: the teacher is told, and must not learn it from an
     // empty calendar. 🚫 Only on behalf — a teacher needs no notice of their own act. 🚫 And NEVER the families: nothing was
     // cancelled, and "teacher X is away" about a class still going ahead is the defect closed in TASK-587.
     // 📌 Not re-sent when the day was already recorded: the same act twice is not two changes to their week.
-    const notified = opts.onBehalf && !r.alreadyRecorded ? await notifyTeacherOfLeaveDay(me, { kind: "teacher_leave_recorded", date: input.date, classes: r.bookings.length, actor }) : 0;
-    return { mode: "advance" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0, leave: r.leave, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings, teacherNotified: notified };
+    const notified = opts.onBehalf && !r.alreadyRecorded ? await notifyTeacherOfLeaveDay(me, { kind: "teacher_leave_recorded", date: input.date, classes: toDo.length, ...(split?.continues.length ? { continued: split.continues.length } : {}), actor }) : 0;
+    const splitAnswer = split && (split.continues.length || split.toHandle.length) ? { continues: split.continues, toHandle: split.toHandle, remainingCoaches: split.remainingCoaches } : {};
+    return { mode: "advance" as const, cancelled: 0, bookingIds: [] as string[], familiesNotified: 0, leave: r.leave, alreadyRecorded: r.alreadyRecorded, bookings: toDo, teacherNotified: notified, ...splitAnswer };
   }
   const mine = await db.query.bookings.findMany({
     where: (b, { and: a, eq: e, isNull: nul, inArray: inA }) => a(e(b.date, input.date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES, "ATTENDED"]), ownScopeWhere(me)),
@@ -3676,8 +3793,23 @@ export async function reportTeacherLeave(
   if (delivered) throw conflict("SESSION_DELIVERED", `คาบ ${hhmm(delivered.startTime)} สอนไปแล้ว — แจ้งลาไม่ได้`);
   const live = targets.filter((b) => (COURSE_LIVE_STATUSES as readonly string[]).includes(b.status));
   let familiesNotified = 0;
+  // 🔻 TASK-825 (REQ-125 ruling B, DESIGN §2 row 1) — per class: «continues» (a co-taught class with a teacher remaining: I come OFF it, it is NOT cancelled, no family is told) · «toHandle» (D4: nobody can take the
+  // main seat — left AS IT IS for the admin) · cancelled (I am the sole/last teacher: exactly today's path). `remainingCoaches` collects who to tell (D5, one LINE per coach per day — the message is TASK-827).
+  const cancelledIds: string[] = [];
+  const continues: SameDayContinuedClass[] = [];
+  const toHandle: SameDayToHandleClass[] = [];
+  const coachNotices = new Map<string, SameDayCoachNotice>();
   await db.transaction(async (tx) => {
     for (const b of live) {
+      if (((b as any).additionalTeachers ?? []).length > 0) { // a co-taught class (an Other / a group with extras): the lesson types never have extras
+        const out = await takeTeacherOffClass(tx, b.id, me);
+        if (out.outcome !== "cannot") {
+          continues.push(await describeContinuation(tx, b, me, out, coachNotices));
+          continue;
+        }
+        if (out.reason === "no-eligible-main") { toHandle.push({ bookingId: b.id, startTime: hhmm(b.startTime), reason: "no-eligible-main", ...(out.message ? { message: out.message } : {}) }); continue; } // D4: left exactly as it is
+        // «no teacher remains» ⇒ I am the LAST teacher of this class ⇒ today's cancel path, below
+      }
       const coachOff: CoachOff[] = [{ teacherId: me, date: input.date }]; // 🔻 TASK-705 — this coach is off THIS date: no replacement lands on it
       if (b.bookingType === "GROUP") await cancelSeatsOfGroup(tx, b.id, input.reason, { weekTrigger: "T2_COACH_LEAVE", coachOff, reseat: true }); // 🔻 TASK-713 — a group date cancelled: its make-ups share ONE extra date · 🔻 TASK-656 — T2 reaches each SEAT's course
       await tx.update(bookings).set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" }).where(eq(bookings.id, b.id));
@@ -3690,10 +3822,113 @@ export async function reportTeacherLeave(
       if (b.courseId) await flagMakeupsPastExpiry(tx, b.courseId, replanned?.appended ?? []); // 🔻 TASK-657 §3 — AFTER the week decision
       await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);
       familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);
+      cancelledIds.push(b.id);
     }
+    await sendCoLeaveNotices(tx, me, input.date, [...coachNotices.values()]); // 🔻 TASK-827: one LINE per remaining coach, in the same transaction (never a family — a continuing class is not a cancellation)
   });
   void actor;
-  return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };
+  // the split rides the answer ONLY when a co-taught class was involved: a sole-teacher leave answers byte-for-byte as before (`{ cancelled, bookingIds, familiesNotified }`)
+  const split = continues.length || toHandle.length ? { continues, toHandle, remainingCoaches: [...coachNotices.values()] } : {};
+  return { cancelled: cancelledIds.length, bookingIds: cancelledIds, familiesNotified, ...split };
+}
+
+/** 🔻 TASK-825 — what a same-day leave did to the classes that were NOT cancelled (the answer's `continues` / `toHandle` / `remainingCoaches`; the contract names them). */
+export type SameDayContinuedClass = { bookingId: string; startTime: string; with: string[]; promotedTo: string | null };
+export type SameDayToHandleClass = { bookingId: string; startTime: string; reason: "no-eligible-main"; message?: string };
+export type SameDayCoachNotice = { teacherId: string; classes: Array<{ bookingId: string; startTime: string; becameMain: boolean }> };
+
+/**
+ * 🔻 TASK-826 — ONE description of «this class goes on without me», shared by the same-day act (825) and the advance record (826): who it continues with (by nickname), who was promoted, and — for D5 — the remaining
+ * coaches who are not on leave that day, each collected ONCE per day with all their classes (`becameMain` marks the promotion). Reads the relation, never the join table.
+ */
+async function describeContinuation(tx: any, b: { id: string; startTime: string }, me: string, out: { outcome: "removedExtra" } | { outcome: "promoted"; teacherId: string }, notices: Map<string, SameDayCoachNotice>): Promise<SameDayContinuedClass> {
+  const crew = await classCrew(tx, b.id);
+  const stillHere = await remainingTeachersOf(tx, b.id, me); // not on leave that day — the ones who are told
+  for (const teacherId of stillHere) {
+    const n = notices.get(teacherId) ?? { teacherId, classes: [] };
+    n.classes.push({ bookingId: b.id, startTime: hhmm(b.startTime), becameMain: out.outcome === "promoted" && out.teacherId === teacherId });
+    notices.set(teacherId, n);
+  }
+  return { bookingId: b.id, startTime: hhmm(b.startTime), with: crew.map((t) => t.nickname), promotedTo: out.outcome === "promoted" ? out.teacherId : null };
+}
+
+/**
+ * 🔻 TASK-826 (REQ-125 ruling B, DESIGN §2 row 2 + §3) — an ADVANCE leave takes the leaving teacher off every CO-TAUGHT class of that day that runs on with a teacher remaining (`takeTeacherOffClass`, 824), and REMEMBERS
+ * each one in `teacher_leave_removals` (leave day · class · was main · my old stored rate · the date) so Cancel leave can put them back. D4 («nobody can take the main seat») ⇒ left as it is, listed in `toHandle`; the
+ * sole / LAST teacher ⇒ untouched, still in the plain «to handle» list (exactly as before). Idempotent: a class I was already taken off no longer lists me, so re-recording a day simply finds nothing more to do.
+ * Only Other / Group rows can be co-taught; the lesson types are never touched. Runs inside the caller's transaction.
+ */
+async function takeOffCoTaughtForLeaveDay(tx: any, me: string, leaveId: string, date: string, classes: Array<{ id: string; startTime: string; bookingType: string }>) {
+  const continues: SameDayContinuedClass[] = [];
+  const toHandle: SameDayToHandleClass[] = [];
+  const notices = new Map<string, SameDayCoachNotice>();
+  const continuedIds = new Set<string>();
+  for (const b of classes) {
+    if (b.bookingType !== "OTHER" && b.bookingType !== "GROUP") continue;
+    const out = await takeTeacherOffClass(tx, b.id, me);
+    if (out.outcome !== "cannot") {
+      await tx.insert(teacherLeaveRemovals).values({ leaveDayId: leaveId, bookingId: b.id, teacherId: me, date, wasMain: out.wasMain, rateMinor: out.oldRateMinor }).onConflictDoNothing();
+      continues.push(await describeContinuation(tx, b, me, out, notices));
+      continuedIds.add(b.id);
+    } else if (out.reason === "no-eligible-main") {
+      toHandle.push({ bookingId: b.id, startTime: hhmm(b.startTime), reason: "no-eligible-main", ...(out.message ? { message: out.message } : {}) });
+    } // «no teacher remains» ⇒ I am the LAST teacher: the class stays in the plain list for the admin
+  }
+  const remainingCoaches = [...notices.values()];
+  await sendCoLeaveNotices(tx, me, date, remainingCoaches); // 🔻 TASK-827: one LINE per remaining coach per day, in the same transaction
+  return { continues, toHandle, remainingCoaches, continuedIds };
+}
+
+/**
+ * 🔻 TASK-826 — Cancel leave puts the teacher BACK (D2: as an EXTRA teacher, at the rate they had) on every class this leave took them off, if the class is still live and they are not already on it; the removal rows are
+ * cleared either way (a class cancelled or ended meanwhile restores nothing). Idempotent. Returns what was restored.
+ */
+export async function restoreRemovedTeachers(exec: any, teacherId: string, dates: string[]): Promise<Array<{ bookingId: string; date: string; startTime: string }>> {
+  if (!dates.length) return [];
+  const rows: Array<{ id: string; bookingId: string; date: string; rateMinor: number | null }> = await exec
+    .select({ id: teacherLeaveRemovals.id, bookingId: teacherLeaveRemovals.bookingId, date: teacherLeaveRemovals.date, rateMinor: teacherLeaveRemovals.rateMinor })
+    .from(teacherLeaveRemovals)
+    .where(and(eq(teacherLeaveRemovals.teacherId, teacherId), inArray(teacherLeaveRemovals.date, dates)));
+  const restored: Array<{ bookingId: string; date: string; startTime: string }> = [];
+  for (const r of rows) {
+    const b = await exec.query.bookings.findFirst({ columns: { id: true, status: true, teacherId: true, startTime: true }, where: (x: any, { eq: e }: any) => e(x.id, r.bookingId), with: { additionalTeachers: true } });
+    const live = !!b && (COURSE_LIVE_STATUSES as readonly string[]).includes(b.status);
+    const alreadyOnIt = !!b && (b.teacherId === teacherId || (b.additionalTeachers ?? []).some((a: any) => a.teacherId === teacherId));
+    if (live && !alreadyOnIt) {
+      await exec.insert(bookingTeachers).values({ bookingId: r.bookingId, teacherId, rateMinor: r.rateMinor }).onConflictDoNothing();
+      restored.push({ bookingId: r.bookingId, date: r.date, startTime: hhmm(b.startTime) });
+    }
+  }
+  if (rows.length) await exec.delete(teacherLeaveRemovals).where(inArray(teacherLeaveRemovals.id, rows.map((r) => r.id)));
+  return restored;
+}
+
+/**
+ * 🔻 TASK-827 (REQ-125 ruling B, DESIGN §4, D5) — tell each REMAINING coach, ONCE for the day, which of their classes go on with them because a teacher of it is away («{name} is away on {date}. These classes go on with you: {list}»,
+ * plus «(you are now the main teacher of this class)» on the class where they were promoted). Written inside the SAME transaction that took the leaver off (the notice exists iff the change does). ONE per coach per day; never the
+ * leaving teacher and never a coach on leave (the collection already excludes them); never a family — a class that continues is not a cancellation. Duplicates cannot happen by construction: a class already off the leaver is not
+ * collected again on a re-record. A coach with no LINE link lands the SKIPPED row (TASK-152's loud absence).
+ */
+async function sendCoLeaveNotices(tx: any, leavingTeacherId: string, date: string, notices: SameDayCoachNotice[]): Promise<number> {
+  if (!notices.length) return 0;
+  const leaver = await tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, leavingTeacherId) });
+  for (const n of notices) {
+    const coach = await tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, n.teacherId) });
+    const classes: Array<{ startTime: string; title: string | null; becameMain: boolean }> = [];
+    for (const c of n.classes) {
+      const b = await tx.query.bookings.findFirst({ columns: { id: true, otherTitle: true }, where: (x: any, { eq: e }: any) => e(x.id, c.bookingId) });
+      classes.push({ startTime: c.startTime, title: b?.otherTitle ?? null, becameMain: c.becameMain });
+    }
+    await enqueueLine({ recipientType: "teacher", recipientLineUserId: coach?.lineUserId ?? null, bookingId: n.classes[0]!.bookingId, payload: { kind: "teacher_coleave_continues", leaver: leaver?.nickname ?? leaver?.name ?? "", date, classes } }, tx);
+  }
+  return notices.length;
+}
+
+/** The teachers a class has NOW (main first, then the extras) by nickname — for «continues with {names}». Reads the relation, not the join table. */
+async function classCrew(exec: any, bookingId: string): Promise<Array<{ teacherId: string; nickname: string }>> {
+  const row = await exec.query.bookings.findFirst({ where: (b: any, { eq: e }: any) => e(b.id, bookingId), with: { teacher: true, additionalTeachers: { with: { teacher: true } } } });
+  if (!row) return [];
+  return [row.teacher, ...(row.additionalTeachers ?? []).map((a: any) => a.teacher)].filter(Boolean).map((t: any) => ({ teacherId: t.id, nickname: t.nickname ?? t.name ?? "" }));
 }
 
 /** TASK-582 — a linked teacher's OWN recorded advance-leave days from today on (what can still be lifted). A read. */
@@ -3708,7 +3943,7 @@ export async function reportTeacherLeave(
 // 🔴 The count is READ FROM THE RESULT, never re-derived from the teacher row: deciding "linked or not" a second time here is
 // how the number and the outbox row start disagreeing. 📌 `duplicate` counts as told — the message is already queued for them.
 // ⚠️ The LIFT (`teacher_leave_lifted`) comes through this same function, so it is fixed and pinned by the same line.
-async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; to?: string; classes?: number; actor: string | null }): Promise<number> {
+async function notifyTeacherOfLeaveDay(teacherId: string, payload: { kind: "teacher_leave_recorded" | "teacher_leave_lifted"; date: string; to?: string; classes?: number; continued?: number; actor: string | null }): Promise<number> {
   const teacher = await db.query.teachers.findFirst({ where: (x, { eq: e }) => e(x.id, teacherId) });
   const sent = await enqueueLine({ recipientType: "teacher", recipientLineUserId: teacher?.lineUserId ?? null, payload });
   return sent.status === "skipped" ? 0 : 1;
@@ -3752,12 +3987,14 @@ export const reportOwnLeave = (me: string, input: { date: string; sessionIds?: s
 /**
  * 🔴 TASK-608 — THE LIFT, for ONE teacher, reached by the same two doors. ⚖️ It NOTIFIES on behalf, and the choice is deliberate:
  * 🔑 *a notice with no counterpart leaves a teacher believing a day is still blocked* — they were told it was blocked, so they are
- * told when it is not. 🚫 Still nothing restored, nothing cancelled, and no family told.
+ * told when it is not. 🚫 Nothing cancelled and no family told. 🔻 TASK-826 (REQ-125 ruling B, D2): it DOES put the teacher back — as an EXTRA teacher, at their old rate — on every co-taught class this
+ * leave took them off (still live, not already on it); the answer lists them under `restored` (only when there are any).
  */
 export async function liftTeacherLeave(teacherId: string, date: string, opts: { onBehalf: boolean }) {
+  const restored = await restoreRemovedTeachers(db, teacherId, [date]);
   const r = await liftAdvanceLeave(db, teacherId, date);
   const notified = opts.onBehalf ? await notifyTeacherOfLeaveDay(teacherId, { kind: "teacher_leave_lifted", date, actor: null }) : 0;
-  return { ...r, teacherNotified: notified };
+  return { ...r, teacherNotified: notified, ...(restored.length ? { restored } : {}) };
 }
 
 export const ownLeaveDays = (me: string) => ownAdvanceLeaves(db, me);
@@ -3766,13 +4003,35 @@ export const liftOwnLeave = (me: string, date: string) => liftTeacherLeave(me, d
 /** TASK-587 (a) — the admin's list of recorded leave days (from today by default, 60 days on), each with its live classes. A read. */
 export const listRecordedLeaveDays = (q: { from?: string; to?: string; teacherId?: string }) => {
   const from = q.from ?? bangkokNow().date;
-  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId); // 🔻 TASK-819: + the optional teacher
+  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId).then((items) => attachRemovedClasses(db, items, from, q.to ?? addDays(from, 60))); // 🔻 TASK-819: + the optional teacher · 🔻 TASK-826: + the classes each day took them off
 };
+/** 🔻 TASK-826 — each leave-day item gains `continues` (the co-taught classes that leave took the teacher OFF and that run on with others — still live), ONLY when there are any; the item is otherwise byte-identical. */
+async function attachRemovedClasses<T extends { teacherId: string; date: string }>(exec: any, items: T[], from: string, to: string): Promise<Array<T & { continues?: Array<{ bookingId: string; startTime: string; with: string[] }> }>> {
+  if (!items.length) return items;
+  const rows: Array<{ teacherId: string; date: string; bookingId: string }> = await exec
+    .select({ teacherId: teacherLeaveRemovals.teacherId, date: teacherLeaveRemovals.date, bookingId: teacherLeaveRemovals.bookingId })
+    .from(teacherLeaveRemovals)
+    .where(and(gte(teacherLeaveRemovals.date, from), lte(teacherLeaveRemovals.date, to)));
+  if (!rows.length) return items;
+  const out: Array<T & { continues?: Array<{ bookingId: string; startTime: string; with: string[] }> }> = [];
+  for (const it of items) {
+    const mine = rows.filter((r) => r.teacherId === it.teacherId && r.date === it.date);
+    const continues: Array<{ bookingId: string; startTime: string; with: string[] }> = [];
+    for (const r of mine) {
+      const b = await exec.query.bookings.findFirst({ columns: { id: true, status: true, startTime: true }, where: (x: any, { eq: e }: any) => e(x.id, r.bookingId) });
+      if (!b || !(COURSE_LIVE_STATUSES as readonly string[]).includes(b.status)) continue; // cancelled / ended meanwhile: nothing to show
+      continues.push({ bookingId: r.bookingId, startTime: hhmm(b.startTime), with: (await classCrew(exec, r.bookingId)).map((t) => t.nickname) });
+    }
+    out.push(continues.length ? { ...it, continues } : it);
+  }
+  return out;
+}
 /** 🔻 TASK-819 — the admin lifts a whole RANGE (future days only). ONE `teacher_leave_lifted` LINE for the days lifted (a span when there are several); nothing when nothing was lifted. */
 export async function liftTeacherLeaveRange(rangeId: string, opts: { onBehalf: boolean }) {
-  const r = await liftAdvanceLeaveRange(db, rangeId);
+  let restored: Array<{ bookingId: string; date: string; startTime: string }> = [];
+  const r = await liftAdvanceLeaveRange(db, rangeId, async (tid, dates) => { restored = await restoreRemovedTeachers(db, tid, dates); }); // 🔻 TASK-826: back onto their co-taught classes, BEFORE the days go
   const notified = opts.onBehalf && r.lifted.length ? await notifyTeacherOfLeaveDay(r.teacherId, { kind: "teacher_leave_lifted", date: r.lifted[0]!, to: r.lifted[r.lifted.length - 1], actor: null }) : 0;
-  return { rangeId, lifted: r.lifted, kept: r.kept, teacherNotified: notified };
+  return { rangeId, lifted: r.lifted, kept: r.kept, teacherNotified: notified, ...(restored.length ? { restored } : {}) };
 }
 
 // TASK-439 (REQ-103): `course` is `{ id, size }` on purpose — a whole-voucher cancel passes `{ id: voucherId, size: totalHours }` and
@@ -3820,6 +4079,53 @@ async function sendCourseDroppedToTeachers(
   }
   return byTeacher.size;
 }
+
+/**
+ * 🔻 TASK-826 (REQ-125 ruling B, Fern's question) — «what will saving do?», BEFORE saving: for one day or a range, per class I teach, one of
+ * `continues` (co-taught, a teacher remains: I come off it; `with` names who it continues with, `promoted` who becomes main) · `cancel` (same-day, I am the sole/LAST teacher) · `toHandle` (advance, the sole/LAST teacher: listed
+ * for the admin) · `cannot` (D4: nobody can take the main seat — left as it is, listed). 🔑 PREVIEW = ACT: it does not re-implement the rule, it RUNS it — the very same `takeTeacherOffClass` (D1 order · not on leave that day · free in the
+ * slot · the savepoint attempts · D3/D4) — inside a transaction that is ROLLED BACK, so nothing is ever written and the answer cannot drift from the act (the TASK-148 lesson). Past days have nothing to do. ATTENDED rows are not reported
+ * (the act refuses them in words). A read.
+ */
+class PreviewRollback extends Error { constructor(readonly result: LeavePreviewResponse) { super("preview-rollback"); } }
+export type LeavePreviewClass = { bookingId: string; startTime: string; outcome: "continues" | "cancel" | "toHandle" | "cannot"; with: string[]; promoted?: string };
+export type LeavePreviewDay = { date: string; mode: "same-day" | "advance"; classes: LeavePreviewClass[]; counts: { continues: number; cancel: number; toHandle: number; cannot: number } };
+export type LeavePreviewResponse = { teacherId: string; days: LeavePreviewDay[]; counts: { continues: number; cancel: number; toHandle: number; cannot: number } };
+export async function previewTeacherLeave(teacherId: string, from: string, to?: string): Promise<LeavePreviewResponse> {
+  const dates = datesBetween(from, to ?? from);
+  try {
+    await db.transaction(async (tx) => {
+      const days: LeavePreviewDay[] = [];
+      for (const date of dates) {
+        if (date < bangkokNow().date) continue; // history: nothing a leave could do
+        const mode: LeavePreviewDay["mode"] = leaveModeOf(date); // THE predicate, through the lib's one helper
+        const mine = await tx.query.bookings.findMany({
+          where: (b: any, { and: a, eq: e, isNull: nul, inArray: inA }: any) => a(e(b.date, date), nul(b.groupId), inA(b.status, [...COURSE_LIVE_STATUSES]), ownScopeWhere(teacherId)),
+          with: { additionalTeachers: true },
+          orderBy: (b: any, { asc: o }: any) => [o(b.startTime)],
+        });
+        const classes: LeavePreviewClass[] = [];
+        for (const b of mine) {
+          const startTime = hhmm(b.startTime);
+          const lastTeacher = mode === "advance" ? "toHandle" : "cancel";
+          if (((b as any).additionalTeachers ?? []).length === 0) { classes.push({ bookingId: b.id, startTime, outcome: lastTeacher, with: [] }); continue; }
+          const out = await takeTeacherOffClass(tx, b.id, teacherId);
+          if (out.outcome !== "cannot") classes.push({ bookingId: b.id, startTime, outcome: "continues", with: (await classCrew(tx, b.id)).map((t) => t.nickname), ...(out.outcome === "promoted" ? { promoted: out.teacherId } : {}) });
+          else classes.push({ bookingId: b.id, startTime, outcome: out.reason === "no-eligible-main" ? "cannot" : lastTeacher, with: [] });
+        }
+        const count = (o: LeavePreviewClass["outcome"]) => classes.filter((c) => c.outcome === o).length;
+        days.push({ date, mode, classes, counts: { continues: count("continues"), cancel: count("cancel"), toHandle: count("toHandle"), cannot: count("cannot") } });
+      }
+      const sum = (k: keyof LeavePreviewDay["counts"]) => days.reduce((n, d) => n + d.counts[k], 0);
+      throw new PreviewRollback({ teacherId, days, counts: { continues: sum("continues"), cancel: sum("cancel"), toHandle: sum("toHandle"), cannot: sum("cannot") } }); // 🔑 NEVER commit
+    });
+  } catch (e) {
+    if (e instanceof PreviewRollback) return e.result;
+    throw e;
+  }
+  throw new Error("previewTeacherLeave: the transaction ended without a result"); // unreachable
+}
+
 /**
  * SPEC-028 §3 (TASK-093) — the ONE shared, ATOMIC plan-edit applier (calendar / course screen / purchase-time
  * all call it, so the rule has a single implementation). Opens a tx, applies the booking mutation, runs the

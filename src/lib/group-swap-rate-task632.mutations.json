@@ -12,8 +12,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id));",
-              "to": "        await tx.update(bookings).set({ teacherId: input.teacherId }).where(eq(bookings.id, g.id));"
+              "from": "    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(eq(bookings.id, g.id));",
+              "to": "    await tx.update(bookings).set({ teacherId: input.teacherId }).where(eq(bookings.id, g.id));"
             }
           ]
         }
@@ -46,8 +46,8 @@
               "to": ""
             },
             {
-              "from": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      try {\n        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })",
-              "to": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      if (rate == null) throw RATE_REQUIRED(g.date);\n      try {\n        await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })"
+              "from": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })",
+              "to": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })"
             }
           ]
         }
@@ -61,8 +61,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
-              "to": "      await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
+              "from": "  await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
+              "to": "  await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
             }
           ]
         }

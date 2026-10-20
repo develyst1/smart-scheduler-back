@@ -138,6 +138,7 @@ describe("🔴 P5 — the leave LIST: one teacher, a past window, the record's r
   });
 });
 
+const restoreCalls: Array<[string, string[]]> = [];
 describe("🔴 lifting a whole RANGE — future days only, one LINE, nothing else touched", () => {
   const rows = (dates: string[]) => dates.map((date) => ({ teacherId: T, date }));
   const arm = (dates: string[]) => {
@@ -146,6 +147,8 @@ describe("🔴 lifting a whole RANGE — future days only, one LINE, nothing els
     const sent: any[] = [];
     const deletes: unknown[] = [];
     recordingSelect(rows(dates));
+    restoreCalls.length = 0;
+    spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async (_e: unknown, tid: string, dates: string[]) => { restoreCalls.push([tid, dates]); return []; }) as any)); // 🔻 TASK-826: Cancel leave puts the teacher back FIRST
     spies.push(spyOn(db, "delete").mockImplementation(((_t: unknown) => ({ where: (w: unknown) => { deletes.push(w); return Promise.resolve([]); } })) as any));
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => ({ id: T, nickname: "Ek", lineUserId: "U-ek" })) as any));
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any) => { sent.push(o); return { status: "queued" } as any; }) as any));
@@ -161,6 +164,7 @@ describe("🔴 lifting a whole RANGE — future days only, one LINE, nothing els
     const r = await call("DELETE", `/teacher-leave-ranges/${RANGE}`);
     expect(r.status).toBe(200);
     expect(r.body).toEqual({ rangeId: RANGE, lifted: ["2026-10-20", "2026-10-21"], kept: ["2026-10-10", TODAY], teacherNotified: 1 });
+    expect(restoreCalls).toEqual([[T, ["2026-10-20", "2026-10-21"]]]); // 🔻 TASK-826: the teacher is put back on the co-taught classes of EXACTLY the lifted days (not the kept ones)
     expect(deletes).toHaveLength(1);
     const q = sqlOf(deletes[0]);
     expect(q.sql).toContain('"teacher_leave_days"."range_id" = $1');
@@ -235,6 +239,7 @@ describe("🔻 follow-up — the per-day lift opens to the Teachers menu too (Fe
   test("by value through the root app: a Teachers-menu viewer WITH the action key lifts a future day (200); WITHOUT the key 403; with neither menu 403", async () => {
     process.env.SKIP_AUTH = "true";
     setSystemTime(new Date(`${TODAY}T10:00:00+07:00`));
+    spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async () => []) as any));
     spies.push(spyOn(db, "delete").mockImplementation((() => ({ where: () => ({ returning: async () => [{ id: "x" }] }) })) as any));
     spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => ({ id: T, nickname: "Ek", lineUserId: null })) as any));
     spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async () => ({ status: "skipped" })) as any));

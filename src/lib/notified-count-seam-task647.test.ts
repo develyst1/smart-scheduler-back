@@ -49,6 +49,7 @@ const arm = (lineUserId: string | null, opts: { alreadyRecorded?: boolean } = {}
   // the leave DAY itself is recorded by TASK-561's own lib against the real `db` — stubbed, because none of the claims here
   // are about the row it writes. 🔑 What is NOT stubbed is the thing under test: `enqueueLine` and the number read off it.
   spies.push(spyOn(leaveLib, "recordAdvanceLeave").mockImplementation((async () => ({ leave: { teacherId: TEACHER, date: DATE }, alreadyRecorded: !!opts.alreadyRecorded, bookings: [] })) as any));
+  spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async () => []) as any)); // 🔻 TASK-826: a lift first asks which classes the leave took the teacher off — none in this arm
   spies.push(spyOn(leaveLib, "liftAdvanceLeave").mockImplementation((async () => ({ lifted: 1, date: DATE })) as any));
   spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => teacher) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => []) as any));

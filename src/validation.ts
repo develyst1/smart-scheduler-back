@@ -757,7 +757,17 @@ export const leaveDaysQuery = z
   .object({ from: DATE.optional(), to: DATE.optional(), teacherId: ID.optional() }) // 🔻 TASK-819: + the optional teacher
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "วันเริ่มต้องไม่หลังวันสิ้นสุด" })
   .refine((q) => !q.from || !q.to || (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000 <= 92, { message: "ช่วงวันที่ยาวเกิน 92 วัน" });
-export const leaveRangeParam = z.object({ id: ID }); // the range id rides the API's existing `:id` param name // 🔻 TASK-819 — lifting a whole recorded range
+export const leaveRangeParam = z.object({ id: ID }); // the range id rides the API's existing `:id` param name
+// 🔻 TASK-826 (REQ-125 ruling B) — `GET /teachers/me/leave?preview=YYYY-MM-DD`: «what will saving my leave on that day do?» (read-only; without it the route still lists my recorded days).
+export const ownLeaveQuery = z.object({ preview: DATE.optional() });
+// 🔻 TASK-826 — the ADMIN's preview `GET /teacher-leave-days/preview?teacherId&from&to` (the route waits for its access line): from ≤ to, at most MAX_LEAVE_RANGE_DAYS — the same two approved refusals as the range record.
+export const leavePreviewQuery = z
+  .object({ teacherId: ID, from: DATE, to: DATE.optional() })
+  .superRefine((q, ctx) => {
+    if (q.to === undefined) return;
+    if (q.from > q.to) ctx.addIssue({ code: "custom", message: "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม", path: ["to"] });
+    else if (leaveRangeDays(q.from, q.to) > MAX_LEAVE_RANGE_DAYS) ctx.addIssue({ code: "custom", message: `ลาล่วงหน้าได้ไม่เกิน ${MAX_LEAVE_RANGE_DAYS} วันต่อครั้ง`, path: ["to"] });
+  }); // 🔻 TASK-819 — lifting a whole recorded range
 export const teacherLeave = z.object({
   date: DATE,
   sessionIds: z.array(ID).min(1).max(50).optional(),

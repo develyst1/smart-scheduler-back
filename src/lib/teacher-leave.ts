@@ -33,6 +33,9 @@ import { MAX_LEAVE_RANGE_DAYS } from "../validation"; // TASK-817 — the longes
  */
 export const isAdvanceLeave = (date: string, today: string = bangkokNow().date): boolean => date > today;
 
+/** 🔻 TASK-826 — which side of the fork a day is on, answered by THE predicate (`isAdvanceLeave`) — for the PREVIEW, which must read the day exactly as the act does and so must not carry a second comparison of its own. */
+export const leaveModeOf = (date: string, today: string = bangkokNow().date): "advance" | "same-day" => (isAdvanceLeave(date, today) ? "advance" : "same-day");
+
 // 🔴 TASK-648 (QA F1, owner ruling 2026-10-04) — the ADMIN's door takes FUTURE DAYS ONLY, and the refusal lives at that route.
 // 🔑 The owner's reason: a call that accepts today CANCELS that day's classes and NOTIFIES the families in the same call —
 // **one wrong call is irreversible, and the customer has already seen it.** *A door the screen refuses must not stand open behind it.*
@@ -109,7 +112,7 @@ export async function recordAdvanceLeave(exec: any, teacherId: string, input: { 
   if (!isAdvanceLeave(input.date)) throw badRequest("ลาล่วงหน้าได้เฉพาะวันหลังจากวันนี้"); // ✅ APPROVED by the owner 2026-10-01 — COPY-REVIEW-2026-09-29.md:370 — the fork makes this unreachable from the route
   const [row] = await exec.insert(teacherLeaveDays).values({ teacherId, date: input.date, reason: input.reason, createdBy: actor, ...(input.rangeId ? { rangeId: input.rangeId } : {}) }).onConflictDoNothing().returning(); // 🔻 TASK-817: rangeId only for a range record — a single-day row is written exactly as before (the column stays NULL)
   const leave = row ?? (await exec.query.teacherLeaveDays.findFirst({ where: (l: any, { and: a, eq: e }: any) => a(e(l.teacherId, teacherId), e(l.date, input.date)) }));
-  return { leave: { date: leave.date as string, reason: (leave.reason ?? null) as string | null }, alreadyRecorded: !row, bookings: await leaveDayBookings(exec, teacherId, input.date) };
+  return { leave: { date: leave.date as string, reason: (leave.reason ?? null) as string | null }, leaveId: leave.id as string, alreadyRecorded: !row, bookings: await leaveDayBookings(exec, teacherId, input.date) }; // 🔻 TASK-826: `leaveId` — the removal rows hang off it
 }
 
 /**
@@ -122,10 +125,10 @@ export async function recordAdvanceLeaveRange(exec: any, teacherId: string, inpu
   for (let d = input.from; d <= input.to && dates.length <= MAX_LEAVE_RANGE_DAYS; d = addDays(d, 1)) dates.push(d);
   if (!dates.length || dates.length > MAX_LEAVE_RANGE_DAYS) throw badRequest("ช่วงวันลาไม่ถูกต้อง"); // the door's validation refuses both first; this is the writer's own backstop (✅ APPROVED by the owner 2026-10-17 (REQ-123 Phase 1), COPY-REVIEW-2026-09-29.md, verbatim)
   const rangeId = randomUUID();
-  const days: Array<{ date: string; reason: string | null; alreadyRecorded: boolean; bookings: Awaited<ReturnType<typeof leaveDayBookings>> }> = [];
+  const days: Array<{ date: string; leaveId: string; reason: string | null; alreadyRecorded: boolean; bookings: Awaited<ReturnType<typeof leaveDayBookings>> }> = [];
   for (const date of dates) {
     const r = await recordAdvanceLeave(exec, teacherId, { date, reason: input.reason, rangeId }, actor);
-    days.push({ date, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });
+    days.push({ date, leaveId: r.leaveId, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });
   }
   return { rangeId: days.some((d) => !d.alreadyRecorded) ? rangeId : null, days };
 }
@@ -153,10 +156,11 @@ export async function ownAdvanceLeaves(exec: any, teacherId: string, today: stri
  * its classes may already have been handled by hand (out of scope tonight, as the per-day lift). Restores nothing, cancels nothing (exactly the per-day lift). Unknown range ⇒ 404 with the approved per-day words.
  * Returns the days lifted and the days kept; the caller decides what an EMPTY lift means (nothing was written then).
  */
-export async function liftAdvanceLeaveRange(exec: any, rangeId: string) {
+export async function liftAdvanceLeaveRange(exec: any, rangeId: string, beforeDelete?: (teacherId: string, futureDates: string[]) => Promise<void>) {
   const rows: Array<{ teacherId: string; date: string }> = await exec.select({ teacherId: teacherLeaveDays.teacherId, date: teacherLeaveDays.date }).from(teacherLeaveDays).where(eq(teacherLeaveDays.rangeId, rangeId)).orderBy(asc(teacherLeaveDays.date));
   if (!rows.length) throw notFound("ไม่พบวันลาล่วงหน้านี้"); // ✅ the approved per-day words (COPY-REVIEW-2026-09-29.md:370)
   const future = rows.filter((r) => isAdvanceLeave(r.date)).map((r) => r.date);
+  if (future.length && beforeDelete) await beforeDelete(rows[0]!.teacherId, future); // 🔻 TASK-826 — Cancel leave puts the teacher back on the classes this leave took them off, BEFORE the days go
   if (future.length) await exec.delete(teacherLeaveDays).where(and(eq(teacherLeaveDays.rangeId, rangeId), inArray(teacherLeaveDays.date, future)));
   return { teacherId: rows[0]!.teacherId, lifted: future, kept: rows.map((r) => r.date).filter((d) => !future.includes(d)) };
 }

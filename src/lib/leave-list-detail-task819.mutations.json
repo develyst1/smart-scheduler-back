@@ -72,8 +72,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "  const from = q.from ?? bangkokNow().date;\n  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId);",
-              "to": "  const from = q.from && q.from > bangkokNow().date ? q.from : bangkokNow().date;\n  return recordedLeaveDays(db, from, q.to ?? addDays(from, 60), q.teacherId);"
+              "from": "  const from = q.from ?? bangkokNow().date;\n  return recordedLeaveDays(db, from,",
+              "to": "  const from = q.from && q.from > bangkokNow().date ? q.from : bangkokNow().date;\n  return recordedLeaveDays(db, from,"
             }
           ]
         }

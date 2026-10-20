@@ -57,8 +57,8 @@
           "file": "src/lib/teacher-leave.ts",
           "edits": [
             {
-              "from": "    days.push({ date, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });",
-              "to": "    if (r.alreadyRecorded) throw badRequest(\"x\");\n    days.push({ date, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });"
+              "from": "    days.push({ date, leaveId: r.leaveId, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });",
+              "to": "    if (r.alreadyRecorded) throw badRequest(\"x\");\n    days.push({ date, leaveId: r.leaveId, reason: r.leave.reason, alreadyRecorded: r.alreadyRecorded, bookings: r.bookings });"
             }
           ]
         }
@@ -72,7 +72,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_recorded\", date: input.from, to: input.to, classes, actor }) : 0;",
+              "from": "? await notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_recorded\", date: input.from, to: input.to, classes, ...(continued ? { continued } : {}), actor }) : 0;",
               "to": "? (await Promise.all(r.days.map((d) => notifyTeacherOfLeaveDay(teacherId, { kind: \"teacher_leave_recorded\", date: d.date, classes, actor })))).length : 0;"
             }
           ]
@@ -102,8 +102,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await db.transaction((tx) => recordAdvanceLeaveRange(tx, teacherId, input, actor))",
-              "to": "await recordAdvanceLeaveRange(db, teacherId, input, actor)"
+              "from": "const { r, splits } = await db.transaction(async (tx) => {",
+              "to": "const { r, splits } = await ((cb: any) => cb(db))(async (tx: any) => {"
             }
           ]
         }
@@ -207,8 +207,8 @@
           "file": "src/validation.ts",
           "edits": [
             {
-              "from": "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม",
-              "to": "วันที่สิ้นสุดต้องไม่ก่อนเริ่ม"
+              "from": "if (b.from > b.to) ctx.addIssue({ code: \"custom\", message: \"วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม\"",
+              "to": "if (b.from > b.to) ctx.addIssue({ code: \"custom\", message: \"วันที่สิ้นสุดต้องไม่ก่อนเริ่ม\""
             }
           ]
         }

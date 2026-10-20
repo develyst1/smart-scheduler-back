@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getTableName } from "drizzle-orm";
 import * as lineLib from "./line";
+import * as sched from "../services/scheduler.service";
 import * as ownScope from "./own-scope";
 import { db } from "../db";
 import { readSrc } from "./read-src";
@@ -35,6 +36,8 @@ const arm = () => {
   const deleted: string[] = [];
   setSystemTime(new Date(`${TODAY}T10:00:00+07:00`));
   process.env.SKIP_AUTH = "true";
+  // 🔻 TASK-826 — a lift first asks «which classes did this leave take the teacher off?» (the removal rows); none here
+  spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async () => []) as any));
   spies.push(spyOn(db, "delete").mockImplementation(((t: any) => ({ where: () => ({ returning: async () => {
     expect(getTableName(t)).toBe("teacher_leave_days");
     deleted.push("call");

@@ -48,8 +48,8 @@ describe("🔴 the migration — 0044, counted, ONE nullable FK column + the par
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0044_user_teacher_link.sql"), "utf8").replace(/\r\n/g, "\n"); // 🔻 TASK-413: the file was committed with CRLF — bytes normalised, the pin unchanged
   test("56 = 56: `0044_user_teacher_link` is the 45th file, idx 44 (TASK-410/411 added 0045/0046 after it); 'expects 45' in the header", () => {
-    expect(files.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
-    expect(journal.entries.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(files.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
+    expect(journal.entries.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     expect(files[44]).toBe("0044_user_teacher_link.sql");
     expect(journal.entries[44]).toMatchObject({ idx: 44, tag: "0044_user_teacher_link" });
     expect(sql).toContain("`db:verify`\n-- expects 45");
@@ -338,7 +338,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     expect(L).toContain('await sendClassCancelledToOtherTeachers(tx, b as any, { cancelReason: "TEACHER_LEAVE", note: input.reason }, me);');
     expect(L).toContain('familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);'); // 🔻 TASK-410: the ONE family sender · 🔻 TASK-548: + the re-plan's own append result
     expect(L).not.toMatch(/sendClassCancelledToTeacher\(|cutoff|cut-off|noticeHours/); // never the single-coach notice (me); no cut-off
-    expect(L).toContain("return { cancelled: live.length, bookingIds: live.map((b) => b.id), familiesNotified };");
+    expect(L).toContain("return { cancelled: cancelledIds.length, bookingIds: cancelledIds, familiesNotified, ...split };"); // 🔻 TASK-825 (REQ-125 ruling B): the answer reports the classes the act CANCELLED (`cancelledIds`), not every live target — a co-taught class that continues is not among them
     // the other teachers: minus me, CONFIRMED only
     const O = region(SCHED, "async function sendClassCancelledToOtherTeachers(", "export async function reportTeacherLeave("); // 🔻 TASK-608 — the ACT, see above
     expect(O).toContain('if (current.status !== "CONFIRMED") return 0;');
@@ -422,7 +422,7 @@ describe("🔴 the OWN LEAVE — `TEACHER_LEAVE` the 4th reason; the family's no
     // 🔻 TASK-690 — the migration pinned here is now `0065`, whose own file states ITS count (66); the "expects 46" it used to
     // assert was 0045's. The statement shape below (DROP · ADD … NOT VALID · VALIDATE) is the SAME on purpose.
     expect(last).toContain("`db:verify` expects 66");
-    expect(files.length).toBe(71); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070
+    expect(files.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
     expect(files[45]).toBe("0045_cancel_reason_teacher_leave.sql");
     expect(SCHEDULING_WITNESSES.find((x) => x.tag === "0045_cancel_reason_teacher_leave")).toMatchObject({ probe: { kind: "constraint-def", constraint: "bookings_cancel_reason_chk", contains: "TEACHER_LEAVE" }, rerunnable: true });
     expect(code(src("scripts/probe-witnesses.ts"))).toContain("pg_get_constraintdef(oid)");

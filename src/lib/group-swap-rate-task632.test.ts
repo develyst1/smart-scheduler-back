@@ -23,7 +23,7 @@ const region = (s: string, from: string, to: string) => {
   const b = s.indexOf(to, a + from.length);
   return s.slice(a, b < 0 ? undefined : b);
 };
-const SWAP = region(SCHED, "export async function swapGroupTeacher(", "\n}\n");
+const SWAP = region(SCHED, "export async function moveGroupRowToTeacher(", "\n}\n") + region(SCHED, "export async function swapGroupTeacher(", "\n}\n"); // 🔻 TASK-824 — the per-date loop now lives in `moveGroupRowToTeacher` (moved, not copied); the region is exactly that function + `swapGroupTeacher`
 const GK = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const T1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"; // the outgoing coach, paid 50000 on these rows
 const T3 = "ffffffff-ffff-4fff-8fff-ffffffffffff"; // the incoming coach, paid 28000 in this group's past

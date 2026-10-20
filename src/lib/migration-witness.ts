@@ -709,6 +709,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "half-applied file reads as not applied and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; NO data is written (existing rows keep NULL = a single-day record).",
     rerunnable: true,
   },
+  {
+    tag: "0071_teacher_leave_removals",
+    probe: { kind: "index", index: "teacher_leave_removals_day_booking_uq" },
+    why:
+      "TASK-826 (REQ-125 ruling B). `teacher_leave_removals`: what an advance leave took a teacher OFF a co-taught class, remembered so Cancel leave can put them back as an extra. The probe is the unique index, the LAST object " +
+      "the file creates, so a half-applied file (table without its index) reads as not applied and re-runs. Rerunnable: every statement is IF NOT EXISTS; NO data is written.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

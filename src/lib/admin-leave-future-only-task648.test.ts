@@ -103,7 +103,7 @@ describe("🔑 TASK-648 — ONE predicate, at the route, and the act's single fo
     // ⇒ it is scoped to the act, where "exactly one fork" is the real claim, and the route's own call is pinned separately above.
     const inProduct = [code("src/services/scheduler.service.ts"), code("src/routes/api.ts"), code("src/lib/teacher-leave.ts")]
       .join("\n").match(/isAdvanceLeave\(/g) ?? [];
-    expect(inProduct.length).toBe(5); // the lib's own refusal + the act's ONE fork + the record door's guard + the admin LIFT door's guard (🔻 TASK-814) + the range lift's filter (🔻 TASK-819) (the definition is not a call)
+    expect(inProduct.length).toBe(6); // the lib's own refusal + the act's ONE fork + the record door's guard + the admin LIFT door's guard (🔻 TASK-814) + the range lift's filter (🔻 TASK-819) + the day-mode helper `leaveModeOf` the preview reads the fork through (🔻 TASK-826) (the definition is not a call)
   });
   test("by value: the predicate itself is unchanged — today is NOT an advance leave, tomorrow is", () => {
     expect(isAdvanceLeave(TODAY, TODAY)).toBe(false);

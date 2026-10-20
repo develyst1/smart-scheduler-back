@@ -258,9 +258,21 @@ describe("🔴 AC-18 — every teacher, from ONE accessor", () => {
     expect(loader).not.toContain("bookings.teacherId");
     expect(loader).not.toContain("from(bookings)");
     expect(loader).not.toContain("primary");
+    // 🔻 TASK-824 (REQ-125 ruling B) — a FIFTH named writer: `takeTeacherOffClass` removes ONE teacher from ONE class (an extra's row, or the promoted extra's row when the main leaves). It deletes ONLY a
+    // row; it never inserts, never updates or reads the table, and never composes the teacher list (its «who remains» question goes through `remainingOf`, which reads the relation, not this table).
+    const taker = body("export async function takeTeacherOffClass");
+    expect(taker).toMatch(/delete\(bookingTeachers\)/);
+    expect(taker).not.toMatch(/insert\(bookingTeachers\)|update\(bookingTeachers\)|from\(bookingTeachers\)/);
+    expect(taker).not.toMatch(/\[\s*\{\s*teacherId:\s*c\.teacherId/);
+    // 🔻 TASK-826 (REQ-125 ruling B, D2) — a SIXTH named writer: `restoreRemovedTeachers` (Cancel leave) puts a teacher BACK on a class as an EXTRA. INSERT-only (ON CONFLICT DO NOTHING): it never deletes, updates or reads the
+    // join table and never composes the teacher list — the class's main teacher is never touched.
+    const restorer = body("export async function restoreRemovedTeachers");
+    expect(restorer).toContain("insert(bookingTeachers).values({ bookingId: r.bookingId, teacherId, rateMinor: r.rateMinor }).onConflictDoNothing()");
+    expect(restorer).not.toMatch(/delete\(bookingTeachers\)|update\(bookingTeachers\)|from\(bookingTeachers\)/);
+    expect(restorer).not.toMatch(/\[\s*\{\s*teacherId:\s*c\.teacherId/);
     const count = (s: string) => s.split("bookingTeachers").length - 1;
-    // Every mention in the file is the import (1), or inside one of those three functions.
-    expect(count(code)).toBe(1 + count(writer) + count(reader) + count(loader) + count(rateWriter));
+    // Every mention in the file is the import (1), or inside one of those named functions.
+    expect(count(code)).toBe(1 + count(writer) + count(reader) + count(loader) + count(rateWriter) + count(taker) + count(restorer));
   });
 
   test("the relation is loaded in the SHARED relation set, not opted into per query", () => {

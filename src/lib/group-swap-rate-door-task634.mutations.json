@@ -32,8 +32,8 @@
       "id": "D4",
       "what": "🔴 the supplied rate reaches the SEATS — an admin pricing the GROUP silently answers TASK-633's product question",
       "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{
-        "from": "      await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
-        "to": "      await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
+        "from": "  await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));",
+        "to": "  await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));"
       }]}]
     },
     {
@@ -41,7 +41,7 @@
       "what": "the refusal moves INSIDE the loop — with a rate now suppliable, a half-moved series becomes easier to cause, not harder",
       "files": [{ "file": "src/services/scheduler.service.ts", "edits": [
         { "from": "  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);", "to": "" },
-        { "from": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      try {", "to": "      await assertTeacherBookable(tx, input.teacherId, g.date);\n      if (rate == null) throw RATE_REQUIRED(g.date);\n      try {" }
+        { "from": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  try {", "to": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {" }
       ]}]
     },
     {

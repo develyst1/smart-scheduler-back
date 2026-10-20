@@ -45,6 +45,8 @@ const NOT_A_COACH_RATE: Record<string, string> = {
   rates: "a LOCAL variable / parameter name (`const rates: Record<…>`, `assertRatesOnBooking(rates, …)`), never a response key",
   migrate: "the word 'migrate' (`migrate-preflight.ts`) — the pattern's own false positive, listed so the list is honest",
   attendanceRate: "the daily report's attendance PERCENTAGE (REQ-119, Palm's §5 name, verbatim by contract): attended ÷ total booked — nothing to do with a coach's pay",
+  oldRateMinor: "🔻 TASK-824 — an in-process RETURN value of `takeTeacherOffClass` (the leaving teacher's stored rate, for TASK-826's removal memory); never a response key — pinned in take-teacher-off-class-task824.test.ts",
+  newRateMinor: "🔻 TASK-824 — the same outcome object: the promoted teacher's own stored rate; never a response key — pinned in take-teacher-off-class-task824.test.ts",
 };
 
 /** Every distinct key in `src` that looks like a rate — `name:` or `name?:` ANYWHERE on a line, one-liners included. */

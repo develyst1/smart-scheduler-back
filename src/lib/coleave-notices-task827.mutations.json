@@ -1,0 +1,203 @@
+{
+  "task": "TASK-827",
+  "proves": "src/lib/coleave-notices-task827.test.ts",
+  "note": "REQ-125 ruling B LINE notices. N1/N2 the approved TH/EN sentence changed · N3 the «now the main teacher» suffix on EVERY class · N4 its words changed · N5 the leaver's extra line shown at 0 · N6 the extra line on the LIFT notice · N7 one message per CLASS (not per coach per day) · N8 the leaver is also told · N9 a FAMILY is told · N10 the same-day act never calls the sender · N11 the advance take-off never calls it · N12 the PREVIEW enqueues a message · N13 the leaver's notice forgets `continued`.",
+  "tests": "src/lib/coleave-notices-task827.test.ts src/lib/same-day-leave-co-taught-task825.test.ts src/lib/advance-leave-co-taught-task826.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "the approved Thai sentence to a remaining coach is changed",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "คาบต่อไปนี้ยังเรียนตามปกติกับคุณ: {list}",
+              "to": "คาบต่อไปนี้เรียนตามปกติ: {list}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "the approved English sentence to a remaining coach is changed",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "{name} is away on {date}. These classes go on with you: {list}",
+              "to": "{name} is away on {date}. Classes go on with you: {list}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "🔴 the «you are now the main teacher» suffix rides EVERY class, not only the promoted one",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(c.becameMain ? ` ${t(\"ob_tl_coach_now_main\", lang)}` : \"\")",
+              "to": "(true ? ` ${t(\"ob_tl_coach_now_main\", lang)}` : \"\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "the approved suffix words are changed",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "(you are now the main teacher of this class)",
+              "to": "(you are the main teacher now)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "the leaver's extra line is shown even at zero (every ordinary notice changes)",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(recorded && Number(payload.continued ?? 0) > 0 ?",
+              "to": "(recorded ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N6",
+      "what": "the extra line rides the LIFT notice too",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(recorded && Number(payload.continued ?? 0) > 0 ?",
+              "to": "(Number(payload.continued ?? 0) > 0 ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N7",
+      "what": "🔴 one message per CLASS instead of one per coach per day",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  for (const n of notices) {\n    const coach = await tx.query.teachers.findFirst",
+              "to": "  for (const n of notices.flatMap((x) => x.classes.map((c) => ({ ...x, classes: [c] })))) {\n    const coach = await tx.query.teachers.findFirst"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N8",
+      "what": "🔴 the leaving teacher is also sent the coach notice",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await sendCoLeaveNotices(tx, me, date, remainingCoaches); // 🔻 TASK-827",
+              "to": "  await sendCoLeaveNotices(tx, me, date, remainingCoaches.length ? [...remainingCoaches, { teacherId: me, classes: remainingCoaches[0]!.classes }] : remainingCoaches); // 🔻 TASK-827"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N9",
+      "what": "🔴 a FAMILY is told about a class that continues",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return notices.length;\n}",
+              "to": "  if (notices.length) await enqueueLine({ recipientType: \"parent\", recipientLineUserId: \"U-family\", payload: { kind: \"x\" } }, tx);\n  return notices.length;\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N10",
+      "what": "🔴 the same-day act never tells the remaining coaches",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    await sendCoLeaveNotices(tx, me, input.date, [...coachNotices.values()]);",
+              "to": "    // (mutated: no coach notice)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N11",
+      "what": "🔴 the advance take-off never tells the remaining coaches",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await sendCoLeaveNotices(tx, me, date, remainingCoaches); // 🔻 TASK-827",
+              "to": "  // (mutated: no coach notice) // 🔻 TASK-827"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N12",
+      "what": "🔴 the PREVIEW enqueues a message (it must make 0 outbox rows)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        const count = (o: LeavePreviewClass[\"outcome\"]) =>",
+              "to": "        if (classes.length) await enqueueLine({ recipientType: \"teacher\", recipientLineUserId: \"U-x\", payload: { kind: \"x\" } }, tx);\n        const count = (o: LeavePreviewClass[\"outcome\"]) =>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N13",
+      "what": "the leaver's notice forgets `continued` (single day)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "classes: toDo.length, ...(split?.continues.length ? { continued: split.continues.length } : {}), actor })",
+              "to": "classes: toDo.length, actor })"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

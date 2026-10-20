@@ -233,7 +233,8 @@ describe("🔑 by source and by shape — one day writer, the fork and the lift 
     expect(ACT.indexOf("if (input.to !== undefined)")).toBeLessThan(ACT.indexOf("if (isAdvanceLeave(input.date))"));
     expect((ACT.match(/isAdvanceLeave\(/g) ?? []).length).toBe(1);
     const R = region(SVC, "async function reportTeacherLeaveRange(", "\n}\n");
-    expect(R).toContain("await db.transaction((tx) => recordAdvanceLeaveRange(tx, teacherId, input, actor))");
+    expect(R).toContain("await db.transaction(async (tx) => {"); // 🔻 TASK-826: the SAME transaction also takes the leaver off co-taught classes (and remembers it)
+    expect(R).toContain("const r = await recordAdvanceLeaveRange(tx, teacherId, input, actor);");
     expect((R.match(/notifyTeacherOfLeaveDay\(/g) ?? []).length).toBe(1);
     expect(R).toContain("opts.onBehalf && fresh > 0");
   });
@@ -252,8 +253,8 @@ describe("🔑 by source and by shape — one day writer, the fork and the lift 
     expect(code(sql.replace(/^--.*$/gm, ""))).toContain('ALTER TABLE "teacher_leave_days" ADD COLUMN IF NOT EXISTS "range_id" uuid;');
     expect(sql.replace(/^--.*$/gm, "")).not.toMatch(/INSERT|UPDATE|DELETE|NOT NULL|DEFAULT/i);
     const journal = JSON.parse(file("drizzle/meta/_journal.json"));
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 70, tag: "0070_teacher_leave_range", breakpoints: true });
-    expect(SCHEDULING_WITNESSES.at(-1)).toMatchObject({ tag: "0070_teacher_leave_range", probe: { kind: "column", table: "teacher_leave_days", column: "range_id" }, rerunnable: true });
+    expect(journal.entries.find((e: any) => e.tag === "0070_teacher_leave_range")).toMatchObject({ idx: 70, tag: "0070_teacher_leave_range", breakpoints: true });
+    expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0070_teacher_leave_range")).toMatchObject({ tag: "0070_teacher_leave_range", probe: { kind: "column", table: "teacher_leave_days", column: "range_id" }, rerunnable: true });
     expect(code(file("src/db/schema.ts"))).toContain('rangeId: uuid("range_id"),');
   });
 });

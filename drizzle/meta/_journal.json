@@ -498,6 +498,13 @@
       "when": 1783000000066,
       "tag": "0070_teacher_leave_range",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1783000000067,
+      "tag": "0071_teacher_leave_removals",
+      "breakpoints": true
     }
   ]
 }

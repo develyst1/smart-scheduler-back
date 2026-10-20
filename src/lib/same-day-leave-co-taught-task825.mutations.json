@@ -1,0 +1,158 @@
+{
+  "task": "TASK-825",
+  "proves": "src/lib/same-day-leave-co-taught-task825.test.ts",
+  "note": "REQ-125 ruling B, same-day. K1 a co-taught class is cancelled as before (the split never fires) · K2 D4 «cannot» falls through to the cancel · K3 the LAST teacher's class is left alone (listed) instead of cancelled · K4 the split keys always ride the answer (a sole-teacher answer changes shape) · K5 one coach entry per class instead of one per coach per day · K6 promotedTo never reported · K7 `cancelled` counts every live target · K8 «continues with» names empty. K9 a continuing class counted as cancelled · K10 the families of a continuing class told.",
+  "tests": "src/lib/same-day-leave-co-taught-task825.test.ts src/lib/teacher-leave-act-task582.test.ts",
+  "mutations": [
+    {
+      "id": "K1",
+      "what": "🔴 a co-taught class is cancelled exactly as before — the split never fires (the REQ-125 defect)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (((b as any).additionalTeachers ?? []).length > 0) {",
+              "to": "if (false) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K2",
+      "what": "🔴 D4: a class nobody can take over falls through to the cancel",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(out.message ? { message: out.message } : {}) }); continue; }",
+              "to": "...(out.message ? { message: out.message } : {}) }); }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K3",
+      "what": "🔴 the LAST teacher's class is left alone (listed) instead of cancelled",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        }\n        if (out.reason === \"no-eligible-main\") {",
+              "to": "        }\n        if (true) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K4",
+      "what": "the split keys always ride the answer — a sole-teacher leave answers with a different shape",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const split = continues.length || toHandle.length ?",
+              "to": "const split = true ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K5",
+      "what": "one coach entry per CLASS instead of one per coach per day (the LINE would repeat)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const n = notices.get(teacherId) ?? { teacherId, classes: [] };",
+              "to": "const n: SameDayCoachNotice = { teacherId, classes: [] };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K6",
+      "what": "the promotion is never reported",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "promotedTo: out.outcome === \"promoted\" ? out.teacherId : null };",
+              "to": "promotedTo: null };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K7",
+      "what": "`cancelled` counts every live target, including the ones that continue",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "return { cancelled: cancelledIds.length, bookingIds: cancelledIds, familiesNotified, ...split };",
+              "to": "return { cancelled: live.length, bookingIds: cancelledIds, familiesNotified, ...split };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K8",
+      "what": "«continues with {names}» comes out empty",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "with: crew.map((t) => t.nickname),",
+              "to": "with: [] as string[],"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K9",
+      "what": "🔴 condition 3: a CONTINUING class is counted as cancelled (its id joins `bookingIds`, `cancelled` grows)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "          continues.push(await describeContinuation(tx, b, me, out, coachNotices));",
+              "to": "          cancelledIds.push(b.id); continues.push(await describeContinuation(tx, b, me, out, coachNotices));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K10",
+      "what": "🔴 condition 4: the FAMILY of a continuing class is told (the cancel notice for a class that is still on)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "          continues.push(await describeContinuation(tx, b, me, out, coachNotices));",
+              "to": "          familiesNotified += await sendClassCancelledToFamilies(tx, b as any, \"TEACHER_LEAVE\", []); continues.push(await describeContinuation(tx, b, me, out, coachNotices));"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

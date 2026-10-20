@@ -19,6 +19,7 @@ import * as lineLib from "./line";
 import { db } from "../db";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
+process.env.JWT_SECRET ??= "test-secret-task608"; // 🔻 TASK-826 — hermetic: §3 signs a token; alone, in a tree without a local .env, there was no secret (a test value, never a real one)
 const root = resolve(import.meta.dir, "..", "..");
 const read = (f: string) => readFileSync(resolve(root, f), "utf8").replace(/\r\n/g, "\n");
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
@@ -44,6 +45,7 @@ const arm = (opts: { already?: boolean } = {}) => {
     if (rows.some((r) => r.teacherId === v.teacherId && r.date === v.date)) return [];
     const row = { id: `l-${rows.length + 1}`, ...v }; rows.push(row); return [row];
   } }) }) })) as any));
+  spies.push(spyOn(sched, "restoreRemovedTeachers").mockImplementation((async () => []) as any)); // 🔻 TASK-826: a lift first asks which classes the leave took the teacher off — none in this arm
   spies.push(spyOn(db, "delete").mockImplementation(((t: any) => ({ where: () => ({ returning: async () => {
     expect(getTableName(t)).toBe("teacher_leave_days");
     const gone = rows.splice(0, rows.length); return gone.map((g) => ({ id: g.id }));

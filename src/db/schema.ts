@@ -1283,6 +1283,24 @@ export const teacherLeaveDays = pgTable(
   (t) => [uniqueIndex("teacher_leave_days_teacher_date_uq").on(t.teacherId, t.date)],
 );
 
+// TASK-826 (REQ-125 ruling B, `0071`) — what an ADVANCE leave took a teacher OFF (a co-taught class that runs on with the others), remembered so Cancel leave can put them back as an extra teacher at their old rate.
+// One row per (leave day, class). Cascades with the leave day and with the class. A same-day leave records nothing.
+export const teacherLeaveRemovals = pgTable(
+  "teacher_leave_removals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leaveDayId: uuid("leave_day_id").notNull().references(() => teacherLeaveDays.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    teacherId: uuid("teacher_id").notNull().references(() => teachers.id, { onDelete: "restrict" }),
+    /** the class's date = the leave day's date (kept here so a reader never joins the leave table) */
+    date: date("date").notNull(),
+    wasMain: boolean("was_main").notNull(),
+    rateMinor: integer("rate_minor"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("teacher_leave_removals_day_booking_uq").on(t.leaveDayId, t.bookingId)],
+);
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   permissions: many(userPermissions),
   role: one(roles, { fields: [users.roleId], references: [roles.id] }),
