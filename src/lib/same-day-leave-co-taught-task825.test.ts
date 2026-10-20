@@ -11,6 +11,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { bookings, bookingTeachers } from "../db/schema";
 import * as sched from "../services/scheduler.service";
 import * as lineLib from "./line";
+import * as adminLib from "./line-admin";
 import { db } from "../db";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -24,13 +25,13 @@ afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); setSystemTim
 
 const TODAY = "2026-10-21";
 const ME = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const ANN = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", BEA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const ANN = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", BEA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc", CAL = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const teacher = (id: string, nickname: string, extra: object = {}) => ({ id, name: nickname, nickname, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", lineUserId: "U-" + nickname, ...extra });
 type Cls = { id: string; startTime: string; teacherId: string; teacherRateMinor: number | null; bookingType: string; status: string; extras: Array<{ teacherId: string; rateMinor: number | null }> };
 type World = { classes: Cls[]; teachers: Record<string, any>; leave: Array<{ teacherId: string; date: string }>; busy: Set<string>; cancelled: string[]; seatMoves: string[]; deletes: string[] };
 const cls = (id: string, startTime: string, teacherId: string, extras: Array<[string, number | null]>, bookingType = "OTHER", status = "CONFIRMED"): Cls => ({ id, startTime, teacherId, teacherRateMinor: 50000, bookingType, status, extras: extras.map(([t, r]) => ({ teacherId: t, rateMinor: r })) });
 const world = (classes: Cls[], over: Partial<World> = {}): World => ({
-  classes, teachers: { [ME]: teacher(ME, "Mod"), [ANN]: teacher(ANN, "Ann"), [BEA]: teacher(BEA, "Bea") }, leave: [], busy: new Set(), cancelled: [], seatMoves: [], deletes: [], ...over,
+  classes, teachers: { [ME]: teacher(ME, "Mod"), [ANN]: teacher(ANN, "Ann"), [BEA]: teacher(BEA, "Bea"), [CAL]: teacher(CAL, "Cal") }, leave: [], busy: new Set(), cancelled: [], seatMoves: [], deletes: [], ...over,
 });
 const whereOf = (q: any): Record<string, unknown> => {
   const pairs = [q?.where?.(new Proxy({}, { get: (_t, k) => String(k) }), { and: (...a: any[]) => a.flat(), eq: (c: string, v: unknown) => [[c, v]] })].flat(3);
@@ -88,12 +89,26 @@ const arm = (w: World) => {
   // the ONE family sender: every class it is asked about is recorded, and each answers «1 household told» — so `familiesNotified` is exactly the number of classes it was asked about
   famCalls.length = 0;
   outbox.length = 0;
+  adminAlerts.length = 0;
+  // 🔻 TASK-829 — THE admin helper, recorded (the real one would read the admin accounts): payload + the exec it was handed + the booking it hangs off
+  adminIds = ["U-admin-1"];
+  adminRows.length = 0;
+  spies.push(spyOn(adminLib, "getAdminLineUserIds").mockImplementation((async () => [...adminIds]) as any));
+  // …and the real rule's rows (one per admin; no admin ⇒ ONE SKIPPED row, TASK-152), kept apart from `outbox` (the coach/family rows)
+  spies.push(spyOn(adminLib, "notifyAdmins").mockImplementation((async (payload: any, exec: any, bookingId?: string) => {
+    adminAlerts.push({ payload, exec, bookingId });
+    if (!adminIds.length) adminRows.push({ recipientLineUserId: null, skipReason: "no admin recipient configured" });
+    for (const id of adminIds) adminRows.push({ recipientLineUserId: id });
+  }) as any));
   // 🔻 TASK-827 — every LINE the act enqueues is captured here (the coach notices are written in the act's own transaction)
   spies.push(spyOn(lineLib, "enqueueLine").mockImplementation((async (o: any) => { outbox.push(o); return { status: "queued" } as any; }) as any));
   spies.push(spyOn(sched, "sendClassCancelledToFamilies").mockImplementation((async (_tx: any, current: any) => { famCalls.push(current.id); return 1; }) as any));
 };
 const famCalls: string[] = [];
 const outbox: any[] = [];
+let adminIds: string[] = ["U-admin-1"];
+const adminRows: any[] = [];
+const adminAlerts: Array<{ payload: any; exec: any; bookingId?: string }> = [];
 const leave = (w: World, opts: { onBehalf?: boolean; sessionIds?: string[] } = {}) => sched.reportTeacherLeave(ME, { date: TODAY, reason: "ป่วย", ...(opts.sessionIds ? { sessionIds: opts.sessionIds } : {}) }, "actor", { onBehalf: opts.onBehalf ?? false });
 
 describe("🔴 a co-taught class with a teacher remaining CONTINUES — not cancelled, no family told", () => {
@@ -228,6 +243,68 @@ describe("🔴 a mixed day, the coach notices (D5), and sessionIds", () => {
   });
 });
 
+describe("🔴 TASK-829 (K1 b) — ONE alert to the ADMINS for the classes left AS THEY ARE (D4), from the same-day act only; ⏳ the sentence is a «copy pending» draft", () => {
+  test("a day with 1 D4 class + 1 continuing + 1 sole ⇒ exactly ONE admin alert, listing ONLY the D4 class; nothing to a coach about it, nothing to a family", async () => {
+    const w = world([cls("d4", "10:00", ME, [[CAL, 70000]]), cls("go", "12:00", ME, [[ANN, 61000]]), cls("p1", "14:00", ME, [], "PRIVATE", "PENDING")], { busy: new Set([CAL]) });
+    arm(w);
+    const r: any = await leave(w);
+    expect(r.toHandle.map((c: any) => c.bookingId)).toEqual(["d4"]);
+    expect(r.continues.map((c: any) => c.bookingId)).toEqual(["go"]);
+    expect(w.cancelled).toEqual(["p1"]);
+    expect(adminAlerts).toHaveLength(1);
+    expect(adminAlerts[0]!.payload).toEqual({ kind: "teacher_leave_left_as_is_admin", leaver: "Mod", date: TODAY, classes: [{ startTime: "10:00", title: null }] });
+    expect(adminAlerts[0]!.bookingId).toBe("d4");
+    expect(adminAlerts[0]!.exec).toBeDefined(); // handed the act's TRANSACTION, not the default connection
+    expect(outbox.some((m) => m.payload.kind === "teacher_leave_left_as_is_admin")).toBe(false); // not through any coach / family path
+    expect(outbox.filter((m) => m.recipientType !== "teacher")).toEqual([]);
+  });
+  test("TWO D4 classes ⇒ still ONE alert (one per ACT), listing both in time order", async () => {
+    const w = world([cls("a", "10:00", ME, [[CAL, 70000]]), cls("b", "13:00", ME, [[CAL, 70000]])], { busy: new Set([CAL]) });
+    arm(w);
+    await leave(w);
+    expect(adminAlerts).toHaveLength(1);
+    expect(adminAlerts[0]!.payload.classes.map((c: any) => c.startTime)).toEqual(["10:00", "13:00"]);
+  });
+  test("NO D4 class ⇒ NO alert (a continuing class, a sole class, a last-teacher cancel — none of them is “left as is”)", async () => {
+    for (const w of [world([cls("go", "12:00", ME, [[ANN, 61000]])]), world([cls("p1", "14:00", ME, [], "PRIVATE", "PENDING")]), world([cls("last", "10:00", ME, [[ANN, 61000]], "OTHER", "PENDING")], { leave: [{ teacherId: ANN, date: TODAY }] })]) {
+      arm(w);
+      await leave(w);
+      expect(adminAlerts).toEqual([]);
+      spies.splice(0).forEach((x) => x.mockRestore());
+    }
+  });
+  test("🔻 addendum — `adminsAlerted` = how many admins the alert was queued for, only when a class was left as is: 2 admins → 2; NO admin → 0 and the one SKIPPED row; no D4 (continuing / sole / mixed with none left) → the key is absent", async () => {
+    const d4 = () => world([cls("d4", "10:00", ME, [[CAL, 70000]])], { busy: new Set([CAL]) });
+    arm(d4());
+    adminIds = ["U-1", "U-2"];
+    const two: any = await leave(d4());
+    expect(two.adminsAlerted).toBe(2);
+    expect(adminRows.map((r) => r.recipientLineUserId)).toEqual(["U-1", "U-2"]);
+    spies.splice(0).forEach((x) => x.mockRestore());
+    arm(d4());
+    adminIds = [];
+    const none: any = await leave(d4());
+    expect(none.adminsAlerted).toBe(0); // the answer says 0 although a row WAS written…
+    expect(adminRows).toEqual([{ recipientLineUserId: null, skipReason: "no admin recipient configured" }]); // …the SKIPPED one
+    spies.splice(0).forEach((x) => x.mockRestore());
+    for (const w of [world([cls("go", "12:00", ME, [[ANN, 61000]])]), world([cls("p1", "14:00", ME, [], "PRIVATE", "PENDING")])]) {
+      arm(w);
+      const r: any = await leave(w);
+      expect(Object.keys(r)).not.toContain("adminsAlerted");
+      spies.splice(0).forEach((x) => x.mockRestore());
+    }
+  });
+  test("the admin and the teacher's own door alike (onBehalf only decides who is told about the LEAVE, not this alert)", async () => {
+    for (const onBehalf of [false, true]) {
+      const w = world([cls("d4", "10:00", ME, [[CAL, 70000]])], { busy: new Set([CAL]) });
+      arm(w);
+      await leave(w, { onBehalf });
+      expect(adminAlerts).toHaveLength(1);
+      spies.splice(0).forEach((x) => x.mockRestore());
+    }
+  });
+});
+
 describe("🔑 by source — the split lives in the act, before the cancel; the families are never reached from the continue branch", () => {
   const ACT = code(region(SVC, "export async function reportTeacherLeave(", "export type SameDayContinuedClass"));
   const BRANCH = ACT.slice(ACT.indexOf("if (((b as any).additionalTeachers ?? []).length > 0) {"), ACT.indexOf("const coachOff: CoachOff[]"));
@@ -241,7 +318,7 @@ describe("🔑 by source — the split lives in the act, before the cancel; the 
   test("the cancel path itself is untouched and now records what it cancelled; the sole-teacher answer keeps its keys", () => {
     expect(ACT).toContain('set({ status: "CANCELLED", note: input.reason, cancelReason: "TEACHER_LEAVE" })');
     expect(ACT).toContain("cancelledIds.push(b.id);");
-    expect(ACT).toContain("const split = continues.length || toHandle.length ? { continues, toHandle, remainingCoaches: [...coachNotices.values()] } : {};");
+    expect(ACT).toContain("const split = continues.length || toHandle.length ? { continues, toHandle, remainingCoaches: [...coachNotices.values()], ...(toHandle.length ? { adminsAlerted } : {}) } : {};");
     expect(ACT).toContain("return { cancelled: cancelledIds.length, bookingIds: cancelledIds, familiesNotified, ...split };");
   });
 });

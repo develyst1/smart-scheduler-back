@@ -806,6 +806,12 @@ const TABLE: Record<string, Entry> = {
   // 🔻 TASK-827 (REQ-125 ruling B, D5) — ✅ APPROVED by the owner 2026-10-20 (REQ-125 ruling B), COPY-REVIEW-2026-09-29.md, verbatim. To a REMAINING coach: a teacher of a class they share is away, the class goes on with them. {list} = the classes ("<title> HH:mm", plus the suffix below when they became the main teacher).
   ob_tl_coach_continues: { TH: "ครู {name} ลาวันที่ {date} — คาบต่อไปนี้ยังเรียนตามปกติกับคุณ: {list}", EN: "{name} is away on {date}. These classes go on with you: {list}" },
   ob_tl_coach_now_main: { TH: "(คุณเป็นครูหลักของคาบนี้แทน)", EN: "(you are now the main teacher of this class)" },
+  // 🔻 TASK-829 (REQ-125 K1 b) — ✅ APPROVED by the owner 2026-10-21 (COPY-REVIEW 2026-10-21), TH + EN exactly as drafted. To the ADMINS, ONE message per same-day leave act, when a class is
+  // LEFT AS IT IS (D4: nobody could take the main seat). {list} = one line per class «HH:mm · title».
+  ob_tl_left_as_is_admin: {
+    TH: "⚠️ ครู {name} แจ้งลาวันนี้ ({date}) — คาบต่อไปนี้ยังไม่มีครูรับแทน เพราะครูท่านอื่นของคาบไม่ว่างในเวลานั้น กรุณาจัดการในปฏิทิน: {list}",
+    EN: "⚠️ {name} reported leave for today ({date}). These classes have no teacher to take over (their other teachers aren't free then). Please handle them in the calendar: {list}",
+  },
   // 🔻 TASK-827 — ✅ APPROVED by the owner 2026-10-20 (REQ-125 ruling B), COPY-REVIEW-2026-09-29.md, verbatim. One extra line on the LEAVING teacher's `teacher_leave_recorded`, only when n > 0.
   ob_tl_co_taught_continue: { TH: "คาบที่สอนร่วม {n} คาบ ครูท่านอื่นจะสอนต่อ", EN: "{n} co-taught class(es) continue with the other teachers" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },

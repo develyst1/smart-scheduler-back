@@ -132,7 +132,7 @@ import { leavesAwaitingReanswer,
   type PlanSession,
 } from "../lib/course-plan";
 import { buildCourseHistory } from "../lib/course-history";
-import { awardCrmPoints, notifyAdmins } from "../lib/line-admin";
+import { awardCrmPoints, getAdminLineUserIds, notifyAdmins } from "../lib/line-admin";
 import { MAKEUP_NOTE_LEAVE, MAKEUP_NOTE_RECONCILE, MAKEUP_NOTE_TRIMMED } from "../lib/makeup-marker"; // 🔻 TASK-702 — ONE list of the notes (the migration's P3/P4 read the same bytes)
 import { t as tr } from "../lib/line-i18n"; // 🔻 TASK-659 — the EXISTING weekday names (`ob_dow_0..6`), not a second table
 import { archivedStudentIds, assertStudentActive, findOrCreateParentByPhone, findParentOfStudent, suspendedStudentIds } from "./parent.service";
@@ -3798,6 +3798,7 @@ export async function reportTeacherLeave(
   const cancelledIds: string[] = [];
   const continues: SameDayContinuedClass[] = [];
   const toHandle: SameDayToHandleClass[] = [];
+  let adminsAlerted = 0; // 🔻 TASK-829 addendum — how many admins the left-as-is alert was queued for (0 ⇒ only the SKIPPED row); in the answer ONLY when a class was left as is
   const coachNotices = new Map<string, SameDayCoachNotice>();
   await db.transaction(async (tx) => {
     for (const b of live) {
@@ -3824,11 +3825,12 @@ export async function reportTeacherLeave(
       familiesNotified += await sendClassCancelledToFamilies(tx, b as any, "TEACHER_LEAVE", replanned?.appended ?? []);
       cancelledIds.push(b.id);
     }
+    adminsAlerted = await sendLeftAsIsAlertToAdmins(tx, me, input.date, toHandle); // 🔻 TASK-829: ONE alert to the admins for every class left as is (D4) — the same-day act ONLY
     await sendCoLeaveNotices(tx, me, input.date, [...coachNotices.values()]); // 🔻 TASK-827: one LINE per remaining coach, in the same transaction (never a family — a continuing class is not a cancellation)
   });
   void actor;
   // the split rides the answer ONLY when a co-taught class was involved: a sole-teacher leave answers byte-for-byte as before (`{ cancelled, bookingIds, familiesNotified }`)
-  const split = continues.length || toHandle.length ? { continues, toHandle, remainingCoaches: [...coachNotices.values()] } : {};
+  const split = continues.length || toHandle.length ? { continues, toHandle, remainingCoaches: [...coachNotices.values()], ...(toHandle.length ? { adminsAlerted } : {}) } : {};
   return { cancelled: cancelledIds.length, bookingIds: cancelledIds, familiesNotified, ...split };
 }
 
@@ -3922,6 +3924,24 @@ async function sendCoLeaveNotices(tx: any, leavingTeacherId: string, date: strin
     await enqueueLine({ recipientType: "teacher", recipientLineUserId: coach?.lineUserId ?? null, bookingId: n.classes[0]!.bookingId, payload: { kind: "teacher_coleave_continues", leaver: leaver?.nickname ?? leaver?.name ?? "", date, classes } }, tx);
   }
   return notices.length;
+}
+
+/**
+ * 🔻 TASK-829 (REQ-125 K1 b) — a teacher's SAME-DAY leave left class(es) AS THEY ARE (D4: nobody could take the main seat): tell the ADMINS, ONE message for the whole act listing every such class, through THE admin recipients
+ * (`notifyAdmins`: linked admin accounts ∪ the legacy list, de-duplicated; no admin ⇒ one SKIPPED row, TASK-152). Written in the act's own transaction. 🚫 Only the same-day act calls it: an ADVANCE record is made by the admin, who
+ * already sees these classes in the result and the panel; never the preview; never the leaver, the coaches or a family. ⏳ The sentence is a «copy pending» DRAFT.
+ */
+async function sendLeftAsIsAlertToAdmins(tx: any, leavingTeacherId: string, date: string, left: SameDayToHandleClass[]): Promise<number> {
+  if (!left.length) return 0;
+  const leaver = await tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, leavingTeacherId) });
+  const classes: Array<{ startTime: string; title: string | null }> = [];
+  for (const c of left) {
+    const b = await tx.query.bookings.findFirst({ columns: { id: true, otherTitle: true }, where: (x: any, { eq: e }: any) => e(x.id, c.bookingId) });
+    classes.push({ startTime: c.startTime, title: b?.otherTitle ?? null });
+  }
+  const reached = (await getAdminLineUserIds(tx)).length; // 🔻 addendum: the admins the alert is queued for, read in the same transaction just before it (0 ⇒ notifyAdmins writes one SKIPPED row)
+  await notifyAdmins({ kind: "teacher_leave_left_as_is_admin", leaver: leaver?.nickname ?? leaver?.name ?? "", date, classes }, tx, left[0]!.bookingId);
+  return reached;
 }
 
 /** The teachers a class has NOW (main first, then the extras) by nickname — for «continues with {names}». Reads the relation, not the join table. */

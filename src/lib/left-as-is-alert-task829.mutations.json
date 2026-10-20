@@ -1,0 +1,173 @@
+{
+  "task": "TASK-829",
+  "proves": "src/lib/left-as-is-alert-task829.test.ts",
+  "note": "REQ-125 K1 b — the admin alert for a class left AS IT IS on a same-day leave. P1 the alert lists a CONTINUING class · P2 sent from the PREVIEW · P3 sent from the ADVANCE record · P4 a FAMILY is told too · P5 one alert per CLASS (not per act) · P6 an alert on a day with NO D4 class · P7 the Thai text differs from the owner-APPROVED one · P8 the alert written OUTSIDE the act's transaction. · P9 adminsAlerted fixed at 1 · P10 the key present without a D4 · P11 the SKIPPED row counted as an admin reached.",
+  "tests": "src/lib/left-as-is-alert-task829.test.ts src/lib/same-day-leave-co-taught-task825.test.ts src/lib/advance-leave-co-taught-task826.test.ts",
+  "mutations": [
+    {
+      "id": "P1",
+      "what": "🔴 the alert lists a CONTINUING class as «left as is»",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await sendLeftAsIsAlertToAdmins(tx, me, input.date, toHandle);",
+              "to": "await sendLeftAsIsAlertToAdmins(tx, me, input.date, [...toHandle, ...continues.map((c) => ({ bookingId: c.bookingId, startTime: c.startTime, reason: \"no-eligible-main\" as const }))]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "🔴 the PREVIEW sends the admin alert (it must make 0)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        const count = (o: LeavePreviewClass[\"outcome\"]) =>",
+              "to": "        if (classes.some((c) => c.outcome === \"cannot\")) await sendLeftAsIsAlertToAdmins(tx, teacherId, date, classes.filter((c) => c.outcome === \"cannot\").map((c) => ({ bookingId: c.bookingId, startTime: c.startTime, reason: \"no-eligible-main\" as const })));\n        const count = (o: LeavePreviewClass[\"outcome\"]) =>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "🔴 the ADVANCE record sends the admin alert (the admin recording it already sees the class)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await sendCoLeaveNotices(tx, me, date, remainingCoaches); // 🔻 TASK-827",
+              "to": "  await sendLeftAsIsAlertToAdmins(tx, me, date, toHandle);\n  await sendCoLeaveNotices(tx, me, date, remainingCoaches); // 🔻 TASK-827"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "🔴 a FAMILY is told too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await notifyAdmins({ kind: \"teacher_leave_left_as_is_admin\"",
+              "to": "  await enqueueLine({ recipientType: \"parent\", recipientLineUserId: \"U-family\", payload: { kind: \"x\" } }, tx);\n  await notifyAdmins({ kind: \"teacher_leave_left_as_is_admin\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "🔴 one alert per CLASS instead of one per act",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await notifyAdmins({ kind: \"teacher_leave_left_as_is_admin\", leaver: leaver?.nickname ?? leaver?.name ?? \"\", date, classes }, tx, left[0]!.bookingId);",
+              "to": "  for (const c of classes) await notifyAdmins({ kind: \"teacher_leave_left_as_is_admin\", leaver: leaver?.nickname ?? leaver?.name ?? \"\", date, classes: [c] }, tx, left[0]!.bookingId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "what": "an alert on a day with NO class left as is",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (!left.length) return 0;\n  const leaver = await tx.query.teachers.findFirst",
+              "to": "  const leaver = await tx.query.teachers.findFirst"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "what": "the Thai text differs from the owner-APPROVED one (a word changed)",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "TH: \"⚠️ ครู {name} แจ้งลาวันนี้",
+              "to": "TH: \"⚠️ ครู {name} ลาวันนี้"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "what": "the alert is written OUTSIDE the act's transaction (the default connection)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "}, tx, left[0]!.bookingId);",
+              "to": "}, undefined, left[0]!.bookingId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "what": "🔴 adminsAlerted is fixed at 1 (a desk with 2 admins, or none, says 1)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  return reached;\n}",
+              "to": "  void reached;\n  return 1;\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "what": "🔴 the key adminsAlerted rides the answer without any class left as is",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(toHandle.length ? { adminsAlerted } : {}) } : {};",
+              "to": "adminsAlerted } : {};"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "what": "🔴 the count is taken from the outbox rows, so the SKIPPED row counts as 1",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  const reached = (await getAdminLineUserIds(tx)).length;",
+              "to": "  const reached = (await getAdminLineUserIds(tx)).length || 1;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

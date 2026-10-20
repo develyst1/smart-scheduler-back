@@ -801,6 +801,12 @@ function buildOutboxMessage(
         .join(", ");
       return t("ob_tl_coach_continues", lang, { name: String(payload.leaver ?? ""), date: payload.date ? ddmmyyyy(String(payload.date)) : "", list });
     }
+    // 🔻 TASK-829 (REQ-125 K1 b) — to the ADMINS, when a teacher's SAME-DAY leave left class(es) AS THEY ARE (D4). the sentence is ✅ APPROVED by the owner 2026-10-21 (line-i18n). One message per act; {list} = «HH:mm · title» per class, one per line.
+    case "teacher_leave_left_as_is_admin": {
+      const classes = (Array.isArray(payload.classes) ? payload.classes : []) as Array<{ startTime?: string; title?: string | null }>;
+      const list = classes.map((c) => "\n" + [c.startTime ? String(c.startTime) : "", c.title ? String(c.title) : ""].filter(Boolean).join(" · ")).join("");
+      return t("ob_tl_left_as_is_admin", lang, { name: String(payload.leaver ?? ""), date: payload.date ? ddmmyyyy(String(payload.date)) : "", list });
+    }
     case "teacher_leave_recorded":
     case "teacher_leave_lifted": {
       const recorded = payload.kind === "teacher_leave_recorded";

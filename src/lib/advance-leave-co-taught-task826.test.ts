@@ -12,6 +12,7 @@ import { getTableName } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as sched from "../services/scheduler.service";
 import * as lineLib from "./line";
+import * as adminLib from "./line-admin";
 import * as v from "../validation";
 import { TEACHER_ALLOWED } from "./route-access";
 import { SCHEDULING_WITNESSES } from "./migration-witness";
@@ -413,6 +414,8 @@ describe("🔴 the PREVIEW is the act run inside a ROLLED-BACK transaction — p
     install(w);
     const fam = spyOn(sched, "sendClassCancelledToFamilies").mockImplementation((async () => 1) as any);
     spies.push(fam);
+    const admin: any[] = [];
+    spies.push(spyOn(adminLib, "notifyAdmins").mockImplementation((async (payload: any) => { admin.push(payload); }) as any));
     const snap = () => JSON.stringify({ c: w.classes, l: w.leave, r: w.removals, s: w.seatMoves });
     const before = snap();
     const pv = await sched.previewTeacherLeave(ME, D1, D1);
@@ -420,6 +423,22 @@ describe("🔴 the PREVIEW is the act run inside a ROLLED-BACK transaction — p
     expect(snap()).toBe(before); // 🔴 nothing written — the GROUP's seats and main teacher are as they were
     expect(w.sent).toEqual([]); // 🔴 no outbox row, no LINE, no teacher notice
     expect(fam).not.toHaveBeenCalled(); // 🔴 no family notice
+    expect(admin).toEqual([]); // 🔻 TASK-829: …and no admin alert either
+  });
+  test("🔻 TASK-829 — a class LEFT AS IT IS (D4) is alerted to the admins ONLY by the same-day act: a PREVIEW with a D4 class makes 0 admin alerts, and so does an ADVANCE record with one (the admin recording it already sees it in the result)", async () => {
+    const admin: any[] = [];
+    const w = world([eca("eca")], { busy: new Set([ANN, BEA]) });
+    install(w);
+    spies.push(spyOn(adminLib, "notifyAdmins").mockImplementation((async (payload: any) => { admin.push(payload); }) as any));
+    const pv = await sched.previewTeacherLeave(ME, D1);
+    expect(pv.days[0]!.classes[0]).toMatchObject({ outcome: "cannot" });
+    expect(admin).toEqual([]); // the preview
+    const rec: any = await record(w, D1);
+    expect(rec.toHandle.map((c: any) => c.bookingId)).toEqual(["eca"]); // the D4 class IS reported in the advance answer…
+    expect(admin).toEqual([]); // …and nobody is alerted
+    const range: any = await recordRange(w, D2, D3);
+    expect(range.days).toHaveLength(2);
+    expect(admin).toEqual([]); // a range neither
   });
   test("SAME-DAY mode: the sole class is `cancel` (not toHandle); a co-taught one continues; the last teacher's is `cancel`", async () => {
     const w = world([cls("p1", TODAY, "09:00", ME, [], "PRIVATE"), eca("eca", TODAY, "10:00"), cls("last", TODAY, "11:00", ME, [[ANN, 61000]])], { leave: [{ id: "lv-a", teacherId: ANN, date: TODAY, reason: null, createdBy: null }] });
