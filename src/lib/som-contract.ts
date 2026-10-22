@@ -198,8 +198,8 @@ export function countSom(input: SomContractInput): SomContractSections {
     .filter((b) => b.date === today && !b.isSeat && passes(b))
     .map((b) => ({ status: b.status, bookingType: b.bookingType, coachIds: [] }));
   const day = countDaily(dayRows);
-  // Palm §1 / her sheet (Silver's review 1): the rate is attended ÷ CONFIRMED (not the Daily Report's circle, which divides by confirmed + on leave); confirmed = 0 → 0.
-  const todaySection = { date: today, confirmed: day.confirmed, attended: day.attended, attendanceRate: day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0 };
+  // 🔻 TASK-747 (Khwan, 2026-10-22: A) — the rate is the Daily Report's OWN value (attended ÷ (Confirmed + On leave), REQ-119; no booking ⇒ 0): ONE formula, reused, never a second one. This undoes TASK-741's review-1 change (Palm's attended ÷ confirmed).
+  const todaySection = { date: today, confirmed: day.confirmed, attended: day.attended, attendanceRate: day.attendanceRate };
 
   // ── Existing customers ──
   // A course / voucher is «in a branch» only through its session rows (CHECK M5): any of its non-cancelled rows carries a selected badge.

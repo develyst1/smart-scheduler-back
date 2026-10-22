@@ -9,6 +9,7 @@ import {
   type SomBooking, type SomContractInput, type SomCourse, type SomStudent, type SomVoucher,
 } from "./som-contract";
 import * as v from "../validation";
+import { countDaily } from "./daily-report";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 const { db } = await import("../db");
@@ -61,11 +62,19 @@ describe("🔴 TASK-741 — Today (REQ-119's counters, badge-filtered, month ign
     bk({ date: TODAY, status: "CONFIRMED", bookingType: "OTHER" }), // ECA / camp: not a lesson
     bk({ date: "2026-10-11", status: "ATTENDED" }), // yesterday
   ];
-  test("confirmed = CONFIRMED + ATTENDED + NO_SHOW lessons (3) · attended 1 · rate = attended ÷ CONFIRMED (Palm §1) = round(1/3) = 33 — not the Daily Report's ÷ (confirmed + on leave) = 25", () => {
-    expect(run({ bookings: rows }).today).toEqual({ date: TODAY, confirmed: 3, attended: 1, attendanceRate: 33 });
+  test("confirmed = CONFIRMED + ATTENDED + NO_SHOW lessons (3) · attended 1 · rate = the Daily Report's own (TASK-747, Khwan A): attended ÷ (confirmed + on leave) = round(1/4) = 25 — not attended ÷ confirmed = 33", () => {
+    expect(run({ bookings: rows }).today).toEqual({ date: TODAY, confirmed: 3, attended: 1, attendanceRate: 25 });
   });
   test("`month` never moves Today", () => {
-    expect(run({ bookings: rows, month: "2026-09" }).today).toEqual({ date: TODAY, confirmed: 3, attended: 1, attendanceRate: 33 });
+    expect(run({ bookings: rows, month: "2026-09" }).today).toEqual({ date: TODAY, confirmed: 3, attended: 1, attendanceRate: 25 });
+  });
+  test("🔴 TASK-747 — a child on leave: 2 attended, 3 confirmed, 1 on leave ⇒ 50 (÷ 4), not 67 (÷ 3); and the SAME rows give the SAME % on /reports/daily (countDaily is the one formula)", () => {
+    const day = [bk({ date: TODAY, status: "ATTENDED" }), bk({ date: TODAY, status: "ATTENDED", bookingType: "VOUCHER" }), bk({ date: TODAY, status: "CONFIRMED" }), bk({ date: TODAY, status: "SICK_LEAVE" })];
+    const t = run({ bookings: day }).today;
+    expect([t.confirmed, t.attended, t.attendanceRate]).toEqual([3, 2, 50]);
+    const daily = countDaily(day.map((b) => ({ status: b.status, bookingType: b.bookingType, coachIds: [] })));
+    expect(t.attendanceRate).toBe(daily.attendanceRate);
+    expect(daily.attendanceRate).toBe(50);
   });
   test("no class today ⇒ zeros, never a division by zero", () => {
     expect(run().today).toEqual({ date: TODAY, confirmed: 0, attended: 0, attendanceRate: 0 });

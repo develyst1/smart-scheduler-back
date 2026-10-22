@@ -640,14 +640,14 @@
     },
     {
       "id": "M38",
-      "what": "Today's rate is the Daily Report's circle again (÷ confirmed + on leave) instead of attended ÷ confirmed",
+      "what": "747: the old rate is back — attended ÷ confirmed (a child on leave no longer lowers it)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "attendanceRate: day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0 }",
-              "to": "attendanceRate: day.attendanceRate }"
+              "from": "attendanceRate: day.attendanceRate };",
+              "to": "attendanceRate: day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0 };"
             }
           ]
         }
@@ -655,14 +655,14 @@
     },
     {
       "id": "M39",
-      "what": "Today's rate loses its confirmed = 0 guard (NaN)",
+      "what": "747: a second formula without the zero guard (NaN on a day with no booking)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "day.confirmed > 0 ? Math.round((day.attended / day.confirmed) * 100) : 0",
-              "to": "Math.round((day.attended / day.confirmed) * 100)"
+              "from": "attendanceRate: day.attendanceRate };",
+              "to": "attendanceRate: Math.round((day.attended / (day.confirmed + day.onLeave)) * 100) };"
             }
           ]
         }
