@@ -15,7 +15,13 @@ export interface AuthClaims {
   exp?: number;
 }
 
-const ttlSeconds = () => Number(process.env.JWT_TTL_SECONDS ?? 12 * 3600);
+// TASK-836 (REQ-128 L1): ONE fixed 7-day login (was 12 h, which threw a working user out mid-day). No silent renewal; the front session ends with this token. `JWT_TTL_SECONDS` still overrides.
+export const DEFAULT_TTL_SECONDS = 7 * 24 * 3600;
+// A set value counts ONLY if it is a finite number > 0: an EMPTY line (`JWT_TTL_SECONDS=`, Number("") = 0), garbage (NaN) or ≤ 0 would expire every token the moment it is issued — those fall back to the default.
+const ttlSeconds = () => {
+  const v = Number(process.env.JWT_TTL_SECONDS);
+  return Number.isFinite(v) && v > 0 ? v : DEFAULT_TTL_SECONDS;
+};
 
 function secret(): string {
   const s = process.env.JWT_SECRET;

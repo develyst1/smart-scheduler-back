@@ -1,0 +1,38 @@
+{
+  "task": "TASK-836",
+  "proves": "src/lib/jwt-ttl-task836.test.ts",
+  "note": "REQ-128 L1 — the API token's default lifetime is 7 days; an empty / garbage / <= 0 override falls back to it. M1 the default back to 12 h · M2 the env override ignored · M3 the default is 7 hours (unit slip) · M4 the override read as minutes · M5 the guard dropped (an EMPTY line ⇒ 0 ⇒ every token expires at once) · M6 `> 0` → `>= 0` (a '0' override accepted).",
+  "tests": "src/lib/jwt-ttl-task836.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "🔴 the default back to 12 hours",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "export const DEFAULT_TTL_SECONDS = 7 * 24 * 3600;", "to": "export const DEFAULT_TTL_SECONDS = 12 * 3600;" }] }]
+    },
+    {
+      "id": "M2",
+      "what": "🔴 the env override ignored — the default always wins",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "const v = Number(process.env.JWT_TTL_SECONDS);", "to": "const v = NaN;" }] }]
+    },
+    {
+      "id": "M3",
+      "what": "the default is 7 hours (a unit slip: 7 * 3600)",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "export const DEFAULT_TTL_SECONDS = 7 * 24 * 3600;", "to": "export const DEFAULT_TTL_SECONDS = 7 * 3600;" }] }]
+    },
+    {
+      "id": "M4",
+      "what": "the override is read as minutes, not seconds",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "return Number.isFinite(v) && v > 0 ? v : DEFAULT_TTL_SECONDS;", "to": "return Number.isFinite(v) && v > 0 ? v * 60 : DEFAULT_TTL_SECONDS;" }] }]
+    },
+    {
+      "id": "M5",
+      "what": "🔴 the guard dropped: only an UNSET env falls back, so an EMPTY line gives 0 and every token expires the moment it is issued",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "return Number.isFinite(v) && v > 0 ? v : DEFAULT_TTL_SECONDS;", "to": "return process.env.JWT_TTL_SECONDS === undefined ? DEFAULT_TTL_SECONDS : v;" }] }]
+    },
+    {
+      "id": "M6",
+      "what": "the boundary: `> 0` becomes `>= 0`, so a '0' override is accepted",
+      "files": [{ "file": "src/lib/jwt.ts", "edits": [{ "from": "return Number.isFinite(v) && v > 0 ? v : DEFAULT_TTL_SECONDS;", "to": "return Number.isFinite(v) && v >= 0 ? v : DEFAULT_TTL_SECONDS;" }] }]
+    }
+  ]
+}
