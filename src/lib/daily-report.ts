@@ -22,6 +22,12 @@ export const CONFIRMED_STATUSES: ReadonlySet<string> = new Set(["CONFIRMED", "AT
 export const PENDING_STATUSES: ReadonlySet<string> = new Set(["PENDING", "EXTENDED"]);
 /** Palm Q4: Awaiting = a PAUSED 1st-trial / 1-hour class (a PAUSED voucher session appears on no card — his open question). */
 export const AWAITING_TYPES: ReadonlySet<string> = new Set(["FIRST_TRIAL", "SINGLE_SESSION"]);
+/**
+ * 🔒 REQ-129 = B (Khwan, 2026-10-25: «แบบ A แต่นับงานกลุ่มเป็นชั่วโมง») — what adds to a coach's workload `total` (+Group): ONLY a row in a CONFIRMED status (CONFIRMED · ATTENDED · NO_SHOW). A lesson on leave, a pending
+ * / extended one, a paused one (awaiting) and a cancelled one are OUT; so a leave and its same-slot replacement count ONCE (the replacement). One row = one hour, so a 2-hour ECA is +2 and a 5-hour camp +5.
+ * ONE rule: a later ruling is a one-line change here.
+ */
+export const WORKLOAD_STATUSES: ReadonlySet<string> = CONFIRMED_STATUSES;
 /** Palm Q5: Total booked excludes PAUSED (and CANCELLED). */
 export const NOT_BOOKED_STATUSES: ReadonlySet<string> = new Set(["CANCELLED", "PAUSED"]);
 
@@ -70,14 +76,14 @@ export function countDaily(rowsOfDay: readonly ReportRow[], opts: { teacherId?: 
   const onLeave = n((r) => r.status === "SICK_LEAVE");
   const totalBooked = includePending ? n(isBooked) : confirmed + onLeave;
 
-  // workload: every row that is neither cancelled nor paused (lesson + OTHER incl. camp hour rows + GROUP) adds 1 to `total` of its primary AND each extra coach; `count`/`attended` from lessons only
+  // workload (REQ-129 = B): a coach is LISTED for every row that is neither cancelled nor paused (lesson + OTHER incl. camp hour rows + GROUP), but `total` grows by 1 — one hour — only for a row in `WORKLOAD_STATUSES` (confirmed), for the primary AND each extra coach; `count`/`attended` from lessons only
   const per = new Map<string, ByTeacher>();
   for (const r of rows) {
     if (!isBooked(r)) continue;
     for (const id of new Set(r.coachIds)) {
       if (opts.teacherId && id !== opts.teacherId) continue;
       const t = per.get(id) ?? { teacherId: id, count: 0, attended: 0, total: 0 };
-      t.total += 1;
+      if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;
       if (isLesson(r)) {
         if (isConfirmed(r)) t.count += 1;
         if (r.status === "ATTENDED") t.attended += 1;

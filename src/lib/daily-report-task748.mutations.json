@@ -1,0 +1,143 @@
+{
+  "task": "TASK-748",
+  "proves": "src/lib/daily-report-task748.test.ts",
+  "tests": "src/lib/daily-report-task748.test.ts",
+  "note": "REQ-129 = B: the per-coach total = confirmed lessons + group work in hours. The DoD's four = R1 on-leave back in · R2 pending back in · R3 group work once instead of per hour · R1/R5 the replacement counted twice; the rest: the constant widened, group work dropped, the listing, the extra coach.",
+  "mutations": [
+    {
+      "id": "R1",
+      "what": "an on-leave row is back in the total (a leave and its replacement count twice)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;",
+              "to": "if (WORKLOAD_STATUSES.has(r.status) || r.status === \"SICK_LEAVE\") t.total += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "a pending (PENDING / EXTENDED) row is back in the total",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;",
+              "to": "if (WORKLOAD_STATUSES.has(r.status) || r.status === \"PENDING\" || r.status === \"EXTENDED\") t.total += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "group work is counted ONCE per coach instead of per hour",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;",
+              "to": "if (WORKLOAD_STATUSES.has(r.status) && (isLesson(r) || t.total === t.count)) t.total += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "group work (OTHER / camp / GROUP) is out of the total (lessons only)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;",
+              "to": "if (WORKLOAD_STATUSES.has(r.status) && isLesson(r)) t.total += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "the old rule is back: every booked row adds to the total",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (WORKLOAD_STATUSES.has(r.status)) t.total += 1;",
+              "to": "t.total += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "a NO_SHOW is not work",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "export const WORKLOAD_STATUSES: ReadonlySet<string> = CONFIRMED_STATUSES;",
+              "to": "export const WORKLOAD_STATUSES: ReadonlySet<string> = new Set([\"CONFIRMED\", \"ATTENDED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "the rule widens to SICK_LEAVE (the constant)",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "export const WORKLOAD_STATUSES: ReadonlySet<string> = CONFIRMED_STATUSES;",
+              "to": "export const WORKLOAD_STATUSES: ReadonlySet<string> = new Set([...CONFIRMED_STATUSES, \"SICK_LEAVE\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "what": "a coach with only non-confirmed rows is no longer listed",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "if (!isBooked(r)) continue;",
+              "to": "if (!isBooked(r) || !WORKLOAD_STATUSES.has(r.status)) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "what": "the extra coaches get nothing",
+      "files": [
+        {
+          "file": "src/lib/daily-report.ts",
+          "edits": [
+            {
+              "from": "for (const id of new Set(r.coachIds)) {",
+              "to": "for (const id of new Set(r.coachIds.slice(0, 1))) {"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

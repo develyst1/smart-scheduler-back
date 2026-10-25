@@ -49,8 +49,8 @@ describe("🔴 TASK-737 — Palm §8, by value", () => {
     expect(d.attendanceRate).toBe(40); // round(2 / 5 × 100)
     expect(d.pending).toBe(1); // the pending class is on its own card, not in Total booked
   });
-  test("byTeacher[A]: count 4 · attended 2 · total = 6 lessons not cancelled/paused + 2 ECA + 3 CAMP = 11", () => {
-    expect(r.byTeacher).toEqual([{ teacherId: A, count: 4, attended: 2, total: 11 }]);
+  test("byTeacher[A]: count 4 · attended 2 · total = 4 confirmed lessons + 2 ECA + 3 CAMP hours = 9 (TASK-748, REQ-129 = B: the pending / leave ones are out)", () => {
+    expect(r.byTeacher).toEqual([{ teacherId: A, count: 4, attended: 2, total: 9 }]);
   });
   test("byBookingTypeAttended / Confirmed: all four types, fixed order, zeros kept; each row sums to attended / confirmed", () => {
     expect(r.byBookingTypeAttended).toEqual([{ type: "FIRST_TRIAL", count: 0 }, { type: "SINGLE_SESSION", count: 0 }, { type: "COURSE_PACKAGE", count: 1 }, { type: "VOUCHER", count: 1 }]);
@@ -91,7 +91,7 @@ describe("🔴 TASK-737 — the coach filter and the workload (what only the bac
     const rows = [row("ATTENDED", "COURSE_PACKAGE", A), row("SICK_LEAVE", "COURSE_PACKAGE", B), row("CANCELLED", "SINGLE_SESSION", B), row("PAUSED", "SINGLE_SESSION", B), row("CONFIRMED", "VOUCHER", B)];
     const x = countDaily(rows, { teacherId: B });
     expect([x.attended, x.onLeave, x.cancelled, x.awaiting, x.confirmed, x.totalBooked]).toEqual([0, 1, 1, 1, 1, 2]);
-    expect(x.byTeacher).toEqual([{ teacherId: B, count: 1, attended: 0, total: 2 }]);
+    expect(x.byTeacher).toEqual([{ teacherId: B, count: 1, attended: 0, total: 1 }]); // TASK-748: the leave row no longer adds — only the confirmed voucher
     const y = countDaily(rows, { teacherId: A });
     expect([y.attended, y.onLeave, y.cancelled, y.awaiting]).toEqual([1, 0, 0, 0]);
   });
