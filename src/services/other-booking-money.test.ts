@@ -155,13 +155,16 @@ describe("the `other-booking` catalogue entry", () => {
 
 describe("🔴 the four existing types' posting path is byte-identical", () => {
   test("the อื่นๆ branch is a `continue` at the TOP of the loop — the old path below is untouched", () => {
+    // 🔻 TASK-749 (reopened) — the trial / 1 HR body moved into `postTrialOrSingleSale`; the loop DISPATCHES: OTHER first, the price resolution only on the other side of the ternary.
     const loop = JOBS.slice(JOBS.indexOf("for (const b of attended)"), JOBS.indexOf("const report ="));
-    expect(loop).toContain('if (b.bookingType === "OTHER")');
-    expect(loop.indexOf('bookingType === "OTHER"')).toBeLessThan(loop.indexOf("resolvePriceGroup"));
+    const trial = JOBS.slice(JOBS.indexOf("export async function postTrialOrSingleSale"), JOBS.indexOf("export async function postOtherBookingSale"));
+    expect(loop).toContain('b.bookingType === "OTHER" ? await postOtherBookingSale(b) : await postTrialOrSingleSale(b)');
+    expect(loop).not.toContain("resolvePriceGroup"); // the loop itself never prices: OTHER is dispatched before any price resolution, which lives only in the trial / 1 HR body
+    expect(trial).toContain("resolvePriceGroup");
     // The trial/single post is the same call it always was, with TASK-258's generation on its key (and on the
     // discount's, so a re-posted sale cannot lose the discount and over-charge the family in the books).
-    expect(loop).toContain("idempotencyKey: revKey(b.id, generation)");
-    expect(loop).toContain("discountKey: discountKey(b.id, generation)");
+    expect(trial).toContain("idempotencyKey: revKey(b.id, generation)");
+    expect(trial).toContain("discountKey: discountKey(b.id, generation)");
   });
 
   test("`recordSale` itself is untouched — its two rules still stand", () => {

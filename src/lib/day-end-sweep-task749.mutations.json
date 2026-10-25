@@ -1,7 +1,7 @@
 {
   "task": "TASK-749",
   "proves": "src/lib/day-end-sweep-task749.test.ts",
-  "tests": "src/lib/day-end-sweep-task749.test.ts",
+  "tests": "src/lib/day-end-sweep-task749.test.ts src/lib/day-end-double-post-task749.test.ts",
   "note": "REQ-130: the day-end also posts the last 7 days' ATTENDED trial / 1 HR / priced OTHER rows. The DoD's four = S1 the window ignored · S2 a pre-filter that loses the re-attend case · S4 a double post · S3 (REPLACED by the widening) the auto-attend window ignored, + S15 EXTENDED let in · S16 the undo guard dropped · S17 today's start gate dropped; the rest: counters, window size, types, status, summary, the row's date.",
   "mutations": [
     {
@@ -141,14 +141,14 @@
     },
     {
       "id": "S4",
-      "what": "a double post: a priced OTHER is posted twice",
+      "what": "a double post: a trial / 1 HR is posted twice in a run",
       "files": [
         {
           "file": "src/services/jobs.service.ts",
           "edits": [
             {
-              "from": "const res = await postOtherBookingSale(b);",
-              "to": "await postOtherBookingSale(b);\n      const res = await postOtherBookingSale(b);"
+              "from": "const posted = b.bookingType === \"OTHER\" ? await postOtherBookingSale(b) : await postTrialOrSingleSale(b);",
+              "to": "await postTrialOrSingleSale(b);\n    const posted = b.bookingType === \"OTHER\" ? await postOtherBookingSale(b) : await postTrialOrSingleSale(b);"
             }
           ]
         }
@@ -156,29 +156,134 @@
     },
     {
       "id": "S5",
-      "what": "a swept OTHER is counted as today's",
+      "what": "a swept row is counted as today's",
       "files": [
         {
           "file": "src/services/jobs.service.ts",
           "edits": [
             {
-              "from": "if (res) { if (swept) sweptPosted++; else revenuePosted++; }",
-              "to": "if (res) { revenuePosted++; }"
+              "from": "if (posted) { if (swept) sweptPosted++; else revenuePosted++; }",
+              "to": "if (posted) { revenuePosted++; }"
             }
           ]
         }
       ]
     },
     {
-      "id": "S6",
-      "what": "a swept trial / 1 HR is counted as today's",
+      "id": "L1",
+      "what": "REOPENED: the live check is removed from the trial / 1 HR path (it posts again on every run)",
       "files": [
         {
           "file": "src/services/jobs.service.ts",
           "edits": [
             {
-              "from": "if (res.ok) { if (swept) sweptPosted++; else revenuePosted++; }",
-              "to": "if (res.ok) { revenuePosted++; }"
+              "from": "export async function postTrialOrSingleSale(b: AttendedRow): Promise<boolean> {\n  if (await liveRevenue(b.id)) return false;",
+              "to": "export async function postTrialOrSingleSale(b: AttendedRow): Promise<boolean> {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "REOPENED: the live check is removed from the OTHER path only (the check on one of the two paths)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "an uncharged booking still touches no ledger at all.\n  if (await liveRevenue(b.id)) return false;\n",
+              "to": "an uncharged booking still touches no ledger at all.\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "what": "REOPENED: the live check ignores REVERSALS (an undone booking stays «live» and its re-attend never posts)",
+      "files": [
+        {
+          "file": "src/lib/sale-post.ts",
+          "edits": [
+            {
+              "from": "const reversals = keys.filter((k) => k.startsWith(\"rev-undo:\")).length;",
+              "to": "const reversals = 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "what": "REOPENED: a booking that was never posted counts as live (sales >= reversals) — nothing ever posts",
+      "files": [
+        {
+          "file": "src/lib/sale-post.ts",
+          "edits": [
+            {
+              "from": "return sales > reversals;",
+              "to": "return sales >= reversals;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "what": "REOPENED: the ledger read forgets the reversal keys",
+      "files": [
+        {
+          "file": "src/lib/sale-post.ts",
+          "edits": [
+            {
+              "from": "eq(boMovement.idempotencyKey, revUndoKey(bookingId, 0)),\n        like(boMovement.idempotencyKey, `rev-undo:${bookingId}#%`),\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "what": "REOPENED: a skipped (live) trial row is reported as POSTED",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "export async function postTrialOrSingleSale(b: AttendedRow): Promise<boolean> {\n  if (await liveRevenue(b.id)) return false;",
+              "to": "export async function postTrialOrSingleSale(b: AttendedRow): Promise<boolean> {\n  if (await liveRevenue(b.id)) return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L7",
+      "what": "REOPENED: an UNCHARGED OTHER reads the ledger before its guard (AC-4: it must touch nothing)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "  if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;\n",
+              "to": "  await liveRevenue(b.id);\n  if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L8",
+      "what": "REOPENED: a reversal key counts as a sale (`rev-undo:` matched by `rev`)",
+      "files": [
+        {
+          "file": "src/lib/sale-post.ts",
+          "edits": [
+            {
+              "from": "const sales = keys.filter((k) => k.startsWith(\"rev:\")).length;",
+              "to": "const sales = keys.filter((k) => k.startsWith(\"rev\")).length;"
             }
           ]
         }

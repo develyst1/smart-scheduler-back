@@ -25,7 +25,7 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, coursePackages, jobRuns, lineWebhookEvents, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
-import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
+import { discountKey, liveRevenue, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
 import { isSwept, postingWhere, startedSql, sweepDates } from "../lib/day-end-sweep"; // 🔻 TASK-749 (REQ-130)
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
@@ -183,51 +183,9 @@ export async function runEndOfDayJob(date?: string) {
   let sweptPosted = 0;
   for (const b of attended) {
     const swept = isSwept(b.date, runDate);
-    // ── TASK-225: an อื่นๆ booking is priced by the BOOKING, not by a product code ──
-    if (b.bookingType === "OTHER") {
-      const res = await postOtherBookingSale(b);
-      if (res) { if (swept) sweptPosted++; else revenuePosted++; }
-      continue;
-    }
-    // TASK-077: a SINGLE_SESSION is priced by PROGRAM (1,690 / 1,390 / 1,090 an hour), so the item depends
-    // on the booking's subject. FIRST_TRIAL is one price for everyone and ignores the group.
-    // TASK-399 — the FIFTH caller of the resolver, and the one that POSTS: a seat's price is its group's kind.
-    const priceGroup = await resolvePriceGroup(b.subjectId, b.groupId ? await groupKindOf(db, b.groupId) : null);
-    const ref = revenueItemRef(b.bookingType, priceGroup);
-    if (!ref) {
-      // Loud, not silent — TASK-066's lesson. A single session on a program with no price group (or on
-      // bike/skate, which has no 1-hour rate on the card) must not fall back to some default price.
-      if (b.bookingType === "SINGLE_SESSION") {
-        console.error(
-          `[sale] NOT POSTED — no price group for booking ${b.id}'s program, so its single-session rate ` +
-            `is unknown. Revenue for this session is NOT in the books.`,
-        );
-      }
-      continue;
-    }
-    // Amount defaults to quantity × the INCOME item's sale_price_minor (don't hardcode prices).
-    // TASK-162 (REQ-063): re-validate the stored discount against the list price at POSTING time — the price
-    // could have changed between booking and day-end, and a stale amount must refuse rather than post a
-    // discount larger than the sale. Same `planDiscount` as the at-sale path; no second rule.
-    const discount = b.discountKind
-      ? safeStoredDiscount(
-          { kind: b.discountKind as "PERCENT" | "BAHT", value: b.discountValue ?? 0, reason: b.discountReason ?? "" },
-          listPriceMinor(ref) ?? 0,
-          b.discountActor,
-          b.id,
-        )
-      : undefined;
-    // 🔴 TASK-258 — the key carries the GENERATION, so a booking whose attendance was undone and re-marked
-    // posts again instead of returning `{ ok: true, skipped: "duplicate" }` and writing nothing (AC-8).
-    // Generation 0 is the un-suffixed `rev:<id>` every historical row already carries, so nothing re-posts.
-    const generation = await revGeneration(b.id);
-    const res = await recordSale(ref, 1, {
-      refId: b.id,
-      idempotencyKey: revKey(b.id, generation),
-      discountKey: discountKey(b.id, generation),
-      discount,
-    });
-    if (res.ok) { if (swept) sweptPosted++; else revenuePosted++; }
+    // ── TASK-225: an อื่นๆ booking is priced by the BOOKING, not by a product code; a trial / 1 HR by its item ──
+    const posted = b.bookingType === "OTHER" ? await postOtherBookingSale(b) : await postTrialOrSingleSale(b);
+    if (posted) { if (swept) sweptPosted++; else revenuePosted++; }
   }
 
   // 🔴 TASK-460 — sweep the webhook idempotency store (> WEBHOOK_EVENT_TTL_DAYS). It rides THIS job on purpose:
@@ -253,6 +211,63 @@ export async function runEndOfDayJob(date?: string) {
   return { date: runDate, ranAt: now.time, ...summary };
 }
 
+/** The attended row the day-end posts (the select above). */
+type AttendedRow = {
+  id: string; date: string; bookingType: string; subjectId: string | null; groupId: string | null;
+  otherPriceMinor: number | null; otherPriceItemId: string | null;
+  discountKind: string | null; discountValue: number | null; discountReason: string | null; discountActor: string | null;
+};
+
+/**
+ * Post one attended FIRST_TRIAL / SINGLE_SESSION's revenue, or nothing. Returns `true` when the sale is now in the books.
+ *
+ * 🔴 TASK-749 REOPENED (TEST-123, sid) — **a row whose revenue is ALREADY LIVE in the books is skipped first.** `revGeneration` is the count of postings = the NEXT generation, so keying every post with it made every
+ * run build a FRESH `rev:` key and post again: harmless while a run selected only `runDate`'s rows (one run a day), a double post on every run once the sweep re-selected the last 7 days (predates 749: TASK-258). Live =
+ * `rev:` sales > `rev-undo:` reversals (`liveRevenue`): an UNDONE booking is not live, so its re-attend still posts the NEXT generation (TASK-258 AC-8).
+ */
+export async function postTrialOrSingleSale(b: AttendedRow): Promise<boolean> {
+  if (await liveRevenue(b.id)) return false;
+  // TASK-077: a SINGLE_SESSION is priced by PROGRAM (1,690 / 1,390 / 1,090 an hour), so the item depends
+  // on the booking's subject. FIRST_TRIAL is one price for everyone and ignores the group.
+  // TASK-399 — the FIFTH caller of the resolver, and the one that POSTS: a seat's price is its group's kind.
+  const priceGroup = await resolvePriceGroup(b.subjectId, b.groupId ? await groupKindOf(db, b.groupId) : null);
+  const ref = revenueItemRef(b.bookingType, priceGroup);
+  if (!ref) {
+    // Loud, not silent — TASK-066's lesson. A single session on a program with no price group (or on
+    // bike/skate, which has no 1-hour rate on the card) must not fall back to some default price.
+    if (b.bookingType === "SINGLE_SESSION") {
+      console.error(
+        `[sale] NOT POSTED — no price group for booking ${b.id}'s program, so its single-session rate ` +
+          `is unknown. Revenue for this session is NOT in the books.`,
+      );
+    }
+    return false;
+  }
+  // Amount defaults to quantity × the INCOME item's sale_price_minor (don't hardcode prices).
+  // TASK-162 (REQ-063): re-validate the stored discount against the list price at POSTING time — the price
+  // could have changed between booking and day-end, and a stale amount must refuse rather than post a
+  // discount larger than the sale. Same `planDiscount` as the at-sale path; no second rule.
+  const discount = b.discountKind
+    ? safeStoredDiscount(
+        { kind: b.discountKind as "PERCENT" | "BAHT", value: b.discountValue ?? 0, reason: b.discountReason ?? "" },
+        listPriceMinor(ref) ?? 0,
+        b.discountActor,
+        b.id,
+      )
+    : undefined;
+  // 🔴 TASK-258 — the key carries the GENERATION, so a booking whose attendance was undone and re-marked
+  // posts again instead of returning `{ ok: true, skipped: "duplicate" }` and writing nothing (AC-8).
+  // Generation 0 is the un-suffixed `rev:<id>` every historical row already carries, so nothing re-posts.
+  const generation = await revGeneration(b.id);
+  const res = await recordSale(ref, 1, {
+    refId: b.id,
+    idempotencyKey: revKey(b.id, generation),
+    discountKey: discountKey(b.id, generation),
+    discount,
+  });
+  return res.ok;
+}
+
 /**
  * SPEC-070 / TASK-225 (REQ-078 AC-4/AC-5/AC-6) — post one attended อื่นๆ booking's charge, if it has one.
  *
@@ -263,7 +278,7 @@ export async function runEndOfDayJob(date?: string) {
  * are different claims: a zero row reads in the ledger as a sale that happened, and a report that lists it has
  * to explain it. The absence is the honest record, and the DoD asserts the absence rather than a zero.
  */
-async function postOtherBookingSale(b: {
+export async function postOtherBookingSale(b: {
   id: string;
   otherPriceMinor: number | null;
   otherPriceItemId: string | null;
@@ -271,6 +286,9 @@ async function postOtherBookingSale(b: {
   // Not charged ⇒ nothing to post. Checked before anything is read, so an uncharged อื่นๆ booking costs the
   // day-end job one comparison and touches no money at all.
   if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;
+
+  // 🔴 TASK-749 REOPENED (TEST-123) — its revenue is already LIVE in the books ⇒ nothing to post (see `postTrialOrSingleSale`). AFTER the uncharged guard: an uncharged booking still touches no ledger at all.
+  if (await liveRevenue(b.id)) return false;
 
   // 🔴 TASK-258 — the same generation rule as the trial/single path above. อื่นๆ posts on the SAME key family
   // deliberately (TASK-225), so it must follow the same sequence or an undone-and-re-marked อื่นๆ would be the

@@ -373,6 +373,33 @@ export async function revGeneration(bookingId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * 🔴 TASK-749 REOPENED (TEST-123) — is this booking's revenue CURRENTLY in the books? Pure: its `rev:` sales (`rev:<id>`, `rev:<id>#n`) outnumber its `rev-undo:` reversals. Posted once ⇒ live; posted then
+ * reversed ⇒ equal counts ⇒ NOT live (the re-attend may post its next generation); never posted ⇒ not live. `revGeneration` cannot answer this — it is the count of sales, i.e. the key the NEXT post
+ * would get, so a caller that keyed by it alone posted again on every run.
+ */
+export function isRevenueLive(keys: readonly string[]): boolean {
+  const sales = keys.filter((k) => k.startsWith("rev:")).length;
+  const reversals = keys.filter((k) => k.startsWith("rev-undo:")).length;
+  return sales > reversals;
+}
+
+/** Reads the booking's sale and reversal movements (same key shapes as `revGeneration` / `revUndoKey`) and applies `isRevenueLive`. */
+export async function liveRevenue(bookingId: string): Promise<boolean> {
+  const rows = await db
+    .select({ key: boMovement.idempotencyKey })
+    .from(boMovement)
+    .where(
+      or(
+        eq(boMovement.idempotencyKey, revKey(bookingId, 0)),
+        like(boMovement.idempotencyKey, `rev:${bookingId}#%`),
+        eq(boMovement.idempotencyKey, revUndoKey(bookingId, 0)),
+        like(boMovement.idempotencyKey, `rev-undo:${bookingId}#%`),
+      ),
+    );
+  return isRevenueLive(rows.map((r) => r.key ?? ""));
+}
+
 /** The generation of the posting that is CURRENTLY live — `revGeneration - 1`, or 0 when nothing was posted. */
 export async function postedGeneration(bookingId: string): Promise<number> {
   return Math.max(0, (await revGeneration(bookingId)) - 1);

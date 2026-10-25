@@ -13,6 +13,9 @@ const code = (s: string) => s.replace(/^\s*\/\/.*$/gm, "");
 const render = (runDate: string) => { const q = new PgDialect().sqlToQuery(postingWhere(runDate)!); return { text: q.sql, params: q.params as unknown[] }; };
 /** The posting block of the job: from the attended select to the webhook sweep that follows it. */
 const POSTING = (() => { const a = JOBS.indexOf("const attended = await db"); return code(JOBS.slice(a, JOBS.indexOf("TASK-460", a))); })();
+/** The two posting paths (REOPENED: each skips a live row first). */
+const TRIAL_FN = code(JOBS.slice(JOBS.indexOf("export async function postTrialOrSingleSale"), JOBS.indexOf("export async function postOtherBookingSale")));
+const OTHER_FN = code(JOBS.slice(JOBS.indexOf("export async function postOtherBookingSale"), JOBS.indexOf("export async function postOtherBookingSale") + 6000));
 /** Everything BEFORE the posting block — the auto-attend. */
 const AUTO_ATTEND = code(JOBS.slice(JOBS.indexOf("export async function runEndOfDayJob"), JOBS.indexOf("const attended = await db")));
 
@@ -85,23 +88,32 @@ describe("🔴 TASK-749 — the job's wiring (by source)", () => {
     expect(POSTING).toContain("date: bookings.date,");
     expect(POSTING).not.toContain("eq(bookings.date, runDate)");
   });
-  test("ONE loop posts every selected row through the SAME path: priced OTHER via `postOtherBookingSale`, trial / 1 HR via `recordSale` with the generation-aware key", () => {
+  test("ONE loop posts every selected row through the SAME two paths: a priced OTHER via `postOtherBookingSale`, a trial / 1 HR via `postTrialOrSingleSale` (`recordSale` with the generation-aware key)", () => {
     expect(POSTING.match(/for \(const b of attended\)/g)).toHaveLength(1);
-    expect(POSTING).toContain("await postOtherBookingSale(b)");
-    expect(POSTING).toContain("const generation = await revGeneration(b.id);");
-    expect(POSTING).toContain("idempotencyKey: revKey(b.id, generation),");
+    expect(POSTING).toContain('const posted = b.bookingType === "OTHER" ? await postOtherBookingSale(b) : await postTrialOrSingleSale(b);');
+    expect(TRIAL_FN).toContain("const generation = await revGeneration(b.id);");
+    expect(TRIAL_FN).toContain("idempotencyKey: revKey(b.id, generation),");
   });
-  test("🚫 NO pre-filter by «has a SALE movement» — the keys decide (a re-attended booking has SALE movements and still needs its next generation): the loop's only `continue`s are the two it always had, and `swept` is used for COUNTING only", () => {
-    expect(POSTING).not.toMatch(/boMovement|SALE_SOURCE|hasSale|alreadyPosted|saleMovement/);
-    expect(POSTING.match(/\bcontinue;/g)).toHaveLength(2); // the OTHER branch's, and «no price ⇒ not posted, loudly»
-    expect(POSTING.match(/\bswept\b/g)).toHaveLength(3); // the declaration + the two counters
+  test("🚫 NO pre-filter by «has a SALE movement» in the loop — the loop has no `continue` at all; the only skip is the LIVE check inside each path (sales > reversals), which is generation-aware", () => {
+    expect(POSTING).not.toMatch(/boMovement|SALE_SOURCE|hasSale|alreadyPosted|saleMovement|\bcontinue;/);
+    expect(POSTING.match(/\bswept\b/g)).toHaveLength(2); // the declaration + the counter line
+  });
+  test("🔴 REOPENED (TEST-123, the double post): BOTH paths skip a LIVE row BEFORE posting — the trial path first thing, the OTHER path right after its uncharged guard — and before any generation is read", () => {
+    expect(TRIAL_FN.indexOf("if (await liveRevenue(b.id)) return false;")).toBeGreaterThan(-1);
+    expect(TRIAL_FN.indexOf("liveRevenue(b.id)")).toBeLessThan(TRIAL_FN.indexOf("resolvePriceGroup"));
+    expect(TRIAL_FN.indexOf("liveRevenue(b.id)")).toBeLessThan(TRIAL_FN.indexOf("revGeneration(b.id)"));
+    const guard = OTHER_FN.indexOf("if (b.otherPriceMinor == null && b.otherPriceItemId == null) return false;");
+    const live = OTHER_FN.indexOf("if (await liveRevenue(b.id)) return false;");
+    expect(guard).toBeGreaterThan(-1);
+    expect(live).toBeGreaterThan(guard); // an UNCHARGED booking still touches no ledger at all (AC-4)
+    expect(live).toBeLessThan(OTHER_FN.indexOf("revGeneration(b.id)"));
   });
   test("a double post: each path posts a row ONCE", () => {
     expect(POSTING.match(/postOtherBookingSale\(/g)).toHaveLength(1);
-    expect(POSTING.match(/recordSale\(/g)).toHaveLength(1);
-    expect(POSTING.match(/sweptPosted\+\+/g)).toHaveLength(2);
-    expect(POSTING).toContain("if (res) { if (swept) sweptPosted++; else revenuePosted++; }");
-    expect(POSTING).toContain("if (res.ok) { if (swept) sweptPosted++; else revenuePosted++; }");
+    expect(POSTING.match(/postTrialOrSingleSale\(/g)).toHaveLength(1);
+    expect(TRIAL_FN.match(/recordSale\(/g)).toHaveLength(1);
+    expect(POSTING.match(/sweptPosted\+\+/g)).toHaveLength(1);
+    expect(POSTING).toContain("if (posted) { if (swept) sweptPosted++; else revenuePosted++; }");
   });
   test("the count: `revenuePosted` stays today's; older rows go to `sweptPosted`, which is in the job summary", () => {
     expect(POSTING).toContain("isSwept(b.date, runDate)");
