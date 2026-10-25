@@ -1044,7 +1044,8 @@ async function doLeaveBooking(lineUserId: string, bookingId: string, replyToken:
     // 🔻 TASK-692 §RE-CUT — no room before the expiry: HER sentence, ONLY on this code (every other refusal keeps its own). The leave was rolled back, so nothing
     // exists to point at; the ADMINS are told AFTER the rollback, through the same sender as the other admin notices. 🚫 Never silent to them.
     if (e?.code === LEAVE_NO_VALIDITY_CODE) {
-      await notifyAdmins({ kind: "leave_refused_no_validity", bookingId: b.id });
+      // 🔻 TASK-839 (REQ-131): the 3rd argument is the row's `booking_id` — the sender names the child and the class from it (it printed «- · -» with the id in the payload only). The leave was rolled back; the booking row itself exists.
+      await notifyAdmins({ kind: "leave_refused_no_validity", bookingId: b.id }, db, b.id);
       return send(replyToken, [textReply(t("leave_no_validity", lang), lang)]);
     }
     return send(replyToken, [textReply(e?.message ?? tb("leave_err"), lang)]);

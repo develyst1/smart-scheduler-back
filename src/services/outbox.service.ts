@@ -20,6 +20,16 @@ import { resolveBotLang } from "../lib/line-lang";
 const MAX_ATTEMPTS = 5;
 const BATCH = 20;
 
+/**
+ * 🔻 TASK-839 (REQ-131) — which booking a row's message is built FROM: the row's own `booking_id`, byte for byte as before; and ONLY for `leave_refused_no_validity` when that is NULL, the `bookingId` the payload carries. Rows queued before the sender passed
+ * the 3rd argument have the id in the payload alone and printed «- · -». 🔑 One kind, not "any payload": a NULL `booking_id` on another kind is deliberate (a notice about a day or a series), and must not start naming a class.
+ */
+export function contextBookingId(row: { bookingId: string | null; payload: unknown }): string | null {
+  if (row.bookingId) return row.bookingId;
+  const p = (row.payload ?? {}) as { kind?: unknown; bookingId?: unknown };
+  return p.kind === "leave_refused_no_validity" && typeof p.bookingId === "string" && p.bookingId ? p.bookingId : null;
+}
+
 export async function bookingContext(bookingId: string | null): Promise<MessageContext> { // TASK-425: exported — pinned by value with a DUO row
   if (!bookingId) return {};
   const b = await db.query.bookings.findFirst({
@@ -94,7 +104,7 @@ export async function processOutboxOnce(): Promise<{ sent: number; failed: numbe
   const errors: string[] = [];
 
   for (const row of rows) {
-    const ctx = await bookingContext(row.bookingId);
+    const ctx = await bookingContext(contextBookingId(row));
     const lang = await resolveBotLang(row.recipientLineUserId);
     // 🔴 SPEC-072 / TASK-253 — the row has always known WHO it is for; forwarding it is the whole of what was
     // missing for *"the teacher's copy loses the family's private lines"*.

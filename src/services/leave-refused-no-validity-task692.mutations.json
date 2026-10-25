@@ -162,7 +162,7 @@
           "file": "src/services/line-webhook.service.ts",
           "edits": [
             {
-              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });\n",
+              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id }, db, b.id);\n",
               "to": ""
             }
           ]
@@ -177,8 +177,8 @@
           "file": "src/services/line-webhook.service.ts",
           "edits": [
             {
-              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });\n      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);",
-              "to": "      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);\n      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id });"
+              "from": "      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id }, db, b.id);\n      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);",
+              "to": "      return send(replyToken, [textReply(t(\"leave_no_validity\", lang), lang)]);\n      await notifyAdmins({ kind: \"leave_refused_no_validity\", bookingId: b.id }, db, b.id);"
             }
           ]
         }

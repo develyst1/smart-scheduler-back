@@ -1,0 +1,33 @@
+{
+  "task": "TASK-839",
+  "proves": "src/services/leave-refused-names-the-child-task839.test.ts",
+  "note": "REQ-131 — the leave-refused admin alert names the child and the class. B1 the 3rd argument dropped at the webhook call · B2 the old-row fallback removed · B3 the fallback reads the wrong field · B4 the fallback applies to ANY kind · B5 the row's own booking_id is ignored in favour of the payload's.",
+  "tests": "src/services/leave-refused-names-the-child-task839.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "🔴 the 3rd argument is dropped at the webhook call — the row's booking_id is empty again («- · -»)",
+      "files": [{ "file": "src/services/line-webhook.service.ts", "edits": [{ "from": "bookingId: b.id }, db, b.id);\n", "to": "bookingId: b.id });\n" }] }]
+    },
+    {
+      "id": "B2",
+      "what": "🔴 the fallback for rows already queued without a booking_id is removed",
+      "files": [{ "file": "src/services/outbox.service.ts", "edits": [{ "from": "return p.kind === \"leave_refused_no_validity\" && typeof p.bookingId === \"string\" && p.bookingId ? p.bookingId : null;", "to": "return null;" }] }]
+    },
+    {
+      "id": "B3",
+      "what": "the fallback reads the wrong field of the payload (`id`, not `bookingId`)",
+      "files": [{ "file": "src/services/outbox.service.ts", "edits": [{ "from": "&& p.bookingId ? p.bookingId : null;", "to": "&& p.bookingId ? (p as any).id ?? null : null;" }] }]
+    },
+    {
+      "id": "B4",
+      "what": "🔴 the fallback applies to ANY kind — another kind's deliberately-NULL booking_id would start naming a class",
+      "files": [{ "file": "src/services/outbox.service.ts", "edits": [{ "from": "return p.kind === \"leave_refused_no_validity\" && typeof p.bookingId", "to": "return typeof p.bookingId" }] }]
+    },
+    {
+      "id": "B5",
+      "what": "the row's own booking_id is ignored — the payload's id wins even when the row has one",
+      "files": [{ "file": "src/services/outbox.service.ts", "edits": [{ "from": "  if (row.bookingId) return row.bookingId;\n", "to": "" }] }]
+    }
+  ]
+}
