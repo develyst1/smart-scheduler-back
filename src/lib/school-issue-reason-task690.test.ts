@@ -61,8 +61,8 @@ describe("🔴 THE THREE COPIES AGREE — the code set · the validator · the d
   test("numbering: counted at the moment of writing and stated IN the file — 66 files, 66 journal tags, this is the 66th", () => {
     const files = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).sort();
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(files).toHaveLength(72); // 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
-    expect(journal.entries).toHaveLength(72); // 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
+    expect(files).toHaveLength(73); // 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072
+    expect(journal.entries).toHaveLength(73); // 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072
     expect(files[65]).toBe(FILE);
     expect(journal.entries[65]).toMatchObject({ idx: 65, tag: "0065_cancel_reason_school_issue", breakpoints: true });
     // the journal's `when` continues the synthetic incrementing value — strictly above every earlier entry
@@ -87,7 +87,8 @@ describe("🔴 SESSION cancel ONLY — it is NOT a reason to END A COURSE or a V
   test("by source: the course end and the voucher end still ask `isEndReason` — the code cannot reach their CHECKs", () => {
     const S = code("src/services/scheduler.service.ts");
     const ends = [...S.matchAll(/if \(!isEndReason\(input\.reason\)\)/g)];
-    expect(ends).toHaveLength(2); // endCourse + endVoucher — and no third
+    expect(ends).toHaveLength(1); // endVoucher — 🔻 TASK-837: endCourse now asks its own COURSE set (below) — and no third
+    expect([...S.matchAll(/if \(!isCourseEndReason\(input\.reason\)\)/g)]).toHaveLength(1); // 🔻 TASK-837: …which never contains `SCHOOL_ISSUE` either
     expect(S).not.toMatch(/isSessionCancelReason\(input\.reason\)/); // 🚫 never on an END
     // …and the session-cancel branch asks the SESSION predicate
     expect(S).toContain("if (!isSessionCancelReason(enumReason)) {");
@@ -99,7 +100,7 @@ describe("🔴 SESSION cancel ONLY — it is NOT a reason to END A COURSE or a V
     // raw-text check reads that explanation as the thing it forbids. 🔑 An absence claim about SQL has to be asked of SQL.
     const stmtsOnly = (f: string) => sql(f).split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith("--")).join(" ");
     const touching = readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql") && stmtsOnly(f).includes("course_packages_end_reason_chk"));
-    expect(touching).toEqual(["0023_course_ended.sql"]); // 0065 does not ALTER the course-end constraint
+    expect(touching).toEqual(["0023_course_ended.sql", "0072_course_end_reason_ended_early.sql"]); // 0065 does not ALTER the course-end constraint · 🔻 TASK-837: 0072 widens it with `ENDED_EARLY` (never `SCHOOL_ISSUE`)
     expect(stmtsOnly(FILE)).not.toContain("course_packages_end_reason_chk");
     expect(stmtsOnly(FILE)).not.toContain("vouchers_end_reason_chk");
   });

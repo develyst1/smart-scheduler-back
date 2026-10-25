@@ -6,7 +6,7 @@ import { t, type Lang } from "./line-i18n";
 import { weekdayOf } from "./recurring";
 import { ddmmyyyy } from "./time";
 import { slotLine, type Slot } from "./class-move"; // TASK-516
-import { isSessionCancelReason } from "./course-plan"; // 🔻 TASK-690 — a cancel notice's reason is a SESSION cancel's closed code
+import { ENDED_EARLY, isSessionCancelReason } from "./course-plan"; // 🔻 TASK-690 — a cancel notice's reason is a SESSION cancel's closed code · 🔻 TASK-837 — or a COURSE's `ENDED_EARLY`
 import { rentalPrintLine } from "./rental-row";
 import { buildDigestMessage } from "./attention";
 import { renderWeeklySchedule, type WeekRow } from "./weekly-digest";
@@ -118,7 +118,7 @@ const fieldValue = (v: unknown): string | undefined => {
  */
 export function cancelReasonText(code: unknown, note: unknown, lang: Lang): string {
   const c = fieldValue(code);
-  if (c && isSessionCancelReason(c)) return t(`ob_reason_${c}`, lang);
+  if (c && (isSessionCancelReason(c) || c === ENDED_EARLY)) return t(`ob_reason_${c}`, lang); // 🔻 TASK-837: the coach reads «ตัดจบคอร์ส» for a course ended early
   return fieldValue(note) ?? TEMPLATE_NONE;
 }
 
@@ -831,11 +831,20 @@ function buildOutboxMessage(
       const when =
         ctx.date && ctx.startTime ? `${ddmmyyyy(ctx.date)} ${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}` : undefined;
       const title = payload.kind === "teacher_assigned" ? "ob_teacher_assigned_title" : "ob_teacher_unassigned_title";
+      // 🔻 TASK-838 (REQ-127 — "the rest of the course moves to a new teacher") — an OPTIONAL `sessions` list: ONE notice per coach per act, the SAME `Time` line once per session (date order, the same `dd-mm-yyyy HH:mm-HH:mm` shape).
+      // ABSENT ⇒ the one `Time` line above, byte for byte as before (a single-row move / plan edit). No new word: the title, `Student`, `Subject`, `Time` are the existing approved strings.
+      const sessions = (Array.isArray(payload.sessions) ? payload.sessions : []) as Array<{ date?: string; startTime?: string; endTime?: string }>;
+      const timeLines = sessions.length
+        ? [...sessions]
+            .sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")) || String(a.startTime ?? "").localeCompare(String(b.startTime ?? "")))
+            .map((s) => line(t("ob_l_time", lang), s.date && s.startTime ? `${ddmmyyyy(String(s.date))} ${s.startTime}${s.endTime ? `-${s.endTime}` : ""}` : undefined))
+            .join("")
+        : line(t("ob_l_time", lang), when);
       return (
         t(title, lang) + "\n" +
         line(t("ob_l_student", lang), ctx.studentName) +
         line(t("ob_l_subject", lang), ctx.subject) +
-        line(t("ob_l_time", lang), when) +
+        timeLines +
         // 🔻 TASK-727 (P18) — her TH sample adds `Remark :` and `Rental :` to the "assigned" notice; the house rule: each line only when it has a value (never a bare label).
         // TH only (her EN cell is empty ⇒ EN stays as it was). They come from the PAYLOAD (a producer that passes them; none does yet, so today neither prints).
         (payload.kind === "teacher_assigned" && lang === "TH"

@@ -206,6 +206,7 @@ describe("🔴 the wiring — the CONFIRMED gate, one per coach, every existing 
     // cancel notice carrying `SCHOOL_ISSUE` must read "A problem on our side", not fall through to the note. 🔑 Still "exactly the set":
     // a code with no label, or a label with no code, fails here — which is the claim, just over the set a notice can actually carry.
     for (const c of SESSION_CANCEL_REASONS) expect(I18N).toContain(`ob_reason_${c}:`);
-    expect((I18N.match(/ob_reason_[A-Z_]+:/g) ?? []).length).toBe(SESSION_CANCEL_REASONS.length);
+    expect((I18N.match(/ob_reason_[A-Z_]+:/g) ?? []).length).toBe(SESSION_CANCEL_REASONS.length + 1); // 🔻 TASK-837: +1 — `ob_reason_ENDED_EARLY`, the COURSE-only end reason the coach's LINE reads
+    expect(I18N).toContain("ob_reason_ENDED_EARLY:");
   });
 });

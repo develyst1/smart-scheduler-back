@@ -710,6 +710,8 @@ const TABLE: Record<string, Entry> = {
   // 🔻 TASK-690 (REQ-112, owner ruling 2026-10-06) — the 5th, a SESSION cancel only: *a problem on our side*. TH is the customer's own
   // words, verbatim. ✅ APPROVED by the owner 2026-10-06 — COPY-REVIEW-2026-09-29.md:491 (TH the customer's own words, EN approved).
   ob_reason_SCHOOL_ISSUE: { TH: "ปัญหาจากทางเรา", EN: "A problem on our side" },
+  // 🔻 TASK-837 (REQ-126 "ตัดจบคอร์ส") — a COURSE-only end reason, the coach's LINE reason. ✅ APPROVED by the owner 2026-10-25 (COPY-REVIEW-2026-09-29 §2026-10-25), verbatim.
+  ob_reason_ENDED_EARLY: { TH: "ตัดจบคอร์ส", EN: "Course ended early" },
   // TASK-410 (REQ-097 §3.7) — the FAMILY's cancel notice (`class_cancelled_parent`), THE OWNER'S WORDS via @Porter
   // (2026-09-19): the title, the four lines (`ob_f_*`), `Reason` ONLY for a teacher's leave, then the system's `Note`
   // by shape — a course session gets its make-up, a 1-hour/voucher keeps its hour. Both producers (the admin's cancel

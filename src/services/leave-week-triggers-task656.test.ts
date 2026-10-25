@@ -571,6 +571,7 @@ describe("🔑 THE LIST IS A LIST — three triggers, pinned BY VALUE; the call 
       "scheduler.service.ts · createCoursePackage · insert", // at birth
       "scheduler.service.ts · importCoursePackage · insert", // at birth — the SECOND birth path
       "scheduler.service.ts · resumeCourse · update", // a re-plan on resume
+      "scheduler.service.ts · runCourseTeacherTimeChange · update", // 🔻 TASK-838 — the rest of a course to a new teacher / day / time: the expiry only GROWS to cover the new last session (`replanExpiry`, as the resume does)
       "scheduler.service.ts · updateCourseExpiry · update", // the admin's own edit
     ]);
   });

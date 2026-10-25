@@ -42,7 +42,7 @@ describe("endCourse — what it must not do (TASK-181)", () => {
   test("the coded 400s are raised in the SERVICE, not left to the route", () => {
     expect(BODY).toContain("REASON_REQUIRED");
     expect(BODY).toContain("INVALID_REASON");
-    expect(BODY).toContain("isEndReason");
+    expect(BODY).toContain("isCourseEndReason"); // 🔻 TASK-837: the COURSE's own closed set (= its CHECK after 0072)
   });
 
   test("all-or-nothing: everything happens inside one transaction", () => {

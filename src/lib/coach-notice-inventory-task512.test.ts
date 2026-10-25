@@ -53,6 +53,7 @@ const VIA_PREDICATE = [`${S}#sendLeaveNotice`, `${S}#sendClassCancelledToCoaches
 /** The recipient is a NAMED person, not "the coaches of a class" — correct by design. */
 const NAMED_BY_DESIGN: Record<string, string> = {
   [`${S}#sendTeacherReassigned`]: "the coach taken off and the coach put on — two named people",
+  [`${S}#sendCourseTeacherChange`]: "🔻 TASK-838 — the rest of a course moves to a new teacher: the old coach(es) taken off and the new coach put on — named people, ONE notice each per act (never one per session, never a family)",
   "src/services/other-series.service.ts#swapOtherSeriesTeacher": "the same, for an อื่นๆ series",
   "src/services/teacher-link.service.ts#approveTeacherLinkRequest": "the coach who asked to link",
   "src/lib/camp-reminder.ts#campReminderSends": "camp's own day-teacher model (`camp_week_day_teachers`), not a booking",

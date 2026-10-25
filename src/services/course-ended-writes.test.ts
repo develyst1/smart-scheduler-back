@@ -39,6 +39,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
   "POST /courses/:id/start-date/preview": "guarded", // TASK-573 — the act's own plan: `assertCourseWritable` first, writes nothing
   "POST /courses/:id/start-date": "guarded", // TASK-570 — `assertCourseWritable` first: an ENDED or PAUSED course refuses
+  "POST /courses/:id/change-teacher-time/preview": "guarded", // 🔻 TASK-838 — the act run inside a rolled-back transaction: the same `assertCourseWritable` first, nothing committed
+  "POST /courses/:id/change-teacher-time": "guarded", // 🔻 TASK-838 — `assertCourseWritable` first: an ENDED or PAUSED course refuses with its own words
   "POST /courses/:id/resume": "guarded", // …and refuses NOT_DROPPED / an ended course. Exempt from the drop guard
                                           // by construction: it is the one write whose whole job is clearing it.
 

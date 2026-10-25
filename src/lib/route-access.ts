@@ -174,6 +174,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses/:id/resume": act(BOOKINGS, "action:bookings.course-drop"),
   "POST /courses/:id/start-date": act(BOOKINGS, "action:bookings.course-plan"), // TASK-570 — a re-dating of the plan: the plan editor's key
   "POST /courses/:id/start-date/preview": act(BOOKINGS, "action:bookings.course-plan"), // TASK-573 §2 — the SAME gate as the act (pinned equal)
+  "POST /courses/:id/change-teacher-time": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 (REQ-127) — RE-PLANS the rest of the course (to a new teacher / day / time), exactly like TASK-570's start-date change: the plan editor's key (@Sober's ruling 10-25; the FE button is gated by it too)
+  "POST /courses/:id/change-teacher-time/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 — the SAME gate as the act
   "POST /courses/:id/cancel": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/import": act(BOOKINGS, "action:bookings.course-import"),

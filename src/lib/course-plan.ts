@@ -446,6 +446,17 @@ export const isEndReason = (v: unknown): v is EndReason =>
   typeof v === "string" && (END_REASONS as readonly string[]).includes(v);
 
 /**
+ * 🔻 TASK-837 (REQ-126 "ตัดจบคอร์ส") — the 5th reason for ending a COURSE: `ENDED_EARLY` (TH `ตัดจบคอร์ส`, EN "Course ended early"). A COURSE-ONLY sibling set (the TASK-690 shape):
+ * `COURSE_END_REASONS` is EXACTLY what `course_packages_end_reason_chk` accepts after migration `0072` — `endCourse` asks THIS set at its door, so a code the CHECK would refuse is a 400
+ * `INVALID_REASON`, never a Postgres 23514 ⇒ 500 (`TEACHER_LEAVE` is written by a teacher's own leave on ROWS; it is not a reason to end a course).
+ * 🚫 NOT a member of `END_REASONS`: that set is ALSO a voucher's (`vouchers_end_reason_chk`, 0051), where the word "course" is wrong and the CHECK would refuse it.
+ */
+export const ENDED_EARLY = "ENDED_EARLY" as const;
+export const COURSE_END_REASONS = ["PROGRAM_CHANGED", "CUSTOMER_CANCELLED", "ADMIN_ERROR", ENDED_EARLY] as const;
+export const isCourseEndReason = (v: unknown): v is (typeof COURSE_END_REASONS)[number] =>
+  typeof v === "string" && (COURSE_END_REASONS as readonly string[]).includes(v);
+
+/**
  * 🔴 TASK-690 (REQ-112, owner ruling 2026-10-06) — the reason a SESSION may be cancelled for: `END_REASONS` plus `SCHOOL_ISSUE`
  * (TH `ปัญหาจากทางเรา`, EN "A problem on our side"). It is the ONLY thing that carries REQ-112's trigger T3 — *a class the school
  * cancels for its own reason earns the course one more week* — and it is a CODE, never a reading of a free-text note.

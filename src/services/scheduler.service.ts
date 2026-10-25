@@ -8,6 +8,7 @@ import { recordUndo, revertAttendance } from "./attendance-revert.service"; // T
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
 import { TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, leaveModeOf, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
+import { isTeacherTimeRefusal, planCourseTeacherTimeChange, type TeacherTimeMove, type TeacherTimePlan } from "../lib/course-teacher-time-change"; // 🔻 TASK-838 (REQ-127)
 import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
@@ -118,6 +119,8 @@ import { leavesAwaitingReanswer,
   endableSessions,
   isEndReason,
   END_REASONS,
+  isCourseEndReason, // 🔻 TASK-837 — a COURSE's closed end set (= the course CHECK after 0072)
+  COURSE_END_REASONS, // 🔻 TASK-837
   SESSION_CANCEL_REASONS, // 🔻 TASK-690
   isSessionCancelReason, // 🔻 TASK-690
   SCHOOL_ISSUE, // 🔻 TASK-656 — T3's lever
@@ -3673,6 +3676,31 @@ export async function sendTeacherReassigned(tx: any, bookingId: string, oldTeach
 }
 
 /**
+ * 🔻 TASK-838 (REQ-127) — the coach pair when the REST OF A COURSE moves to a new teacher: the SAME two kinds as the single-row pair above, but ONE message per coach per ACT, carrying every session in the optional `sessions` list
+ * (the renderer prints the existing `Time` line once per session). The OLD coach (each distinct one, when the rows had several) is told what he no longer teaches, at the OLD date / time; the NEW coach what he now teaches, at the NEW date / time.
+ * Only rows whose TEACHER changes are listed: a time-only move (same coach) tells nobody here — the families and the confirmation come at "ยืนยันทั้งคอร์ส". In the act's own transaction, so the notice and the move land together or not at all.
+ */
+async function sendCourseTeacherChange(tx: any, moves: TeacherTimeMove[]): Promise<void> {
+  const changed = moves.filter((m) => m.from.teacherId !== m.to.teacherId);
+  if (!changed.length) return;
+  const teacherOf = (id: string) => tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, id) });
+  const byOld = new Map<string, TeacherTimeMove[]>();
+  for (const m of changed) byOld.set(m.from.teacherId, [...(byOld.get(m.from.teacherId) ?? []), m]);
+  for (const [oldId, ms] of byOld) {
+    const old = await teacherOf(oldId);
+    await enqueueLine(
+      { recipientType: "teacher", recipientLineUserId: old?.lineUserId ?? null, bookingId: ms[0]!.id, payload: { kind: "teacher_unassigned", bookingId: ms[0]!.id, sessions: ms.map((m) => ({ date: m.from.date, startTime: hhmm(m.from.startTime), endTime: m.from.endTime ? hhmm(m.from.endTime) : addHour(hhmm(m.from.startTime)) })) } },
+      tx,
+    );
+  }
+  const gained = await teacherOf(changed[0]!.to.teacherId);
+  await enqueueLine(
+    { recipientType: "teacher", recipientLineUserId: gained?.lineUserId ?? null, bookingId: changed[0]!.id, payload: { kind: "teacher_assigned", bookingId: changed[0]!.id, sessions: changed.map((m) => ({ date: m.to.date, startTime: hhmm(m.to.startTime), endTime: addHour(hhmm(m.to.startTime)) })) } },
+    tx,
+  );
+}
+
+/**
  * TASK-406 (REQ-097 C-2) — the leave's COACH notice: the OTHER teachers on the row (primary + extras minus me) — a row
  * where I am an extra still has a primary coach who loses the session; when I am the only teacher, nobody (I am the
  * coach). The same `class_cancelled_teacher` payload the admin's cancel sends; the same CONFIRMED-only rule.
@@ -6320,8 +6348,8 @@ export async function endCourse(
   // 400 with a CODE, not the generic VALIDATION envelope: the FE distinguishes "you did not pick a reason"
   // from "that reason is not one we accept", and only the second is a bug worth reporting.
   if (!input.reason) throw new ApiException(400, "REASON_REQUIRED", "ต้องระบุเหตุผลในการยกเลิกคอร์ส");
-  if (!isEndReason(input.reason))
-    throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: END_REASONS });
+  if (!isCourseEndReason(input.reason)) // 🔻 TASK-837: the COURSE set (= its CHECK, 0072) — never the shared `END_REASONS`, which a voucher also uses
+    throw new ApiException(400, "INVALID_REASON", "เหตุผลไม่ถูกต้อง", { allowed: COURSE_END_REASONS });
 
   return db.transaction(async (tx: any) => {
     const { course, rows } = await loadCourseForEnd(tx, id);
@@ -6355,6 +6383,79 @@ export async function endCourse(
     });
     return { cancelled: true, removedSessions: doomed.length, course: toCourseSummary(updated) };
   });
+}
+
+// ─────────── TASK-838 (REQ-127 "เปลี่ยนครู / เวลา ทั้งคอร์ส") — the REST of a course moves to a new teacher, day and time, in ONE act ───────────
+//
+// The course's still-live sessions dated today or later (`endableSessions` + "today or later" — the plan, `lib/course-teacher-time-change.ts`) are MOVED IN PLACE, in ONE transaction; any refusal writes NOTHING. Delivered rows are untouched (they keep their
+// teacher and date, so the first-coach history stays readable). The new dates are `courseSessionDates` from the admin's start date + time — the resume's planner, no second scheduler. Each moved row gets the new date, time and teacher; a CONFIRMED row returns
+// to PENDING (its confirmation was of the OLD slot) and `needsReconfirm` says how many — the admin then presses the existing "ยืนยันทั้งคอร์ส", which sends ONE schedule message per person. The gates are the create path's own: `assertTeacherBookable` per date,
+// a clash with ANOTHER booking ⇒ 409 `SLOT_TAKEN` naming the date (the whole act rolls back), the holds reconciled per row. 🚫 Not touched: `size`, `usedSessions`, `leaveUsed`, the sale, the course's default rate; the expiry may only GROW to cover the new last
+// session (`replanExpiry`, as the resume does). 🚫 Not a pause: no `droppedAt`, no cancelled row, no "dropped" word. Notices: ONE per coach per act (`sendCourseTeacherChange`); the family hears nothing at this step.
+async function runCourseTeacherTimeChange(tx: any, id: string, input: { teacherId: string; startDate: string; startTime: string }, actor: string | null) {
+  const { course, rows } = await loadCourseForEnd(tx, id);
+  await assertCourseWritable(tx, id); // an ENDED or PAUSED course refuses with its own words, as every re-plan door does
+  const plan = planCourseTeacherTimeChange(
+    rows.map((r: any) => ({ id: r.id, date: r.date, startTime: r.startTime, endTime: r.endTime, status: r.status, teacherId: r.teacherId, bookingType: r.bookingType })),
+    input,
+    bangkokNow().date,
+  );
+  if (isTeacherTimeRefusal(plan)) throw new ApiException(plan.code === "START_IN_PAST" ? 400 : 409, plan.code, plan.message);
+  const byId = new Map(plan.moves.map((m) => [m.id, m]));
+  for (const rowId of plan.order) {
+    const m = byId.get(rowId)!;
+    await assertTeacherBookable(tx, m.to.teacherId, m.to.date);
+    const reconfirm = m.toStatus !== m.status ? { status: m.toStatus, confirmedAt: null, checkinToken: null, checkinTokenExpiresAt: null } : {};
+    try {
+      await tx.update(bookings).set({ teacherId: m.to.teacherId, date: m.to.date, startTime: m.to.startTime, endTime: addHour(m.to.startTime), ...reconfirm }).where(eq(bookings.id, m.id));
+    } catch (e: any) {
+      if (pgErrorCode(e) === "23505")
+        throw new ApiException(409, "SLOT_TAKEN", `วันที่ ${m.to.date} ครูมีคาบอื่นในเวลานี้แล้ว — ไม่ได้ย้ายคาบใด (เลือกวันเริ่มอื่น หรือแก้คาบที่ชนก่อน)`, { date: m.to.date, n: plan.n, firstDate: plan.firstDate, lastDate: plan.lastDate });
+      throw e;
+    }
+    await reconcileBookingHolds(tx, m.id, m.to.teacherId, m.toStatus, false); // the freelance ceiling moves from the old coach to the new one
+  }
+  const expiryDate = replanExpiry(course.expiryDate, plan.lastDate); // grows to cover the new last session, never shrinks
+  await tx
+    .update(coursePackages)
+    .set({ weekday: weekdayOf(input.startDate), startTime: input.startTime, expiryDate, ...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {}) })
+    .where(eq(coursePackages.id, id));
+  await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });
+  await sendCourseTeacherChange(tx, plan.moves);
+  return {
+    n: plan.n,
+    moved: plan.n,
+    firstDate: plan.firstDate,
+    lastDate: plan.lastDate,
+    teacherId: input.teacherId,
+    needsReconfirm: plan.needsReconfirm,
+    expiryDate,
+    previousExpiryDate: course.expiryDate,
+    expiryExtended: expiryDate !== course.expiryDate,
+  };
+}
+
+export async function changeCourseTeacherAndTime(id: string, input: { teacherId: string; startDate: string; startTime: string }, actor?: string | null) {
+  return db.transaction(async (tx: any) => runCourseTeacherTimeChange(tx, id, input, actor ?? null));
+}
+
+class CourseChangeRollback extends Error { constructor(readonly result: { n: number; firstDate: string; lastDate: string }) { super("preview-rollback"); } }
+/** The act's OWN run inside a transaction that is ALWAYS rolled back — a preview that cannot disagree with the act. `{ n, firstDate, lastDate }`, plus `clashes` (the date) when the act would refuse with `SLOT_TAKEN`. */
+export async function previewCourseTeacherAndTime(id: string, input: { teacherId: string; startDate: string; startTime: string }) {
+  try {
+    await db.transaction(async (tx: any) => {
+      const r = await runCourseTeacherTimeChange(tx, id, input, null);
+      throw new CourseChangeRollback({ n: r.n, firstDate: r.firstDate, lastDate: r.lastDate });
+    });
+  } catch (e: any) {
+    if (e instanceof CourseChangeRollback) return e.result;
+    if (e instanceof ApiException && e.code === "SLOT_TAKEN") {
+      const d = e.details as { date: string; n: number; firstDate: string; lastDate: string };
+      return { n: d.n, firstDate: d.firstDate, lastDate: d.lastDate, clashes: [d.date] };
+    }
+    throw e;
+  }
+  throw new Error("unreachable");
 }
 
 // ─────────── TASK-439 (REQ-103, SPEC-089 B) — cancel a WHOLE voucher, on the course-end shape ───────────

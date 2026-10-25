@@ -717,6 +717,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "the file creates, so a half-applied file (table without its index) reads as not applied and re-runs. Rerunnable: every statement is IF NOT EXISTS; NO data is written.",
     rerunnable: true,
   },
+  {
+    tag: "0072_course_end_reason_ended_early",
+    probe: { kind: "constraint-def", constraint: "course_packages_end_reason_chk", contains: "ENDED_EARLY" },
+    why:
+      "TASK-837 (REQ-126). 0023's CHECK on a course's end_reason is DROPPED and re-ADDED with the 4th code, `ENDED_EARLY` (TH ตัดจบคอร์ส): the constraint NAME exists before and after, so only its DEFINITION witnesses the change (the 0045 / 0065 shape). " +
+      "NOT VALID + VALIDATE; rerunnable; NO data is written. 0023's witness (the constraint exists) is deliberately NOT re-pointed: this definition still satisfies it, and re-running 0023 would REGRESS the CHECK to three codes.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

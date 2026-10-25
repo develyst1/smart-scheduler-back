@@ -1,0 +1,48 @@
+{
+  "task": "TASK-837",
+  "proves": "src/lib/course-end-early-task837.test.ts",
+  "note": "REQ-126 — ENDED_EARLY, a COURSE-only end reason. N1 the reason added to the SHARED END_REASONS (the voucher would accept it) · N2 the migration's CHECK missing it · N3 the coach's LINE reader ignores it (the note is read instead) · N4 the coach's EN words wrong · N5 the course door back on the shared END_REASONS (ENDED_EARLY refused, TEACHER_LEAVE accepted → a 500) · N6 TEACHER_LEAVE added to the course set · N7 the witness probes the wrong word · N8 the stored reason is not the input.",
+  "tests": "src/lib/course-end-early-task837.test.ts",
+  "mutations": [
+    {
+      "id": "N1",
+      "what": "🔴 ENDED_EARLY added to the shared END_REASONS — the voucher path would accept it and Postgres refuse it (a 500)",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "export const END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", \"TEACHER_LEAVE\"] as const;", "to": "export const END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", \"TEACHER_LEAVE\", \"ENDED_EARLY\"] as const;" }] }]
+    },
+    {
+      "id": "N2",
+      "what": "🔴 the migration's CHECK is missing ENDED_EARLY (the door accepts it, Postgres refuses it)",
+      "files": [{ "file": "drizzle/0072_course_end_reason_ended_early.sql", "edits": [{ "from": "'ADMIN_ERROR', 'ENDED_EARLY')) NOT VALID;", "to": "'ADMIN_ERROR')) NOT VALID;" }] }]
+    },
+    {
+      "id": "N3",
+      "what": "🔴 the coach's LINE reader ignores ENDED_EARLY — the free-text note is read instead of «ตัดจบคอร์ส»",
+      "files": [{ "file": "src/lib/line-message.ts", "edits": [{ "from": "if (c && (isSessionCancelReason(c) || c === ENDED_EARLY)) return", "to": "if (c && (isSessionCancelReason(c))) return" }] }]
+    },
+    {
+      "id": "N4",
+      "what": "the coach's English words are not the approved ones",
+      "files": [{ "file": "src/lib/line-i18n.ts", "edits": [{ "from": "EN: \"Course ended early\" },", "to": "EN: \"Course cancelled\" }," }] }]
+    },
+    {
+      "id": "N5",
+      "what": "🔴 the course door is back on the shared END_REASONS — ENDED_EARLY refused, TEACHER_LEAVE accepted (a Postgres 23514 ⇒ 500)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (!isCourseEndReason(input.reason))", "to": "if (!isEndReason(input.reason))" }] }]
+    },
+    {
+      "id": "N6",
+      "what": "TEACHER_LEAVE added to the COURSE set (the CHECK does not list it)",
+      "files": [{ "file": "src/lib/course-plan.ts", "edits": [{ "from": "export const COURSE_END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", ENDED_EARLY] as const;", "to": "export const COURSE_END_REASONS = [\"PROGRAM_CHANGED\", \"CUSTOMER_CANCELLED\", \"ADMIN_ERROR\", \"TEACHER_LEAVE\", ENDED_EARLY] as const;" }] }]
+    },
+    {
+      "id": "N7",
+      "what": "the witness probes the wrong word, so a half-applied 0072 would read as applied",
+      "files": [{ "file": "src/lib/migration-witness.ts", "edits": [{ "from": "constraint: \"course_packages_end_reason_chk\", contains: \"ENDED_EARLY\"", "to": "constraint: \"course_packages_end_reason_chk\", contains: \"ADMIN_ERROR\"" }] }]
+    },
+    {
+      "id": "N8",
+      "what": "🔴 the stored end reason is NOT the one chosen (a constant instead of the input)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "        endedAt: new Date(),\n        endReason: input.reason,\n        endNote: input.note?.trim() || null,\n        endedBy: actor ?? null,\n      })\n      .where(eq(coursePackages.id, id));\n\n    // 🔴 `reconcileCoursePlan` is NOT called", "to": "        endedAt: new Date(),\n        endReason: \"ADMIN_ERROR\",\n        endNote: input.note?.trim() || null,\n        endedBy: actor ?? null,\n      })\n      .where(eq(coursePackages.id, id));\n\n    // 🔴 `reconcileCoursePlan` is NOT called" }] }]
+    }
+  ]
+}

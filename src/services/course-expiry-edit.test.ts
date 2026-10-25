@@ -37,7 +37,7 @@ describe("TASK-264 — the migration, counted and witnessed", () => {
   test("0034 is registered, and the counts agree", () => {
     // The board's rule: "no migration" is a CLAIM, not a state — so the numbers are asserted, not asserted about.
     const tags = JOURNAL.match(/"tag": "\d{4}_/g) ?? [];
-    expect(tags.length).toBe(72); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 // 🔻 0035 … 0053 added since (TASK-401: 0042_camp) // 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071
+    expect(tags.length).toBe(73); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 // 🔻 0035 … 0053 added since (TASK-401: 0042_camp) // 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072
     expect(JOURNAL).toContain('"tag": "0034_course_expiry_changes"');
     expect(JOURNAL).toContain('"idx": 34');
   });
@@ -220,7 +220,7 @@ describe("TASK-264 — AC-2: the audit has no hole on day one (Q1)", () => {
     // 🔻 TASK-308 — a FOURTH: the reconcile now grows the expiry when a leave's make-up lands past it, and it
     // does so through this same writer. 🔑 That is the point — §12 said the expiry stretches, and the audit
     // still answers *"why did this date move?"* because no second way to move one was added.
-    expect(c.match(/recordExpiryChange\(/g)!.length).toBe(5); // 🔻 TASK-570: + the start-date change's recompute — every path that moves an expiry records it
+    expect(c.match(/recordExpiryChange\(/g)!.length).toBe(6); // 🔻 TASK-838: + the rest-of-course teacher / time change's recompute (the expiry only grows) · 🔻 TASK-570: + the start-date change's recompute — every path that moves an expiry records it
     const resume = c.slice(c.indexOf("export async function resumeCourse("), c.indexOf("export async function endCourse("));
     // TASK-282 §7: `effectiveExpiry` was the admin's date-or-the-old-one; it is now `expiryDate`, DERIVED from
     // the last session the re-plan laid out. 🔑 The audit is unchanged and that is the point — **the trail did

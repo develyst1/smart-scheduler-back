@@ -520,7 +520,7 @@ describe("🔑 the teacher's own door: `GET /api/teachers/me/leave?preview=DATE`
 describe("🔑 by source and by shape — the migration, one remembered write, restore BEFORE delete, the contract", () => {
   const SVC = code(read("src/services/scheduler.service.ts"));
   const LIB = code(read("src/lib/teacher-leave.ts"));
-  test("migration 0071: the table + its unique index (the LAST object), IF NOT EXISTS, no data; journal idx 71; the witness probes the index; the schema declares it; 72 files = 72 entries", () => {
+  test("migration 0071: the table + its unique index (the LAST object), IF NOT EXISTS, no data; journal idx 71; the witness probes the index; the schema declares it; still entry 71 (the file / entry COUNT is pinned by the migration-count tests)", () => {
     const sql = read("drizzle/0071_teacher_leave_removals.sql").replace(/^--.*$/gm, "");
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS "teacher_leave_removals" (');
     expect(sql.lastIndexOf("CREATE UNIQUE INDEX IF NOT EXISTS")).toBeGreaterThan(sql.indexOf("CREATE TABLE IF NOT EXISTS"));

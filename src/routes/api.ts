@@ -174,6 +174,13 @@ export const api = new Hono()
   .post("/courses/:id/start-date", zValidator("json", v.changeCourseStart), async (c) =>
     c.json(await svc.changeCourseStart(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
+  // 🔻 TASK-838 (REQ-127 "เปลี่ยนครู / เวลา ทั้งคอร์ส") — the rest of a course moves to a new teacher, day and time, in ONE act; the preview is the act run inside a rolled-back transaction.
+  .post("/courses/:id/change-teacher-time/preview", zValidator("json", v.changeCourseTeacherTime), async (c) =>
+    c.json(await svc.previewCourseTeacherAndTime(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/courses/:id/change-teacher-time", zValidator("json", v.changeCourseTeacherTime), async (c) =>
+    c.json(await svc.changeCourseTeacherAndTime(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
   // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
   // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and
   // for the same reason: an audit row whose author the caller can choose records nothing.

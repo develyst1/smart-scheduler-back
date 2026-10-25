@@ -42,8 +42,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "  if (!isEndReason(input.reason))\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);",
-              "to": "  if (!isSessionCancelReason(input.reason))\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);"
+              "from": "  if (!isCourseEndReason(input.reason)) // 🔻 TASK-837: the COURSE set (= its CHECK, 0072) — never the shared `END_REASONS`, which a voucher also uses\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: COURSE_END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);",
+              "to": "  if (!isSessionCancelReason(input.reason))\n    throw new ApiException(400, \"INVALID_REASON\", \"เหตุผลไม่ถูกต้อง\", { allowed: COURSE_END_REASONS });\n\n  return db.transaction(async (tx: any) => {\n    const { course, rows } = await loadCourseForEnd(tx, id);"
             }
           ]
         }
@@ -87,8 +87,8 @@
           "file": "src/lib/line-message.ts",
           "edits": [
             {
-              "from": "  if (c && isSessionCancelReason(c)) return t(`ob_reason_${c}`, lang);",
-              "to": "  if (c && (c === \"PROGRAM_CHANGED\" || c === \"CUSTOMER_CANCELLED\" || c === \"ADMIN_ERROR\" || c === \"TEACHER_LEAVE\")) return t(`ob_reason_${c}`, lang);"
+              "from": "  if (c && (isSessionCancelReason(c) || c === ENDED_EARLY)) return t(`ob_reason_${c}`, lang);",
+              "to": "  if (c && (c === \"PROGRAM_CHANGED\" || c === \"CUSTOMER_CANCELLED\" || c === \"ADMIN_ERROR\" || c === \"TEACHER_LEAVE\" || c === ENDED_EARLY)) return t(`ob_reason_${c}`, lang);"
             }
           ]
         }

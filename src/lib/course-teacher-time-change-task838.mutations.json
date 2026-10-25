@@ -1,0 +1,68 @@
+{
+  "task": "TASK-838",
+  "proves": "src/lib/course-teacher-time-change-task838.test.ts",
+  "note": "REQ-127 — the rest of a course moves to a new teacher / day / time in ONE act. A1 a DELIVERED row moved · A2 one notice per SESSION (4 + 4) · A3 the PREVIEW commits · A4 the expiry SHRINKS · A5 a clash HALF-APPLIED · A6 the CONFIRMED row left CONFIRMED · A7 the renderer ignores `sessions` (one Time line) · A8 the OLD coach shown the NEW times · A9 a time-only change sends the reassign pair · A10 the ended-course gate removed · A11 the new teacher not written · A12 the write order broken (a row lands on a sibling that has not left).",
+  "tests": "src/lib/course-teacher-time-change-task838.test.ts",
+  "mutations": [
+    {
+      "id": "A1",
+      "what": "🔴 a DELIVERED (and past) row is moved too — the first-coach history would be rewritten",
+      "files": [{ "file": "src/lib/course-teacher-time-change.ts", "edits": [{ "from": "const live = endableSessions(rows)\n    .filter((r) => r.date >= today)", "to": "const live = rows.filter((r) => r.status !== \"CANCELLED\")\n    .filter(() => true)" }] }]
+    },
+    {
+      "id": "A2",
+      "what": "🔴 one notice per SESSION — the coaches get 4 + 4 messages, not one each",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await sendCourseTeacherChange(tx, plan.moves);", "to": "  for (const m of plan.moves) await sendCourseTeacherChange(tx, [m]);" }] }]
+    },
+    {
+      "id": "A3",
+      "what": "🔴 the PREVIEW commits (returns instead of rolling back)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "throw new CourseChangeRollback({ n: r.n, firstDate: r.firstDate, lastDate: r.lastDate });", "to": "return { n: r.n, firstDate: r.firstDate, lastDate: r.lastDate };" }] }]
+    },
+    {
+      "id": "A4",
+      "what": "🔴 the expiry SHRINKS to the new last date (the family's window is taken back)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const expiryDate = replanExpiry(course.expiryDate, plan.lastDate);", "to": "const expiryDate = plan.lastDate;" }] }]
+    },
+    {
+      "id": "A5",
+      "what": "🔴 a clash is HALF-APPLIED — the clashing row is skipped and the others stay moved (no SLOT_TAKEN, no rollback)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (pgErrorCode(e) === \"23505\")\n        throw new ApiException(409, \"SLOT_TAKEN\", `วันที่ ${m.to.date}", "to": "if (pgErrorCode(e) === \"23505\") continue;\n      if (false)\n        throw new ApiException(409, \"SLOT_TAKEN\", `วันที่ ${m.to.date}" }] }]
+    },
+    {
+      "id": "A6",
+      "what": "🔴 a CONFIRMED row stays CONFIRMED after its slot changed (its confirmation was of the OLD slot)",
+      "files": [{ "file": "src/lib/course-teacher-time-change.ts", "edits": [{ "from": "toStatus: r.status === \"CONFIRMED\" ? \"PENDING\" : r.status,", "to": "toStatus: r.status," }] }]
+    },
+    {
+      "id": "A7",
+      "what": "🔴 the renderer ignores `sessions` — ONE Time line is printed whatever the list says",
+      "files": [{ "file": "src/lib/line-message.ts", "edits": [{ "from": "const timeLines = sessions.length\n", "to": "const timeLines = false\n" }] }]
+    },
+    {
+      "id": "A8",
+      "what": "🔴 the OLD coach is shown the NEW dates / times (what he gains, not what he loses)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "sessions: ms.map((m) => ({ date: m.from.date, startTime: hhmm(m.from.startTime),", "to": "sessions: ms.map((m) => ({ date: m.to.date, startTime: hhmm(m.to.startTime)," }] }]
+    },
+    {
+      "id": "A9",
+      "what": "a time-only change (the same coach) still sends the reassign pair",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "const changed = moves.filter((m) => m.from.teacherId !== m.to.teacherId);", "to": "const changed = moves;" }] }]
+    },
+    {
+      "id": "A10",
+      "what": "🔴 the ended / paused gate is removed — an ENDED course is re-planned",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "await assertCourseWritable(tx, id); // an ENDED or PAUSED course refuses with its own words, as every re-plan door does\n  const plan = planCourseTeacherTimeChange(", "to": "const plan = planCourseTeacherTimeChange(" }] }]
+    },
+    {
+      "id": "A11",
+      "what": "🔴 the NEW teacher is not written on the moved rows (only date and time move)",
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "await tx.update(bookings).set({ teacherId: m.to.teacherId, date: m.to.date, startTime: m.to.startTime,", "to": "await tx.update(bookings).set({ date: m.to.date, startTime: m.to.startTime," }] }]
+    },
+    {
+      "id": "A12",
+      "what": "the write order is broken — rows are applied in plain date order, so a row can land on a sibling's slot before it has left",
+      "files": [{ "file": "src/lib/course-teacher-time-change.ts", "edits": [{ "from": "const pick = next ?? moves.find((m) => pending.has(m.id))!;", "to": "const pick = moves.find((m) => pending.has(m.id))!;" }] }]
+    }
+  ]
+}

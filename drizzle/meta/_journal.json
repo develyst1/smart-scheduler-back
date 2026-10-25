@@ -505,6 +505,13 @@
       "when": 1783000000067,
       "tag": "0071_teacher_leave_removals",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1783000000068,
+      "tag": "0072_course_end_reason_ended_early",
+      "breakpoints": true
     }
   ]
 }
