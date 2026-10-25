@@ -56,11 +56,14 @@ describe("the day-end auto-mark (TASK-180)", () => {
   });
 
   test("🔴 TASK-396 — the two mirrors agree: the SQL today-branch gates on START (`startTime`, never `endTime`); the past-date branch is still `true`, the future `false`", async () => {
-    const gate = JOB.slice(JOB.indexOf("const ended ="), JOB.indexOf("const due = await tx"));
-    expect(gate).toContain("sql`${bookings.startTime} <= ${now.time}::time`");
+    // 🔻 TASK-749 — the gate moved to `startedSql` (lib/day-end-sweep.ts) and now applies per row over the 7-day window: a past date ⇒ ALL, today ⇒ only what has STARTED, a future date ⇒ NONE (no clause admits a later date)
+    const sweepSrc = readSrc(await Bun.file(new URL("../lib/day-end-sweep.ts", import.meta.url)).text());
+    const gate = sweepSrc.slice(sweepSrc.indexOf("export const startedSql"));
+    expect(gate).toContain("${bookings.startTime} <= ${now.time}::time");
     expect(gate).not.toContain("endTime");
-    expect(gate).toContain("runDate < now.date\n        ? sql`true`");
-    expect(gate).toContain(": sql`false`");
+    expect(gate).toContain("(${bookings.date} < ${now.date} or (${bookings.date} = ${now.date} and");
+    expect(gate).not.toMatch(/bookings\.date\} >/);
+    expect(JOB).toContain("startedSql(now)");
     const MIRROR = readSrc(await Bun.file(new URL("../lib/auto-cut.ts", import.meta.url)).text()).replace(/^\s*\/\/.*$/gm, "");
     expect(MIRROR).toContain("minutesUntilClassStart(b.date, b.startTime, now) <= 0");
     expect(MIRROR).not.toMatch(/endTime|ClassEnd/);

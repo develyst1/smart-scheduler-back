@@ -229,7 +229,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   });
   test("🚫 NO MONEY on a GROUP row: the day-end revenue sweep's type list has no GROUP (by construction); none of the new functions post; `ratePostedAt` never written", () => {
     const JOB = code(src("src/services/jobs.service.ts"));
-    expect(JOB).toContain('inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"]),');
+    expect(code(src("src/lib/day-end-sweep.ts"))).toContain('export const POSTING_TYPES = ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"] as const;'); // 🔻 TASK-749: the sweep's type list moved to lib/day-end-sweep.ts (POSTING_TYPES)
     // 🔻 TASK-456 — two more mentions, both in the ROLLING EXTENDER and neither in the sweep: the read that finds
     // group rows, and the type it inserts. The claim below is the one that matters and it is unchanged: the sweep's
     // own list has no GROUP, and nothing new posts money.

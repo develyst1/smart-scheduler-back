@@ -16,7 +16,7 @@
 
 | งาน | ปลายทาง | เวลา | ถ้าไม่ตั้ง จะเกิดอะไร |
 |---|---|---|---|
-| **A. สรุปสิ้นวัน** | `/internal/jobs/end-of-day` | ทุกคืน **23:30** | คาบที่ไม่มาไม่ถูกตัดเป็น NO_SHOW · รายได้ของวันไม่ถูกลงบัญชี |
+| **A. สรุปสิ้นวัน** | `/internal/jobs/end-of-day` | ทุกคืน **17:30** (owner's ruling 2026-09-16 (customer request); the day-end sweep (TASK-749) posts later marks the next day) | คาบที่ไม่มาไม่ถูกตัดเป็น NO_SHOW · รายได้ของวันไม่ถูกลงบัญชี |
 | **B. รีเซ็ตงบเดือนใหม่** | `/internal/jobs/month-reset` | วันที่ 1 เวลา **00:05** | **งบครู freelance ไม่รีเซ็ต** — เพดานเดือนที่แล้วค้างต่อไปเรื่อย ๆ |
 | **C. สรุปเช้าเข้า LINE** 🆕 | `/internal/jobs/daily-digest` | ทุกวัน **08:00** | แอดมินไม่ได้รับสรุปเลย — ฟีเจอร์ REQ-023 ทั้งอันเงียบสนิท |
 
@@ -100,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File C:\sm-jobs\daily-digest.ps1
 เปิด **Command Prompt (Run as Administrator)**
 
 ```cmd
-schtasks /create /tn "sm-end-of-day" /sc DAILY /st 23:30 ^
+schtasks /create /tn "sm-end-of-day" /sc DAILY /st 17:30 ^
   /tr "powershell -ExecutionPolicy Bypass -File C:\sm-jobs\end-of-day.ps1"
 
 schtasks /create /tn "sm-month-reset" /sc MONTHLY /d 1 /st 00:05 ^

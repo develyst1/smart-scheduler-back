@@ -26,6 +26,7 @@ import { db } from "../db";
 import { bookings, coursePackages, jobRuns, lineWebhookEvents, notificationOutbox, vouchers } from "../db/schema";
 import { bangkokNow } from "../lib/bangkok-time";
 import { discountKey, postBookingSale, recordSale, revGeneration, revKey } from "../lib/sale-post";
+import { isSwept, postingWhere, startedSql, sweepDates } from "../lib/day-end-sweep"; // 🔻 TASK-749 (REQ-130)
 import { OTHER_BOOKING_REF, SALE_SOURCE, listPriceMinor, revenueItemRef } from "../lib/sale-items";
 import { safeStoredDiscount } from "../lib/discount-plan";
 import { getDailyReport, groupKindOf, resolvePriceGroup } from "./scheduler.service";
@@ -56,17 +57,8 @@ export async function runEndOfDayJob(date?: string) {
   const runDate = date ?? now.date;
 
   const marked = await db.transaction(async (tx) => {
-    // Which CONFIRMED classes on runDate have already STARTED? (TASK-396 — the owner's ruling; it was "ended".)
-    //  - past date  → all of them
-    //  - today      → only those whose START time is at/behind the Bangkok clock
-    //  - future     → none
-    const ended =
-      runDate < now.date
-        ? sql`true`
-        : runDate === now.date
-          ? sql`${bookings.startTime} <= ${now.time}::time`
-          : sql`false`;
-
+    // Which CONFIRMED classes have already STARTED? (TASK-396 — the owner's ruling; it was "ended".) A past date → all of them · today → only those whose START time is at/behind the Bangkok clock · a future date → none.
+    // 🔁 TASK-749: that rule now applies to every day of the window `runDate − 7 … runDate` — see `sweepDates` + `startedSql` (lib/day-end-sweep.ts), wired in the `where` below, where the gate lives.
     const due = await tx
       .select({
         id: bookings.id,
@@ -80,7 +72,9 @@ export async function runEndOfDayJob(date?: string) {
       .from(bookings)
       // 🔴 TASK-492 (Sober ❓2) — a session whose check-in an admin UNDID is not auto-attended: the admin decides what it becomes.
       // Without this the Undo would be re-done at the cut, the unit consumed again and the deduction message sent.
-      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended, notUndoneAttendance()));
+      // 🔁 TASK-749 (widened, the owner's rule) — every day of the window `runDate − 7 … runDate`, still CONFIRMED only (never EXTENDED), the START passed (`startedSql`), an undone check-in kept out. A class confirmed
+      // after day D's run is cut by D+1's run.
+      .where(and(inArray(bookings.date, sweepDates(runDate)), eq(bookings.status, "CONFIRMED"), startedSql(now), notUndoneAttendance()));
 
     let coursesAutoAttended = 0;
     let vouchersAutoAttended = 0;
@@ -160,9 +154,13 @@ export async function runEndOfDayJob(date?: string) {
   // `rev:<bookingId>` key as the trial/single path — deliberately, so SPEC-069's "this booking's revenue is
   // already posted" warning covers อื่นๆ the day this lands, with no second lookup and no type list to keep in
   // step. Its amount does not come from a product code, so it takes the `postBookingSale` branch below.
+  // 🔻 TASK-749 (REQ-130) — the day-end posts the rows dated `runDate` AND the last 7 days' ATTENDED ones that never reached the books (an early run with no later run, a missed run, a late check-in). They go
+  // through THIS SAME loop — the same price / discount resolution, `postOtherBookingSale` and the generation-aware key; there is NO pre-filter by «has a SALE movement» (a re-attended booking has SALE movements
+  // and still needs its NEXT generation): the keys decide. The sweep only POSTS — the auto-attend above stays on `runDate` alone. `revenuePosted` stays today's; the older ones count in `sweptPosted`.
   const attended = await db
     .select({
       id: bookings.id,
+      date: bookings.date,
       bookingType: bookings.bookingType,
       subjectId: bookings.subjectId,
       // TASK-399 — a walk-in SEAT posts by its GROUP's kind, not its subject (else a DUO seat would post the Private price).
@@ -179,20 +177,16 @@ export async function runEndOfDayJob(date?: string) {
       discountActor: bookings.discountActor,
     })
     .from(bookings)
-    .where(
-      and(
-        eq(bookings.date, runDate),
-        eq(bookings.status, "ATTENDED"),
-        inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"]),
-      ),
-    );
+    .where(postingWhere(runDate));
 
   let revenuePosted = 0;
+  let sweptPosted = 0;
   for (const b of attended) {
+    const swept = isSwept(b.date, runDate);
     // ── TASK-225: an อื่นๆ booking is priced by the BOOKING, not by a product code ──
     if (b.bookingType === "OTHER") {
       const res = await postOtherBookingSale(b);
-      if (res) revenuePosted++;
+      if (res) { if (swept) sweptPosted++; else revenuePosted++; }
       continue;
     }
     // TASK-077: a SINGLE_SESSION is priced by PROGRAM (1,690 / 1,390 / 1,090 an hour), so the item depends
@@ -233,7 +227,7 @@ export async function runEndOfDayJob(date?: string) {
       discountKey: discountKey(b.id, generation),
       discount,
     });
-    if (res.ok) revenuePosted++;
+    if (res.ok) { if (swept) sweptPosted++; else revenuePosted++; }
   }
 
   // 🔴 TASK-460 — sweep the webhook idempotency store (> WEBHOOK_EVENT_TTL_DAYS). It rides THIS job on purpose:
@@ -246,7 +240,7 @@ export async function runEndOfDayJob(date?: string) {
 
   // Report is read after the auto-mark so its counts reflect the newly-ATTENDED rows.
   const report = await getDailyReport(runDate);
-  const summary = { ...marked, revenuePosted, webhookEventsSwept: swept.length, report };
+  const summary = { ...marked, revenuePosted, sweptPosted, webhookEventsSwept: swept.length, report };
 
   await db.insert(jobRuns).values({
     job: "end-of-day",

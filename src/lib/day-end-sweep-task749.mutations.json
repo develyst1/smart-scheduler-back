@@ -1,0 +1,308 @@
+{
+  "task": "TASK-749",
+  "proves": "src/lib/day-end-sweep-task749.test.ts",
+  "tests": "src/lib/day-end-sweep-task749.test.ts",
+  "note": "REQ-130: the day-end also posts the last 7 days' ATTENDED trial / 1 HR / priced OTHER rows. The DoD's four = S1 the window ignored · S2 a pre-filter that loses the re-attend case · S4 a double post · S3 (REPLACED by the widening) the auto-attend window ignored, + S15 EXTENDED let in · S16 the undo guard dropped · S17 today's start gate dropped; the rest: counters, window size, types, status, summary, the row's date.",
+  "mutations": [
+    {
+      "id": "S1",
+      "what": "the window is ignored: only runDate is posted (the old behaviour)",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "inArray(bookings.date, sweepDates(runDate))",
+              "to": "inArray(bookings.date, [runDate])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "a filter that skips swept rows with a later generation (the «any SALE movement» family): the re-attend case is lost",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "const swept = isSwept(b.date, runDate);",
+              "to": "const swept = isSwept(b.date, runDate);\n    if (swept && (await revGeneration(b.id)) > 0) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "the window is ignored for the auto-attend (only runDate is cut)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "inArray(bookings.date, sweepDates(runDate)), eq(bookings.status, \"CONFIRMED\")",
+              "to": "eq(bookings.date, runDate), eq(bookings.status, \"CONFIRMED\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S15",
+      "what": "EXTENDED is let into the auto-attend",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "eq(bookings.status, \"CONFIRMED\"), startedSql(now)",
+              "to": "inArray(bookings.status, [\"CONFIRMED\", \"EXTENDED\"]), startedSql(now)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "what": "the undo guard is dropped from the auto-attend",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "startedSql(now), notUndoneAttendance()));",
+              "to": "startedSql(now)));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S17",
+      "what": "TODAY's start gate is dropped (a class that has not started is cut)",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "and ${bookings.startTime} <= ${now.time}::time",
+              "to": "and true"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S18",
+      "what": "a FUTURE date is cut (the past/today term is always true)",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "sql`(${bookings.date} < ${now.date} or (",
+              "to": "sql`(true or ("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S19",
+      "what": "hasStarted: today's boundary class (17:30 at 17:30) is not started",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "startTime.slice(0, 5) <= now.time.slice(0, 5)",
+              "to": "startTime.slice(0, 5) < now.time.slice(0, 5)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S20",
+      "what": "the posting block writes a booking again",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "const swept = isSwept(b.date, runDate);",
+              "to": "const swept = isSwept(b.date, runDate);\n    await db.update(bookings).set({ status: 'ATTENDED' }).where(eq(bookings.id, b.id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "a double post: a priced OTHER is posted twice",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "const res = await postOtherBookingSale(b);",
+              "to": "await postOtherBookingSale(b);\n      const res = await postOtherBookingSale(b);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "what": "a swept OTHER is counted as today's",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "if (res) { if (swept) sweptPosted++; else revenuePosted++; }",
+              "to": "if (res) { revenuePosted++; }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6",
+      "what": "a swept trial / 1 HR is counted as today's",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "if (res.ok) { if (swept) sweptPosted++; else revenuePosted++; }",
+              "to": "if (res.ok) { revenuePosted++; }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S7",
+      "what": "the window is 30 days, not the digest's 7",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "export const SWEEP_WINDOW_DAYS = NOT_POSTED_WINDOW_DAYS;",
+              "to": "export const SWEEP_WINDOW_DAYS = 30;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S8",
+      "what": "a COURSE_PACKAGE row is selected",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "export const POSTING_TYPES = [\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"OTHER\"] as const;",
+              "to": "export const POSTING_TYPES = [\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"OTHER\", \"COURSE_PACKAGE\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S9",
+      "what": "an undone (CONFIRMED again) row is selected too",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "eq(bookings.status, \"ATTENDED\")",
+              "to": "inArray(bookings.status, [\"ATTENDED\", \"CONFIRMED\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "what": "the count is not in the job summary",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "revenuePosted, sweptPosted, webhookEventsSwept",
+              "to": "revenuePosted, webhookEventsSwept"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "what": "today's rows count as swept (`<=`)",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "rowDate < runDate",
+              "to": "rowDate <= runDate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "what": "the row's date is not read (every row looks like today's)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "      date: bookings.date,\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S13",
+      "what": "the window is one day short (runDate itself drops out)",
+      "files": [
+        {
+          "file": "src/lib/day-end-sweep.ts",
+          "edits": [
+            {
+              "from": "Array.from({ length: days + 1 }",
+              "to": "Array.from({ length: days }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "what": "the old query is back in the job (date = runDate)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": ".where(postingWhere(runDate));",
+              "to": ".where(and(eq(bookings.date, runDate), eq(bookings.status, \"ATTENDED\"), inArray(bookings.bookingType, [\"FIRST_TRIAL\", \"SINGLE_SESSION\", \"OTHER\"])));"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

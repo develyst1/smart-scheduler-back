@@ -321,7 +321,7 @@ describe("🔴 a FALSE CHECK-IN — back to CONFIRMED, the unit returned, SILENT
     expect(sql).toBe(`not exists (select 1 from "booking_undos" where "booking_undos"."booking_id" = "bookings"."id" and "booking_undos"."kind" in ('checkin', 'attendance'))`);
     const JOB = src("src/services/jobs.service.ts");
     const due = JOB.slice(JOB.indexOf("const due = await tx"), JOB.indexOf("let coursesAutoAttended"));
-    expect(due).toContain('.where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended, notUndoneAttendance()));');
+    expect(due).toContain('.where(and(inArray(bookings.date, sweepDates(runDate)), eq(bookings.status, "CONFIRMED"), startedSql(now), notUndoneAttendance()));'); // 🔻 TASK-749 — the date term is the 7-day window, `ended` is `startedSql(now)`; CONFIRMED-only and the undo guard kept
   });
 });
 

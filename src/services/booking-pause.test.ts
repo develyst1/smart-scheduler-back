@@ -238,7 +238,7 @@ describe("🔴 AC-17 — a paused booking is absent from the day-end sweep too",
   });
 
   test("…and the revenue sweep beside it names its types explicitly, so PAUSED is not in reach", () => {
-    expect(code(JOBS)).toContain('inArray(bookings.bookingType, ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"])');
-    expect(code(JOBS)).toContain('eq(bookings.status, "ATTENDED")');
+    expect(code(readSrc(require("node:fs").readFileSync(new URL("../lib/day-end-sweep.ts", import.meta.url), "utf8")))).toContain('export const POSTING_TYPES = ["FIRST_TRIAL", "SINGLE_SESSION", "OTHER"] as const;'); // 🔻 TASK-749: the sweep's type list moved to lib/day-end-sweep.ts (POSTING_TYPES)
+    expect(code(readSrc(require("node:fs").readFileSync(new URL("../lib/day-end-sweep.ts", import.meta.url), "utf8")))).toContain('eq(bookings.status, "ATTENDED")'); // 🔻 TASK-749: the posting select's status term now lives in lib/day-end-sweep.ts (postingWhere)
   });
 });

@@ -62,7 +62,7 @@ describe("🚫 the job's select is CONFIRMED-only and BYTE-frozen — the fix is
     // 🔻 TASK-492 (Sober's ruling ❓2) — the literal moved ON PURPOSE: one clause added, `notUndoneCheckin()` — a session whose
     // check-in an admin UNDID is not auto-attended (else the Undo is re-done at the cut and the deduction message sent). Still
     // CONFIRMED-only, still no status list; the clause narrows the set, never widens it.
-    expect(JOB).toContain('      .where(and(eq(bookings.date, runDate), eq(bookings.status, "CONFIRMED"), ended, notUndoneAttendance()));'); // 🔻 TASK-497 — renamed + widened (any undone attendance)
+    expect(JOB).toContain('      .where(and(inArray(bookings.date, sweepDates(runDate)), eq(bookings.status, "CONFIRMED"), startedSql(now), notUndoneAttendance()));'); // 🔻 TASK-497 — renamed + widened (any undone attendance) · 🔻 TASK-749 — the date term is now the 7-day window and `ended` is `startedSql(now)` (lib/day-end-sweep.ts); CONFIRMED-only, no EXTENDED, the undo guard: all kept
     expect(code(JOB)).not.toMatch(/inArray\(bookings\.status/);
     expect(code(JOB)).not.toContain('"EXTENDED"');
   });
