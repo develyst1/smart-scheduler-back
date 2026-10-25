@@ -37,6 +37,7 @@
     "teacher-subjects:link-all": "bun run scripts/link-all-teacher-subjects.ts",
     "demographics:repair": "bun run scripts/repair-demographics.ts",
     "sale:reconcile-prices": "bun run scripts/reconcile-sale-prices.ts",
+    "sale:reverse-duplicates": "bun run scripts/reverse-duplicate-sales.ts",
     "courses:audit-imports": "bun run scripts/audit-imported-courses.ts",
     "course:cleanup": "bun run scripts/cleanup-course.ts",
     "course:repair-expiry": "bun run scripts/repair-course-expiry.ts",

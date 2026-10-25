@@ -1,0 +1,173 @@
+{
+  "task": "TASK-750",
+  "proves": "src/lib/duplicate-sale-reversal-task750.test.ts",
+  "tests": "src/lib/duplicate-sale-reversal-task750.test.ts",
+  "note": "REQ-130: the one-off duplicate-sale reversal. The DoD's six = Q1 reverse the HIGHEST (bites on the Undo-after case) · Q2 the list price instead of the net · Q3 the 100% discount not skipped · Q4 the dry run not rolled back · Q5 the existing-reversal skip removed · Q6 the date floor removed; the rest: signs, ref_id, key, generation gaps, the written count.",
+  "mutations": [
+    {
+      "id": "Q1",
+      "what": "the HIGHEST live generation is reversed instead of the lowest (a later Undo then hits an already-reversed key)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "for (const g of live.slice(0, -1)) {",
+              "to": "for (const g of live.slice(1)) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "what": "the LIST price is reversed instead of the net (the discount is ignored)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "const net = sale.valueMinor + (byKey.get(discountKey(bookingId, g))?.valueMinor ?? 0);",
+              "to": "const net = sale.valueMinor;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q3",
+      "what": "a 100 % discounted generation is NOT skipped (a ฿0 row is written)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "if (net === 0) continue;",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q4",
+      "what": "the dry run is not rolled back (it writes)",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "if (!commit) throw new Error(DRY_RUN_ROLLBACK);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q5",
+      "what": "the already-reversed skip is removed (a reversed duplicate still counts as live)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "&& !byKey.has(revUndoKey(bookingId, g))",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q6",
+      "what": "the date floor is removed (a booking before 2026-09-06 is planned)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "if (r.date < floor) continue;",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q7",
+      "what": "the reversal's qty keeps the sale's sign",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "qty: -sale.qty,",
+              "to": "qty: sale.qty,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q8",
+      "what": "the reversal is filed under the wrong ref_id",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "refId: r.bookingId,",
+              "to": "refId: r.idempotencyKey,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q9",
+      "what": "a generation gap is missed (the scan stops one short)",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "for (let g = 0; g <= rows.length; g++) {",
+              "to": "for (let g = 0; g < rows.length; g++) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q10",
+      "what": "the reversal key is not the attendance-undo key",
+      "files": [
+        {
+          "file": "src/lib/duplicate-sale-reversal.ts",
+          "edits": [
+            {
+              "from": "idempotencyKey: revUndoKey(bookingId, g) }",
+              "to": "idempotencyKey: revKey(bookingId, g) + '-x' }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q11",
+      "what": "the script counts a skipped (conflicting) insert as written",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "result.written += wrote.length;",
+              "to": "result.written += 1;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
