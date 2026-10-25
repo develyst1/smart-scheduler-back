@@ -10,9 +10,16 @@
 import { like, or, sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { boMovement, bookings } from "../src/db/schema";
-import { formatDuplicatePlan, planAll, type BookingPlan } from "../src/lib/duplicate-sale-reversal";
+import { formatDuplicatePlan, formatTarget, planAll, type BookingPlan, type RunTarget } from "../src/lib/duplicate-sale-reversal";
 
 const DRY_RUN_ROLLBACK = "__dry_run_rollback__";
+
+/** The database and server this transaction is connected to (`current_database()`, `inet_server_addr()`). Read from the server itself, so it is what is REALLY connected — never the env value, which could be a user, a password or a URL. */
+export async function readTarget(tx: any): Promise<RunTarget> {
+  const res: any = await tx.execute(sql`select current_database() as db, coalesce(inet_server_addr()::text, 'local-socket') as host`);
+  const row = (Array.isArray(res) ? res : res.rows)[0];
+  return { database: String(row.db), host: String(row.host) };
+}
 
 export interface ReverseResult { plans: BookingPlan[]; written: number; rolledBack: boolean }
 
@@ -21,6 +28,7 @@ export async function reverseDuplicates(exec: any, commit: boolean, log: (line: 
   let result: ReverseResult = { plans: [], written: 0, rolledBack: false };
   try {
     await exec.transaction(async (tx: any) => {
+      log(formatTarget(await readTarget(tx))); // FIRST: which database is this pointed at (a wrong box must be seen before anything else)
       const found = await tx
         .select({
           key: boMovement.idempotencyKey,

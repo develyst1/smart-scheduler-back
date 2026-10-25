@@ -68,6 +68,10 @@ export function planAll(rows: readonly BookingLedgerRow[], floor: string = DUPLI
   return plans.sort((a, b) => a.date.localeCompare(b.date) || a.bookingId.localeCompare(b.bookingId));
 }
 
+/** Which database a run is pointed at — printed BEFORE the plan so the owner can see, before any `--commit`, that it is the box he meant. The database name and the server host ONLY: never a user, a password or a URL. */
+export interface RunTarget { database: string; host: string }
+export const formatTarget = (t: RunTarget): string => `เป้าหมาย: ${t.database} @ ${t.host}`;
+
 const baht = (minor: number) => (minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
 /** The review gate before a live money write: one line per booking (id · date · type · generations reversed · net THB), then the count and the total. IDS and AMOUNTS only — no names. */

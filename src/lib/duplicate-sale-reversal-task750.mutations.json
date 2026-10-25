@@ -168,6 +168,70 @@
           ]
         }
       ]
+    },
+    {
+      "id": "T1",
+      "what": "REOPENED: the target line is dropped (the owner cannot see which DB it is pointed at)",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "log(formatTarget(await readTarget(tx))); // FIRST: which database is this pointed at (a wrong box must be seen before anything else)",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "what": "REOPENED: the target is printed AFTER the plan, not before it",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "log(formatTarget(await readTarget(tx))); // FIRST: which database is this pointed at (a wrong box must be seen before anything else)",
+              "to": ""
+            },
+            {
+              "from": "log(formatDuplicatePlan(plans));",
+              "to": "log(formatDuplicatePlan(plans));\n      log(formatTarget(await readTarget(tx)));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "what": "REOPENED: the target line leaks the connection URL from the environment",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "log(formatTarget(await readTarget(tx))); // FIRST: which database is this pointed at (a wrong box must be seen before anything else)",
+              "to": "log(formatTarget(await readTarget(tx)) + ' ' + process.env.DATABASE_URL);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "what": "REOPENED: the target names the server's address as the database (and the db as the host)",
+      "files": [
+        {
+          "file": "scripts/reverse-duplicate-sales.ts",
+          "edits": [
+            {
+              "from": "return { database: String(row.db), host: String(row.host) };",
+              "to": "return { database: String(row.host), host: String(row.db) };"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

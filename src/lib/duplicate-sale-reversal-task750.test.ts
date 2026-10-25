@@ -2,7 +2,7 @@
 // nothing, a later attendance Undo (`reverseBookingSale`) still reverses the remaining live sale, and a re-attend posts the next generation once. The script is NEVER run against a database: only its function, here.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { DUPLICATE_REVERSAL_REASON, DUPLICATE_SALE_FLOOR, formatDuplicatePlan, planAll, planDuplicateReversals, type BookingLedgerRow, type LedgerRow } from "./duplicate-sale-reversal";
+import { DUPLICATE_REVERSAL_REASON, DUPLICATE_SALE_FLOOR, formatDuplicatePlan, formatTarget, planAll, planDuplicateReversals, type BookingLedgerRow, type LedgerRow } from "./duplicate-sale-reversal";
 import { discountKey, revKey, revUndoKey } from "./sale-post";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
@@ -83,6 +83,8 @@ const spies: Array<{ mockRestore: () => void }> = [];
 const BOOKINGS: Record<string, { date: string; type: string }> = {};
 /** A key another writer takes between our read and our write: the insert for it conflicts and writes nothing. */
 let raceKey: string | null = null;
+/** What the fake server answers to «which database am I»: a name and a host — never a credential. */
+const TARGET = { db: "sid_db", host: "10.0.0.5" };
 
 function world() {
   ledger = [];
@@ -112,6 +114,7 @@ function world() {
     transaction: async (fn: (tx: any) => Promise<void>) => {
       const snapshot = ledger.map((r) => ({ ...r }));
       const tx = {
+        execute: async () => [{ db: TARGET.db, host: TARGET.host }], // `select current_database(), inet_server_addr()`
         select: () => ({
           from: () => ({
             innerJoin: () => ({
@@ -178,6 +181,46 @@ describe("🔴 TASK-750 — the script's function against a stateful fake ledger
     raceKey = "rev-undo:b1";
     const r = await script.reverseDuplicates(exec, true, quiet);
     expect([r.plans.length, r.written]).toEqual([1, 0]);
+  });
+  test("🔴 TASK-750 reopened — the TARGET is printed FIRST, before the plan, in a dry run AND a commit; it names the database and the host and nothing else", async () => {
+    const exec = world();
+    seed("b1", "2026-10-18", [sale("b1", 0), sale("b1", 1)]);
+    for (const commit of [false, true]) {
+      const lines: string[] = [];
+      await script.reverseDuplicates(exec, commit, (l) => lines.push(l));
+      expect(lines[0]).toBe("เป้าหมาย: sid_db @ 10.0.0.5");
+      expect(lines[0]).toBe(formatTarget({ database: "sid_db", host: "10.0.0.5" }));
+      expect(lines.findIndex((l) => l.includes("ต้องกลับรายการ"))).toBeGreaterThan(0); // the plan comes AFTER the target
+    }
+  });
+  test("the output leaks no user, password or URL: not the DATABASE_URL in the environment, nor any piece of it", async () => {
+    const exec = world();
+    seed("b1", "2026-10-18", [sale("b1", 0), sale("b1", 1)]);
+    const lines: string[] = [];
+    await script.reverseDuplicates(exec, false, (l) => lines.push(l));
+    const out = lines.join("\n");
+    const url = new URL(process.env.DATABASE_URL!);
+    expect(out).not.toContain(process.env.DATABASE_URL!);
+    expect(out).not.toContain(`${url.username}:${url.password}@`); // the credential pair, whatever its length
+    for (const piece of [url.username, url.password, "postgres://", "postgresql://"]) if (piece.length >= 3) expect(out).not.toContain(piece); // (a 1-2 character fixture would match ordinary text)
+  });
+  test("the target is read FROM THE SERVER (current_database / inet_server_addr), never from the environment: the script does not print any env value", async () => {
+    const t = await Bun.file(new URL("../../scripts/reverse-duplicate-sales.ts", import.meta.url)).text();
+    expect(t).toContain("current_database()");
+    expect(t).toContain("inet_server_addr()");
+    expect(t.replace(/^\s*\/\/.*$/gm, "")).not.toMatch(/process\.env\.(?!NODE_ENV)/);
+  });
+  test("🔴 the run doc: runs from the owner's LOCAL checkout with the two `--env-file` commands, says to read the target line before `--commit`, matches the dry run's total to SQL 2 — and holds no env value", async () => {
+    const d = await Bun.file(new URL("../../docs/RUN-reverse-duplicate-sales.md", import.meta.url)).text();
+    expect(d).toContain("bun --env-file=.env.sid run sale:reverse-duplicates");
+    expect(d).toContain("bun --env-file=.env.uat run sale:reverse-duplicates");
+    expect(d).toContain("-- --commit");
+    expect(d).toContain("เครื่อง local");
+    expect(d).toContain("เป้าหมาย: <ชื่อฐานข้อมูล> @ <โฮสต์>");
+    expect(d).toContain("SQL 2");
+    expect(d).toContain("ไฟล์ `.env` ปกติอาจชี้ไปที่ฐานข้อมูลไหนก็ได้ — ใส่ `--env-file` ทุกครั้ง และอ่านบรรทัด `เป้าหมาย:` ก่อนเสมอ"); // the doc does not state what `.env` points at
+    expect(d).not.toContain("ระบบจริงของลูกค้า");
+    expect(d).not.toMatch(/postgres(ql)?:\/\/|(DATABASE_URL|PASSWORD|SECRET|TOKEN|LIFF_ID)\s*=/i);
   });
   test("it is APPEND-ONLY: the original movements are untouched, and a booking dated before the floor is left alone", async () => {
     const exec = world();
