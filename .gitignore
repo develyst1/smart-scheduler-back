@@ -119,3 +119,4 @@ dist
 # drizzle config resolves `drizzle-kit` from node_modules. Removed on every exit path; this line is the net.
 .migrate-through-*
 dist.zip
+fetch-reset-build.sh
