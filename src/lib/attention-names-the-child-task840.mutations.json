@@ -1,0 +1,43 @@
+{
+  "task": "TASK-840",
+  "proves": "src/lib/attention-names-the-child-task840.test.ts",
+  "note": "REQ-132 — the two entitlement checks lead with the child and link to their course / voucher; the LINE digest stays counts-only. C1 the name dropped (nearly finished) · C2 a DUO course shows ONE child · C3 the digest gains names · C4 link.kind wrong for a voucher · C5 the link missing on a nearly-finished course · C6 another check (unconfirmed) gains a link · C7 an expiring voucher not led by the child.",
+  "tests": "src/lib/attention-names-the-child-task840.test.ts",
+  "mutations": [
+    {
+      "id": "C1",
+      "what": "🔴 the child's name is dropped from a nearly-finished course's label",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "label: `${childLead(c)}course ${c.size} · เหลือ ${courseRemainingSessions(c)}`,", "to": "label: `course ${c.size} · เหลือ ${courseRemainingSessions(c)}`," }] }]
+    },
+    {
+      "id": "C2",
+      "what": "🔴 a DUO course shows ONE child (the first), not both",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "const names = studentNamesOf(row);", "to": "const names = row.student?.nickname ?? row.student?.name ?? null;" }] }]
+    },
+    {
+      "id": "C3",
+      "what": "🔴 the LINE digest gains names — the expiring check is listed person by person",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "titleKey: \"att_expiring_entitlements\",\n", "to": "titleKey: \"att_expiring_entitlements\",\n    namesPeopleInDigest: true,\n" }] }]
+    },
+    {
+      "id": "C4",
+      "what": "🔴 `link.kind` is wrong for a voucher (it opens a course)",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "link: { kind: \"voucher\" as const, id: v.id }", "to": "link: { kind: \"course\" as const, id: v.id }" }] }]
+    },
+    {
+      "id": "C5",
+      "what": "the link is missing on a nearly-finished course",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "\n          link: { kind: \"course\" as const, id: c.id },\n        })),", "to": "\n        }))," }] }]
+    },
+    {
+      "id": "C6",
+      "what": "🔴 another check (unconfirmed bookings) gains a `link` — the other checks must stay byte-identical",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": " · ${b.teacher?.nickname ?? \"-\"}`,\n        })),", "to": " · ${b.teacher?.nickname ?? \"-\"}`,\n          link: { kind: \"course\" as const, id: b.id },\n        }))," }] }]
+    },
+    {
+      "id": "C7",
+      "what": "an expiring voucher's label is NOT led by the child",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "label: `${childLead(v)}voucher ${v.totalHours}h", "to": "label: `voucher ${v.totalHours}h" }] }]
+    }
+  ]
+}

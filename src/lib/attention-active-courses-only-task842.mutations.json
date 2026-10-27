@@ -1,0 +1,23 @@
+{
+  "task": "TASK-842",
+  "proves": "src/lib/attention-active-courses-only-task842.test.ts",
+  "note": "REQ-132 🟡 — the two Attention course checks count ACTIVE courses only. A the status check dropped from isNearlyFinishedCourse · B dropped from the expiring course predicate · C ACTIVE widened to 'not CANCELLED' (a paused course gets back in).",
+  "tests": "src/lib/attention-active-courses-only-task842.test.ts",
+  "mutations": [
+    {
+      "id": "A",
+      "what": "🔴 the status check is dropped from isNearlyFinishedCourse",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "): boolean => isActiveCourse(c, today) && courseEligible(c, today) && courseRemainingSessions(c)", "to": "): boolean => courseEligible(c, today) && courseRemainingSessions(c)" }] }]
+    },
+    {
+      "id": "B",
+      "what": "🔴 the status check is dropped from the expiring course predicate",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "): boolean => isActiveCourse(c, today) && courseEligible(c, today) && isExpiringSoon(", "to": "): boolean => courseEligible(c, today) && isExpiringSoon(" }] }]
+    },
+    {
+      "id": "C",
+      "what": "🔴 \"ACTIVE\" widened to \"not CANCELLED\" — a paused course gets back in",
+      "files": [{ "file": "src/lib/attention.ts", "edits": [{ "from": "today) === \"ACTIVE\";", "to": "today) !== \"CANCELLED\";" }] }]
+    }
+  ]
+}

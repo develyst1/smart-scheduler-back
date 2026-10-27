@@ -33,7 +33,7 @@ export interface AttentionCheckResult {
   title: string;
   /** null = this check failed to run (degraded); the rest of the digest still goes out. */
   count: number | null;
-  items: Array<{ id: string; label: string; hint?: string }>;
+  items: Array<{ id: string; label: string; hint?: string; link?: { kind: "course" | "voucher"; id: string } }>; // 🔻 TASK-840: `link` only on the two entitlement checks
   error?: string;
 }
 

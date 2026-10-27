@@ -9,7 +9,8 @@
 // to prevent.
 
 import { courseEligible, courseRemainingSessions, voucherEligible } from "./eligibility";
-import { displayNameOf } from "../db/mappers";
+import { courseStatus } from "./course-status";
+import { displayNameOf, studentNamesOf } from "../db/mappers";
 import { isGroupSlotClash } from "./group-clash";
 import { overLimit } from "./freelance-budget";
 import { t, type Lang } from "./line-i18n";
@@ -46,11 +47,19 @@ export const teacherNeedsLine = (t: {
 export const isExpiringSoon = (expiryDate: string, today: string, cutoff: string): boolean =>
   expiryDate >= today && expiryDate <= cutoff;
 
-/** Still-active course that is nearly used up. Delegates to `courseEligible` for "still active". */
-export const isNearlyFinishedCourse = (
-  c: { size: number; usedSessions: number; expiryDate: string },
+/**
+ * 🔻 TASK-842 (REQ-132) — an ACTIVE course, by THE one status rule (`courseStatus`): `courseEligible` alone never looked at `endedAt` / `droppedAt`, so an ended (ตัดจบ / ยกเลิก) or paused (พักคอร์ส) course was counted. A row without the two fields reads as not ended / not paused.
+ */
+const isActiveCourse = (
+  c: { size: number; usedSessions: number; expiryDate: string; endedAt?: Date | string | null; droppedAt?: Date | string | null },
   today: string,
-): boolean => courseEligible(c, today) && courseRemainingSessions(c) <= NEARLY_FINISHED_SESSIONS;
+): boolean => courseStatus({ ...c, endedAt: c.endedAt ?? null, droppedAt: c.droppedAt ?? null }, today) === "ACTIVE";
+
+/** Still-active course that is nearly used up. Delegates to `courseEligible` for "sessions left, not past expiry" and `courseStatus` for "not ended / paused". */
+export const isNearlyFinishedCourse = (
+  c: { size: number; usedSessions: number; expiryDate: string; endedAt?: Date | string | null; droppedAt?: Date | string | null },
+  today: string,
+): boolean => isActiveCourse(c, today) && courseEligible(c, today) && courseRemainingSessions(c) <= NEARLY_FINISHED_SESSIONS;
 
 /**
  * Freelance ceiling at/near its cap — reads the SAME `remaining` (hours) the calendar's `overLimit` uses.
@@ -122,10 +131,10 @@ export const isDiscountNotApplied = (
 
 /** Course still active and expiring soon. */
 export const isCourseExpiringSoon = (
-  c: { size: number; usedSessions: number; expiryDate: string },
+  c: { size: number; usedSessions: number; expiryDate: string; endedAt?: Date | string | null; droppedAt?: Date | string | null },
   today: string,
   cutoff: string,
-): boolean => courseEligible(c, today) && isExpiringSoon(c.expiryDate, today, cutoff);
+): boolean => isActiveCourse(c, today) && courseEligible(c, today) && isExpiringSoon(c.expiryDate, today, cutoff);
 
 /**
  * A future course session whose teacher can no longer take it — **archived** or **no longer works that
@@ -159,7 +168,17 @@ export interface AttentionItem {
   id: string;
   label: string;
   hint?: string;
+  /** 🔻 TASK-840 (REQ-132) — where the front opens this item: ONLY the two entitlement checks carry it (every other check has no `link` key). */
+  link?: { kind: "course" | "voucher"; id: string };
 }
+/**
+ * 🔻 TASK-840 (REQ-132) — the label of a course / voucher item LEADS with the child, through THE one name rule (`studentNamesOf`: a DUO course names both children, as every notice does); a row with no student keeps its label as before.
+ * Both rows already carry their student(s) (`getCourses` / `getVouchers` load them with the row) — no extra read. 🚫 Never in the LINE digest: these two checks are counts-only there (`namesPeopleInDigest` unset), names stay behind the login.
+ */
+const childLead = (row: any): string => {
+  const names = studentNamesOf(row);
+  return names ? `${names} · ` : "";
+};
 export interface AttentionResult {
   count: number;
   items: AttentionItem[];
@@ -268,8 +287,8 @@ const CHECKS = [
       return {
         count: courses.length + vouchers.length,
         items: [
-          ...courses.map((c) => ({ id: c.id, label: `course ${c.size} · ${c.expiryDate}` })),
-          ...vouchers.map((v) => ({ id: v.id, label: `voucher ${v.totalHours}h · ${v.expiryDate}` })),
+          ...courses.map((c) => ({ id: c.id, label: `${childLead(c)}course ${c.size} · ${c.expiryDate}`, link: { kind: "course" as const, id: c.id } })),
+          ...vouchers.map((v) => ({ id: v.id, label: `${childLead(v)}voucher ${v.totalHours}h · ${v.expiryDate}`, link: { kind: "voucher" as const, id: v.id } })),
         ],
       };
     },
@@ -283,7 +302,8 @@ const CHECKS = [
         count: rows.length,
         items: rows.map((c) => ({
           id: c.id,
-          label: `course ${c.size} · เหลือ ${courseRemainingSessions(c)}`,
+          label: `${childLead(c)}course ${c.size} · เหลือ ${courseRemainingSessions(c)}`,
+          link: { kind: "course" as const, id: c.id },
         })),
       };
     },
