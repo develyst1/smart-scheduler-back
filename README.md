@@ -1,5 +1,4 @@
 # smart-scheduler-back
-# SOM
 Scheduling API (Bun + Hono + Drizzle) — frontoffice backend.
 
 ## Run
