@@ -1,7 +1,7 @@
 {
   "task": "TASK-741",
   "proves": "src/lib/som-contract-task741.test.ts",
-  "note": "REQ-124 (1/3): GET /reports/som serves Palm's contract (filters + Today + Existing Customers + Demographic + Activity/Program). The DoD's six = M1-M4 the badge filter dropped from one section · M5 courseEligible's idea of active · M6/M7 CANCELLED counted · M8 the old age bands · M10/M11 the person-once rule broken · M12 month ignored; M38/M39 Today's rate (review 1: attended ÷ confirmed); the rest: the past-month rebuild, the declared defaults flipped, the READ's filters, the merge, the validator, and the old report touched.",
+  "note": "REQ-124 (1/3): GET /reports/som serves Palm's contract (filters + Today + Existing Customers + Demographic + Activity/Program). The DoD's six = M1-M4 the badge filter dropped from one section · M5 courseEligible's idea of active · M6/M7 CANCELLED counted · M8 the old age bands · M10/M11 the person-once rule broken · M12 month ignored; M38/M39 Today's rate (review 1: attended ÷ confirmed); the rest: the past-month rebuild, the declared defaults flipped, the READ's filters, the merge, the validator, and the old report touched. 754: M19 re-aimed (1 HR never moves out again) · K1 a cancelled course moves a child out of the trial / 1 HR boxes.",
   "tests": "src/lib/som-contract-task741.test.ts",
   "mutations": [
     {
@@ -280,14 +280,14 @@
     },
     {
       "id": "M19",
-      "what": "a course moves a 1 HR out (Q2.3 flipped)",
+      "what": "754: the 1 HR never moves out again (Q2.3's old default back)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "export const SINGLE_SESSION_MOVES_OUT = false;",
-              "to": "export const SINGLE_SESSION_MOVES_OUT = true;"
+              "from": "export const SINGLE_SESSION_MOVES_OUT = true;",
+              "to": "export const SINGLE_SESSION_MOVES_OUT = false;"
             }
           ]
         }
@@ -400,14 +400,29 @@
     },
     {
       "id": "M21",
-      "what": "K1 flipped: Active Course / Voucher count PACKAGES by default",
+      "what": "REQ-5002 Q2: the Active cards count PEOPLE again (the PACKAGES default reverted)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "\"PEOPLE\" | \"PACKAGES\" = \"PEOPLE\";",
-              "to": "\"PEOPLE\" | \"PACKAGES\" = \"PACKAGES\";"
+              "from": "\"PEOPLE\" | \"PACKAGES\" = \"PACKAGES\";",
+              "to": "\"PEOPLE\" | \"PACKAGES\" = \"PEOPLE\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K1",
+      "what": "754: a CANCELLED course takes the child out of the 1st Trial / 1 HR boxes again",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "courses.some((c) => !cancelled.has(c.id) && c.studentIds.includes(studentId)",
+              "to": "courses.some((c) => c.studentIds.includes(studentId)"
             }
           ]
         }
@@ -678,6 +693,186 @@
             {
               "from": "const RECENT_TRIAL_DAYS = 90; // ~3 months",
               "to": "const RECENT_TRIAL_DAYS = 91; // ~3 months"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q1",
+      "what": "755: an Active course needs no class after the as-of day",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "&& inBranch(c.id) && hasClassAfter(c.id));",
+              "to": "&& inBranch(c.id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "what": "755: a class ON the as-of day makes the course active (after = on or after)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": ".some((b) => b.date > asOf);",
+              "to": ".some((b) => b.date >= asOf);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q4",
+      "what": "755: Total counts ECA / camp / group rows too (not only lesson-type classes)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
+              "to": "for (const b of bookings) if (b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q5",
+      "what": "755: Total counts a CANCELLED class",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
+              "to": "for (const b of bookings) if (isLesson(b) && b.date <= asOf && passes(b))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q6",
+      "what": "755: Total is not cut at the as-of date for classes",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
+              "to": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && passes(b))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q7",
+      "what": "755: archived students stay in Total",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "  for (const id of archived) customers.delete(id);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q8",
+      "what": "755: Total counts a CANCELLED course",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
+              "to": "for (const c of courses) if (bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q9",
+      "what": "755: Total counts a course bought AFTER the as-of date",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
+              "to": "for (const c of courses) if (!cancelled.has(c.id) && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q10",
+      "what": "755: Total counts a CANCELLED voucher",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);",
+              "to": "for (const v of vouchers) if (bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q11",
+      "what": "755: Total counts a voucher bought AFTER the as-of date",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);",
+              "to": "for (const v of vouchers) if (!cancelled.has(v.id) && inBranch(v.id)) customers.add(v.studentId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q12",
+      "what": "755: Total ignores the branch filter for packs",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
+              "to": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf) for (const id of c.studentIds) customers.add(id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q13",
+      "what": "755: the READ does not hand the counters archivedAt",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "archivedAt: s.archivedAt ?? null, ",
+              "to": ""
             }
           ]
         }

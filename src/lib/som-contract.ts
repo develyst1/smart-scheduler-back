@@ -5,17 +5,41 @@
 // Palm's open questions (Q*) and the customer's open conflicts (K*) are answered here with the DEFAULTS of `CHECK-REQ-124` §4 — each one a named constant (or an injectable option) so a ruling is a
 // one-line flip + its pin. 🚫 Nothing here "improves" them.
 import { countDaily, LESSON_TYPES, type ReportRow } from "./daily-report";
+import { ENDED_EARLY } from "./course-plan";
 import { courseStatus, type CourseStatus } from "./course-status";
 import { ageFrom, breakdown, UNKNOWN_KEY, type Breakdown, type BreakdownBucket } from "./som-report";
 import { addDays } from "./time";
 import { voucherStatus, type VoucherStatus } from "./voucher";
 
-/** 🔒 K1 (the OWNER's, open) — what an Existing-Customers `activeCourse` / `activeVoucher` card counts: PEOPLE (Palm §2: «นักเรียน 1 คนมี 2 คอร์ส active = +1») or PACKAGES (the meeting paraphrase). Default Palm's. */
-export const ACTIVE_COUNT_UNIT: "PEOPLE" | "PACKAGES" = "PEOPLE";
+/**
+ * 🔒 REQ-5002 §5 Q2 (Khwan, via Porter 2026-11-05; supersedes K1) — an Existing-Customers `activeCourse` / `activeVoucher` card counts COURSES / VOUCHERS («A child with 2 courses = 2»), not people. Was PEOPLE (Palm's reading).
+ * The unit is still injectable (`activeUnit`) so both are tested.
+ */
+export const ACTIVE_COUNT_UNIT: "PEOPLE" | "PACKAGES" = "PACKAGES";
 /** 🔒 Q2.2 — a student who bought a VOUCHER after the trial also moves out of «1st Trial»? Default NO: only a COURSE moves a trial out (CHECK §4). */
 export const TRIAL_MOVES_OUT_ON_VOUCHER = false;
-/** 🔒 Q2.3 — «1 HR» uses the same move-out rule as 1st Trial? Default NO: a 1 HR never moves out (CHECK §4). */
-export const SINGLE_SESSION_MOVES_OUT = false;
+/** 🔒 REQ-5002 (Khwan, 2026-11-05: «1 HR (last 3 months) = เด็กที่ลงเฉพาะ 1hr ไม่เปิดคอร์สเลย 3 เดือนที่ผ่านมา») — a child who has opened a (non-cancelled) COURSE leaves the «1 HR» card; a voucher does not. Was false (Q2.3's default). */
+export const SINGLE_SESSION_MOVES_OUT = true;
+/**
+ * 🔒 REQ-5002 §5 Q6 (Khwan, via Porter 2026-11-05; amends TASK-754) — a Renew Course does NOT need the old purchase to have finished: «คอร์สต่อคอร์ส» — a course opened on a LATER DAY than an earlier (non-cancelled) course of the child, even one
+ * still running, and a voucher after a voucher; per purchase. true ⇒ the older rule (only after the old one FINISHED). 🚩 CHECK §10 flags it: the meeting's «ลูกค้าเดิมที่เรียนจบแล้วต่อคอร์สเพิ่ม» says «finished»; her later words
+ * (the sheet, 11-05) do not — and a child running a Bike course who opens a Surfskate course is now a Renew. ONE constant + its pin.
+ */
+export const RENEW_ONLY_AFTER_OLD_FINISHED = false;
+
+
+/**
+ * The ONE seam for «cancelled» (REQ-5002, as ruled by Porter 2026-11-05 on Khwan's REQ-126 words: ตัดจบคอร์ส is «ไม่ใช่การ pause ไว้ หรือ cancel ไป»): a course / voucher that was ENDED (`endedAt` set, whatever the date) with a reason
+ * OTHER THAN `ENDED_EARLY` is out of the purchases New vs Renewing and the move-out rules read — even one that taught a class before (TEST-136's ADMIN_ERROR). A course ended with `ENDED_EARLY` (ตัดจบคอร์ส) is NOT cancelled: it stays a
+ * purchase, counts as FINISHED for the next Renew, and appears in Not renewed with `endedAt` as its end day. A voucher can never carry that reason, so an ended voucher is always cancelled. (The as-of clock for Active course /
+ * voucher is a different question and is NOT touched.) No flip constant: the rule is the system's own recorded reason, not a guess.
+ */
+export function cancelledIds(input: { courses: readonly SomCourse[]; vouchers: readonly SomVoucher[] }): Set<string> {
+  const out = new Set<string>();
+  for (const c of input.courses) if (c.endedAt != null && c.endReason !== ENDED_EARLY) out.add(c.id);
+  for (const v of input.vouchers) if (v.endedAt != null) out.add(v.id);
+  return out;
+}
 
 /** Sessions that consumed the entitlement: `usedSessions` / `usedHours` go up on ATTEND and on the day-end NO_SHOW (CHECK M12). */
 export const USED_STATUSES: ReadonlySet<string> = new Set(["ATTENDED", "NO_SHOW"]);
@@ -74,6 +98,8 @@ export interface SomBooking {
 export interface ExpiryChange { fromDate: string; changedAt: Date | string }
 export interface SomCourse {
   id: string;
+  /** 🔻 754 — `course_packages.end_reason` (a closed set); `ENDED_EARLY` (ตัดจบคอร์ส) is the one that is NOT a cancel. Optional: only `cancelledIds` reads it. */
+  endReason?: string | null;
   studentIds: readonly string[];
   createdAt: Date | string;
   /** 🔻 742 — the course's program (its label «Course 10 · Bike»). */
@@ -107,6 +133,8 @@ export interface SomStudent {
   province: string | null;
   /** The ACTIVE parent's district code (REQ-118, `0069`); null before the admins fill it. */
   districtCode: string | null;
+  /** 🔻 755 — `students.archived_at` (TASK-392): an archived student is not a customer of the Total. Optional: only the Total reads it. */
+  archivedAt?: Date | string | null;
   /** 🔻 744 — the ACTIVE parent's sub-district code (REQ-118); null before the admins fill it. Optional: only `subdistrictByDistrict` reads it. */
   subdistrictCode?: string | null;
 }
@@ -215,16 +243,19 @@ export function countSom(input: SomContractInput): SomContractSections {
   const inBranch = (entitlementId: string): boolean => badges.size === 0 || (rowsOfEntitlement.get(entitlementId) ?? []).some(passes);
 
   const at = entitlementClock(bookings);
-  const activeCourses = courses.filter((c) => at.courseStatus(c, asOf) === "ACTIVE" && inBranch(c.id));
+  /** REQ-5002 §5 Q2: an Active course also has a class scheduled AFTER the as-of date — a row of it (status ≠ CANCELLED, whatever the status is NOW) dated later. `rowsOfEntitlement` already leaves the cancelled rows out. */
+  const hasClassAfter = (courseId: string): boolean => (rowsOfEntitlement.get(courseId) ?? []).some((b) => b.date > asOf);
+  const activeCourses = courses.filter((c) => at.courseStatus(c, asOf) === "ACTIVE" && inBranch(c.id) && hasClassAfter(c.id));
   const activeVouchers = vouchers.filter((v) => at.voucherStatus(v, asOf) === "ACTIVE" && inBranch(v.id));
   const courseHolders = new Set(activeCourses.flatMap((c) => [...c.studentIds]));
   const voucherHolders = new Set(activeVouchers.map((v) => v.studentId));
 
   /** 🔻 TEST-109 N1 — has this student BOUGHT a course (or, switch-gated, a voucher) no later than `asOf`, WHATEVER THE ORDER with his trial? A child who already holds a course is a course customer and leaves
-   *  the trial box even when the course was sold before the trial was booked (or imported). A purchase counts whatever became of it. */
+   *  the trial box even when the course was sold before the trial was booked (or imported). A cancelled purchase (REQ-5002) does not count; any other counts whatever became of it. */
+  const cancelled = cancelledIds(input);
   const boughtByAsOf = (studentId: string, withVouchers: boolean): boolean =>
-    courses.some((c) => c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf) ||
-    (withVouchers && vouchers.some((v) => v.studentId === studentId && bangkokDate(v.createdAt) <= asOf));
+    courses.some((c) => !cancelled.has(c.id) && c.studentIds.includes(studentId) && bangkokDate(c.createdAt) <= asOf) || // 🔻 REQ-5002: a CANCELLED course does not take the child out of the trial / 1 HR boxes
+    (withVouchers && vouchers.some((v) => !cancelled.has(v.id) && v.studentId === studentId && bangkokDate(v.createdAt) <= asOf));
 
   /** The students with a non-cancelled class of `type` dated in [from, to] (class date, Q2.4), and each one's EARLIEST such date. */
   const classesIn = (type: string, from: string, to: string): Map<string, string> => {
@@ -239,8 +270,16 @@ export function countSom(input: SomContractInput): SomContractSections {
   const singlesRecent = classesIn("SINGLE_SESSION", recentFromDate, monthTo);
   const recentFirstTrial = [...trialsRecent].filter(([id]) => !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
   const recentSingleSession = [...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
-  // Total = the distinct names of Active Course + Active Voucher at month end + 1st Trial + 1 HR of the SELECTED month only (Q2.7 — Palm's reading).
-  const totalCustomers = new Set([...courseHolders, ...voucherHolders, ...classesIn("FIRST_TRIAL", monthFrom, monthTo).keys(), ...classesIn("SINGLE_SESSION", monthFrom, monthTo).keys()]).size;
+  // Total customers (REQ-5002 §5 Q7 + §6.2 / §7.3, Khwan via Porter): every child KNOWN by the as-of date — a non-cancelled LESSON-type class (`isLesson`) dated on or before it, or a non-cancelled course / voucher bought on or before it — each name once;
+  // NOT the union of the four cards above it. Children with only ECA / camp / group rows are out, and so are ARCHIVED students (`archivedAt`, the old report's TASK-411 rule). Cut at the as-of date so a past month does not grow. The branch
+  // filter as elsewhere: a class by its own badge, a course / voucher through its rows.
+  const archived = new Set(input.students.filter((s) => s.archivedAt != null).map((s) => s.id));
+  const customers = new Set<string>();
+  for (const b of bookings) if (isLesson(b) && b.status !== "CANCELLED" && b.date <= asOf && passes(b)) for (const id of b.studentIds) customers.add(id);
+  for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);
+  for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);
+  for (const id of archived) customers.delete(id);
+  const totalCustomers = customers.size;
   const existingCustomers = {
     month,
     activeCourse: unit === "PEOPLE" ? courseHolders.size : activeCourses.length,
@@ -368,8 +407,10 @@ export interface NvrDetailRow {
   remark: null;
 }
 
-/** 🔒 Q3.7 — «the earlier course has ENDED» = it is CANCELLED (ended early), COMPLETED (used up) or EXPIRED. A PAUSED course (DROPPED) is not ended: the family is away, not finished (`lib/course-status.ts`). */
+/** 🔒 Q3.7 (REQ-5002) — «the earlier course has FINISHED» = it is COMPLETED (used up), EXPIRED, or CANCELLED-by-`ENDED_EARLY` (ตัดจบคอร์ส — the only course that still has `endedAt` here; every other ended one is out upstream, `cancelledIds`). A PAUSED course (DROPPED) is not finished: the family is away (`lib/course-status.ts`). */
 export const RENEW_ENDED_STATUSES: ReadonlySet<string> = new Set(["CANCELLED", "COMPLETED", "EXPIRED"]);
+/** 🔒 REQ-5002 line 9 — a VOUCHER renews only after an earlier VOUCHER that has FINISHED (used up / expired): not after a course. */
+export const VOUCHER_FINISHED_STATUSES: ReadonlySet<string> = new Set(["EXHAUSTED", "EXPIRED"]);
 
 const nameOfIds = (students: ReadonlyMap<string, SomStudent>, ids: readonly string[]): string =>
   ids.map((id) => { const s = students.get(id); return (s?.nickname || s?.name || id); }).join(" & ");
@@ -379,13 +420,16 @@ const nameOfIds = (students: ReadonlyMap<string, SomStudent>, ids: readonly stri
  * link and no course→renewal link is stored (CHECK M13). Dates are Bangkok calendar days; «buying» = the Bangkok day of `created_at` (Q3.5).
  */
 export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Record<NvrBucket, NvrDetailRow[]> } {
-  const { month, today, bookings, courses, vouchers } = input;
+  const { month, today, bookings } = input;
+  // 🔻 REQ-5002 — the purchases this section reads are the NON-cancelled ones: one seam (`cancelledIds`), then every rule below (the counted purchase, an earlier one, a later one, «no course», «not renewed») reads `courses` / `vouchers`.
+  const cancelled = cancelledIds(input);
+  const courses = input.courses.filter((c) => !cancelled.has(c.id));
+  const vouchers = input.vouchers.filter((v) => !cancelled.has(v.id));
   const badges = new Set(input.badgeValueIds);
   const passes = (b: SomBooking): boolean => badges.size === 0 || b.badgeIds.some((id) => badges.has(id));
   const students = new Map(input.students.map((s) => [s.id, s]));
   const subjectName = new Map(input.subjects.map((s) => [s.id, s.name]));
   const at = entitlementClock(bookings);
-  const prevMonth = addMonths(month, -1);
 
   // a course / voucher is «in a branch» only through its (non-cancelled) session rows (CHECK M5)
   const rowsOf = new Map<string, SomBooking[]>();
@@ -404,11 +448,18 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const lastDelivered = (id: string, key: "courseId" | "voucherId"): string | null =>
     bookings.filter((b) => b[key] === id && USED_STATUSES.has(b.status)).map((b) => b.date).sort().pop() ?? null;
 
-  // a child's 1st Trial = their EARLIEST non-cancelled FIRST_TRIAL class (class date, CHECK K2); its own badge decides the branch
+  // a child's TRIAL (class date); its own badge decides the branch. Two readings, both per REQ-5002 §5:
+  //  · `trialOf`    = the EARLIEST non-cancelled FIRST_TRIAL class, any status — where the New Course lines look (Q4 / Q5);
+  //  · `trialDone`  = the first one with status ATTENDED — «มาเรียน» (Q3): the «1st Trial» card and «1st Trial, no course» (which follows it).
   const trialOf = new Map<string, { date: string; teacherId: string | null; passes: boolean }>();
+  const trialDone = new Map<string, { date: string; teacherId: string | null; passes: boolean }>();
   for (const b of [...bookings].sort((x, y) => x.date.localeCompare(y.date) || (x.startTime ?? "").localeCompare(y.startTime ?? ""))) {
     if (b.bookingType !== "FIRST_TRIAL" || b.status === "CANCELLED") continue;
-    for (const id of b.studentIds) if (!trialOf.has(id)) trialOf.set(id, { date: b.date, teacherId: b.teacherId ?? null, passes: passes(b) });
+    for (const id of b.studentIds) {
+      const t = { date: b.date, teacherId: b.teacherId ?? null, passes: passes(b) };
+      if (!trialOf.has(id)) trialOf.set(id, t);
+      if (b.status === "ATTENDED" && !trialDone.has(id)) trialDone.set(id, t);
+    }
   }
   const buyDay = (x: { createdAt: Date | string }): string => bangkokDate(x.createdAt);
   const courseLabel = (c: SomCourse): string => `Course ${c.size}${c.subjectId && subjectName.has(c.subjectId) ? ` · ${subjectName.get(c.subjectId)}` : ""}`;
@@ -424,10 +475,10 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
     remark: null,
   });
 
-  // ── 1st Trial / 1st Trial, no course: people with a trial class this month ──
+  // ── 1st Trial / 1st Trial, no course: children whose first ATTENDED trial class is this month (REQ-5002 Q3) ──
   const firstTrial: NvrDetailRow[] = [];
   const trialNotConverted: NvrDetailRow[] = [];
-  for (const [id, t] of trialOf) {
+  for (const [id, t] of trialDone) {
     if (t.date.slice(0, 7) !== month || !t.passes) continue;
     const r = row({ studentIds: [id], trialDate: t.date, trialTeacherId: t.teacherId });
     firstTrial.push(r); // stays counted even after a course (§3)
@@ -441,7 +492,15 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const kindOf = (ids: readonly string[], day: string, except?: SomCourse): "NEW" | "RENEW" | "NEITHER" => {
     const earlier = earlierCourses(ids, day, except);
     if (earlier.length === 0) return "NEW";
+    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return "RENEW";
     return earlier.every((o) => RENEW_ENDED_STATUSES.has(at.courseStatus(o, day) ?? "")) ? "RENEW" : "NEITHER";
+  };
+  /** A voucher is never «new»; it renews only after an earlier VOUCHER of the child (bought on an earlier day) that has FINISHED — never after a course (REQ-5002 line 9). */
+  const voucherKind = (studentId: string, day: string, except?: SomVoucher): "RENEW" | "NEITHER" => {
+    const earlier = vouchers.filter((o) => o !== except && o.studentId === studentId && buyDay(o) < day);
+    if (earlier.length === 0) return "NEITHER";
+    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return "RENEW";
+    return earlier.every((o) => VOUCHER_FINISHED_STATUSES.has(at.voucherStatus(o, day) ?? "")) ? "RENEW" : "NEITHER";
   };
 
   const newCourseThisMonth: NvrDetailRow[] = [];
@@ -449,22 +508,21 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const renewCourse: NvrDetailRow[] = [];
   for (const c of courses) {
     const day = buyDay(c);
+    if (day.slice(0, 7) !== month || !inBranch(c.id)) continue; // every line below is about a course OPENED in the selected month
     const kind = kindOf(c.studentIds, day, c);
-    if (kind === "NEITHER" || !inBranch(c.id)) continue;
-    if (kind === "RENEW") {
-      if (day.slice(0, 7) === month) renewCourse.push(row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), date: day }));
-      continue;
-    }
-    // NEW course: counted in the month of the child's 1st Trial when they came from one (a trial BEFORE the purchase), else the month it was bought
-    const trial = c.studentIds.map((id) => trialOf.get(id)).filter((t): t is NonNullable<typeof t> => !!t && t.date <= day).sort((a, b) => a.date.localeCompare(b.date))[0];
-    const assigned = trial ? trial.date.slice(0, 7) : day.slice(0, 7);
-    const r = row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), trialTeacherId: trial?.teacherId ?? null, trialDate: trial?.date ?? null, date: day });
-    if (assigned === month) newCourseThisMonth.push(r);
-    else if (trial && assigned === prevMonth) newCoursePrevMonth.push(r); // «previous month» is a TRIAL month only
+    if (kind === "RENEW") renewCourse.push(row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), date: day }));
+    // New Course lines (REQ-5002 §5 Q4 / Q5, §7.1): the child's FIRST course (`kindOf` = NEW — no earlier non-cancelled course of his on an earlier day), opened this month, whose child's EARLIEST non-cancelled trial is on or before the buy
+    // day — in this month ⇒ «this month», in any earlier month ⇒ «previous month»; no trial ⇒ on neither. A later course is a Renew and is on NO New line, so no purchase sits on New and Renew together.
+    if (kind !== "NEW") continue;
+    const trial = c.studentIds.map((id) => trialOf.get(id)).filter((t): t is NonNullable<typeof t> => !!t).sort((x, y) => x.date.localeCompare(y.date))[0];
+    if (!trial || trial.date > day) continue;
+    const r = row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), trialTeacherId: trial.teacherId, trialDate: trial.date, date: day });
+    if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);
+    else newCoursePrevMonth.push(r);
   }
   for (const v of vouchers) {
     const day = buyDay(v);
-    if (day.slice(0, 7) !== month || !inBranch(v.id) || kindOf([v.studentId], day) !== "RENEW") continue; // a voucher is never «new»; it renews a child whose courses have all ended
+    if (day.slice(0, 7) !== month || !inBranch(v.id) || voucherKind(v.studentId, day, v) !== "RENEW") continue; // a voucher is never «new»; it renews only after a finished earlier VOUCHER (REQ-5002)
     renewCourse.push(row({ studentIds: [v.studentId], packageLabel: voucherLabel(v), courseTeacherId: firstTeacher(v.id), date: day }));
   }
 

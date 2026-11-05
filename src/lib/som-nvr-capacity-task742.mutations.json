@@ -1,18 +1,18 @@
 {
   "task": "TASK-742",
   "proves": "src/lib/som-nvr-capacity-task742.test.ts",
-  "note": "REQ-124 (2/3): SOM New vs Renewing (6 cards + the list endpoint) and Coach Capacity. The DoD's six = N1 a voucher counted without an ended course · N2 the purchase month used instead of the trial month · N3 renew without an ended course · N4 the list ≠ the card · N5 leave days not subtracted · N6 byType as an average of percentages; the rest: the weekday / weekend split, what counts as booked, the trial / renew / not-renewed rules, the READ, the route and its access.",
+  "note": "REQ-124 (2/3): SOM New vs Renewing (6 cards + the list endpoint) and Coach Capacity. The DoD's six = N1 a voucher counted without an ended course · N2 the purchase month used instead of the trial month · N3 renew without an ended course · N4 the list ≠ the card · N5 leave days not subtracted · N6 byType as an average of percentages; the rest: the weekday / weekend split, what counts as booked, the trial / renew / not-renewed rules, the READ, the route and its access. 754: C1–C15 = the cancelled seam (courses / vouchers, each reader: trial-no-course, later purchase, earlier purchase, own course, own voucher, not-renewed course / voucher), the voucher Renew rules, the Q1 and Q6 constants. 754 (ENDED_EARLY ruling): E1 the reason ignored · E2 only CUSTOMER_CANCELLED cancels · E3 an ended-early course not finished for Renew · E4 the service drops end_reason · E5 ended-early not in Not renewed; C14 (the Q1 flip) retired with its constant.",
   "tests": "src/lib/som-nvr-capacity-task742.test.ts",
   "mutations": [
     {
       "id": "N1",
-      "what": "a voucher is a RENEW whatever the child's history (no ended course needed)",
+      "what": "a voucher is a RENEW whatever the child's history (no earlier voucher needed)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "kindOf([v.studentId], day) !== \"RENEW\") continue;",
+              "from": "voucherKind(v.studentId, day, v) !== \"RENEW\") continue;",
               "to": "false) continue;"
             }
           ]
@@ -21,14 +21,14 @@
     },
     {
       "id": "N2",
-      "what": "the course's PURCHASE month is used instead of the 1st Trial's month",
+      "what": "755: the course's PURCHASE month (not the 1st Trial's) decides «this month» vs «previous month»",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "const assigned = trial ? trial.date.slice(0, 7) : day.slice(0, 7);",
-              "to": "const assigned = day.slice(0, 7);"
+              "from": "if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);",
+              "to": "if (day.slice(0, 7) === month) newCourseThisMonth.push(r);"
             }
           ]
         }
@@ -36,14 +36,14 @@
     },
     {
       "id": "N3",
-      "what": "a renew without an ended course (any earlier course makes it a renew)",
+      "what": "755: a child's FIRST course is a Renew (the «no earlier course» test is gone)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "return earlier.every((o) => RENEW_ENDED_STATUSES.has(at.courseStatus(o, day) ?? \"\")) ? \"RENEW\" : \"NEITHER\";",
-              "to": "return \"RENEW\";"
+              "from": "    if (earlier.length === 0) return \"NEW\";\n    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return \"RENEW\";\n    return earlier.every((o) => RENEW_ENDED_STATUSES",
+              "to": "    if (earlier.length === 0) return \"RENEW\";\n    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return \"RENEW\";\n    return earlier.every((o) => RENEW_ENDED_STATUSES"
             }
           ]
         }
@@ -261,14 +261,14 @@
     },
     {
       "id": "N18",
-      "what": "a child's 1st Trial is their LATEST trial, not the earliest",
+      "what": "a child's trial for the New lines is their LATEST, not the earliest",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const id of b.studentIds) if (!trialOf.has(id)) trialOf.set(id,",
-              "to": "for (const id of b.studentIds) trialOf.set(id,"
+              "from": "if (!trialOf.has(id)) trialOf.set(id, t);",
+              "to": "trialOf.set(id, t);"
             }
           ]
         }
@@ -351,14 +351,14 @@
     },
     {
       "id": "N23",
-      "what": "a PAUSED earlier course counts as ENDED",
+      "what": "a PAUSED earlier course counts as FINISHED",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\"]);",
-              "to": "new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\", \"DROPPED\"]);"
+              "from": "RENEW_ENDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\"]);",
+              "to": "RENEW_ENDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\", \"DROPPED\"]);"
             }
           ]
         }
@@ -366,29 +366,14 @@
     },
     {
       "id": "N24",
-      "what": "a no-trial course can fall in «previous month»",
+      "what": "755: a no-trial course lands on «this month» of the New lines",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "else if (trial && assigned === prevMonth)",
-              "to": "else if (assigned === prevMonth)"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "N25",
-      "what": "a trial AFTER the purchase is used as «where he came from»",
-      "files": [
-        {
-          "file": "src/lib/som-contract.ts",
-          "edits": [
-            {
-              "from": "!!t && t.date <= day)",
-              "to": "!!t)"
+              "from": "    if (!trial || trial.date > day) continue;",
+              "to": "    if (trial && trial.date > day) continue;\n    if (!trial) { newCourseThisMonth.push(row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), date: day })); continue; }"
             }
           ]
         }
@@ -500,21 +485,6 @@
       ]
     },
     {
-      "id": "N33",
-      "what": "a renew is counted in every month, not its purchase month",
-      "files": [
-        {
-          "file": "src/lib/som-contract.ts",
-          "edits": [
-            {
-              "from": "if (day.slice(0, 7) === month) renewCourse.push(",
-              "to": "if (true) renewCourse.push("
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "N34",
       "what": "a voucher renew is counted in every month",
       "files": [
@@ -522,8 +492,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (day.slice(0, 7) !== month || !inBranch(v.id) || kindOf",
-              "to": "if (!inBranch(v.id) || kindOf"
+              "from": "if (day.slice(0, 7) !== month || !inBranch(v.id) || voucherKind",
+              "to": "if (!inBranch(v.id) || voucherKind"
             }
           ]
         }
@@ -552,8 +522,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "teacherId: b.teacherId ?? null, passes: passes(b) });",
-              "to": "teacherId: b.teacherId ?? null, passes: true });"
+              "from": "const t = { date: b.date, teacherId: b.teacherId ?? null, passes: passes(b) };",
+              "to": "const t = { date: b.date, teacherId: b.teacherId ?? null, passes: true };"
             }
           ]
         }
@@ -591,14 +561,14 @@
     },
     {
       "id": "N39",
-      "what": "the earlier course's status is judged TODAY, not on the purchase day",
+      "what": "755: a course bought the SAME day counts as an earlier one (two courses bought together renew each other)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "at.courseStatus(o, day) ?? \"\"",
-              "to": "at.courseStatus(o, today) ?? \"\""
+              "from": "o.studentIds.some((id) => ids.includes(id)) && buyDay(o) < day);",
+              "to": "o.studentIds.some((id) => ids.includes(id)) && buyDay(o) <= day);"
             }
           ]
         }
@@ -704,6 +674,426 @@
             {
               "from": "z.enum(NVR_BUCKETS)",
               "to": "z.string()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "what": "754: the seam is gone — cancelled COURSES are purchases again",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const courses = input.courses.filter((c) => !cancelled.has(c.id));",
+              "to": "const courses = input.courses;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "754: cancelled VOUCHERS are purchases again",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const vouchers = input.vouchers.filter((v) => !cancelled.has(v.id));",
+              "to": "const vouchers = input.vouchers;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "what": "754: «1st Trial, no course» is converted by a CANCELLED course",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
+              "to": "if (!input.courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "what": "754: a cancelled LATER course counts as the renewal (not-renewed)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "courses.some((o) => o.studentIds.some((id) => ids.includes(id)) && buyDay(o) > day) ||",
+              "to": "input.courses.some((o) => o.studentIds.some((id) => ids.includes(id)) && buyDay(o) > day) ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "what": "754: a cancelled EARLIER course is an «earlier course» again (the re-booking after a cancel is no longer NEW)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "courses.filter((o) => o !== except && o.studentIds.some((id) => ids.includes(id)) && buyDay(o) < day);",
+              "to": "input.courses.filter((o) => o !== except && o.studentIds.some((id) => ids.includes(id)) && buyDay(o) < day);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "what": "754: a cancelled OWN course is counted as New / Renew",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "  for (const c of courses) {\n    const day = buyDay(c);\n    if (day.slice(0, 7) !== month",
+              "to": "  for (const c of input.courses) {\n    const day = buyDay(c);\n    if (day.slice(0, 7) !== month"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "what": "754: a cancelled OWN voucher is counted as a Renew",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const v of vouchers) {\n    const day = buyDay(v);\n    if (day.slice(0, 7) !== month",
+              "to": "for (const v of input.vouchers) {\n    const day = buyDay(v);\n    if (day.slice(0, 7) !== month"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "what": "754: a cancelled / ended COURSE is «finished» again in not-renewed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const c of courses) {\n    const st = at.courseStatus(c, today);",
+              "to": "for (const c of input.courses) {\n    const st = at.courseStatus(c, today);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "what": "754: a cancelled / ended VOUCHER is «finished» again in not-renewed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const v of vouchers) {\n    const st = at.voucherStatus(v, today);",
+              "to": "for (const v of input.vouchers) {\n    const st = at.voucherStatus(v, today);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "what": "754: a voucher renews after a COURSE again (the old rule: it looks at earlier courses)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "voucherKind(v.studentId, day, v) !== \"RENEW\") continue;",
+              "to": "kindOf([v.studentId], day) !== \"RENEW\") continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "what": "755: voucher → voucher is NOT a renewal",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    if (earlier.length === 0) return \"NEITHER\";\n    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return \"RENEW\";",
+              "to": "    if (earlier.length === 0) return \"NEITHER\";\n    if (!RENEW_ONLY_AFTER_OLD_FINISHED) return \"NEITHER\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "what": "755: a voucher bought the SAME day counts as an earlier voucher",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "o.studentId === studentId && buyDay(o) < day);",
+              "to": "o.studentId === studentId && buyDay(o) <= day);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "what": "754: an ended VOUCHER is not cancelled (the helper reads courses only)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const v of input.vouchers) if (v.endedAt != null) out.add(v.id);",
+              "to": "for (const v of []) if (v.endedAt != null) out.add(v.id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "what": "754: an ENDED_EARLY course is cancelled again (endedAt alone decides — the reason is ignored)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (c.endedAt != null && c.endReason !== ENDED_EARLY) out.add(c.id);",
+              "to": "if (c.endedAt != null) out.add(c.id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "754: only CUSTOMER_CANCELLED is a cancel — an ADMIN_ERROR course that TAUGHT a class (TEST-136's fb17a9db) stays a purchase",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (c.endedAt != null && c.endReason !== ENDED_EARLY) out.add(c.id);",
+              "to": "if (c.endedAt != null && c.endReason === \"CUSTOMER_CANCELLED\") out.add(c.id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "what": "754: a course ended with ENDED_EARLY is NOT «finished» for the next Renew",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "RENEW_ENDED_STATUSES: ReadonlySet<string> = new Set([\"CANCELLED\", \"COMPLETED\", \"EXPIRED\"]);",
+              "to": "RENEW_ENDED_STATUSES: ReadonlySet<string> = new Set([\"COMPLETED\", \"EXPIRED\"]);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "what": "754: the service does not pass `end_reason` (every ended course looks cancelled)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "      endReason: c.endReason ?? null, // 🔻 TASK-754: `ENDED_EARLY` is not a cancel\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "what": "754: an ended-early course is not listed in Not renewed (its end day is lost)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const endDay = st === \"CANCELLED\" && c.endedAt ? bangkokDate(c.endedAt)",
+              "to": "const endDay = st === \"CANCELLED\" && c.endedAt && false ? bangkokDate(c.endedAt)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "what": "755: 1st Trial counts any non-cancelled trial (a no-show / still-booked one too), not only ATTENDED",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.status === \"ATTENDED\" && !trialDone.has(id)) trialDone.set(id, t);",
+              "to": "if (!trialDone.has(id)) trialDone.set(id, t);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "755: «1st Trial, no course» is read from the any-status trial, not the ATTENDED one",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "  for (const [id, t] of trialDone) {",
+              "to": "  for (const [id, t] of trialOf) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "755: the New lines take later courses too (not only the child's FIRST)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    if (kind !== \"NEW\") continue;",
+              "to": "    if (kind === \"NEITHER\") continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "755: a trial AFTER the buy day still puts the course on a New line",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    if (!trial || trial.date > day) continue;",
+              "to": "    if (!trial) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "755: the New lines look only at ATTENDED trials (a no-show child falls off)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "c.studentIds.map((id) => trialOf.get(id))",
+              "to": "c.studentIds.map((id) => trialDone.get(id))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "what": "755: a trial from an earlier YEAR is not «previous month» (the window is not any earlier month)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    else newCoursePrevMonth.push(r);",
+              "to": "    else if (trial.date.slice(0, 4) === month.slice(0, 4)) newCoursePrevMonth.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "what": "755: the trial's month decides «this month» wrongly (a same-month trial goes to previous)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);",
+              "to": "if (trial.date.slice(0, 7) !== month) newCourseThisMonth.push(r);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "what": "755: Renew constant flipped to true (the older rule: only after the old one finished)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const RENEW_ONLY_AFTER_OLD_FINISHED = false;",
+              "to": "export const RENEW_ONLY_AFTER_OLD_FINISHED = true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "what": "755: a Renew course is not counted unless it is the first of the month (renew rows lost)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    if (kind === \"RENEW\") renewCourse.push(",
+              "to": "    if (kind === \"RENEW\" && false) renewCourse.push("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "what": "755: a purchase from another month is judged too (the month of purchase no longer decides)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "    if (day.slice(0, 7) !== month || !inBranch(c.id)) continue; // every line below",
+              "to": "    if (!inBranch(c.id)) continue; // every line below"
             }
           ]
         }

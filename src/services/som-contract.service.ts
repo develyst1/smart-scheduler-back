@@ -75,6 +75,7 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     bookings,
     courses: courseRows.map((c: any) => ({
       id: c.id,
+      endReason: c.endReason ?? null, // 🔻 TASK-754: `ENDED_EARLY` is not a cancel
       subjectId: c.subjectId ?? null,
       studentIds: duoStudentIds(c),
       createdAt: c.createdAt,
@@ -97,7 +98,7 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     })),
     students: students.map((s: any) => {
       const parent: any = s.parentId ? (parentById.get(s.parentId) ?? null) : null;
-      return { id: s.id, name: s.name, nickname: s.nickname ?? null, gender: s.gender ?? null, nationality: s.nationality ?? null, birthDate: s.birthDate ?? null, province: parent?.province ?? null, districtCode: parent?.districtCode ?? null, subdistrictCode: parent?.subdistrictCode ?? null };
+      return { id: s.id, archivedAt: s.archivedAt ?? null, name: s.name, nickname: s.nickname ?? null, gender: s.gender ?? null, nationality: s.nationality ?? null, birthDate: s.birthDate ?? null, province: parent?.province ?? null, districtCode: parent?.districtCode ?? null, subdistrictCode: parent?.subdistrictCode ?? null };
     }),
     subjects: subjects.map((s: any) => ({ id: s.id, name: s.name, active: s.active })),
     districtLabel,

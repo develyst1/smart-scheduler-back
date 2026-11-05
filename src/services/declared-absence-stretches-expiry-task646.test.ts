@@ -30,7 +30,7 @@ const WEEK = 7 * 24 * 3600 * 1000;
 const plus = (d: string, weeks: number) => new Date(Date.parse(d) + weeks * WEEK).toISOString().slice(0, 10);
 const weeksBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / WEEK);
 
-const START = "2026-11-02"; // every session is in the FUTURE ⇒ the course has NOT started
+const START = plus(new Date().toISOString().slice(0, 10), 4); // 🔻 TASK-855 — four weeks from today, so every session is ALWAYS in the future ⇒ the course has NOT started (a fixed date here expired on 2026-11-02)
 const SIZE = 4;
 const T = "t1t1t1t1-t1t1-41t1-81t1-t1t1t1t1t1t1";
 

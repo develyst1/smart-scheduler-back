@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  ACTIVE_COUNT_UNIT, SINGLE_SESSION_MOVES_OUT, SOM_AGE_BANDS, TRIAL_MOVES_OUT_ON_VOUCHER, addMonths, countSom, mergeSom, monthEnd,
+  ACTIVE_COUNT_UNIT, RENEW_ONLY_AFTER_OLD_FINISHED, SINGLE_SESSION_MOVES_OUT, SOM_AGE_BANDS, TRIAL_MOVES_OUT_ON_VOUCHER, addMonths, countSom, mergeSom, monthEnd,
   type SomBooking, type SomContractInput, type SomCourse, type SomStudent, type SomVoucher,
 } from "./som-contract";
 import * as v from "../validation";
@@ -21,7 +21,7 @@ const { bangkokNow } = await import("./bangkok-time");
 const { api } = await import("../routes/api");
 
 const S = (n: number) => `0000000${n}-0000-4000-8000-000000000000`;
-const [S1, S2, S3, S4, S5, S6, S7, S8] = [1, 2, 3, 4, 5, 6, 7, 8].map(S) as [string, string, string, string, string, string, string, string];
+const [S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(S) as [string, string, string, string, string, string, string, string, string, string, string];
 const BV1 = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1", BV2 = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2", BV3 = "b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3";
 const BIKE = "aaaa0001-0000-4000-8000-000000000000", SKATE = "aaaa0002-0000-4000-8000-000000000000", OLD = "aaaa0003-0000-4000-8000-000000000000", SURF = "aaaa0004-0000-4000-8000-000000000000";
 const MONTH = "2026-10", TODAY = "2026-10-12";
@@ -34,6 +34,9 @@ const LABELS: Record<string, string> = { "1001": "บางรัก, กรุ�
 const GONE = "aaaa0005-0000-4000-8000-000000000000";
 const SUBS: Record<string, string> = { "100101": "พระบรมมหาราชวัง", "100102": "วังบูรพาภิรมย์", "500101": "ศรีภูมิ" };
 const SUBJECTS = [{ id: BIKE, name: "Bike", active: true }, { id: SKATE, name: "Skate", active: true }, { id: SURF, name: "Surf", active: true }, { id: OLD, name: "Old", active: false }, { id: GONE, name: "Gone", active: false }];
+/** REQ-5002 §5 Q2: an Active course needs a class scheduled AFTER the as-of day — `runA` gives every course one (CONFIRMED, 2027-01-15). */
+const runA = (o: Partial<SomContractInput> = {}) =>
+  run({ ...o, bookings: [...(o.bookings ?? []), ...(o.courses ?? []).map((c) => bk({ courseId: c.id, studentIds: [...c.studentIds], status: "CONFIRMED", date: "2027-01-15" }))] });
 const run = (o: Partial<SomContractInput> = {}) =>
   countSom({ month: MONTH, today: TODAY, badgeValueIds: [], bookings: [], courses: [], vouchers: [], students: [], subjects: SUBJECTS, districtLabel: (c) => LABELS[c] ?? null, subdistrictLabel: (c) => SUBS[c] ?? null, ...o });
 
@@ -47,9 +50,10 @@ describe("🔒 TASK-741 — the dates and the declared defaults", () => {
     expect(monthEnd("2026-02")).toBe("2026-02-28");
   });
   test("each of Palm's open answers is ONE named constant at the CHECK §4 default (a ruling is a one-line flip)", () => {
-    expect(ACTIVE_COUNT_UNIT).toBe("PEOPLE"); // K1
+    expect(ACTIVE_COUNT_UNIT).toBe("PACKAGES"); // REQ-5002 §5 Q2 (supersedes K1): the Active cards count courses / vouchers
     expect(TRIAL_MOVES_OUT_ON_VOUCHER).toBe(false); // Q2.2
-    expect(SINGLE_SESSION_MOVES_OUT).toBe(false); // Q2.3
+    expect(SINGLE_SESSION_MOVES_OUT).toBe(true); // REQ-5002 (her 11-05 words): a child who opened a course leaves «1 HR»
+    expect(RENEW_ONLY_AFTER_OLD_FINISHED).toBe(false); // REQ-5002 §5 Q6 / §7.2: a Renew does not need the old purchase to have finished (the owner may flip it)
     expect(SOM_AGE_BANDS.map((b) => b.key)).toEqual(["1-2", "3-4", "5-7", "8-10", "11-13", "14-19", "20-39", "40-54", "55+"]); // Q5.1 / K3
   });
 });
@@ -98,12 +102,24 @@ describe("🔴 TASK-741 — Existing Customers: Active Course / Active Voucher a
     course({ id: "c7", studentIds: [S6, S7] }), // DUO — both kids
     course({ id: "c8", studentIds: [S6] }), // S6 has a second one
   ];
-  test("an ended / paused / completed / expired course is NOT active (courseStatus, not courseEligible); a child counts ONCE", () => {
-    expect(run({ courses }).existingCustomers.activeCourse).toBe(3); // S1 · S6 · S7
+  test("an ended / paused / completed / expired course is NOT active (courseStatus, not courseEligible); a child with 2 active courses counts 2, a DUO course is ONE course (REQ-5002: courses, not people)", () => {
+    expect(runA({ courses }).existingCustomers.activeCourse).toBe(4); // c1 · c2 (both S1) · c7 (DUO) · c8 (S6's second)
   });
-  test("K1: the unit is ONE switch — PACKAGES counts the courses instead (c1 c2 c7 c8 = 4)", () => {
-    expect(run({ courses, activeUnit: "PACKAGES" }).existingCustomers.activeCourse).toBe(4);
-    expect(run({ courses, activeUnit: "PEOPLE" }).existingCustomers.activeCourse).toBe(3);
+  test("the unit is still ONE switch — PEOPLE counts the children instead (S1 · S6 · S7 = 3)", () => {
+    expect(runA({ courses, activeUnit: "PEOPLE" }).existingCustomers.activeCourse).toBe(3);
+    expect(runA({ courses, activeUnit: "PACKAGES" }).existingCustomers.activeCourse).toBe(4);
+  });
+  test("🔴 REQ-5002 Q2: an Active COURSE also needs a class scheduled AFTER the as-of day (a row that is not CANCELLED, whatever its status is NOW); Active VOUCHER needs none; a paused course stays out", () => {
+    const cs = ["A", "B", "C", "D", "E", "F"].map((id, i) => course({ id, studentIds: [S1] , droppedAt: id === "F" ? "2026-10-01T03:00:00Z" : null }));
+    const row = (id: string, date: string, status = "CONFIRMED") => bk({ courseId: id, studentIds: [S1], date, status });
+    const b = [row("A", "2026-10-20"), row("C", "2026-10-20", "CANCELLED"), row("D", TODAY), row("E", "2026-10-13"), row("F", "2026-10-20")]; // B has no class at all
+    expect(run({ courses: cs, bookings: b }).existingCustomers.activeCourse).toBe(2); // A (future) · E (the day after) — not B (none), C (cancelled), D (on the as-of day, not after), F (paused)
+    expect(run({ courses: cs, vouchers: [voucher({ id: "v", studentId: S1 })] }).existingCustomers.activeVoucher).toBe(1); // a voucher needs no class
+  });
+  test("…and in a PAST month the class is judged against THAT month's end, by the row's status NOW: a class dated after it that has since been ATTENDED still counts; one dated before it does not", () => {
+    const c = course({ id: "A", studentIds: [S1] });
+    expect(run({ month: "2026-09", courses: [c], bookings: [bk({ courseId: "A", date: "2026-10-05", status: "ATTENDED" })] }).existingCustomers.activeCourse).toBe(1);
+    expect(run({ month: "2026-09", courses: [c], bookings: [bk({ courseId: "A", date: "2026-09-20", status: "ATTENDED" })] }).existingCustomers.activeCourse).toBe(0);
   });
   const vouchers = [
     voucher({ id: "v1", studentId: S1 }), voucher({ id: "v5", studentId: S1 }),
@@ -111,14 +127,14 @@ describe("🔴 TASK-741 — Existing Customers: Active Course / Active Voucher a
     voucher({ id: "v3", studentId: S3, expiryDate: "2026-10-01" }), // EXPIRED
     voucher({ id: "v4", studentId: S4, endedAt: "2026-10-01T03:00:00Z" }), // ENDED
   ];
-  test("Active Voucher: hours left + not expired + not ended; a child with two counts once (people) / twice (packages)", () => {
-    expect(run({ vouchers }).existingCustomers.activeVoucher).toBe(1);
-    expect(run({ vouchers, activeUnit: "PACKAGES" }).existingCustomers.activeVoucher).toBe(2);
+  test("Active Voucher: hours left + not expired + not ended; a child with two vouchers counts twice (packages, REQ-5002) / once (people)", () => {
+    expect(runA({ vouchers }).existingCustomers.activeVoucher).toBe(2);
+    expect(runA({ vouchers, activeUnit: "PEOPLE" }).existingCustomers.activeVoucher).toBe(1);
   });
   test("on the last day of its expiry a course is still active; the day after it is not", () => {
     const c = [course({ expiryDate: TODAY })];
-    expect(run({ courses: c }).existingCustomers.activeCourse).toBe(1);
-    expect(run({ courses: c, today: "2026-10-13" }).existingCustomers.activeCourse).toBe(0);
+    expect(runA({ courses: c }).existingCustomers.activeCourse).toBe(1);
+    expect(runA({ courses: c, today: "2026-10-13" }).existingCustomers.activeCourse).toBe(0);
   });
 });
 
@@ -127,35 +143,35 @@ describe("🔴 TASK-741 — a PAST month is rebuilt (the counter's past value is
   test("a course used up AFTER that month end is still active for it: the delivered rows dated after it (ATTENDED and NO_SHOW) are taken back off the counter — used 4 − 3 = 1 < size 4 ⇒ ACTIVE in September, COMPLETED in October", () => {
     const used = course({ id: "cA", studentIds: [S1], size: 4, usedSessions: 4 });
     const later = [bk({ courseId: "cA", date: "2026-10-03" }), bk({ courseId: "cA", date: "2026-10-04", status: "NO_SHOW" }), bk({ courseId: "cA", date: "2026-10-10" })];
-    expect(run({ ...SEP, courses: [used], bookings: later }).existingCustomers.activeCourse).toBe(1);
-    expect(run({ courses: [used], bookings: later }).existingCustomers.activeCourse).toBe(0); // October: completed
+    expect(runA({ ...SEP, courses: [used], bookings: later }).existingCustomers.activeCourse).toBe(1);
+    expect(runA({ courses: [used], bookings: later }).existingCustomers.activeCourse).toBe(0); // October: completed
     const inSep = [bk({ courseId: "cA", date: "2026-09-20" }), bk({ courseId: "cA", date: "2026-09-25" }), bk({ courseId: "cA", date: "2026-09-27" }), bk({ courseId: "cA", date: "2026-09-29" })];
-    expect(run({ ...SEP, courses: [used], bookings: inSep }).existingCustomers.activeCourse).toBe(0); // used up INSIDE September ⇒ not active at its end
+    expect(runA({ ...SEP, courses: [used], bookings: inSep }).existingCustomers.activeCourse).toBe(0); // used up INSIDE September ⇒ not active at its end
   });
   test("a course bought after the month end did not exist yet", () => {
-    expect(run({ ...SEP, courses: [course({ createdAt: "2026-10-05T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(0);
-    expect(run({ ...SEP, courses: [course({ createdAt: "2026-09-30T16:59:00Z" })] }).existingCustomers.activeCourse).toBe(1); // 30 Sep 23:59 Bangkok
-    expect(run({ ...SEP, courses: [course({ createdAt: "2026-09-30T17:00:00Z" })] }).existingCustomers.activeCourse).toBe(0); // 1 Oct 00:00 Bangkok
+    expect(runA({ ...SEP, courses: [course({ createdAt: "2026-10-05T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(0);
+    expect(runA({ ...SEP, courses: [course({ createdAt: "2026-09-30T16:59:00Z" })] }).existingCustomers.activeCourse).toBe(1); // 30 Sep 23:59 Bangkok
+    expect(runA({ ...SEP, courses: [course({ createdAt: "2026-09-30T17:00:00Z" })] }).existingCustomers.activeCourse).toBe(0); // 1 Oct 00:00 Bangkok
   });
   test("a course ended / paused AFTER the month end was active for it", () => {
-    expect(run({ ...SEP, courses: [course({ endedAt: "2026-10-03T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(1);
-    expect(run({ ...SEP, courses: [course({ droppedAt: "2026-10-03T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(1);
-    expect(run({ ...SEP, courses: [course({ endedAt: "2026-09-15T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(0);
+    expect(runA({ ...SEP, courses: [course({ endedAt: "2026-10-03T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(1);
+    expect(runA({ ...SEP, courses: [course({ droppedAt: "2026-10-03T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(1);
+    expect(runA({ ...SEP, courses: [course({ endedAt: "2026-09-15T03:00:00Z" })] }).existingCustomers.activeCourse).toBe(0);
   });
   test("the expiry IN FORCE that day (course_expiry_changes): a move made after the month end is taken back; one made before it stands", () => {
     const movedAfter = course({ id: "cD", studentIds: [S1], expiryDate: "2026-11-30", expiryChanges: [{ fromDate: "2026-09-25", changedAt: "2026-10-05T03:00:00Z" }] });
-    expect(run({ ...SEP, courses: [movedAfter] }).existingCustomers.activeCourse).toBe(0); // on 30 Sep the expiry was 25 Sep
-    expect(run({ courses: [movedAfter] }).existingCustomers.activeCourse).toBe(1); // October: the new expiry
+    expect(runA({ ...SEP, courses: [movedAfter] }).existingCustomers.activeCourse).toBe(0); // on 30 Sep the expiry was 25 Sep
+    expect(runA({ courses: [movedAfter] }).existingCustomers.activeCourse).toBe(1); // October: the new expiry
     const movedBefore = course({ id: "cE", studentIds: [S2], expiryDate: "2026-11-30", expiryChanges: [{ fromDate: "2026-09-05", changedAt: "2026-09-10T03:00:00Z" }] });
-    expect(run({ ...SEP, courses: [movedBefore] }).existingCustomers.activeCourse).toBe(1);
+    expect(runA({ ...SEP, courses: [movedBefore] }).existingCustomers.activeCourse).toBe(1);
   });
   test("the same rebuild for a voucher (hours taken back, expiry in force, ended later)", () => {
     const used = voucher({ id: "vA", totalHours: 5, usedHours: 5 });
     const later = [bk({ voucherId: "vA", bookingType: "VOUCHER", date: "2026-10-02" }), bk({ voucherId: "vA", bookingType: "VOUCHER", date: "2026-10-03" })];
-    expect(run({ ...SEP, vouchers: [used], bookings: later }).existingCustomers.activeVoucher).toBe(1);
-    expect(run({ vouchers: [used], bookings: later }).existingCustomers.activeVoucher).toBe(0);
-    expect(run({ ...SEP, vouchers: [voucher({ endedAt: "2026-10-02T03:00:00Z" })] }).existingCustomers.activeVoucher).toBe(1);
-    expect(run({ ...SEP, vouchers: [voucher({ expiryDate: "2026-11-30", expiryChanges: [{ fromDate: "2026-09-20", changedAt: "2026-10-05T03:00:00Z" }] })] }).existingCustomers.activeVoucher).toBe(0);
+    expect(runA({ ...SEP, vouchers: [used], bookings: later }).existingCustomers.activeVoucher).toBe(1);
+    expect(runA({ vouchers: [used], bookings: later }).existingCustomers.activeVoucher).toBe(0);
+    expect(runA({ ...SEP, vouchers: [voucher({ endedAt: "2026-10-02T03:00:00Z" })] }).existingCustomers.activeVoucher).toBe(1);
+    expect(runA({ ...SEP, vouchers: [voucher({ expiryDate: "2026-11-30", expiryChanges: [{ fromDate: "2026-09-20", changedAt: "2026-10-05T03:00:00Z" }] })] }).existingCustomers.activeVoucher).toBe(0);
   });
 });
 
@@ -184,26 +200,63 @@ describe("🔴 TASK-741 — Existing Customers: 1st Trial / 1 HR (3 FULL months,
   test("a DUO child's course moves HIS trial out", () => {
     expect(run({ bookings: [trial(S7, "2026-09-10")], courses: [course({ studentIds: [S6, S7], createdAt: "2026-09-12T03:00:00Z" })] }).existingCustomers.recentFirstTrial).toBe(0);
   });
-  test("1 HR: the same window, CANCELLED out, and a course does NOT move it out (Q2.3 default)", () => {
+  test("1 HR (REQ-5002): the same window, a CANCELLED class out; a child who opened a (non-cancelled) COURSE LEAVES the box; a cancelled course or a voucher does not take him out", () => {
     const one = (id: string, date: string, status = "CONFIRMED") => bk({ studentIds: [id], bookingType: "SINGLE_SESSION", status, date });
-    const b = [one(S1, "2026-09-03"), one(S4, "2026-09-10"), one(S8, "2026-10-02", "CANCELLED"), one(S2, "2026-07-30")];
-    const courses = [course({ studentIds: [S4], createdAt: "2026-09-12T03:00:00Z" })];
-    expect(run({ bookings: b, courses }).existingCustomers.recentSingleSession).toBe(2); // S1 · S4
+    const b = [one(S1, "2026-09-03"), one(S4, "2026-09-10"), one(S8, "2026-10-02", "CANCELLED"), one(S2, "2026-07-30"), one(S5, "2026-09-11"), one(S6, "2026-09-12")];
+    const courses = [course({ id: "k4", studentIds: [S4], createdAt: "2026-09-12T03:00:00Z" }), course({ id: "k5", studentIds: [S5], createdAt: "2026-09-12T03:00:00Z", endedAt: "2026-09-20T03:00:00Z" })];
+    const vouchers = [voucher({ id: "w6", studentId: S6, createdAt: "2026-09-13T03:00:00Z" })];
+    expect(run({ bookings: b, courses, vouchers }).existingCustomers.recentSingleSession).toBe(3); // S1 (nothing) · S5 (a CANCELLED course) · S6 (a voucher) — S4 holds a live course ⇒ out
+  });
+  test("1st Trial (3 months), REQ-5002: a CANCELLED course (own, or ended early after classes) does not move the child out; a live one does — with and without a branch filter", () => {
+    const t = (id: string, badge = BV1) => bk({ studentIds: [id], bookingType: "FIRST_TRIAL", status: "CONFIRMED", date: "2026-09-10", badgeIds: [badge] });
+    const b = [t(S1), t(S2), t(S3)];
+    const courses = [course({ id: "c1", studentIds: [S1], createdAt: "2026-09-12T03:00:00Z", endedAt: "2026-09-30T03:00:00Z" }), course({ id: "c2", studentIds: [S2], createdAt: "2026-09-12T03:00:00Z" })];
+    expect(run({ bookings: b, courses }).existingCustomers.recentFirstTrial).toBe(2); // S1 (cancelled course) · S3 — S2 holds a live course
+    expect(run({ bookings: b, courses, badgeValueIds: [BV1] }).existingCustomers.recentFirstTrial).toBe(2); // the same answer under a branch filter
   });
   test("a child with two trials in the window counts ONCE", () => {
     expect(run({ bookings: [trial(S1, "2026-08-10"), trial(S1, "2026-09-10")] }).existingCustomers.recentFirstTrial).toBe(1);
   });
-  test("Total Customers (Q2.7): distinct names of Active Course + Active Voucher + the SELECTED month's 1st Trial + 1 HR — not the 3-month window", () => {
-    const b = [
-      trial(S3, "2026-08-10"), // in the 3-month card, NOT in Total
-      trial(S4, "2026-10-02"), // in the month
-      bk({ studentIds: [S5], bookingType: "SINGLE_SESSION", status: "CONFIRMED", date: "2026-10-03" }),
-      trial(S1, "2026-10-04"), // S1 also holds a course ⇒ once
-    ];
+  test("1st Trial (3 months) and 1 HR keep their own windows (an August trial is in the 3-month card)", () => {
+    const b = [trial(S3, "2026-08-10"), trial(S4, "2026-10-02"), bk({ studentIds: [S5], bookingType: "SINGLE_SESSION", status: "CONFIRMED", date: "2026-10-03" }), trial(S1, "2026-10-04")];
     const r = run({ bookings: b, courses: [course({ studentIds: [S1] })], vouchers: [voucher({ studentId: S2 })] }).existingCustomers;
     expect(r.recentFirstTrial).toBe(2); // S3 · S4 — S1 holds a course (bought 1 Sep, BEFORE his 4 Oct trial) ⇒ he is a course customer, out of the trial box (N1)
     expect(r.recentSingleSession).toBe(1); // S5
-    expect(r.totalCustomers).toBe(4); // S1 (course + trial: once) · S2 (voucher) · S4 · S5 — and NOT S3 (an August trial)
+  });
+  test("🔴 REQ-5002 Q7 / §7.3 — Total customers = every child KNOWN by the as-of date (a non-cancelled LESSON class dated on/before it, or a non-cancelled course / voucher bought on/before it), each name once, not the union of the cards; ECA / camp / group-only and ARCHIVED children are out", () => {
+    const old = { students: [S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11].map((id) => student(id, id === S11 ? { archivedAt: "2026-10-01T03:00:00Z" } : {})) };
+    const b = [
+      trial(S3, "2026-08-10"), // an old lesson-type class — known
+      trial(S4, "2026-10-02"), bk({ studentIds: [S5], bookingType: "SINGLE_SESSION", status: "CONFIRMED", date: "2026-10-03" }),
+      trial(S1, "2026-10-04"), // S1 also holds a course ⇒ once
+      bk({ studentIds: [S6], status: "CANCELLED", date: "2026-10-03" }), // only a cancelled class
+      trial(S8, "2026-10-20"), // a class AFTER the as-of day (12 Oct)
+      bk({ studentIds: [S9], bookingType: "OTHER", date: "2026-10-03" }), bk({ studentIds: [S10], bookingType: "GROUP", date: "2026-10-03" }), // ECA / group rows only
+      trial(S11, "2026-10-02"), // archived
+    ];
+    const courses = [course({ studentIds: [S1] }), course({ id: "dead", studentIds: [S7], endedAt: "2026-10-01T03:00:00Z", endReason: "ADMIN_ERROR" })]; // S7: only a CANCELLED course
+    const r = run({ ...old, bookings: b, courses, vouchers: [voucher({ studentId: S2 })] }).existingCustomers;
+    expect(r.totalCustomers).toBe(5); // S1 (course + trial: once) · S2 (voucher) · S3 · S4 · S5
+  });
+  test("Total — the PACKAGE pieces: a course / voucher bought on or before the as-of day makes the child known (no class needed); a cancelled one, or one bought AFTER the as-of day, does not", () => {
+    const students = [S1, S2, S3, S4, S5, S6].map((id) => student(id));
+    const courses = [course({ id: "a", studentIds: [S1], createdAt: "2026-10-05T03:00:00Z" }), course({ id: "b", studentIds: [S2], createdAt: "2026-10-20T03:00:00Z" }), course({ id: "c", studentIds: [S3], endedAt: "2026-10-01T03:00:00Z", endReason: "ADMIN_ERROR" })];
+    const vouchers = [voucher({ id: "v1", studentId: S4, createdAt: "2026-10-05T03:00:00Z" }), voucher({ id: "v2", studentId: S5, createdAt: "2026-10-20T03:00:00Z" }), voucher({ id: "v3", studentId: S6, endedAt: "2026-10-01T03:00:00Z" })];
+    expect(run({ students, courses, vouchers }).existingCustomers.totalCustomers).toBe(2); // S1 (course) · S4 (voucher)
+  });
+  test("Total — a branch filter reads a course / voucher through its own session rows (a pack with no row in the branch is out)", () => {
+    const students = [S1, S2, S3, S4].map((id) => student(id));
+    const courses = [course({ id: "a", studentIds: [S1] }), course({ id: "x", studentIds: [S2] })];
+    const vouchers = [voucher({ id: "v1", studentId: S3 }), voucher({ id: "v2", studentId: S4 })];
+    const bookings = [bk({ courseId: "a", studentIds: [S1], status: "CONFIRMED", date: "2026-10-20", badgeIds: [BV1] }), bk({ courseId: "x", studentIds: [S2], status: "CONFIRMED", date: "2026-10-20", badgeIds: [BV2] }), bk({ voucherId: "v1", bookingType: "VOUCHER", studentIds: [S3], status: "CONFIRMED", date: "2026-10-20", badgeIds: [BV1] }), bk({ voucherId: "v2", bookingType: "VOUCHER", studentIds: [S4], status: "CONFIRMED", date: "2026-10-20", badgeIds: [BV2] })];
+    expect(run({ students, courses, vouchers, bookings }).existingCustomers.totalCustomers).toBe(4);
+    expect(run({ students, courses, vouchers, bookings, badgeValueIds: [BV1] }).existingCustomers.totalCustomers).toBe(2); // S1 · S3
+  });
+  test("…the month's FIRST and LAST day: a class on the as-of day is known, the day after is not; a past month does not grow (it is cut at its own end); a branch filter reads each class by its own badge", () => {
+    const ids = (month: string, today: string, bookings: SomBooking[], extra: Partial<SomContractInput> = {}) => run({ month, today, bookings, students: [S1, S2, S3].map((id) => student(id)), ...extra }).existingCustomers.totalCustomers;
+    expect(ids("2026-10", "2026-10-12", [trial(S1, "2026-10-12"), trial(S2, "2026-10-13")])).toBe(1); // the as-of day in, the next day out
+    expect(ids("2026-09", "2026-10-12", [trial(S1, "2026-09-30"), trial(S2, "2026-10-01")])).toBe(1); // September ends on the 30th
+    expect(ids("2026-10", "2026-10-12", [bk({ studentIds: [S1], bookingType: "FIRST_TRIAL", status: "CONFIRMED", date: "2026-10-03", badgeIds: [BV1] }), bk({ studentIds: [S2], bookingType: "FIRST_TRIAL", status: "CONFIRMED", date: "2026-10-03", badgeIds: [BV2] })], { badgeValueIds: [BV1] })).toBe(1);
   });
 });
 
@@ -222,14 +275,14 @@ describe("🔴 TASK-741 — the badge filter on the PERSON sections (any qualify
     expect(run({ bookings: b, students }).demographics.gender.total).toBe(4);
   });
   test("a course / voucher is in a branch ONLY through its (non-cancelled) session rows", () => {
-    const rows = [bk({ courseId: "c1", badgeIds: [BV1] }), bk({ courseId: "c2", badgeIds: [BV3] }), bk({ courseId: "c4", badgeIds: [BV1], status: "CANCELLED" }), bk({ voucherId: "v1", bookingType: "VOUCHER", badgeIds: [BV1] })];
+    const rows = [bk({ courseId: "c1", badgeIds: [BV1], status: "CONFIRMED", date: "2026-10-20" }), bk({ courseId: "c2", badgeIds: [BV3], status: "CONFIRMED", date: "2026-10-20" }), bk({ courseId: "c4", badgeIds: [BV1], status: "CANCELLED", date: "2026-10-20" }), bk({ voucherId: "v1", bookingType: "VOUCHER", badgeIds: [BV1] })];
     const courses = [course({ id: "c1", studentIds: [S1] }), course({ id: "c2", studentIds: [S2] }), course({ id: "c3", studentIds: [S3] }), course({ id: "c4", studentIds: [S4] })];
     const vouchers = [voucher({ id: "v1", studentId: S1 }), voucher({ id: "v2", studentId: S2 })];
     const one = run({ bookings: rows, courses, vouchers, badgeValueIds: [BV1] }).existingCustomers;
     expect(one.activeCourse).toBe(1); // c1 only: c2 is another branch, c3 has no rows, c4's only row is cancelled
     expect(one.activeVoucher).toBe(1);
     const all = run({ bookings: rows, courses, vouchers }).existingCustomers;
-    expect([all.activeCourse, all.activeVoucher]).toEqual([4, 2]);
+    expect([all.activeCourse, all.activeVoucher]).toEqual([2, 2]); // c1 · c2 have a class after the as-of day; c3 none, c4's only one is cancelled — the vouchers need none
   });
   test("the trial / 1 HR sections filter on the trial's OWN badge", () => {
     const rows = [bk({ studentIds: [S1], bookingType: "FIRST_TRIAL", status: "CONFIRMED", date: "2026-09-10", badgeIds: [BV1] }), bk({ studentIds: [S2], bookingType: "FIRST_TRIAL", status: "CONFIRMED", date: "2026-09-10", badgeIds: [BV2] })];
@@ -434,6 +487,7 @@ describe("🔴 TASK-741 — the READ (service) through fake db, and the district
     stub({
       courses: [{ id: "c1", studentId: S1, coStudentId: S2, createdAt: new Date("2026-01-05T03:00:00Z"), size: 10, usedSessions: 2, expiryDate: "2099-01-01", endedAt: null, droppedAt: null }],
       vouchers: [{ id: "v1", studentId: S3, createdAt: new Date("2026-01-05T03:00:00Z"), totalHours: 5, usedHours: 1, expiryDate: "2099-01-01", endedAt: null }],
+      bookings: [B({ studentId: S1, coStudentId: S2, courseId: "c1", status: "CONFIRMED", date: "2099-01-01" })], // a class after today: without the move the course WOULD be active
       courseMoves: [{ courseId: "c1", fromDate: "2020-01-01", changedAt: new Date(`${T}T20:00:00Z`) }], // a move made AFTER today (Bangkok) ⇒ the expiry in force today was 2020 ⇒ not active
       subjects: [],
     });
@@ -442,8 +496,13 @@ describe("🔴 TASK-741 — the READ (service) through fake db, and the district
       expect(r.existingCustomers.activeCourse).toBe(0); // the expiry move reached the counters
       expect(r.existingCustomers.activeVoucher).toBe(1);
     } finally { done(); }
-    stub({ courses: [{ id: "c1", studentId: S1, coStudentId: S2, createdAt: new Date("2026-01-05T03:00:00Z"), size: 10, usedSessions: 2, expiryDate: "2099-01-01", endedAt: null, droppedAt: null }], subjects: [] });
-    try { expect((await svc.getSomContract({ month: M })).existingCustomers.activeCourse).toBe(2); } finally { done(); } // both kids of the DUO course
+    const duo = { id: "c1", studentId: S1, coStudentId: S2, createdAt: new Date("2026-01-05T03:00:00Z"), size: 10, usedSessions: 2, expiryDate: "2099-01-01", endedAt: null, droppedAt: null };
+    stub({ courses: [duo], bookings: [B({ studentId: S1, coStudentId: S2, courseId: "c1", bookingType: "COURSE_PACKAGE", status: "CONFIRMED", date: "2099-01-01" })], subjects: [] });
+    try { const ex = (await svc.getSomContract({ month: M })).existingCustomers; expect([ex.activeCourse, ex.totalCustomers]).toEqual([1, 2]); } finally { done(); } // ONE course (a DUO course is one course), with its class after today — but BOTH children are customers
+    stub({ courses: [duo], subjects: [], students: [{ id: S1, name: "A", nickname: null, parentId: null, archivedAt: new Date("2026-09-01T03:00:00Z") }, { id: S2, name: "B", nickname: null, parentId: null, archivedAt: null }] });
+    try { expect((await svc.getSomContract({ month: M })).existingCustomers.totalCustomers).toBe(1); } finally { done(); } // the READ hands over archived_at: the archived child is not a customer
+    stub({ courses: [duo], subjects: [] });
+    try { expect((await svc.getSomContract({ month: M })).existingCustomers.activeCourse).toBe(0); } finally { done(); } // no class after today ⇒ not active (REQ-5002 Q2)
   });
   test("the parents are read through `activeParentWhere` (an archived household is not counted); the province / district come from the ACTIVE parent only", async () => {
     const { parentsSpy } = stub({
