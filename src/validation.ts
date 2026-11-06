@@ -84,18 +84,35 @@ export const reportQuery = z.object({ date: DATE, teacherId: z.string().uuid().o
 // 🔻 TASK-741 (REQ-124, Palm §0.1) — `GET /reports/som?month=YYYY-MM&badgeValueIds=a,b`. `month` is a real month, never in the future (Bangkok); `badgeValueIds` is a comma list of uuids (OR); neither sent = this month, every branch.
 // 🔻 TASK-742 — the `:bucket` of `GET /reports/som/new-vs-renewing/:bucket` (the six cards' field names).
 export const nvrBucketParam = z.object({ bucket: z.enum(NVR_BUCKETS) });
-export const somQuery = z.object({
-  month: z
-    .string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "ต้องเป็นรูปแบบ YYYY-MM")
-    .refine((m) => m <= bangkokNow().date.slice(0, 7), "เดือนต้องไม่เป็นอนาคต")
-    .optional(),
-  badgeValueIds: z
-    .string()
-    .optional()
-    .transform((s) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []))
-    .pipe(z.array(z.string().uuid())),
-});
+/** 🔻 TASK-757 — a real calendar day `YYYY-MM-DD`. */
+const somDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD")
+  .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d, "วันที่ไม่ถูกต้อง");
+/** `month` (as always) OR `from` + `to` (both, from ≤ to, not future) OR neither = ALL DATA. Both a month and a range is refused. */
+export const somQuery = z
+  .object({
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "ต้องเป็นรูปแบบ YYYY-MM")
+      .refine((m) => m <= bangkokNow().date.slice(0, 7), "เดือนต้องไม่เป็นอนาคต")
+      .optional(),
+    from: somDay.optional(),
+    to: somDay.optional(),
+    badgeValueIds: z
+      .string()
+      .optional()
+      .transform((s) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []))
+      .pipe(z.array(z.string().uuid())),
+  })
+  .superRefine((q, ctx) => {
+    if ((q.from == null) !== (q.to == null)) ctx.addIssue({ code: "custom", path: [q.from == null ? "from" : "to"], message: "ต้องส่ง from และ to คู่กัน" });
+    else if (q.from != null && q.to != null) {
+      if (q.month != null) ctx.addIssue({ code: "custom", path: ["month"], message: "ส่งได้อย่างใดอย่างหนึ่ง: month หรือ from + to" });
+      if (q.from > q.to) ctx.addIssue({ code: "custom", path: ["from"], message: "from ต้องไม่เกิน to" });
+      if (q.to > bangkokNow().date) ctx.addIssue({ code: "custom", path: ["to"], message: "ช่วงวันที่ต้องไม่เป็นอนาคต" });
+    }
+  });
 
 // Booking dropdown: search students by name / nickname / parent phone.
 export const studentsQuery = z.object({

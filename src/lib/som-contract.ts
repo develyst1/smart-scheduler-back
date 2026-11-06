@@ -16,8 +16,12 @@ import { voucherStatus, type VoucherStatus } from "./voucher";
  * The unit is still injectable (`activeUnit`) so both are tested.
  */
 export const ACTIVE_COUNT_UNIT: "PEOPLE" | "PACKAGES" = "PACKAGES";
-/** 🔒 Q2.2 — a student who bought a VOUCHER after the trial also moves out of «1st Trial»? Default NO: only a COURSE moves a trial out (CHECK §4). */
-export const TRIAL_MOVES_OUT_ON_VOUCHER = false;
+/** 🔒 REQ-5004 §1 row 2 (supersedes Q2.2) — a child who holds a (non-cancelled) VOUCHER by the as-of date, in either order with the trial, also leaves «1st Trial (last 3 months)». CARD 3 ONLY: card 4 («1 HR») has its own switch below. */
+export const TRIAL_MOVES_OUT_ON_VOUCHER = true;
+/** 🔒 REQ-5004 §1 row 2 — a non-cancelled 1 HR dated ON or AFTER the child's 1st Trial (and on or before the as-of date) takes him off «1st Trial» too; he then shows on card 4. A 1 HR before the trial does not. */
+export const FIRST_TRIAL_MOVES_OUT_ON_SINGLE_SESSION = true;
+/** 🔒 REQ-5002 — a VOUCHER does NOT take a child off «1 HR» (card 4): only a course does. Its own switch so card 3's cannot reach it (REQ-5004 trap). */
+export const SINGLE_SESSION_MOVES_OUT_ON_VOUCHER = false;
 /** 🔒 REQ-5002 (Khwan, 2026-11-05: «1 HR (last 3 months) = เด็กที่ลงเฉพาะ 1hr ไม่เปิดคอร์สเลย 3 เดือนที่ผ่านมา») — a child who has opened a (non-cancelled) COURSE leaves the «1 HR» card; a voucher does not. Was false (Q2.3's default). */
 export const SINGLE_SESSION_MOVES_OUT = true;
 /**
@@ -141,11 +145,26 @@ export interface SomStudent {
 export interface SomSubject { id: string; name: string; active: boolean }
 export type TeacherType = "FULL_TIME" | "PART_TIME" | "FREELANCE";
 /** 🔻 742 — a coach for Coach Capacity. `workDays`: 0 = Sun … 6 = Sat. */
-export interface SomTeacher { id: string; nickname?: string; type: TeacherType; active: boolean; archived: boolean; workDays: readonly number[] }
+export interface SomTeacher { id: string; nickname?: string; type: TeacherType; active: boolean; archived: boolean; workDays: readonly number[]; /** REQ-5004: a PART_TIME coach's own weekend hours per day worked; null / absent = the type's rate. */ weekendCapacityHours?: number | null; /** TASK-757: on ALL DATA a coach counts from the later of the range start and the day he was created. */ createdAt?: Date | string | null }
+
+/**
+ * 🔻 TASK-757 (REQ-5004 row 1) — the period every section except Today reads: a `from`–`to` range (Bangkok days), or a `month` (that month's first–last day, answered exactly as before), or — neither — ALL DATA: from the
+ * earliest non-cancelled lesson row to today. `month` is null unless a month was asked.
+ */
+export interface SomPeriod { from: string; to: string; month: string | null; allData: boolean }
+export function periodOf(input: { month?: string | null; from?: string | null; to?: string | null; today: string; bookings: readonly SomBooking[] }): SomPeriod {
+  if (input.from && input.to) return { from: input.from, to: input.to, month: null, allData: false };
+  if (input.month) return { from: `${input.month}-01`, to: monthEnd(input.month), month: input.month, allData: false };
+  const first = input.bookings.filter((b) => isLesson(b) && b.status !== "CANCELLED").map((b) => b.date).sort()[0] ?? input.today;
+  return { from: first > input.today ? input.today : first, to: input.today, month: null, allData: true };
+}
 
 export interface SomContractInput {
-  /** `YYYY-MM` — applies to every section except Today. */
-  month: string;
+  /** `YYYY-MM` — a month period (applies to every section except Today). Neither `month` nor `from` + `to` = ALL DATA (TASK-757). */
+  month?: string;
+  /** TASK-757 — a `YYYY-MM-DD` range, both or neither; wins over `month`. */
+  from?: string;
+  to?: string;
   /** Bangkok today. */
   today: string;
   /** OR; empty = every branch. */
@@ -168,9 +187,9 @@ export interface SomContractInput {
 
 export interface SomContractSections {
   today: { date: string; confirmed: number; attended: number; attendanceRate: number };
-  existingCustomers: { month: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
-  demographics: { month: string; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown; subdistrictByDistrict: Record<string, Breakdown> };
-  activityProgram: { month: string; categories: ActivityCategory[] };
+  existingCustomers: { month: string | null; from: string; to: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
+  demographics: { month: string | null; from: string; to: string; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown; subdistrictByDistrict: Record<string, Breakdown> };
+  activityProgram: { month: string | null; from: string; to: string; categories: ActivityCategory[] };
   newVsRenewing: NvrCounts;
   coachCapacity: CoachCapacity;
 }
@@ -207,19 +226,22 @@ export function entitlementClock(bookings: readonly SomBooking[]) {
 }
 
 export function countSom(input: SomContractInput): SomContractSections {
-  const { month, today, bookings, courses, vouchers, subjects } = input;
+  const { today, bookings, courses, vouchers, subjects } = input;
+  const period = periodOf(input);
+  const { month, from: rangeFrom, to: rangeTo } = period;
   const unit = input.activeUnit ?? ACTIVE_COUNT_UNIT;
   const badges = new Set(input.badgeValueIds);
   /** §0.1 — a booking matches when it carries ANY selected badge (OR); no badge selected = every branch. */
   const passes = (b: SomBooking): boolean => badges.size === 0 || b.badgeIds.some((id) => badges.has(id));
 
-  const monthFrom = `${month}-01`;
-  const monthTo = monthEnd(month);
-  const recentFrom = addMonths(month, -2);
+  const monthTo = rangeTo;
+  /** Cards 3 + 4: the 3 calendar months ending at the period's end (for a month: that month and the two before). */
+  const toMonth = rangeTo.slice(0, 7);
+  const recentFrom = addMonths(toMonth, -2);
   const recentFromDate = `${recentFrom}-01`;
-  /** «Active at month end»; the current month = today (CHECK Q2.6). */
-  const asOf = today.slice(0, 7) === month ? today : monthTo;
-  const inMonth = (d: string) => d >= monthFrom && d <= monthTo;
+  /** «Active at the period's end», capped at today (CHECK Q2.6): the current month = today. */
+  const asOf = rangeTo < today ? rangeTo : today;
+  const inMonth = (d: string) => d >= rangeFrom && d <= rangeTo;
 
   // ── Today — REQ-119's counters, verbatim, badge-filtered; `month` is ignored ──
   const dayRows: ReportRow[] = bookings
@@ -268,27 +290,26 @@ export function countSom(input: SomContractInput): SomContractSections {
   };
   const trialsRecent = classesIn("FIRST_TRIAL", recentFromDate, monthTo);
   const singlesRecent = classesIn("SINGLE_SESSION", recentFromDate, monthTo);
-  const recentFirstTrial = [...trialsRecent].filter(([id]) => !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
-  const recentSingleSession = [...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)).length;
-  // Total customers (REQ-5002 §5 Q7 + §6.2 / §7.3, Khwan via Porter): every child KNOWN by the as-of date — a non-cancelled LESSON-type class (`isLesson`) dated on or before it, or a non-cancelled course / voucher bought on or before it — each name once;
-  // NOT the union of the four cards above it. Children with only ECA / camp / group rows are out, and so are ARCHIVED students (`archivedAt`, the old report's TASK-411 rule). Cut at the as-of date so a past month does not grow. The branch
-  // filter as elsewhere: a class by its own badge, a course / voucher through its rows.
+  /** REQ-5004: a non-cancelled 1 HR of the child dated on/after his 1st Trial and on/before the as-of date. */
+  const singleAfterTrial = (studentId: string, trialDate: string): boolean =>
+    bookings.some((b) => b.bookingType === "SINGLE_SESSION" && b.status !== "CANCELLED" && b.date >= trialDate && b.date <= asOf && b.studentIds.includes(studentId) && passes(b));
+  const recentFirstTrial = [...trialsRecent].filter(([id, trialDate]) => !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER) && !(FIRST_TRIAL_MOVES_OUT_ON_SINGLE_SESSION && singleAfterTrial(id, trialDate))).length;
+  const recentSingleSession = [...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, SINGLE_SESSION_MOVES_OUT_ON_VOUCHER)).length;
+  // Total customers (REQ-5004 §1 row 3, supersedes REQ-5002 §7.3's «known by»): the DISTINCT children on the courses and vouchers that cards 1 + 2 count (`courseHolders` ∪ `voucherHolders`), so it moves with them; ARCHIVED students stay out
+  // (`archivedAt`, REQ-5004 §4a). A child on both cards, or with two courses, is ONE; a child with only an ended / cancelled / paused course is out.
   const archived = new Set(input.students.filter((s) => s.archivedAt != null).map((s) => s.id));
-  const customers = new Set<string>();
-  for (const b of bookings) if (isLesson(b) && b.status !== "CANCELLED" && b.date <= asOf && passes(b)) for (const id of b.studentIds) customers.add(id);
-  for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);
-  for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);
+  const customers = new Set<string>([...courseHolders, ...voucherHolders]);
   for (const id of archived) customers.delete(id);
   const totalCustomers = customers.size;
   const existingCustomers = {
-    month,
+    month, from: rangeFrom, to: rangeTo,
     activeCourse: unit === "PEOPLE" ? courseHolders.size : activeCourses.length,
     activeVoucher: unit === "PEOPLE" ? voucherHolders.size : activeVouchers.length,
     recentFirstTrial,
     recentSingleSession,
     totalCustomers,
     recentFrom,
-    recentTo: month,
+    recentTo: toMonth,
   };
 
   // ── Attended lessons of the month (Q5.2 / Q6.1): ATTENDED only, the four lesson types, badge-filtered. A GROUP's SEAT is a student's session and counts; the group row itself is not a lesson type. ──
@@ -304,7 +325,7 @@ export function countSom(input: SomContractInput): SomContractSections {
     return labelOfDistrict.get(s.districtCode) ? s.districtCode : null; // a code outside the dataset is unknown, never a bucket with no name
   };
   const demographics = {
-    month,
+    month, from: rangeFrom, to: rangeTo,
     gender: breakdown(people, (s) => s.gender),
     ageBand: ageBreakdown(people, today),
     nationality: breakdown(people, (s) => s.nationality),
@@ -335,7 +356,7 @@ export function countSom(input: SomContractInput): SomContractSections {
     .filter((c) => c.key !== UNKNOWN_KEY || c.total > 0)
     .sort((a, b) => (a.key === UNKNOWN_KEY ? 1 : 0) - (b.key === UNKNOWN_KEY ? 1 : 0) || b.total - a.total || a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
-  return { today: todaySection, existingCustomers, demographics, activityProgram: { month, categories }, newVsRenewing: countNvr(input).counts, coachCapacity: countCapacity(input) };
+  return { today: todaySection, existingCustomers, demographics, activityProgram: { month, from: rangeFrom, to: rangeTo, categories }, newVsRenewing: countNvr(input).counts, coachCapacity: countCapacity(input) };
 }
 
 /**
@@ -394,7 +415,7 @@ export function mergeSom<O extends { today: object; existingCustomers: object; d
 /** The six cards, in Palm's order; each is also the `:bucket` of the list endpoint. */
 export const NVR_BUCKETS = ["firstTrial", "newCourseThisMonth", "newCoursePrevMonth", "renewCourse", "trialNotConverted", "notRenewed"] as const;
 export type NvrBucket = (typeof NVR_BUCKETS)[number];
-export type NvrCounts = { month: string } & Record<NvrBucket, number>;
+export type NvrCounts = { month: string | null; from: string; to: string } & Record<NvrBucket, number>;
 /** Palm §3.2 — `remark` is `null` until K5 (the admin-typed reason) is built. */
 export interface NvrDetailRow {
   studentId: string;
@@ -420,7 +441,9 @@ const nameOfIds = (students: ReadonlyMap<string, SomStudent>, ids: readonly stri
  * link and no course→renewal link is stored (CHECK M13). Dates are Bangkok calendar days; «buying» = the Bangkok day of `created_at` (Q3.5).
  */
 export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Record<NvrBucket, NvrDetailRow[]> } {
-  const { month, today, bookings } = input;
+  const { today, bookings } = input;
+  const { month, from: rangeFrom, to: rangeTo } = periodOf(input);
+  const inRange = (d: string): boolean => d >= rangeFrom && d <= rangeTo;
   // 🔻 REQ-5002 — the purchases this section reads are the NON-cancelled ones: one seam (`cancelledIds`), then every rule below (the counted purchase, an earlier one, a later one, «no course», «not renewed») reads `courses` / `vouchers`.
   const cancelled = cancelledIds(input);
   const courses = input.courses.filter((c) => !cancelled.has(c.id));
@@ -479,11 +502,11 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const firstTrial: NvrDetailRow[] = [];
   const trialNotConverted: NvrDetailRow[] = [];
   for (const [id, t] of trialDone) {
-    if (t.date.slice(0, 7) !== month || !t.passes) continue;
+    if (!inRange(t.date) || !t.passes) continue;
     const r = row({ studentIds: [id], trialDate: t.date, trialTeacherId: t.teacherId });
     firstTrial.push(r); // stays counted even after a course (§3)
     // Q3.4 — a VOUCHER is not a course: only a COURSE converts it. 🔻 TEST-109 N1 — ANY course bought no later than the month end, whatever its order with the trial (the same rule as Existing Customers' 1st Trial card)
-    if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);
+    if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= rangeTo)) trialNotConverted.push(r);
   }
 
   // ── packs: how each purchase classifies (inferred from the student's EARLIER purchases) ──
@@ -508,7 +531,7 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const renewCourse: NvrDetailRow[] = [];
   for (const c of courses) {
     const day = buyDay(c);
-    if (day.slice(0, 7) !== month || !inBranch(c.id)) continue; // every line below is about a course OPENED in the selected month
+    if (!inRange(day) || !inBranch(c.id)) continue; // every line below is about a course OPENED in the selected period
     const kind = kindOf(c.studentIds, day, c);
     if (kind === "RENEW") renewCourse.push(row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), date: day }));
     // New Course lines (REQ-5002 §5 Q4 / Q5, §7.1): the child's FIRST course (`kindOf` = NEW — no earlier non-cancelled course of his on an earlier day), opened this month, whose child's EARLIEST non-cancelled trial is on or before the buy
@@ -517,12 +540,13 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
     const trial = c.studentIds.map((id) => trialOf.get(id)).filter((t): t is NonNullable<typeof t> => !!t).sort((x, y) => x.date.localeCompare(y.date))[0];
     if (!trial || trial.date > day) continue;
     const r = row({ studentIds: c.studentIds, packageLabel: courseLabel(c), courseTeacherId: firstTeacher(c.id), trialTeacherId: trial.teacherId, trialDate: trial.date, date: day });
-    if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);
+    // TASK-757: «this month» = the 1st Trial in the SAME calendar month as the purchase, «previous» = an earlier one — per row, so it holds over any period (on a single month it is the old rule)
+    if (trial.date.slice(0, 7) === day.slice(0, 7)) newCourseThisMonth.push(r);
     else newCoursePrevMonth.push(r);
   }
   for (const v of vouchers) {
     const day = buyDay(v);
-    if (day.slice(0, 7) !== month || !inBranch(v.id) || voucherKind(v.studentId, day, v) !== "RENEW") continue; // a voucher is never «new»; it renews only after a finished earlier VOUCHER (REQ-5002)
+    if (!inRange(day) || !inBranch(v.id) || voucherKind(v.studentId, day, v) !== "RENEW") continue; // a voucher is never «new»; it renews only after a finished earlier VOUCHER (REQ-5002)
     renewCourse.push(row({ studentIds: [v.studentId], packageLabel: voucherLabel(v), courseTeacherId: firstTeacher(v.id), date: day }));
   }
 
@@ -533,7 +557,7 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   const consider = (ids: readonly string[], id: string, endDay: string | null, boughtDay: string, label: string) => {
     if (!endDay || !inBranch(id)) return;
     const from = addDays(endDay, 1); // counted from the day AFTER the end (Q3.3)
-    if (from.slice(0, 7) !== month || from > today || renewedLater(ids, boughtDay)) return;
+    if (!inRange(from) || from > today || renewedLater(ids, boughtDay)) return;
     notRenewed.push(row({ studentIds: ids, packageLabel: label, courseTeacherId: firstTeacher(id), date: endDay }));
   };
   for (const c of courses) {
@@ -552,13 +576,19 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
   for (const k of NVR_BUCKETS) rows[k].sort(order);
   return {
     rows,
-    counts: { month, firstTrial: firstTrial.length, newCourseThisMonth: newCourseThisMonth.length, newCoursePrevMonth: newCoursePrevMonth.length, renewCourse: renewCourse.length, trialNotConverted: trialNotConverted.length, notRenewed: notRenewed.length },
+    counts: { month, from: rangeFrom, to: rangeTo, firstTrial: firstTrial.length, newCourseThisMonth: newCourseThisMonth.length, newCoursePrevMonth: newCoursePrevMonth.length, renewCourse: renewCourse.length, trialNotConverted: trialNotConverted.length, notRenewed: notRenewed.length },
   };
 }
 
 // ───────────── Coach Capacity (Palm §4) ─────────────
-/** One working day = 09:00–18:00 = nine one-hour slots (`lib/time.ts`). */
-export const CAPACITY_HOURS_PER_DAY = 9;
+/**
+ * 🔒 REQ-5004 §1 row 4 — available hours PER DAY WORKED (`teachers.work_days`, minus recorded leave), by type. No coach's name lives in the code.
+ *  FULL_TIME: 5 h on a weekday, 6 h on Sat–Sun. PART_TIME: 6 h on Sat–Sun (or the coach's own `weekend_capacity_hours` when set), 0 on a weekday. FREELANCE: 0 everywhere (his booked hours are still real).
+ */
+export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 5;
+export const CAPACITY_WEEKEND_HOURS = 6;
+export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 0;
+export const CAPACITY_FREELANCE_HOURS = 0;
 /** 🔒 Q4.5 — the statuses that do NOT count as booked hours (Palm: «not CANCELLED»; PENDING and PAUSED rows still hold the coach's hour). */
 export const CAPACITY_NOT_COUNTED_STATUSES: ReadonlySet<string> = new Set(["CANCELLED"]);
 /** Palm's contract: a percentage is 0–100. Hours stay raw, so an over-booked coach still shows his real hours. */
@@ -571,13 +601,15 @@ export interface CapacityHours {
   weekendBookedHours: number; weekendAvailableHours: number; weekendPct: number;
 }
 export interface CoachCapacity {
-  month: string;
+  month: string | null;
+  from: string;
+  to: string;
   byPerson: Array<{ teacherId: string; teacherType: TeacherType } & CapacityHours>;
   byType: Array<{ teacherType: TeacherType; coaches: number } & CapacityHours>;
 }
 const pct = (booked: number, available: number): number => (available > 0 ? Math.min(CAPACITY_PCT_CAP, Math.round((booked / available) * 100)) : 0);
-const hoursOf = (wd: { b: number; a: number }, we: { b: number; a: number }): CapacityHours => ({
-  bookedHours: wd.b + we.b, availableHours: wd.a + we.a,
+const hoursOf = (wd: { b: number; a: number }, we: { b: number; a: number }, booked: number = wd.b + we.b): CapacityHours => ({
+  bookedHours: booked, availableHours: wd.a + we.a,
   weekdayBookedHours: wd.b, weekdayAvailableHours: wd.a, weekdayPct: pct(wd.b, wd.a),
   weekendBookedHours: we.b, weekendAvailableHours: we.a, weekendPct: pct(we.b, we.a),
 });
@@ -591,11 +623,12 @@ const minutesOf = (b: SomBooking): number => {
 };
 
 export function countCapacity(input: SomContractInput): CoachCapacity {
-  const { month } = input;
+  const period = periodOf(input);
+  const { month, from: rangeFrom, to: rangeTo } = period;
   const badges = new Set(input.badgeValueIds);
   const passes = (b: SomBooking): boolean => badges.size === 0 || b.badgeIds.some((id) => badges.has(id));
   const days: string[] = [];
-  for (let d = `${month}-01`; d <= monthEnd(month); d = addDays(d, 1)) days.push(d);
+  for (let d = rangeFrom; d <= rangeTo; d = addDays(d, 1)) days.push(d);
   const leave = new Set((input.leaveDays ?? []).map((l) => `${l.teacherId}|${l.date}`));
   // Q4.6: the ACTIVE, non-archived coaches. Q4.3: the whole calendar month.
   const coaches = (input.teachers ?? []).filter((t) => t.active && !t.archived);
@@ -603,7 +636,7 @@ export function countCapacity(input: SomContractInput): CoachCapacity {
   // booked MINUTES per coach, split weekday / weekend: lessons + the GROUP row (never its seats, never ECA / camp), badge-filtered (Q0.2: booked only), an extra coach counts too
   const minutes = new Map<string, { wd: number; we: number }>();
   for (const b of input.bookings) {
-    if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES.has(b.status) || !(isLesson(b) || b.bookingType === "GROUP") || b.date < `${month}-01` || b.date > monthEnd(month) || !passes(b)) continue;
+    if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES.has(b.status) || !(isLesson(b) || b.bookingType === "GROUP") || b.date < rangeFrom || b.date > rangeTo || !passes(b)) continue;
     for (const id of new Set([b.teacherId, ...(b.extraTeacherIds ?? [])].filter((x): x is string => !!x))) {
       const m = minutes.get(id) ?? { wd: 0, we: 0 };
       if (isWeekend(b.date)) m.we += minutesOf(b); else m.wd += minutesOf(b);
@@ -614,20 +647,24 @@ export function countCapacity(input: SomContractInput): CoachCapacity {
   const people = coaches.map((t) => {
     const wd = { b: Math.round((minutes.get(t.id)?.wd ?? 0) / 60), a: 0 };
     const we = { b: Math.round((minutes.get(t.id)?.we ?? 0) / 60), a: 0 };
+    const weekendRate = t.type === "FULL_TIME" ? CAPACITY_WEEKEND_HOURS : t.type === "PART_TIME" ? (t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS) : CAPACITY_FREELANCE_HOURS;
+    const weekdayRate = t.type === "FULL_TIME" ? CAPACITY_FULL_TIME_WEEKDAY_HOURS : t.type === "PART_TIME" ? CAPACITY_PART_TIME_WEEKDAY_HOURS : CAPACITY_FREELANCE_HOURS;
     for (const d of days) {
       if (!t.workDays.includes(dayOfWeek(d)) || leave.has(`${t.id}|${d}`)) continue;
-      if (isWeekend(d)) we.a += CAPACITY_HOURS_PER_DAY; else wd.a += CAPACITY_HOURS_PER_DAY;
+      if (period.allData && t.createdAt && d < bangkokDate(t.createdAt)) continue; // ALL DATA: a coach counts from the day he joined (rough: no start history beyond `created_at`)
+      if (isWeekend(d)) we.a += weekendRate; else wd.a += weekdayRate;
     }
     return { t, wd, we };
   });
   const byPerson = people
     .sort((x, y) => TEACHER_TYPE_ORDER.indexOf(x.t.type) - TEACHER_TYPE_ORDER.indexOf(y.t.type) || (x.t.nickname ?? "").localeCompare(y.t.nickname ?? "") || (x.t.id < y.t.id ? -1 : x.t.id > y.t.id ? 1 : 0))
-    .map(({ t, wd, we }) => ({ teacherId: t.id, teacherType: t.type, ...hoursOf(wd, we) }));
+    // A PART_TIME row's Hours (x / y) is the WEEKEND booked over the weekend capacity: his weekday classes (the FL part) stay real in the weekday cell but out of `bookedHours`. FREELANCE: booked real, available 0, % 0.
+    .map(({ t, wd, we }) => ({ teacherId: t.id, teacherType: t.type, ...hoursOf(wd, we, t.type === "PART_TIME" ? we.b : wd.b + we.b) }));
   // by type: the SUM of its coaches' hours, the % computed from the sums (never an average of percentages); always all three rows
   const byType = TEACHER_TYPE_ORDER.map((teacherType) => {
     const mine = byPerson.filter((p) => p.teacherType === teacherType);
     const sum = (k: "weekdayBookedHours" | "weekdayAvailableHours" | "weekendBookedHours" | "weekendAvailableHours") => mine.reduce((s, p) => s + p[k], 0);
-    return { teacherType, coaches: mine.length, ...hoursOf({ b: sum("weekdayBookedHours"), a: sum("weekdayAvailableHours") }, { b: sum("weekendBookedHours"), a: sum("weekendAvailableHours") }) };
+    return { teacherType, coaches: mine.length, ...hoursOf({ b: sum("weekdayBookedHours"), a: sum("weekdayAvailableHours") }, { b: sum("weekendBookedHours"), a: sum("weekendAvailableHours") }, mine.reduce((n, p) => n + p.bookedHours, 0)) };
   });
-  return { month, byPerson, byType };
+  return { month, from: rangeFrom, to: rangeTo, byPerson, byType };
 }

@@ -215,6 +215,8 @@ export const teachers = pgTable("teachers", {
   archived: boolean("archived").notNull().default(false),
   /** 0=Sun … 6=Sat — ครูมาสอนได้วันไหนบ้าง (ปฏิทินซ่อนคอลัมน์นอกวันนี้) */
   workDays: smallint("work_days").array().notNull().default(sql`ARRAY[0,1,2,3,4,5,6]::smallint[]`),
+  /** REQ-5004 / TASK-756 — a PART_TIME coach's own capacity per weekend day worked, in hours. NULL = the type's rate (Coach Capacity). Set by a DATA REQUEST, no form. */
+  weekendCapacityHours: smallint("weekend_capacity_hours"),
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.
   lineUserId: text("line_user_id"),
   lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.

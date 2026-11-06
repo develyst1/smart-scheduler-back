@@ -512,6 +512,13 @@
       "when": 1783000000068,
       "tag": "0072_course_end_reason_ended_early",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1783000000069,
+      "tag": "0073_teacher_weekend_capacity_hours",
+      "breakpoints": true
     }
   ]
 }

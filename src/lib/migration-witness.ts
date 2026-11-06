@@ -725,6 +725,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "NOT VALID + VALIDATE; rerunnable; NO data is written. 0023's witness (the constraint exists) is deliberately NOT re-pointed: this definition still satisfies it, and re-running 0023 would REGRESS the CHECK to three codes.",
     rerunnable: true,
   },
+  {
+    tag: "0073_teacher_weekend_capacity_hours",
+    probe: { kind: "column", table: "teachers", column: "weekend_capacity_hours" },
+    why:
+      "TASK-756 (REQ-5004). Coach Capacity: a PART_TIME coach's own weekend hours per day (NULL = the type's rate). The probe is the column itself, the ONLY object the file adds, so a half-applied file reads as not applied " +
+      "and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; NO data is written and no coach is named.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

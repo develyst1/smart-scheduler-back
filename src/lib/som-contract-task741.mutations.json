@@ -171,18 +171,14 @@
     },
     {
       "id": "M12",
-      "what": "`month` is ignored: every month-bound section reads the CURRENT month",
+      "what": "757: `month` is ignored — the month period reads the CURRENT month",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "const monthFrom = `${month}-01`;",
-              "to": "const monthFrom = `${today.slice(0, 7)}-01`;"
-            },
-            {
-              "from": "const monthTo = monthEnd(month);",
-              "to": "const monthTo = monthEnd(today.slice(0, 7));"
+              "from": "return { from: `${input.month}-01`, to: monthEnd(input.month), month: input.month, allData: false };",
+              "to": "return { from: `${input.today.slice(0, 7)}-01`, to: monthEnd(input.today.slice(0, 7)), month: input.month, allData: false };"
             }
           ]
         }
@@ -256,8 +252,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "const recentFrom = addMonths(month, -2);",
-              "to": "const recentFrom = addMonths(month, -1);"
+              "from": "const recentFrom = addMonths(toMonth, -2);",
+              "to": "const recentFrom = addMonths(toMonth, -1);"
             }
           ]
         }
@@ -265,14 +261,14 @@
     },
     {
       "id": "M18",
-      "what": "a VOUCHER bought after the trial moves it out (Q2.2 flipped)",
+      "what": "REQ-5004: a voucher no longer takes a child off card 3 (the switch flipped back)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "export const TRIAL_MOVES_OUT_ON_VOUCHER = false;",
-              "to": "export const TRIAL_MOVES_OUT_ON_VOUCHER = true;"
+              "from": "export const TRIAL_MOVES_OUT_ON_VOUCHER = true;",
+              "to": "export const TRIAL_MOVES_OUT_ON_VOUCHER = false;"
             }
           ]
         }
@@ -730,14 +726,14 @@
     },
     {
       "id": "Q4",
-      "what": "755: Total counts ECA / camp / group rows too (not only lesson-type classes)",
+      "what": "756: Total leaves out the voucher holders",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
-              "to": "for (const b of bookings) if (b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))"
+              "from": "const customers = new Set<string>([...courseHolders, ...voucherHolders]);",
+              "to": "const customers = new Set<string>([...courseHolders]);"
             }
           ]
         }
@@ -745,14 +741,14 @@
     },
     {
       "id": "Q5",
-      "what": "755: Total counts a CANCELLED class",
+      "what": "756: Total leaves out the course holders",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
-              "to": "for (const b of bookings) if (isLesson(b) && b.date <= asOf && passes(b))"
+              "from": "const customers = new Set<string>([...courseHolders, ...voucherHolders]);",
+              "to": "const customers = new Set<string>([...voucherHolders]);"
             }
           ]
         }
@@ -760,14 +756,14 @@
     },
     {
       "id": "Q6",
-      "what": "755: Total is not cut at the as-of date for classes",
+      "what": "756: Total also counts every child with a lesson-type class (the old «known by»)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && b.date <= asOf && passes(b))",
-              "to": "for (const b of bookings) if (isLesson(b) && b.status !== \"CANCELLED\" && passes(b))"
+              "from": "const customers = new Set<string>([...courseHolders, ...voucherHolders]);",
+              "to": "const customers = new Set<string>([...courseHolders, ...voucherHolders, ...bookings.filter((b) => isLesson(b)).flatMap((b) => b.studentIds)]);"
             }
           ]
         }
@@ -790,14 +786,14 @@
     },
     {
       "id": "Q8",
-      "what": "755: Total counts a CANCELLED course",
+      "what": "756: Total counts every course holder, not only the active ones",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
-              "to": "for (const c of courses) if (bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);"
+              "from": "const customers = new Set<string>([...courseHolders, ...voucherHolders]);",
+              "to": "const customers = new Set<string>([...courses.flatMap((c) => [...c.studentIds]), ...voucherHolders]);"
             }
           ]
         }
@@ -805,59 +801,14 @@
     },
     {
       "id": "Q9",
-      "what": "755: Total counts a course bought AFTER the as-of date",
+      "what": "756: Total counts every voucher holder, not only the active ones",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
-              "to": "for (const c of courses) if (!cancelled.has(c.id) && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "Q10",
-      "what": "755: Total counts a CANCELLED voucher",
-      "files": [
-        {
-          "file": "src/lib/som-contract.ts",
-          "edits": [
-            {
-              "from": "for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);",
-              "to": "for (const v of vouchers) if (bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "Q11",
-      "what": "755: Total counts a voucher bought AFTER the as-of date",
-      "files": [
-        {
-          "file": "src/lib/som-contract.ts",
-          "edits": [
-            {
-              "from": "for (const v of vouchers) if (!cancelled.has(v.id) && bangkokDate(v.createdAt) <= asOf && inBranch(v.id)) customers.add(v.studentId);",
-              "to": "for (const v of vouchers) if (!cancelled.has(v.id) && inBranch(v.id)) customers.add(v.studentId);"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "Q12",
-      "what": "755: Total ignores the branch filter for packs",
-      "files": [
-        {
-          "file": "src/lib/som-contract.ts",
-          "edits": [
-            {
-              "from": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf && inBranch(c.id)) for (const id of c.studentIds) customers.add(id);",
-              "to": "for (const c of courses) if (!cancelled.has(c.id) && bangkokDate(c.createdAt) <= asOf) for (const id of c.studentIds) customers.add(id);"
+              "from": "const customers = new Set<string>([...courseHolders, ...voucherHolders]);",
+              "to": "const customers = new Set<string>([...courseHolders, ...vouchers.map((v) => v.studentId)]);"
             }
           ]
         }
@@ -873,6 +824,111 @@
             {
               "from": "archivedAt: s.archivedAt ?? null, ",
               "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "what": "756: a 1 HR after the 1st Trial no longer takes the child off card 3",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const FIRST_TRIAL_MOVES_OUT_ON_SINGLE_SESSION = true;",
+              "to": "export const FIRST_TRIAL_MOVES_OUT_ON_SINGLE_SESSION = false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "756: a 1 HR BEFORE the 1st Trial also takes the child off card 3",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date >= trialDate && b.date <= asOf && b.studentIds",
+              "to": "b.date <= asOf && b.studentIds"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "756: a 1 HR AFTER the as-of day also takes the child off card 3",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.date >= trialDate && b.date <= asOf && b.studentIds",
+              "to": "b.date >= trialDate && b.studentIds"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "756: a CANCELLED 1 HR takes the child off card 3",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.bookingType === \"SINGLE_SESSION\" && b.status !== \"CANCELLED\" && b.date >= trialDate",
+              "to": "b.bookingType === \"SINGLE_SESSION\" && b.date >= trialDate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "756: card 4 shares card 3's voucher switch (the trap: a voucher takes a child off 1 HR)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "!boughtByAsOf(id, SINGLE_SESSION_MOVES_OUT_ON_VOUCHER)",
+              "to": "!boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "756: card 4's own voucher switch flipped on",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const SINGLE_SESSION_MOVES_OUT_ON_VOUCHER = false;",
+              "to": "export const SINGLE_SESSION_MOVES_OUT_ON_VOUCHER = true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "756: the 1 HR move-out ignores the branch filter",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.studentIds.includes(studentId) && passes(b));",
+              "to": "b.studentIds.includes(studentId));"
             }
           ]
         }

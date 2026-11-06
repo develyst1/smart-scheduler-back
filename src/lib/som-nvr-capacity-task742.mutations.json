@@ -27,8 +27,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);",
-              "to": "if (day.slice(0, 7) === month) newCourseThisMonth.push(r);"
+              "from": "if (trial.date.slice(0, 7) === day.slice(0, 7)) newCourseThisMonth.push(r);",
+              "to": "if (day.slice(0, 7) === rangeFrom.slice(0, 7)) newCourseThisMonth.push(r);"
             }
           ]
         }
@@ -87,8 +87,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }) };",
-              "to": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }), weekdayPct: mine.length ? Math.round(mine.reduce((s, p) => s + p.weekdayPct, 0) / mine.length) : 0 };"
+              "from": "mine.reduce((n, p) => n + p.bookedHours, 0)) };",
+              "to": "mine.reduce((n, p) => n + p.bookedHours, 0)), weekdayPct: mine.length ? Math.round(mine.reduce((n, p) => n + p.weekdayPct, 0) / mine.length) : 0 };"
             }
           ]
         }
@@ -177,8 +177,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "b.date > monthEnd(month) || !passes(b)) continue;",
-              "to": "b.date > monthEnd(month)) continue;"
+              "from": "b.date > rangeTo || !passes(b)) continue;",
+              "to": "b.date > rangeTo) continue;"
             }
           ]
         }
@@ -231,14 +231,14 @@
     },
     {
       "id": "N16",
-      "what": "a working day is 8 hours, not 9",
+      "what": "756: a full-timer's weekday is 4 hours, not 5",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "export const CAPACITY_HOURS_PER_DAY = 9;",
-              "to": "export const CAPACITY_HOURS_PER_DAY = 8;"
+              "from": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 5;",
+              "to": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 4;"
             }
           ]
         }
@@ -297,8 +297,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
-              "to": "buyDay(c) <= monthEnd(month)) && !vouchers.some((x) => x.studentId === id)) trialNotConverted.push(r);"
+              "from": "buyDay(c) <= rangeTo)) trialNotConverted.push(r);",
+              "to": "buyDay(c) <= rangeTo) && !vouchers.some((x) => x.studentId === id)) trialNotConverted.push(r);"
             }
           ]
         }
@@ -312,7 +312,7 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
+              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= rangeTo)) trialNotConverted.push(r);",
               "to": "if (!courses.some((c) => c.studentIds.includes(id))) trialNotConverted.push(r);"
             }
           ]
@@ -327,8 +327,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
-              "to": "buyDay(c) <= monthEnd(month) && buyDay(c) >= t.date)) trialNotConverted.push(r);"
+              "from": "buyDay(c) <= rangeTo)) trialNotConverted.push(r);",
+              "to": "buyDay(c) <= rangeTo && buyDay(c) >= t.date)) trialNotConverted.push(r);"
             }
           ]
         }
@@ -477,8 +477,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (from.slice(0, 7) !== month ||",
-              "to": "if (endDay.slice(0, 7) !== month ||"
+              "from": "if (!inRange(from) ||",
+              "to": "if (!inRange(endDay) ||"
             }
           ]
         }
@@ -492,7 +492,7 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (day.slice(0, 7) !== month || !inBranch(v.id) || voucherKind",
+              "from": "if (!inRange(day) || !inBranch(v.id) || voucherKind",
               "to": "if (!inBranch(v.id) || voucherKind"
             }
           ]
@@ -717,8 +717,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);",
-              "to": "if (!input.courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= monthEnd(month))) trialNotConverted.push(r);"
+              "from": "if (!courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= rangeTo)) trialNotConverted.push(r);",
+              "to": "if (!input.courses.some((c) => c.studentIds.includes(id) && buyDay(c) <= rangeTo)) trialNotConverted.push(r);"
             }
           ]
         }
@@ -762,8 +762,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "  for (const c of courses) {\n    const day = buyDay(c);\n    if (day.slice(0, 7) !== month",
-              "to": "  for (const c of input.courses) {\n    const day = buyDay(c);\n    if (day.slice(0, 7) !== month"
+              "from": "  for (const c of courses) {\n    const day = buyDay(c);\n    if (!inRange(day)",
+              "to": "  for (const c of input.courses) {\n    const day = buyDay(c);\n    if (!inRange(day)"
             }
           ]
         }
@@ -777,8 +777,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "for (const v of vouchers) {\n    const day = buyDay(v);\n    if (day.slice(0, 7) !== month",
-              "to": "for (const v of input.vouchers) {\n    const day = buyDay(v);\n    if (day.slice(0, 7) !== month"
+              "from": "for (const v of vouchers) {\n    const day = buyDay(v);\n    if (!inRange(day)",
+              "to": "for (const v of input.vouchers) {\n    const day = buyDay(v);\n    if (!inRange(day)"
             }
           ]
         }
@@ -1047,8 +1047,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "if (trial.date.slice(0, 7) === month) newCourseThisMonth.push(r);",
-              "to": "if (trial.date.slice(0, 7) !== month) newCourseThisMonth.push(r);"
+              "from": "if (trial.date.slice(0, 7) === day.slice(0, 7)) newCourseThisMonth.push(r);",
+              "to": "if (trial.date.slice(0, 7) !== day.slice(0, 7)) newCourseThisMonth.push(r);"
             }
           ]
         }
@@ -1092,8 +1092,503 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "    if (day.slice(0, 7) !== month || !inBranch(c.id)) continue; // every line below",
+              "from": "    if (!inRange(day) || !inBranch(c.id)) continue; // every line below",
               "to": "    if (!inBranch(c.id)) continue; // every line below"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S1",
+      "what": "756: the weekend day is 5 hours, not 6",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_WEEKEND_HOURS = 6;",
+              "to": "export const CAPACITY_WEEKEND_HOURS = 5;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "756: a part-timer has weekday capacity",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 0;",
+              "to": "export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "756: a freelancer has capacity",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_FREELANCE_HOURS = 0;",
+              "to": "export const CAPACITY_FREELANCE_HOURS = 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "756: a part-timer's own weekend value is ignored",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS)",
+              "to": "(CAPACITY_WEEKEND_HOURS)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "what": "756: a part-timer's own value 0 counts as «not set»",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS)",
+              "to": "(t.weekendCapacityHours || CAPACITY_WEEKEND_HOURS)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6",
+      "what": "756: a full-timer reads the own weekend value too",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "t.type === \"FULL_TIME\" ? CAPACITY_WEEKEND_HOURS :",
+              "to": "t.type === \"FULL_TIME\" ? (t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS) :"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S7",
+      "what": "756: a part-timer's bookedHours includes his weekday classes",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "t.type === \"PART_TIME\" ? we.b : wd.b + we.b",
+              "to": "wd.b + we.b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S8",
+      "what": "756: by type, bookedHours is weekday + weekend, not the sum of the people's",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }, mine.reduce((n, p) => n + p.bookedHours, 0)) };",
+              "to": "{ b: sum(\"weekendBookedHours\"), a: sum(\"weekendAvailableHours\") }) };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S9",
+      "what": "756: the READ drops weekend_capacity_hours",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "weekendCapacityHours: t.weekendCapacityHours ?? null, createdAt: t.createdAt ?? null }))",
+              "to": "weekendCapacityHours: null, createdAt: t.createdAt ?? null }))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "what": "756: a freelancer's booked hours are zeroed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "t.type === \"PART_TIME\" ? we.b : wd.b + we.b",
+              "to": "t.type === \"PART_TIME\" ? we.b : t.type === \"FREELANCE\" ? 0 : wd.b + we.b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T1",
+      "what": "757: ALL DATA starts at the LATEST lesson row, not the earliest",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": ".map((b) => b.date).sort()[0] ?? input.today;",
+              "to": ".map((b) => b.date).sort().pop() ?? input.today;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "what": "757: ALL DATA starts at a CANCELLED row too",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "input.bookings.filter((b) => isLesson(b) && b.status !== \"CANCELLED\")",
+              "to": "input.bookings.filter((b) => isLesson(b))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "what": "757: ALL DATA starts at an ECA / camp row too",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "input.bookings.filter((b) => isLesson(b) && b.status !== \"CANCELLED\")",
+              "to": "input.bookings.filter((b) => b.status !== \"CANCELLED\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "what": "757: a from–to range is ignored (the month wins)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (input.from && input.to) return",
+              "to": "if (false && input.from && input.to) return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "what": "757: all data is not capped at today (a future-dated first row starts it)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "return { from: first > input.today ? input.today : first, to: input.today, month: null, allData: true };",
+              "to": "return { from: first, to: input.today, month: null, allData: true };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "what": "757: the as-of day is the range end, not capped at today",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const asOf = rangeTo < today ? rangeTo : today;",
+              "to": "const asOf = rangeTo;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "what": "757: the 3-month window ends at TODAY's month, not the period's",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const toMonth = rangeTo.slice(0, 7);",
+              "to": "const toMonth = today.slice(0, 7);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T8",
+      "what": "757: Demographics + Activity ignore the range start",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const inMonth = (d: string) => d >= rangeFrom && d <= rangeTo;",
+              "to": "const inMonth = (d: string) => d <= rangeTo;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T9",
+      "what": "757: Demographics + Activity ignore the range end",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const inMonth = (d: string) => d >= rangeFrom && d <= rangeTo;",
+              "to": "const inMonth = (d: string) => d >= rangeFrom;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V1",
+      "what": "757: one end of a range is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "(q.from == null) !== (q.to == null)",
+              "to": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "what": "757: from after to is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "if (q.from > q.to) ctx.addIssue({ code: \"custom\", path: [\"from\"]",
+              "to": "if (false) ctx.addIssue({ code: \"custom\", path: [\"from\"]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "what": "757: a future end is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "q.to > bangkokNow().date",
+              "to": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "what": "757: a month together with a range is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "if (q.month != null) ctx.addIssue",
+              "to": "if (false) ctx.addIssue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V5",
+      "what": "757: an impossible day (30 Feb) is accepted",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d",
+              "to": "true"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U1",
+      "what": "757: ALL DATA ignores the coach's start day",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "period.allData && t.createdAt && d < bangkokDate(t.createdAt)",
+              "to": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U2",
+      "what": "757: a month / range also starts the coach at his created day",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "period.allData && t.createdAt && d < bangkokDate(t.createdAt)",
+              "to": "t.createdAt && d < bangkokDate(t.createdAt)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U3",
+      "what": "757: booked hours ignore the range",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "|| b.date < rangeFrom || b.date > rangeTo || !passes(b)) continue;",
+              "to": "|| !passes(b)) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U4",
+      "what": "757: capacity days stop at the range start + 1 week",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (let d = rangeFrom; d <= rangeTo; d = addDays(d, 1)) days.push(d);",
+              "to": "for (let d = rangeFrom; d <= rangeTo && d < addDays(rangeFrom, 7); d = addDays(d, 1)) days.push(d);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U5",
+      "what": "757: the READ reads leave for the wrong window (period end twice)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "recordedLeaveDays(db, period.from, period.to)",
+              "to": "recordedLeaveDays(db, period.to, period.to)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U6",
+      "what": "757: the READ drops the from–to range (a range reads as all data)",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "...(q.from && q.to ? { from: q.from, to: q.to } : q.month ? { month: q.month } : {}),",
+              "to": "...(q.month ? { month: q.month } : {}),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U7",
+      "what": "757: the READ hands the counters no creation day",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "createdAt: t.createdAt ?? null }))",
+              "to": "createdAt: null }))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U8",
+      "what": "757: Not renewed ignores the range start",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (!inRange(from) ||",
+              "to": "if (from > rangeTo ||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U9",
+      "what": "757: 1st Trial ignores the range end",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (!inRange(t.date) || !t.passes) continue;",
+              "to": "if (t.date < rangeFrom || !t.passes) continue;"
             }
           ]
         }

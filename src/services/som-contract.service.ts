@@ -7,7 +7,7 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { duoStudentIds } from "../lib/duo-course";
 import { activeParentWhere } from "../lib/parent-archive";
 import * as teacherLeave from "../lib/teacher-leave"; // THE reader of the recorded advance-leave days (TASK-561)
-import { countNvr, countSom, monthEnd, type ExpiryChange, type NvrBucket, type NvrDetailRow, type SomBooking, type SomContractInput, type SomContractSections } from "../lib/som-contract";
+import { countNvr, countSom, periodOf, type ExpiryChange, type NvrBucket, type NvrDetailRow, type SomBooking, type SomContractInput, type SomContractSections } from "../lib/som-contract";
 
 export { mergeSom } from "../lib/som-contract"; // the route's merge (one import there)
 
@@ -24,15 +24,15 @@ const groupChanges = <T extends { fromDate: string; changedAt: Date | string }>(
   return map;
 };
 
-type SomQuery = { month?: string; badgeValueIds?: readonly string[] };
+type SomQuery = { month?: string; from?: string; to?: string; badgeValueIds?: readonly string[] };
 
 /** The ONE read behind every section AND the New-vs-Renewing list, so a card and its list are computed from the same rows. */
 async function loadInput(q: SomQuery): Promise<SomContractInput> {
   // «Today» and «this month» are resolved SERVER-side in Bangkok (the old report's rule).
   const { date: today } = bangkokNow();
-  const month = q.month ?? today.slice(0, 7);
+  // TASK-757: no `month` and no `from` + `to` = ALL DATA (the screen keeps sending `month`, so today's answers do not move).
 
-  const [bookingRows, courseRows, voucherRows, courseMoves, voucherMoves, students, parents, subjects, teachers, leaveRows] = await Promise.all([
+  const [bookingRows, courseRows, voucherRows, courseMoves, voucherMoves, students, parents, subjects, teachers] = await Promise.all([
     db.query.bookings.findMany({
       columns: { studentId: true, coStudentId: true, bookingType: true, status: true, date: true, subjectId: true, courseId: true, voucherId: true, groupId: true, teacherId: true, startTime: true, endTime: true },
       where: (b: any, { eq }: any) => eq(b.pendingSlot, false),
@@ -46,7 +46,6 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     db.query.parents.findMany({ where: activeParentWhere() }), // an archived household is not counted (TASK-411) — its students fall to `unknown`
     db.query.subjects.findMany(),
     db.query.teachers.findMany(), // 🔻 742 — Coach Capacity's roster
-    teacherLeave.recordedLeaveDays(db, `${month}-01`, monthEnd(month)), // 🔻 742 — the recorded leave days of the month, through THE reader (a past window is just a window)
   ]);
 
   const parentById = new Map(parents.map((p: any) => [p.id, p]));
@@ -68,8 +67,12 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
   const courseMovesBy = groupChanges(courseMoves, "courseId");
   const voucherMovesBy = groupChanges(voucherMoves, "voucherId");
 
+  // 🔻 742 — the recorded leave days of the PERIOD, through THE reader (a past window is just a window); all data needs the bookings first (its start is the earliest lesson row)
+  const period = periodOf({ month: q.month, from: q.from, to: q.to, today, bookings });
+  const leaveRows = await teacherLeave.recordedLeaveDays(db, period.from, period.to);
+
   return {
-    month,
+    ...(q.from && q.to ? { from: q.from, to: q.to } : q.month ? { month: q.month } : {}),
     today,
     badgeValueIds: q.badgeValueIds ?? [],
     bookings,
@@ -103,7 +106,7 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     subjects: subjects.map((s: any) => ({ id: s.id, name: s.name, active: s.active })),
     districtLabel,
     subdistrictLabel: (code: string) => areaName(code, "TH"), // 🔻 744
-    teachers: teachers.map((t: any) => ({ id: t.id, nickname: t.nickname, type: t.type, active: t.active, archived: t.archived, workDays: t.workDays ?? [] })),
+    teachers: teachers.map((t: any) => ({ id: t.id, nickname: t.nickname, type: t.type, active: t.active, archived: t.archived, workDays: t.workDays ?? [], weekendCapacityHours: t.weekendCapacityHours ?? null, createdAt: t.createdAt ?? null })),
     leaveDays: leaveRows.map((l: any) => ({ teacherId: l.teacherId, date: l.date })),
   };
 }

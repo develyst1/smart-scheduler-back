@@ -2,7 +2,7 @@
 // real Hono app. Today in every fixture is Monday 2026-10-12; October 2026 has 22 weekdays + 9 weekend days.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import {
-  CAPACITY_HOURS_PER_DAY, CAPACITY_NOT_COUNTED_STATUSES, CAPACITY_PCT_CAP, NVR_BUCKETS, RENEW_ENDED_STATUSES, RENEW_ONLY_AFTER_OLD_FINISHED, VOUCHER_FINISHED_STATUSES, cancelledIds, countCapacity, countNvr, countSom, mergeSom,
+  CAPACITY_FREELANCE_HOURS, CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_NOT_COUNTED_STATUSES, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_WEEKEND_HOURS, CAPACITY_PCT_CAP, NVR_BUCKETS, RENEW_ENDED_STATUSES, RENEW_ONLY_AFTER_OLD_FINISHED, VOUCHER_FINISHED_STATUSES, addMonths, cancelledIds, countCapacity, countNvr, countSom, mergeSom,
   type SomBooking, type SomContractInput, type SomCourse, type SomStudent, type SomTeacher, type SomVoucher,
 } from "./som-contract";
 import { ROUTE_ACCESS, routeKey } from "./route-access";
@@ -38,7 +38,7 @@ const ids = (rows: Array<{ studentId: string }>) => rows.map((r) => r.studentId)
 describe("🔴 TASK-742 — the declared defaults and the contract's shape", () => {
   test("the six cards are Palm's, in his order; the card is the bucket's name", () => {
     expect([...NVR_BUCKETS]).toEqual(["firstTrial", "newCourseThisMonth", "newCoursePrevMonth", "renewCourse", "trialNotConverted", "notRenewed"]);
-    expect(Object.keys(nvr().counts).sort()).toEqual(["month", ...NVR_BUCKETS].sort());
+    expect(Object.keys(nvr().counts).sort()).toEqual(["from", "month", "to", ...NVR_BUCKETS].sort());
   });
   test("🔒 Q3.7 (REQ-5002): «the earlier course has FINISHED» = used up · expired · ended with ENDED_EARLY (the only ended course left in the list — every other ended one is cancelled and out) — a PAUSED one is not finished; a voucher finishes by used up · expired", () => {
     expect([...RENEW_ENDED_STATUSES].sort()).toEqual(["CANCELLED", "COMPLETED", "EXPIRED"]);
@@ -46,7 +46,7 @@ describe("🔴 TASK-742 — the declared defaults and the contract's shape", () 
   });
   test("🔒 Q4.5 / Palm: only CANCELLED is out of the booked hours; one day = 9 hours; a percentage is capped at 100", () => {
     expect([...CAPACITY_NOT_COUNTED_STATUSES]).toEqual(["CANCELLED"]);
-    expect(CAPACITY_HOURS_PER_DAY).toBe(9);
+    expect([CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_WEEKEND_HOURS, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_FREELANCE_HOURS]).toEqual([5, 6, 0, 0]); // REQ-5004 row 4: FT 5 h weekday / 6 h Sat–Sun · PT 6 h Sat–Sun, 0 weekday · FL 0
     expect(CAPACITY_PCT_CAP).toBe(100);
   });
 });
@@ -377,7 +377,7 @@ describe("🔴 TASK-742 — the list IS the card; the badge filter; the first se
   test("every card's number equals its list's length, for every bucket", () => {
     const r = countNvr(mixed);
     for (const k of NVR_BUCKETS) expect(r.counts[k]).toBe(r.rows[k].length);
-    expect(r.counts).toEqual({ month: MONTH, firstTrial: 2, newCourseThisMonth: 0, newCoursePrevMonth: 1, renewCourse: 1, trialNotConverted: 2, notRenewed: 2 }); // notRenewed: `old` (expired 5 Oct) + the voucher (expired 4 Oct); S5's used-up course ended in February and was renewed
+    expect(r.counts).toEqual({ month: MONTH, from: "2026-10-01", to: "2026-10-31", firstTrial: 2, newCourseThisMonth: 0, newCoursePrevMonth: 1, renewCourse: 1, trialNotConverted: 2, notRenewed: 2 }); // notRenewed: `old` (expired 5 Oct) + the voucher (expired 4 Oct); S5's used-up course ended in February and was renewed
     expect(countSom(mixed).newVsRenewing).toEqual(r.counts); // the page and the list read the SAME function
   });
   test("the badge filter: a trial by ITS OWN badge, a pack through its (non-cancelled) session rows", () => {
@@ -395,32 +395,57 @@ describe("🔴 TASK-742 — the list IS the card; the badge filter; the first se
   });
 });
 
-describe("🔴 TASK-742 — Coach Capacity: available hours (workDays − leave days) × 9, booked hours, weekday / weekend", () => {
+describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per day worked (FT 5 / 6, PT 6 weekend or his own, FL 0) minus recorded leave, booked hours, weekday / weekend", () => {
   const coach = (id: string, type: SomTeacher["type"], o: Partial<SomTeacher> = {}): SomTeacher => ({ id, nickname: id, type, active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], ...o });
   const cap = (o: Partial<SomContractInput>) => countCapacity(base(o));
   const MONFRI = [1, 2, 3, 4, 5];
-  test("October 2026: a coach working every day has 22 × 9 weekday + 9 × 9 weekend hours; Mon–Fri only ⇒ weekend 0 / 0 = 0%", () => {
-    const r = cap({ teachers: [coach(TA, "FULL_TIME"), coach(TB, "PART_TIME", { workDays: MONFRI })] });
-    expect(r.byPerson[0]).toMatchObject({ teacherId: TA, weekdayAvailableHours: 198, weekendAvailableHours: 81, availableHours: 279 });
-    expect(r.byPerson[1]).toMatchObject({ teacherId: TB, weekdayAvailableHours: 198, weekendAvailableHours: 0, weekendPct: 0, weekendBookedHours: 0 });
+  test("October 2026 (22 weekdays + 9 weekend days): FT working every day = 22 × 5 + 9 × 6; PT = weekend only (9 × 6), weekday capacity 0; PT with his own value 4 = 9 × 4; FL = 0 everywhere", () => {
+    const r = cap({ teachers: [coach(TA, "FULL_TIME"), coach(TB, "PART_TIME"), coach("pt4", "PART_TIME", { weekendCapacityHours: 4 }), coach(TC, "FREELANCE")] });
+    const by = (id: string) => r.byPerson.find((p) => p.teacherId === id)!;
+    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 110, weekendAvailableHours: 54, availableHours: 164 });
+    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 54, availableHours: 54 });
+    expect(by("pt4")).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 36, availableHours: 36 });
+    expect(by(TC)).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 0, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
   });
-  test("an advance-leave day is taken off (a Monday ⇒ −9 weekday; a Saturday he does not work ⇒ nothing; a day in ANOTHER month ⇒ nothing)", () => {
-    const r = cap({ teachers: [coach(TB, "PART_TIME", { workDays: MONFRI })], leaveDays: [{ teacherId: TB, date: "2026-10-05" }, { teacherId: TB, date: "2026-10-03" }, { teacherId: TB, date: "2026-11-02" }, { teacherId: TA, date: "2026-10-06" }] });
-    expect(r.byPerson[0]).toMatchObject({ weekdayAvailableHours: 189, weekendAvailableHours: 0 });
+  test("a PT whose own value is 0 has no capacity (set means set); null / absent = the type's rate", () => {
+    expect(cap({ teachers: [coach(TA, "PART_TIME", { weekendCapacityHours: 0 })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 0 });
+    expect(cap({ teachers: [coach(TA, "PART_TIME", { weekendCapacityHours: null })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 54 });
+    expect(cap({ teachers: [coach(TA, "FULL_TIME", { weekendCapacityHours: 2 })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 54 }); // only a PT reads it
   });
-  test("a weekend-only coach: weekday 0 / 0", () => {
-    expect(cap({ teachers: [coach(TA, "PART_TIME", { workDays: [0, 6] })] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 81 });
+  test("an advance-leave day is taken off per the coach's own rate (FT Monday ⇒ −5; PT Saturday ⇒ −6, his own 4 ⇒ −4; a Saturday he does not work ⇒ nothing; a day in ANOTHER month ⇒ nothing)", () => {
+    const leave = [{ teacherId: TB, date: "2026-10-05" }, { teacherId: TB, date: "2026-10-03" }, { teacherId: TB, date: "2026-11-02" }, { teacherId: TA, date: "2026-10-06" }, { teacherId: TC, date: "2026-10-10" }];
+    const r = cap({ teachers: [coach(TB, "FULL_TIME", { workDays: MONFRI }), coach(TA, "PART_TIME", { workDays: [0, 6] }), coach(TC, "PART_TIME", { weekendCapacityHours: 4 })], leaveDays: leave });
+    const by = (id: string) => r.byPerson.find((p) => p.teacherId === id)!;
+    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 105, weekendAvailableHours: 0 }); // Mon 5 Oct off; Sat 3 Oct he does not work
+    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 54 }); // a weekday leave day changes nothing for a weekend coach
+    expect(by(TC)).toMatchObject({ weekendAvailableHours: 32 }); // 9 × 4 − Sat 10 Oct (4)
   });
-  test("a FREELANCE coach with the default all-7 workDays gets a full month (Q4.4); February 2026 = 20 × 9 + 8 × 9", () => {
-    expect(cap({ teachers: [coach(TC, "FREELANCE")] }).byPerson[0]).toMatchObject({ teacherType: "FREELANCE", availableHours: 279 });
-    expect(cap({ month: "2026-02", teachers: [coach(TC, "FREELANCE")] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 180, weekendAvailableHours: 72 });
+  test("🔴 a PT's Hours (x / y) = WEEKEND booked only: his weekday classes stay real in the weekday cell (0 available, 0 %) but out of bookedHours; his weekend % is unaffected", () => {
+    const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-03"), lesson("2026-10-04"), lesson("2026-10-10")]; // 2 weekday + 3 weekend
+    const r = cap({ teachers: [coach(TA, "PART_TIME")], bookings: b }).byPerson[0]!;
+    expect([r.weekdayBookedHours, r.weekdayAvailableHours, r.weekdayPct]).toEqual([2, 0, 0]);
+    expect([r.weekendBookedHours, r.weekendAvailableHours, r.weekendPct, r.bookedHours]).toEqual([3, 54, 6, 3]); // 3 / 54 = 5.6 %
+    expect(r.availableHours).toBe(54);
+  });
+  test("🔴 FREELANCE: booked hours real (both cells and the total), available 0, % 0", () => {
+    const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-03")];
+    const r = cap({ teachers: [coach(TC, "FREELANCE")], bookings: b.map((x) => ({ ...x, teacherId: TC })) }).byPerson[0]!;
+    expect([r.weekdayBookedHours, r.weekendBookedHours, r.bookedHours]).toEqual([2, 1, 3]);
+    expect([r.availableHours, r.weekdayPct, r.weekendPct]).toEqual([0, 0, 0]);
+  });
+  test("a weekend-only FULL_TIME coach: weekday 0 / 0, weekend 9 × 6", () => {
+    expect(cap({ teachers: [coach(TA, "FULL_TIME", { workDays: [0, 6] })] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 54 });
+  });
+  test("February 2026 (20 weekdays + 8 weekend days): FT = 20 × 5 + 8 × 6; a FREELANCE gets 0 whatever his workDays", () => {
+    expect(cap({ month: "2026-02", teachers: [coach(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 100, weekendAvailableHours: 48 });
+    expect(cap({ month: "2026-02", teachers: [coach(TC, "FREELANCE")] }).byPerson[0]).toMatchObject({ availableHours: 0 });
   });
   const lesson = (date: string, o: Partial<SomBooking> = {}) => bk({ date, status: "CONFIRMED", teacherId: TA, ...o });
   test("booked hours split by the day of the week; % = round(booked ÷ available × 100)", () => {
     const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-07"), lesson("2026-10-08"), lesson("2026-10-03"), lesson("2026-10-04")]; // 4 weekday + Sat + Sun
     const r = cap({ teachers: [coach(TA, "FULL_TIME")], bookings: b }).byPerson[0]!;
     expect([r.weekdayBookedHours, r.weekendBookedHours, r.bookedHours]).toEqual([4, 2, 6]);
-    expect([r.weekdayPct, r.weekendPct]).toEqual([2, 2]); // 4/198 · 2/81
+    expect([r.weekdayPct, r.weekendPct]).toEqual([4, 4]); // 4/110 = 3.6 · 2/54 = 3.7
   });
   test("what counts as booked: lessons + the GROUP row (once per coach, extras too); NOT cancelled rows, a group's SEATS, ECA / camp rows, other months; PENDING / PAUSED / SICK_LEAVE still hold the hour (Q4.5 default)", () => {
     const b = [
@@ -442,7 +467,7 @@ describe("🔴 TASK-742 — Coach Capacity: available hours (workDays − leave 
   test("the badge filter applies to BOOKED only (Q0.2) — available is not filtered", () => {
     const b = [lesson("2026-10-05", { badgeIds: [BV1] }), lesson("2026-10-06", { badgeIds: [BV2] }), lesson("2026-10-07")];
     const r = cap({ teachers: [coach(TA, "FULL_TIME")], bookings: b, badgeValueIds: [BV1] }).byPerson[0]!;
-    expect([r.bookedHours, r.availableHours]).toEqual([1, 279]);
+    expect([r.bookedHours, r.availableHours]).toEqual([1, 164]);
   });
   test("only ACTIVE, non-archived coaches; ordered Full-time → Part-time → Freelance, then nickname", () => {
     const r = cap({ teachers: [coach("z", "FREELANCE"), coach("b", "PART_TIME"), coach("y", "FULL_TIME"), coach("a", "FULL_TIME"), coach("off", "FULL_TIME", { active: false }), coach("gone", "PART_TIME", { archived: true })] });
@@ -453,14 +478,20 @@ describe("🔴 TASK-742 — Coach Capacity: available hours (workDays − leave 
     const r = cap({ teachers: [coach(TA, "FULL_TIME", { workDays: MONFRI }), coach(TB, "FULL_TIME", { workDays: MONFRI })], bookings: b });
     expect(r.byType.map((t) => [t.teacherType, t.coaches])).toEqual([["FULL_TIME", 2], ["PART_TIME", 0], ["FREELANCE", 0]]);
     const ft = r.byType[0]!;
-    expect([ft.weekdayBookedHours, ft.weekdayAvailableHours, ft.weekdayPct]).toEqual([5, 396, 1]); // 5/396 = 1.3% — the mean of A's 3% and B's 0% would be 2%
-    expect(r.byPerson[0]!.weekdayPct).toBe(3); // 5/198 = 2.5% ⇒ 3
+    expect([ft.weekdayBookedHours, ft.weekdayAvailableHours, ft.weekdayPct]).toEqual([5, 220, 2]); // 5/220 = 2.3% — the mean of A's 5% and B's 0% would be 3%
+    expect(r.byPerson[0]!.weekdayPct).toBe(5); // 5/110 = 4.5% ⇒ 5
     expect(r.byType[1]).toMatchObject({ coaches: 0, bookedHours: 0, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
   });
-  test("a percentage never passes 100 (an over-booked coach), but his hours stay real: 12 booked vs ONE available Saturday (9) ⇒ 133% ⇒ 100", () => {
+  test("byType sums the same rule: a PT type's bookedHours is the sum of his PTs' WEEKEND hours; FL's booked hours are real with available 0", () => {
+    const b = [lesson("2026-10-05"), lesson("2026-10-03"), lesson("2026-10-06", { teacherId: TC })];
+    const r = cap({ teachers: [coach(TA, "PART_TIME"), coach(TC, "FREELANCE")], bookings: b });
+    expect(r.byType[1]).toMatchObject({ teacherType: "PART_TIME", coaches: 1, bookedHours: 1, weekdayBookedHours: 1, weekdayAvailableHours: 0, weekendBookedHours: 1, weekendAvailableHours: 54, availableHours: 54 });
+    expect(r.byType[2]).toMatchObject({ teacherType: "FREELANCE", coaches: 1, bookedHours: 1, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
+  });
+  test("a percentage never passes 100 (an over-booked coach), but his hours stay real: 12 booked vs ONE available Saturday (6) ⇒ 200% ⇒ 100", () => {
     const b = Array.from({ length: 12 }, () => lesson("2026-10-03"));
-    const r = cap({ month: "2026-10", teachers: [coach(TA, "PART_TIME", { workDays: [6] })], leaveDays: ["10", "17", "24", "31"].map((d) => ({ teacherId: TA, date: `2026-10-${d}` })), bookings: b }).byPerson[0]!;
-    expect([r.weekendAvailableHours, r.weekendBookedHours, r.weekendPct]).toEqual([9, 12, 100]);
+    const r = cap({ month: "2026-10", teachers: [coach(TA, "FULL_TIME", { workDays: [6] })], leaveDays: ["10", "17", "24", "31"].map((d) => ({ teacherId: TA, date: `2026-10-${d}` })), bookings: b }).byPerson[0]!;
+    expect([r.weekendAvailableHours, r.weekendBookedHours, r.weekendPct]).toEqual([6, 12, 100]);
   });
   test("with no roster the report is empty but whole: three type rows at zero, month echoed", () => {
     const r = cap({});
@@ -529,17 +560,38 @@ describe("🔴 TASK-742 — the READ (service), the list endpoint and its access
       } finally { done(); }
     }
   });
+  test("🔴 TASK-757: the READ resolves the PERIOD — a month asks the leave reader for its first–last day, a from–to for the range, no period (ALL DATA) for the earliest lesson row … today; the echo rides on the section", async () => {
+    const before = leaveCalls.length;
+    stub({ bookings: [B({ date: "2026-08-03", status: "ATTENDED", bookingType: "COURSE_PACKAGE" }), B({ date: "2026-08-01", status: "CANCELLED", bookingType: "COURSE_PACKAGE" })], teachers: [{ id: TA, nickname: "A", type: "FULL_TIME", active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], createdAt: new Date(`${T}T03:00:00Z`) }] });
+    try {
+      const r = await svc.getSomContract({ from: "2026-10-01", to: "2026-10-05" });
+      expect([r.existingCustomers.month, r.existingCustomers.from, r.existingCustomers.to]).toEqual([null, "2026-10-01", "2026-10-05"]);
+      expect(leaveCalls[before]).toEqual(["2026-10-01", "2026-10-05"]);
+      const all = await svc.getSomContract();
+      expect([all.coachCapacity.month, all.coachCapacity.from, all.coachCapacity.to]).toEqual([null, "2026-08-03", T]);
+      expect(leaveCalls[before + 1]).toEqual(["2026-08-03", T]);
+      const dowT = new Date(`${T}T00:00:00Z`).getUTCDay();
+      expect(all.coachCapacity.byPerson[0]!.availableHours).toBe(dowT === 0 || dowT === 6 ? 6 : 5); // all data: a coach created today counts from today only (the READ hands over created_at)
+      const m = await svc.getSomContract({ month: "2026-09" });
+      expect([m.newVsRenewing.month, m.newVsRenewing.from, m.newVsRenewing.to]).toEqual(["2026-09", "2026-09-01", "2026-09-30"]);
+      expect(leaveCalls[before + 2]).toEqual(["2026-09-01", "2026-09-30"]);
+      expect((await svc.getNvrRows("firstTrial", { from: "2026-10-01", to: "2026-10-05" })).rows).toEqual([]); // the list endpoint takes the same period
+    } finally { done(); }
+  });
   test("Coach Capacity reads the roster, the leave days and the extra coaches (with the rows' times)", async () => {
     stub({
       bookings: [B({ bookingType: "GROUP", status: "CONFIRMED", teacherId: TA, additionalTeachers: [{ teacherId: TB }], startTime: "10:00:00", endTime: "12:00:00" })],
-      teachers: [{ id: TA, nickname: "A", type: "FULL_TIME", active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6] }, { id: TB, nickname: "B", type: "PART_TIME", active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6] }],
+      teachers: [{ id: TA, nickname: "A", type: "FULL_TIME", active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6] }, { id: TB, nickname: "B", type: "FULL_TIME", active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6] }, { id: TC, nickname: "C", type: "PART_TIME", active: true, archived: false, workDays: [0, 6], weekendCapacityHours: 3 }],
       leave: [{ teacherId: TB, date: `${M}-15` }],
     });
     try {
       const cc = (await svc.getSomContract({ month: M })).coachCapacity;
-      expect(cc.byPerson.map((p) => [p.teacherId, p.bookedHours])).toEqual([[TA, 2], [TB, 2]]); // the 2-hour group row counts for both coaches
-      const a = cc.byPerson[0]!, b = cc.byPerson[1]!;
-      expect(a.availableHours - b.availableHours).toBe(9); // B's leave day
+      expect(cc.byPerson.map((p) => [p.teacherId, p.bookedHours])).toEqual([[TA, 2], [TB, 2], [TC, 0]]); // the 2-hour group row counts for both coaches
+      const a = cc.byPerson[0]!, b = cc.byPerson[1]!, c = cc.byPerson[2]!;
+      const dow = new Date(`${M}-15T00:00:00Z`).getUTCDay();
+      expect(a.availableHours - b.availableHours).toBe(dow === 0 || dow === 6 ? 6 : 5); // B's leave day, at his own rate
+      const weekendDays = Array.from({ length: +new Date(Date.UTC(+M.slice(0, 4), +M.slice(5), 0)).toISOString().slice(8, 10) }, (_, i) => new Date(Date.UTC(+M.slice(0, 4), +M.slice(5) - 1, i + 1)).getUTCDay()).filter((d) => d === 0 || d === 6).length;
+      expect(c.availableHours).toBe(weekendDays * 3); // the READ hands over `weekend_capacity_hours`: a PT's own value
       expect(leaveCalls[0]).toEqual([`${M}-01`, new Date(Date.UTC(+M.slice(0, 4), +M.slice(5), 0)).toISOString().slice(0, 10)]); // the whole month, through THE reader
     } finally { done(); }
   });
@@ -575,5 +627,155 @@ describe("🔴 TASK-742 — the READ (service), the list endpoint and its access
     const k = routeKey("GET", "/api/reports/som/new-vs-renewing/:bucket");
     expect(ROUTE_ACCESS[k]).toEqual(ROUTE_ACCESS[routeKey("GET", "/api/reports/som")]);
     expect(ROUTE_ACCESS[k]!.menus).toEqual(["menu:som"]);
+  });
+});
+
+describe("🔴 TASK-757 (REQ-5004 row 1) — the period: all data by default, from–to, or a month that answers exactly as before", () => {
+  const coachOf = (id: string, type: SomTeacher["type"], o: Partial<SomTeacher> = {}): SomTeacher => ({ id, nickname: id, type, active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], ...o });
+  const att = (id: string, date: string, o: Partial<SomBooking> = {}) => bk({ studentIds: [id], date, status: "ATTENDED", ...o });
+  const strip = (x: any): any => JSON.parse(JSON.stringify(x, (k, val) => (k === "month" || k === "from" || k === "to" ? undefined : val)));
+  const rich = (): Partial<SomContractInput> => ({
+    students: STUDENTS,
+    bookings: [
+      trial(S1, "2026-10-02", { status: "ATTENDED" }), trial(S2, "2026-09-21", { status: "ATTENDED" }), trial(S5, "2026-08-15", { status: "ATTENDED" }),
+      att(S1, "2026-10-05", { courseId: "c1" }), att(S2, "2026-09-25", { courseId: "c2" }), bk({ courseId: "c1", studentIds: [S1], status: "CONFIRMED", date: "2026-10-20" }),
+      bk({ studentIds: [S4], bookingType: "SINGLE_SESSION", status: "ATTENDED", date: "2026-10-06" }), att(S3, "2026-10-07", { bookingType: "VOUCHER", voucherId: "v1" }),
+      att(S3, "2026-09-02", { bookingType: "VOUCHER", voucherId: "v1", teacherId: TB }),
+    ],
+    courses: [course({ id: "c1", studentIds: [S1], createdAt: "2026-10-03T03:00:00Z" }), course({ id: "c2", studentIds: [S2], createdAt: "2026-09-22T03:00:00Z" }), course({ id: "c0", studentIds: [S2], createdAt: "2026-02-01T03:00:00Z", size: 4, usedSessions: 4 })],
+    vouchers: [voucher({ id: "v1", studentId: S3, createdAt: "2026-09-01T03:00:00Z" })],
+    teachers: [coachOf(TA, "FULL_TIME"), coachOf(TB, "PART_TIME"), coachOf(TC, "FREELANCE")],
+    leaveDays: [{ teacherId: TA, date: "2026-10-06" }],
+  });
+  test("🔴 a MONTH answers byte-identically to the same month as a full from–to range (only the echoed month / from / to differ) — the month the screen keeps sending", () => {
+    for (const [month, from, to] of [["2026-10", "2026-10-01", "2026-10-31"], ["2026-09", "2026-09-01", "2026-09-30"], ["2026-02", "2026-02-01", "2026-02-28"]] as const) {
+      const a = countSom(base({ ...rich(), month }));
+      const b = countSom(base({ ...rich(), month: undefined, from, to }));
+      expect(strip(b)).toEqual(strip(a));
+      expect([a.existingCustomers.month, a.existingCustomers.from, a.existingCustomers.to]).toEqual([month, from, to]); // additive echo
+      expect([b.existingCustomers.month, b.existingCustomers.from, b.existingCustomers.to]).toEqual([null, from, to]);
+    }
+  });
+  test("a month still reads its own first–last day: the same fixture, October vs September, differ (the period is not ignored)", () => {
+    const oct = countSom(base({ ...rich(), month: "2026-10" })), sep = countSom(base({ ...rich(), month: "2026-09" }));
+    expect(oct.activityProgram.categories[0]!.total).not.toBe(sep.activityProgram.categories[0]!.total);
+    expect([oct.newVsRenewing.newCourseThisMonth, sep.newVsRenewing.renewCourse]).toEqual([1, 1]); // c1 (S1) bought 3 Oct with the trial on 2 Oct · c2 (S2's second course) bought 22 Sep
+  });
+  test("ALL DATA (no month, no range): from the EARLIEST non-cancelled LESSON row (not a cancelled row, not an ECA / camp row) to today; month echoed null", () => {
+    const b = [att(S1, "2026-03-05", { status: "CANCELLED" }), bk({ studentIds: [S2], bookingType: "OTHER", date: "2026-02-01" }), att(S3, "2026-04-10"), att(S3, "2026-10-05")];
+    const r = countSom(base({ month: undefined, bookings: b }));
+    expect([r.existingCustomers.month, r.existingCustomers.from, r.existingCustomers.to]).toEqual([null, "2026-04-10", TODAY]);
+    expect([r.demographics.from, r.activityProgram.from, r.newVsRenewing.from, r.coachCapacity.from]).toEqual(["2026-04-10", "2026-04-10", "2026-04-10", "2026-04-10"]);
+    expect(r.activityProgram.categories.find((c) => c.key === BIKE)!.total).toBe(2); // both attended lessons, from different months
+  });
+  test("all data with no lesson at all: the range is just today (never an inverted range)", () => {
+    const r = countSom(base({ month: undefined }));
+    expect([r.existingCustomers.from, r.existingCustomers.to]).toEqual([TODAY, TODAY]);
+    expect(countSom(base({ month: undefined, bookings: [att(S1, "2026-12-01")] })).existingCustomers.from).toBe(TODAY); // a future-dated class does not start the range
+  });
+  test("a from–to range CROSSING months reads every row in it and none outside (boundary days in); ONE day works", () => {
+    const b = [att(S1, "2026-09-19"), att(S1, "2026-09-20"), att(S1, "2026-10-05"), att(S1, "2026-10-06")];
+    const total = (from: string, to: string) => countSom(base({ month: undefined, from, to, bookings: b })).activityProgram.categories.find((c) => c.key === BIKE)!.total;
+    expect(total("2026-09-20", "2026-10-05")).toBe(2);
+    expect(total("2026-09-20", "2026-09-20")).toBe(1);
+    expect(total("2026-10-05", "2026-10-05")).toBe(1);
+  });
+  test("the as-of day is the range's END capped at today: Active course reads the end day, not today", () => {
+    const c = course({ id: "a", studentIds: [S1], createdAt: "2026-08-01T03:00:00Z", expiryDate: "2026-10-05" });
+    const b = [bk({ courseId: "a", studentIds: [S1], status: "CONFIRMED", date: "2026-10-20" })];
+    const active = (to: string) => countSom(base({ month: undefined, from: "2026-08-01", to, courses: [c], bookings: b })).existingCustomers.activeCourse;
+    expect(active("2026-09-30")).toBe(1); // alive on 30 Sep
+    expect(active("2026-10-31")).toBe(0); // as of TODAY (12 Oct) it expired on 5 Oct
+    const live = course({ id: "live", studentIds: [S2], createdAt: "2026-08-01T03:00:00Z", expiryDate: "2027-01-01" });
+    const later = [bk({ courseId: "live", studentIds: [S2], status: "CONFIRMED", date: "2026-10-20" })];
+    expect(countSom(base({ month: undefined, from: "2026-10-01", to: "2026-10-31", courses: [live], bookings: later })).existingCustomers.activeCourse).toBe(1); // the end day (31 Oct) is in the future: the as-of day is TODAY (12 Oct), the class on the 20th is still after it
+  });
+  test("cards 3 + 4: the 3 calendar months ending at the range's end (Jul 1 … the end day)", () => {
+    const b = [trial(S1, "2026-06-30"), trial(S2, "2026-07-01"), trial(S3, "2026-09-14"), trial(S4, "2026-09-20")];
+    const r = countSom(base({ month: undefined, from: "2026-09-01", to: "2026-09-15", bookings: b })).existingCustomers;
+    expect(r.recentFirstTrial).toBe(2); // S2 · S3
+    expect([r.recentFrom, r.recentTo]).toEqual(["2026-07", "2026-09"]);
+  });
+  test("🔴 the New lines over a range, PER ROW: a first course opened in the range with the 1st Trial in the SAME calendar month as the purchase = this month, an EARLIER month = previous; a later course is a Renew", () => {
+    const o = {
+      month: undefined, from: "2026-09-01", to: "2026-10-31",
+      bookings: [trial(S1, "2026-09-02"), trial(S2, "2026-09-21"), trial(S3, "2026-10-01"), trial(S4, "2026-10-20")],
+      courses: [
+        course({ id: "a", studentIds: [S1], createdAt: "2026-09-10T03:00:00Z" }), // trial Sep, bought Sep ⇒ this month
+        course({ id: "b", studentIds: [S2], createdAt: "2026-10-05T03:00:00Z" }), // trial Sep, bought Oct ⇒ previous
+        course({ id: "c", studentIds: [S3], createdAt: "2026-10-08T03:00:00Z" }), // trial Oct, bought Oct ⇒ this month
+        course({ id: "d", studentIds: [S4], createdAt: "2026-10-08T03:00:00Z" }), // the trial is AFTER the purchase ⇒ neither
+        course({ id: "a2", studentIds: [S1], createdAt: "2026-10-09T03:00:00Z" }), // S1's second course ⇒ Renew, no New line
+      ],
+    } as Partial<SomContractInput>;
+    const r = nvr(o);
+    expect([r.counts.newCourseThisMonth, r.counts.newCoursePrevMonth, r.counts.renewCourse]).toEqual([2, 1, 1]);
+    expect(ids(r.rows.newCourseThisMonth)).toEqual([S1, S3]);
+    expect(ids(r.rows.newCoursePrevMonth)).toEqual([S2]);
+  });
+  test("the other cards over a range: 1st Trial, Renew and Not renewed count what FALLS IN the range", () => {
+    const o = {
+      month: undefined, from: "2026-09-01", to: "2026-10-31",
+      bookings: [trial(S1, "2026-08-31", { status: "ATTENDED" }), trial(S2, "2026-09-01", { status: "ATTENDED" }), trial(S3, "2026-10-31", { status: "ATTENDED" })],
+      courses: [course({ id: "e", studentIds: [S5], createdAt: "2026-02-01T03:00:00Z", expiryDate: "2026-09-30" })], // ends 30 Sep ⇒ counted from 1 Oct, inside
+    } as Partial<SomContractInput>;
+    const r = nvr(o);
+    expect(ids(r.rows.firstTrial)).toEqual([S2, S3]); // 31 Aug is out
+    expect(ids(r.rows.notRenewed)).toEqual([S5]);
+    expect(ids(nvr({ ...o, from: "2026-10-02", to: "2026-10-31" }).rows.notRenewed)).toEqual([]); // counted from 1 Oct: before this range
+  });
+  test("🔴 the list IS the card on every period (month, range, one day, all data) — every bucket", () => {
+    const r0 = rich();
+    for (const p of [{ month: "2026-10" }, { month: undefined, from: "2026-09-15", to: "2026-10-12" }, { month: undefined, from: "2026-10-02", to: "2026-10-02" }, { month: undefined }] as Array<Partial<SomContractInput>>) {
+      const x = countNvr(base({ ...r0, ...p }));
+      for (const k of NVR_BUCKETS) expect(x.counts[k]).toBe(x.rows[k].length);
+      expect(countSom(base({ ...r0, ...p })).newVsRenewing).toEqual(x.counts);
+    }
+  });
+  test("Coach Capacity over a range: each day of the range at the rates; a range of one Saturday = the weekend rate", () => {
+    const cap = (o: Partial<SomContractInput>) => countCapacity(base({ month: undefined, ...o }));
+    const r = cap({ from: "2026-10-01", to: "2026-10-05", teachers: [coachOf(TA, "FULL_TIME"), coachOf(TB, "PART_TIME")] });
+    expect(r.byPerson[0]).toMatchObject({ weekdayAvailableHours: 15, weekendAvailableHours: 12, availableHours: 27 }); // Thu Fri Mon · Sat Sun
+    expect(r.byPerson[1]).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 12 });
+    expect(cap({ from: "2026-10-03", to: "2026-10-03", teachers: [coachOf(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ availableHours: 6 });
+  });
+  test("🔴 ALL DATA counts a coach from the LATER of the range start and the day he was created; a month or a from–to stays as asked", () => {
+    const late = coachOf(TA, "FULL_TIME", { createdAt: "2026-10-10T03:00:00Z" });
+    const b = [att(S1, "2026-10-01")];
+    const all = countCapacity(base({ month: undefined, teachers: [late], bookings: b })).byPerson[0]!;
+    expect(all.availableHours).toBe(17); // Sat 10 (6) + Sun 11 (6) + Mon 12 (5)
+    const ranged = countCapacity(base({ month: undefined, from: "2026-10-01", to: "2026-10-12", teachers: [late], bookings: b })).byPerson[0]!;
+    expect(ranged.availableHours).toBe(64); // 8 weekdays × 5 + 4 weekend days × 6 — he is counted from the day the range starts, as asked
+    expect(countCapacity(base({ month: "2026-10", teachers: [late], bookings: b })).byPerson[0]!.availableHours).toBe(164);
+  });
+  test("booked hours follow the range too (a class outside it is not booked)", () => {
+    const les = (d: string) => bk({ date: d, status: "CONFIRMED", teacherId: TA });
+    const r = countCapacity(base({ month: undefined, from: "2026-10-05", to: "2026-10-06", teachers: [coachOf(TA, "FULL_TIME")], bookings: [les("2026-10-04"), les("2026-10-05"), les("2026-10-06"), les("2026-10-07")] })).byPerson[0]!;
+    expect(r.bookedHours).toBe(2);
+  });
+});
+
+describe("🔴 TASK-757 — the query: month XOR from + to XOR neither; real, ordered, never future", () => {
+  const T0 = bangkokNow().date;
+  const ok = (q: Record<string, string>) => v.somQuery.safeParse(q);
+  test("accepted: nothing (all data) · month · a range · one day (from = to)", () => {
+    expect(ok({}).success).toBe(true);
+    expect(ok({ month: "2026-10" }).success).toBe(true);
+    expect(ok({ from: "2026-09-20", to: "2026-10-05" }).success).toBe(true);
+    expect(ok({ from: "2026-10-05", to: "2026-10-05" }).success).toBe(true);
+    expect(ok({ from: "2026-09-20", to: T0 }).success).toBe(true); // today is allowed
+  });
+  test("refused: only one end · month together with a range · from after to · a future end · not a real day · a bad format", () => {
+    expect(ok({ from: "2026-09-20" }).success).toBe(false);
+    expect(ok({ to: "2026-09-20" }).success).toBe(false);
+    expect(ok({ month: "2026-10", from: "2026-09-20", to: "2026-10-05" }).success).toBe(false);
+    expect(ok({ from: "2026-10-05", to: "2026-09-20" }).success).toBe(false);
+    expect(ok({ from: "2026-09-20", to: addMonths(T0.slice(0, 7), 1) + "-01" }).success).toBe(false);
+    expect(ok({ from: "2026-02-30", to: "2026-03-05" }).success).toBe(false);
+    expect(ok({ from: "2026-9-20", to: "2026-10-05" }).success).toBe(false);
+  });
+  test("the route answers 400 for a refused range (month + range) and the list endpoint takes the same query", async () => {
+    expect((await api.request("/reports/som?month=2026-10&from=2026-09-20&to=2026-10-05")).status).toBe(400);
+    expect((await api.request("/reports/som/new-vs-renewing/renewCourse?from=2026-10-05&to=2026-09-20")).status).toBe(400);
   });
 });
