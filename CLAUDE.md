@@ -9,7 +9,7 @@ LINE outbox worker + webhook bot, recurring course & voucher rules, JWT auth (`S
 + `scripts/smoke.ts` pass. (⚠️ old move-day/week/teacher **reschedule flow + `PENDING_RESCHEDULE`
 removed per UC-006** — enum value lingers for legacy rows only. Remaining: FE login wiring + close
 SKIP_AUTH for prod; auto-cut end-of-day cron (UC-012); LINE bot bilingual + parent-push on enrollment
-(UC-028/UC-032); wire ATTENDED→backoffice wallet debit (UC-025). See `../smart-scheduler-requirement/HANDOFF-2026-07-16.md`.)
+(UC-028/UC-032); wire ATTENDED→backoffice wallet debit (UC-025). See `../smart-scheduler-requirement/_archive/2026-07-hub/HANDOFF-2026-07-16.md`.)
 
 ## What this is
 
@@ -22,8 +22,8 @@ build wave 1 (scheduling API).
 > here** — the client is never trusted.
 >
 > **Tasks/scope live in the `smart-scheduler-requirement` repo, not a `todo.md`** (todo files were
-> removed 2026-07-08 — do not recreate them). Open `smart-scheduler-requirement/requirement.html`
-> and treat `Partial` / `Planned` items as the work queue. See root `../CLAUDE.md` §"How work is
+> removed 2026-07-08 — do not recreate them). Scope: `smart-scheduler-requirement/01-master-plan/`
+> + `02-requirements/` (the July `requirement.html` is archived in `_archive/2026-07-hub/`). See root `../CLAUDE.md` §"How work is
 > assigned" for the full policy.
 
 ## Stack
