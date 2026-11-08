@@ -8,6 +8,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { endLinkingConversation } from "./line-register.service"; // TASK-520
 import { db } from "../db";
+import { SYSTEM_TEACHER } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { teacherLinkRequests, teachers } from "../db/schema";
 import { badRequest, conflict, notFound } from "../lib/http";
 import {
@@ -37,7 +38,7 @@ export async function requestTeacherLink(
   claimedNickname: string,
 ): Promise<ClaimOutcome> {
   const nick = claimedNickname.trim();
-  const rows = await db.select().from(teachers);
+  const rows = await db.select().from(teachers).where(eq(teachers.isSystem, false)); // 🔻 TASK-861 (REQ-120 F5): a LINE user can never claim the system teacher by its nickname
   const matches = rows.filter((t) => t.nickname.toLowerCase() === nick.toLowerCase());
   const outcome = decideClaim(matches, lineUserId);
   if (!claimQueues(outcome)) return outcome;
@@ -77,7 +78,7 @@ export async function listTeacherLinkRequests(status = "PENDING") {
     .orderBy(desc(teacherLinkRequests.createdAt));
 
   // Candidates for a collision request, so the FE can offer the actual choice rather than a free-text id.
-  const all = await db.select().from(teachers);
+  const all = await db.select().from(teachers).where(eq(teachers.isSystem, false)); // 🔻 TASK-861 (REQ-120 F5)
   // ⚠️ The raw LINE userId is **dropped**, not blanked: it's an account identifier, and the queue only needs
   // enough to tell two rows apart. Destructured out so nothing can re-add it by spreading the row.
   return rows.map(({ lineUserId, ...r }) => ({
@@ -118,6 +119,7 @@ export async function approveTeacherLinkRequest(
     ? await db.query.teachers.findFirst({ where: (t, { eq: e }) => e(t.id, candidateId) })
     : null;
 
+  if (teacher?.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher is never linked to LINE
   const decision = decideApproval(request, input.teacherId, teacher);
   if (!decision.ok) {
     const message = APPROVAL_MESSAGE[decision.error];
@@ -187,6 +189,7 @@ export async function unlinkTeacherLine(teacherId: string) {
   // ⚠️ Read the account BEFORE the write — `returning()` hands back the row as it now IS, and by then the id
   // needed to unlink the menu is already `null`.
   const before = await db.query.teachers.findFirst({ where: (t2, { eq: e }) => e(t2.id, teacherId) });
+  if (before?.isSystem) throw SYSTEM_TEACHER(before.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher is never linked to LINE (nor unlinked)
   const [row] = await db
     .update(teachers)
     .set({ lineUserId: null })

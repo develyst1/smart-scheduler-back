@@ -57,6 +57,7 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // `assertCourseWritable` refuses DROPPED. **The guard would make the warning point at a control that
   // refuses.** If this route ever gains a second field, that field decides this line again.
   "PATCH /courses/:id/expiry": "allowed",
+  "PUT /courses/:id/bonus100-pick": "unrelated", // 🔻 TASK-860 (REQ-120 F4) — stores the admin's Bonus-100 pick on the course row; no session is touched, and an ended course may still be picked
 
   // ── cannot touch an existing course ──
   "POST /students": "unrelated",

@@ -4,6 +4,8 @@ import * as v from "../validation";
 import { assertMayDiscount } from "../lib/discount-plan";
 import { assertMayOverrideLeave } from "../lib/permissions";
 import * as svc from "../services/scheduler.service";
+import * as firstCoach from "../lib/first-coach"; // 🔻 TASK-860 (REQ-120 F4)
+import { assertTeacherMayHaveLeave } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import * as badge from "../services/badge.service";
 import * as checkin from "../services/checkin.service";
 import * as parent from "../services/parent.service";
@@ -181,6 +183,10 @@ export const api = new Hono()
   .post("/courses/:id/change-teacher-time", zValidator("json", v.changeCourseTeacherTime), async (c) =>
     c.json(await svc.changeCourseTeacherAndTime(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
+  // 🔻 TASK-860 (REQ-120 F4) — the admin's Bonus-100 pick (FIRST | LATEST | SHARE) after a whole-course coach change. 409 NO_COACH_CHANGE / SAME_COACH. No screen yet.
+  .put("/courses/:id/bonus100-pick", zValidator("json", v.bonus100Pick), async (c) =>
+    c.json(await firstCoach.setBonus100Pick(c.req.param("id"), c.req.valid("json").pick, actorOf(c))),
+  )
   // SPEC-076 / TASK-264 (REQ-082) — move a course's expiry, and record who moved it.
   // 🔴 The actor comes from the TOKEN, never from the body — the same rule TASK-160 set for discounts, and
   // for the same reason: an audit row whose author the caller can choose records nothing.
@@ -236,6 +242,7 @@ export const api = new Hono()
   // handler. (Caught by the suite before it shipped; `tsc` cannot see it.)
   .post("/teacher-leave-days", zValidator("json", v.adminTeacherLeaveBody), async (c) => {
     const { teacherId, ...input } = c.req.valid("json");
+    await assertTeacherMayHaveLeave(teacherId); // 🔻 TASK-861 (REQ-120 F5) — the system teacher is never given leave (409 SYSTEM_TEACHER)
     // 🔴 TASK-648 — FUTURE DAYS ONLY, at the door, with the SAME predicate the act forks on (`isAdvanceLeave`). 🚫 Never a second
     // date comparison, and 🚫 never inside the act: the teacher's own door shares it and must keep accepting today.
     // 📌 How the door came to be open: TASK-608 gave this route the whole act, and TASK-611 made "future only" a rule of the

@@ -49,7 +49,7 @@ describe("🔴 the paused BOOKING — absent ⇒ its own teacher; present ⇒ th
   test("🔑 a PICKED teacher goes through the CREATE path's own guard — `assertTeacherBookable`, one source", () => {
     // exists · not archived · works that weekday · freelance budget — the guard `insertBooking` runs on every
     // create. Only when a teacher was actually picked and it differs: the absent path runs nothing new.
-    expect(RESUME_BOOKING).toContain("if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date);");
+    expect(RESUME_BOOKING).toContain("if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(current.bookingType) });"); // 🔻 TASK-861: + allowSystem
     expect(RESUME_BOOKING.indexOf("assertTeacherBookable(")).toBeLessThan(RESUME_BOOKING.indexOf(".update(bookings)"));
     // 🚫 no second guard, no second message shape: the resume invents nothing.
     expect(RESUME_BOOKING).not.toContain("ไม่พบครู");
@@ -82,7 +82,7 @@ describe("🔴 the dropped COURSE — absent ⇒ the LAST session's teacher (TAS
 
   test("🔑 …and `insertBooking` runs `assertTeacherBookable` per session — the create path's guard, per created row", () => {
     const insert = fn("async function insertBooking(");
-    expect(insert).toContain("await assertTeacherBookable(exec, input.teacherId, input.date);");
+    expect(insert).toContain("await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });"); // 🔻 TASK-861: + allowSystem
     // 🚫 the course resume adds no guard of its own: the guard it gets is the one every create gets.
     expect(RESUME_COURSE).not.toContain("assertTeacherBookable(");
   });

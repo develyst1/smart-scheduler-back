@@ -201,6 +201,7 @@ interface SetupTeacher {
   id: string;
   type: string;
   archived?: boolean;
+  isSystem?: boolean; // 🔻 TASK-861 (REQ-120 F5)
   setupIncomplete?: boolean;
 }
 
@@ -208,11 +209,11 @@ interface SetupTeacher {
  *  FREELANCE ⇒ has a budget item; FT/PT ⇒ has an open salary row. Archived teachers are a separate
  *  state (offboarded), never "incomplete". */
 export function isSetupIncomplete(
-  teacher: { id: string; type: string; archived?: boolean },
+  teacher: { id: string; type: string; archived?: boolean; isSystem?: boolean },
   freelanceBudgetIds: Set<string>,
   openSalaryIds: Set<string>,
 ): boolean {
-  if (teacher.archived) return false;
+  if (teacher.archived || teacher.isSystem) return false; // 🔻 TASK-861 (REQ-120 F5): the system teacher has no money to set up
   const moneyReady =
     teacher.type === "FREELANCE" ? freelanceBudgetIds.has(teacher.id) : openSalaryIds.has(teacher.id);
   return !moneyReady;
@@ -290,7 +291,7 @@ export interface ReconcileReport {
 
 /** Pure teacher↔ops drift diff (TASK-018). */
 export function reconcileTeacherDrift(
-  teachers: Array<{ id: string; archived: boolean; type: string }>,
+  teachers: Array<{ id: string; archived: boolean; type: string; isSystem?: boolean }>,
   partyRefs: Set<string>,
   budgetRefs: Set<string>,
   salaryRefs: Set<string>,
@@ -303,6 +304,7 @@ export function reconcileTeacherDrift(
     incompleteActive: [],
   };
   for (const t of teachers) {
+    if (t.isSystem) continue; // 🔻 TASK-861 (REQ-120 F5): no ops party, no money — never drift
     if (t.archived) {
       if (budgetRefs.has(t.id) || salaryRefs.has(t.id)) report.moneyForArchived.push(t.id);
       continue;

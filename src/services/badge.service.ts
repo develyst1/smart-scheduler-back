@@ -196,7 +196,7 @@ export async function getBadgeReport(from: string, to: string) {
     .innerJoin(bookings, eq(bookingBadges.bookingId, bookings.id))
     .innerJoin(teachers, eq(bookings.teacherId, teachers.id))
     .innerJoin(badgeValues, eq(bookingBadges.badgeValueId, badgeValues.id))
-    .where(inRange)
+    .where(and(inRange, eq(teachers.isSystem, false))) // 🔻 TASK-861 (REQ-120 F5): no «No Teacher» line in the per-teacher badge breakdown
     .groupBy(teachers.id, teachers.nickname, badgeValues.id, badgeValues.label, badgeValues.color)
     .orderBy(asc(teachers.nickname), asc(badgeValues.label));
 

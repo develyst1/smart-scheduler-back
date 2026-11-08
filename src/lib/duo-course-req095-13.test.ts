@@ -53,8 +53,8 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
   test("56 = 56: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(74); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073
-    expect(journal.entries.length).toBe(74); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073
+    expect(files.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -128,6 +128,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     const tx: any = {
       insert: (table: any) => ({ values: (val: any) => ({ returning: async () => { const id = table === coursePackages ? "course-1" : `b-${++n}`; inserted.push({ table: table === coursePackages ? "coursePackages" : table === bookings ? "bookings" : "other", v: val }); return [{ id }]; } }) }),
       update: () => ({ set: () => ({ where: async () => {} }) }),
+      select: () => { const q: any = { from: () => q, where: () => q, orderBy: () => q, limit: async () => [] }; return q; }, // 🔻 TASK-860: the sale's three link reads (trial, previous course, previous voucher) find nothing
       query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */
         students: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, x: string) => { probe.push(x); return null; } }); const id = probe[0]!; return { id, parentId: null, archivedAt: opts.archived?.has(id) ? new Date() : null, name: id === A ? "Ploy" : "Pun", nickname: id === A ? "Ploy" : "Pun" }; } },
         teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) },

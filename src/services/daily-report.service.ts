@@ -13,13 +13,15 @@ export async function getDailyReportContract(date: string, teacherId?: string) {
   const found = await db.query.bookings.findMany({
     columns: { status: true, bookingType: true, teacherId: true, date: true, startTime: true, endTime: true, otherKind: true, otherTitle: true, headCount: true, otherSeriesKey: true },
     where: (b: any, { and, eq, isNull }: any) => and(eq(b.date, date), eq(b.pendingSlot, false), isNull(b.groupId)),
-    with: { additionalTeachers: { columns: { teacherId: true } }, seats: { columns: { status: true } }, campWeekDay: { columns: { campWeekId: true } } }, // 🔻 743 — a GROUP's seats are its kids; a camp hour row names its week
+    with: { teacher: { columns: { isSystem: true } }, additionalTeachers: { columns: { teacherId: true } }, seats: { columns: { status: true } }, campWeekDay: { columns: { campWeekId: true } } }, // 🔻 743 — a GROUP's seats are its kids; a camp hour row names its week
   });
   const rows: ReportRow[] = found.map((b: any) => ({
     status: b.status,
     bookingType: b.bookingType,
     coachIds: [b.teacherId, ...(b.additionalTeachers ?? []).map((a: any) => a.teacherId)],
   }));
+  // 🔻 TASK-861 (REQ-120 F5) — the system teacher ("No Teacher") is no coach: out of byTeacher and every hours total (its OTHER block still counts as a row).
+  for (const [i, b] of found.entries()) if ((b as any).teacher?.isSystem) rows[i] = { ...rows[i]!, coachIds: rows[i]!.coachIds.slice(1) };
   // 🔻 TASK-743 (REQ-124) — «Others Program»: the children of the day's group work. The camp weeks of the day are read every time (F2).
   const programRows: ProgramRow[] = found.map((b: any, i: number) => ({
     ...rows[i]!,

@@ -1,0 +1,608 @@
+{
+  "task": "TASK-860",
+  "proves": "src/lib/first-coach-task860.test.ts",
+  "note": "REQ-120 F4: the trial → course / voucher link, the previous-entitlement link, the first coach (day-end), the whole-course coach change and the Bonus-100 pick. F-series = the link reads, G = the first coach, J = the job wiring, T = the coach change, S = the sale wiring, P = the pick, M = migration / witness. F4 filters nothing: F12 is a filter it must not have.",
+  "tests": "src/lib/first-coach-task860.test.ts",
+  "mutations": [
+    {
+      "id": "F1",
+      "what": "the trial read takes ANY status, not only ATTENDED",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "eq(bookings.status, \"ATTENDED\"), lte(bookings.date, today),",
+              "to": "lte(bookings.date, today),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "what": "the trial read takes a future-dated trial",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ", lte(bookings.date, today),",
+              "to": ","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "what": "the trial read can re-link a trial a COURSE already references",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "      sql`not exists (select 1 from course_packages c where c.from_trial_booking_id = ${bookings.id})`,\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F4",
+      "what": "the trial read can re-link a trial a VOUCHER already references",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "      sql`not exists (select 1 from vouchers v where v.from_trial_booking_id = ${bookings.id})`,\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F5",
+      "what": "the trial read takes the OLDEST trial, not the latest",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ".orderBy(desc(bookings.date), desc(bookings.startTime), desc(bookings.id))",
+              "to": ".orderBy(bookings.date, bookings.startTime, bookings.id)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F6",
+      "what": "the trial read takes any booking type (not only FIRST_TRIAL)",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "eq(bookings.bookingType, \"FIRST_TRIAL\"), ",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F7",
+      "what": "the previous course read ignores a DUO course the child is the co-student of",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ".where(or(eq(coursePackages.studentId, studentId), eq(coursePackages.coStudentId, studentId)))",
+              "to": ".where(eq(coursePackages.studentId, studentId))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F8",
+      "what": "the previous course is the OLDEST, not the latest",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ".orderBy(desc(coursePackages.createdAt), desc(coursePackages.id))",
+              "to": ".orderBy(coursePackages.createdAt, coursePackages.id)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F9",
+      "what": "the previous voucher is the OLDEST, not the latest",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ".orderBy(desc(vouchers.createdAt), desc(vouchers.id))",
+              "to": ".orderBy(vouchers.createdAt, vouchers.id)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F10",
+      "what": "a tie between a course and a voucher goes to the voucher",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "new Date(voucher!.createdAt).getTime() > new Date(course!.createdAt).getTime()",
+              "to": "new Date(voucher!.createdAt).getTime() >= new Date(course!.createdAt).getTime()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F11",
+      "what": "both previous links are set at once",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ": { prevCourseId: course!.id, prevVoucherId: null };\n}",
+              "to": ": { prevCourseId: course!.id, prevVoucherId: voucher!.id };\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F12",
+      "what": "the previous entitlement filters out IMPORTed ones (a filter F4 must not have)",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": ".where(or(eq(coursePackages.studentId, studentId), eq(coursePackages.coStudentId, studentId)))",
+              "to": ".where(and(eq(coursePackages.source, \"SALE\"), or(eq(coursePackages.studentId, studentId), eq(coursePackages.coStudentId, studentId))))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G1",
+      "what": "the first coach is the LATEST attended row",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "order by course_id, date, start_time, id",
+              "to": "order by course_id, date desc, start_time desc, id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "what": "the voucher's first coach is the latest attended row",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "order by voucher_id, date, start_time, id",
+              "to": "order by voucher_id, date desc, start_time desc, id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "what": "the first coach counts a row that was never ATTENDED",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "where status = 'ATTENDED' and course_id is not null",
+              "to": "where course_id is not null"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "what": "the stamp overwrites a coach already stamped (not idempotent)",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "where c.id = f.course_id and c.first_teacher_id is null",
+              "to": "where c.id = f.course_id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "what": "the voucher stamp overwrites a coach already stamped",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "where v.id = f.voucher_id and v.first_teacher_id is null",
+              "to": "where v.id = f.voucher_id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "what": "the tie-break is gone (no id in the order) — pure chooser",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "|| (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0]",
+              "to": "|| 0)[0]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G7",
+      "what": "the pure chooser ignores the start time",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "|| a.startTime.localeCompare(b.startTime) ||",
+              "to": "||"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G8",
+      "what": "the stamp returns no counts",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "return { courses: courses.length, vouchers: vouchersDone.length };",
+              "to": "return { courses: 0, vouchers: 0 };"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "J1",
+      "what": "the day-end job never stamps the first coach",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "  await stampFirstCoach(db);\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T1",
+      "what": "a time-only act (same teacher) counts as a coach change",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "return moves.some((m) => m.from.teacherId !== newTeacherId);",
+              "to": "return moves.length > 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "what": "a real teacher change is not recorded",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(isWholeCourseTeacherChange(plan.moves, input.teacherId) ? { coachChangedAt: new Date(), latestTeacherId: input.teacherId } : {}),",
+              "to": "...({}),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "what": "the act stamps the wrong teacher as the latest",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "{ coachChangedAt: new Date(), latestTeacherId: input.teacherId }",
+              "to": "{ coachChangedAt: new Date(), latestTeacherId: plan.moves[0]!.from.teacherId }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S1",
+      "what": "the course sale does not write the links",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      .values({\n        ...links,\n        studentId,\n        coStudentId, // TASK-420",
+              "to": "      .values({\n        studentId,\n        coStudentId, // TASK-420"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "the voucher sale does not write the links",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "      .values({\n        ...links,\n        studentId,\n        totalHours: input.totalHours,",
+              "to": "      .values({\n        studentId,\n        totalHours: input.totalHours,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "the course sale reads the links AFTER its own insert (it would link itself)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    const links = await conversionLinks(tx, studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — the trial this sale converts",
+              "to": "    const links = { fromTrialBookingId: null, prevCourseId: null, prevVoucherId: null }; // 🔻 TASK-860 (F4) — the trial this sale converts"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "the DUO co-student is linked too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "conversionLinks(tx, studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — the trial this sale converts",
+              "to": "conversionLinks(tx, coStudentId ?? studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — the trial this sale converts"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "what": "a pick is accepted with no coach change",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "if (!c.coachChangedAt) throw",
+              "to": "if (false) throw"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "a pick is accepted when the latest coach is the first coach",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "if (c.latestTeacherId != null && c.latestTeacherId === c.firstTeacherId) throw",
+              "to": "if (false) throw"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "the pick does not record who picked",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "bonus100PickBy: actor, bonus100PickAt: at }",
+              "to": "bonus100PickBy: null, bonus100PickAt: at }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "the pick is not written",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "await db.update(coursePackages).set({ bonus100Pick: pick,",
+              "to": "await db.update(coursePackages).set({ bonus100Pick: undefined,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "an unknown course is a 500, not a 404",
+      "files": [
+        {
+          "file": "src/lib/first-coach.ts",
+          "edits": [
+            {
+              "from": "if (!c) throw notFound(\"ไม่พบคอร์ส\");",
+              "to": "if (!c) throw new Error(\"x\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "what": "the validator accepts any pick text",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": "export const bonus100Pick = z.object({ pick: z.enum([\"FIRST\", \"LATEST\", \"SHARE\"]) });",
+              "to": "export const bonus100Pick = z.object({ pick: z.string() });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "what": "the route is not wired to the service",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "firstCoach.setBonus100Pick(c.req.param(\"id\"), c.req.valid(\"json\").pick, actorOf(c))",
+              "to": "({ ok: true })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "what": "the migration drops the 'at most one previous' CHECK on courses",
+      "files": [
+        {
+          "file": "drizzle/0074_conversion_links_first_coach.sql",
+          "edits": [
+            {
+              "from": "ADD CONSTRAINT \"course_prev_one_chk\" CHECK (\"prev_course_id\" IS NULL OR \"prev_voucher_id\" IS NULL);",
+              "to": "ADD CONSTRAINT \"course_prev_one_chk\" CHECK (true);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the pick set in the migration loses SHARE",
+      "files": [
+        {
+          "file": "drizzle/0074_conversion_links_first_coach.sql",
+          "edits": [
+            {
+              "from": "IN ('FIRST', 'LATEST', 'SHARE'))",
+              "to": "IN ('FIRST', 'LATEST'))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the trial FK cascades instead of setting null (courses)",
+      "files": [
+        {
+          "file": "drizzle/0074_conversion_links_first_coach.sql",
+          "edits": [
+            {
+              "from": "ALTER TABLE \"course_packages\"\n  ADD COLUMN IF NOT EXISTS \"from_trial_booking_id\" uuid REFERENCES \"bookings\"(\"id\") ON DELETE SET NULL,",
+              "to": "ALTER TABLE \"course_packages\"\n  ADD COLUMN IF NOT EXISTS \"from_trial_booking_id\" uuid REFERENCES \"bookings\"(\"id\") ON DELETE CASCADE,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "the witness probes the wrong index",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "probe: { kind: \"index\", index: \"voucher_from_trial_uq\" }",
+              "to": "probe: { kind: \"index\", index: \"course_from_trial_uq\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "the migration's last object is not the witnessed index (the course index is moved last)",
+      "files": [
+        {
+          "file": "drizzle/0074_conversion_links_first_coach.sql",
+          "edits": [
+            {
+              "from": "CREATE UNIQUE INDEX IF NOT EXISTS \"voucher_from_trial_uq\" ON \"vouchers\" (\"from_trial_booking_id\") WHERE \"from_trial_booking_id\" IS NOT NULL;",
+              "to": "SELECT 1;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

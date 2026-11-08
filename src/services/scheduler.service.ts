@@ -59,7 +59,7 @@ import {
   sessionsOnRemovedDays,
   teacherWorksOnDay,
 } from "../lib/work-days";
-import { VOUCHER_ENDED_MESSAGE, endableVoucherDraws, isVoucherEnded, isVoucherHours, voucherExpiry, voucherRemaining, voucherUsable } from "../lib/voucher";
+import { VOUCHER_EMPTY_MESSAGE, VOUCHER_ENDED_MESSAGE, VOUCHER_RESERVING_STATUSES, endableVoucherDraws, isVoucherEnded, isVoucherHours, emptyVoucherCheckin, isVoucherReserving, voucherAvailable, voucherExpiry, voucherRemaining, voucherUsable } from "../lib/voucher";
 import { notifyCourseDeduction } from "../lib/course-deduction";
 import { householdLineUserIds } from "../lib/family-link";
 import { notifyVoucherSold } from "../lib/voucher-sold-notice"; // 🔻 TASK-730
@@ -67,6 +67,7 @@ import { DUO_SAME_CHILD, NOT_A_COURSE_SESSION, duoStudentIds } from "../lib/duo-
 import { assertSubjectKindForCourse } from "../lib/subject-kinds";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
+import { postConfirmRevenue, postCourseRevenue, postVoucherRevenue } from "../lib/revenue-line"; // TASK-864 (C1)
 import { validateSaleDiscount } from "../lib/discount-plan";
 import { GENERIC_SLOT_TAKEN, slotClashMessage } from "../lib/slot-clash";
 import {
@@ -95,6 +96,8 @@ import {
   shouldCloseCeiling,
 } from "../lib/freelance-budget";
 import { bangkokNow } from "../lib/bangkok-time";
+import { conversionLinks, isWholeCourseTeacherChange } from "../lib/first-coach"; // 🔻 TASK-860 (REQ-120 F4)
+import { SYSTEM_TEACHER, SYSTEM_TEACHER_NOT_BOOKABLE, assertNotSystemTeacher, mayUseSystemTeacher } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { leavesAwaitingReanswer,
   COURSE_LIVE,
   COURSE_LIVE_STATUSES,
@@ -321,7 +324,7 @@ export async function reconcileBookingHolds( // TASK-428: exported — the serie
     where: (t: any, { eq }: any) => eq(t.id, currentTeacherId),
   });
   const currentItem =
-    teacher?.type === "FREELANCE" ? await findFreelanceItem(tx, currentTeacherId) : null;
+    teacher?.type === "FREELANCE" && !teacher.isSystem ? await findFreelanceItem(tx, currentTeacherId) : null; // 🔻 TASK-861 (REQ-120 F5): no ceiling to draw on
   // A ceiling with `remainingQty === null` isn't tracking hours — treat it as "no item to draw on", the
   // same carve-out `reconcileFreelanceDraw` has always made.
   const usableCurrent = currentItem && currentItem.remainingQty !== null ? currentItem : null;
@@ -357,6 +360,7 @@ async function attachFreelanceBudgets<
     id: string;
     type: TeacherType;
     archived?: boolean;
+    isSystem?: boolean; // 🔻 TASK-861 (REQ-120 F5)
     hourlyRate?: number | null;
     budgetMinor?: number | null;
     remainingMinor?: number | null;
@@ -386,7 +390,7 @@ async function attachFreelanceBudgets<
       d.reorderMinor = reorderQty !== null ? reorderQty * rate : null;
       d.overLimit = overLimit(b.remainingQty);
     }
-    d.setupIncomplete = d.type === "FREELANCE" && !b && !d.archived;
+    d.setupIncomplete = d.type === "FREELANCE" && !b && !d.archived && !d.isSystem; // 🔻 TASK-861 (REQ-120 F5): the system teacher is a FREELANCE row with NO ceiling by design — never "incomplete"
     maskBudget(viewer, d); // TASK-426 — the ONE mask, at the ONE builder: the four figures null without the key, the booleans stay
   }
   return dtos;
@@ -1033,11 +1037,17 @@ export async function assertHouseholdNotSuspended(exec: any, studentId: string) 
  * weekday, and (if FREELANCE) has a budget set. ONE definition — used by `insertBooking` (new bookings),
  * `moveBooking` and `applyPlanChange` (per-session edits) so a move can't skip what an insert enforces.
  */
-export async function assertTeacherBookable(exec: any, teacherId: string, date: string, opts: { allowLeave?: boolean } = {}) { // TASK-428: exported — the series doors · TASK-813: `allowLeave`
+export async function assertTeacherBookable(exec: any, teacherId: string, date: string, opts: { allowLeave?: boolean; allowSystem?: boolean } = {}) { // TASK-428: exported — the series doors · TASK-813: `allowLeave`
   const teacher = await exec.query.teachers.findFirst({
     where: (t: any, { eq }: any) => eq(t.id, teacherId),
   });
   if (!teacher) throw badRequest("ไม่พบครู");
+  // 🔻 TASK-861 (REQ-120 F5) — the system teacher ("No Teacher") is bookable ONLY on an OTHER booking: the caller says so with `allowSystem`; EVERY other door (a lesson, a trial, a course, a voucher, a swap, a cover, a plan move, TASK-838's act) refuses it by default.
+  // It has no workdays, leave or freelance budget to judge, so an allowed OTHER skips the rest.
+  if (teacher.isSystem) {
+    if (!opts.allowSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);
+    return teacher;
+  }
   if (teacher.archived) throw badRequest(`ครู ${teacher.nickname} ถูกปิดการใช้งานแล้ว`); // 🔻 TASK-659 — a space after ครู, always
   if (!teacherWorksOnDay(teacher.workDays, weekdayOf(date))) {
     // 🔻 TASK-659 (owner APPROVED 10-06) — «วันนี้» said "today" about a PICKED date. Names the weekday of that date instead, from the codebase's own
@@ -1286,8 +1296,8 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
 ): Promise<string> {
   // 🔻 TASK-813 (REQ-123 §4) — a row born as a PLANNED ABSENCE (`SICK_LEAVE` + `plannedAtCreation`, the course create's ticked week) is not a class: the teacher's advance leave does not refuse it.
   // Every other row — a normal week, a voucher, a camp row — still meets the leave check below, exactly as before.
-  if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true });
-  else await assertTeacherBookable(exec, input.teacherId, input.date);
+  if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(input.bookingType) });
+  else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) }); // 🔻 TASK-861: only an OTHER may use the system teacher
   // TASK-420 — THE chokepoint for the course's second child: a course-linked row copies `co_student_id` from its course
   // (one read, unless the caller already knows it), so every per-row reader sees both kids without the course.
   const coStudentId: string | null = input.coStudentId ?? (input.courseId ? await courseCoStudentId(exec, input.courseId) : null);
@@ -1423,7 +1433,14 @@ export async function prepareVoucherBooking(exec: any, voucherId: string, date: 
       await recordVoucherExpiryChange(exec, { voucherId, from: v.expiryDate, to: expiryDate, actor: null });
     }
   }
-  const check = voucherUsable({ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date);
+  // 🔻 TASK-870 (REQ-5008) — a voucher counts the sessions ALREADY BOOKED: available = total − used − reserved, where reserved = this voucher's live bookings (PENDING · CONFIRMED · EXTENDED). One count, in this same tx. A move / reschedule / teacher change of
+  // an existing voucher booking never comes through here (it books nothing new), so a full voucher's booked session can still be moved.
+  const reservedRows = await exec.query.bookings.findMany({
+    columns: { status: true },
+    where: (b: any, { and, eq, inArray }: any) => and(eq(b.voucherId, voucherId), inArray(b.status, [...VOUCHER_RESERVING_STATUSES])),
+  });
+  const reserved = reservedRows.filter((b: any) => isVoucherReserving(b.status)).length;
+  const check = voucherUsable({ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date, reserved);
   if (!check.ok) throw badRequest(check.reason!);
 }
 
@@ -1943,7 +1960,7 @@ export async function resolveClashByMovingPrivate(id: string, input: { teacherId
   if (!Object.keys(patch).length) throw badRequest("ต้องระบุครู/วันที่/เวลาใหม่อย่างน้อย 1 อย่าง");
 
   await db.transaction(async (tx) => {
-    await assertTeacherBookable(tx, patch.teacherId ?? current.teacherId, patch.date ?? current.date);
+    await assertTeacherBookable(tx, patch.teacherId ?? current.teacherId, patch.date ?? current.date, { allowSystem: mayUseSystemTeacher(current.bookingType) }); // 🔻 TASK-861
     try {
       await tx.update(bookings).set(patch).where(eq(bookings.id, id));
     } catch (e: any) {
@@ -2528,9 +2545,11 @@ export async function createCoursePackage(input: any) {
       absentWeeks.size,
     );
 
+    const links = await conversionLinks(tx, studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — the trial this sale converts + the previous entitlement; read BEFORE the insert, in the sale's own tx, on the primary child only
     const [course] = await tx
       .insert(coursePackages)
       .values({
+        ...links,
         studentId,
         coStudentId, // TASK-420 — DUO's second child (null = Private)
         classRateMinor: input.duo?.classRateMinor ?? null, // TASK-420 — stored, never posted; TASK-434 — optional at create
@@ -2680,7 +2699,7 @@ async function vouchersByIds(ids: string[]) {
   if (ids.length === 0) return [];
   const rows = await db.query.vouchers.findMany({
     where: (v, { inArray: inA }) => inA(v.id, ids),
-    with: { student: true },
+    with: { student: true, bookings: { columns: { status: true }, where: (b, { inArray: inB }) => inB(b.status, [...VOUCHER_RESERVING_STATUSES]) } }, // 🔻 TASK-870 — the reserved hours, in the SAME read
   });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => {
@@ -2810,6 +2829,9 @@ export async function getEntitlementPlan(id: string) {
         totalHours: voucher.totalHours,
         usedHours: voucher.usedHours,
         hoursRemaining: voucher.totalHours - voucher.usedHours,
+        // 🔻 TASK-870 — additive: the live bookings reserve hours; the picker gates on `hoursAvailable`
+        hoursReserved: rows.filter((r: any) => isVoucherReserving(r.status)).length,
+        hoursAvailable: voucherAvailable(voucher, rows.filter((r: any) => isVoucherReserving(r.status)).length),
         expiryDate: voucher.expiryDate,
       },
     };
@@ -2881,7 +2903,7 @@ export async function getCourseHistory(courseId: string) {
 export async function getSlotAvailability(date: string, startTime: string) {
   const weekday = weekdayOf(date);
   const teachers = await db.query.teachers.findMany({
-    where: (t, { eq }) => eq(t.archived, false),
+    where: (t, { eq, and: a }) => a(eq(t.archived, false), eq(t.isSystem, false)), // 🔻 TASK-861 (REQ-120 F5): never in a lesson-availability answer
     orderBy: (t, { asc }) => asc(t.nickname),
   });
   // The clash set is EXACTLY the partial unique index `bookings_teacher_slot_uq` (schema.ts:354): a slot is
@@ -3046,9 +3068,11 @@ export async function createVoucher(input: any) {
     // TASK-058: a suspended household may not BUY. Inside the tx and BEFORE the insert, so the blocked sale
     // never reaches the `recordSale(...)` revenue post below.
     await assertHouseholdNotSuspended(tx, studentId);
+    const links = await conversionLinks(tx, studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — read BEFORE the insert, in the sale's own tx
     const [v] = await tx
       .insert(vouchers)
       .values({
+        ...links,
         studentId,
         totalHours: input.totalHours,
         expiryDate: voucherExpiry(input.totalHours, fmtDate(new Date())),
@@ -3070,6 +3094,8 @@ export async function createVoucher(input: any) {
     idempotencyKey: `voucher-sale:${result.voucher.id}`,
     discount, // TASK-160 — validated before the voucher was written
   });
+  // 🔻 TASK-864 (REQ-120 C1) — the voucher's revenue LEDGER line, beside its movement, after the commit; best-effort and loud like `recordSale`.
+  void postVoucherRevenue(db, result.voucher.id, discount?.discountMinor ?? 0);
 
   return result;
 }
@@ -4363,7 +4389,7 @@ export async function applyPlanChange(
           throw conflict("TEACHER_CHANGE_TOO_LATE", teacherChangeNoticeMessage(noticeDays));
         }
       }
-      await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date);
+      await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: mayUseSystemTeacher(b.bookingType) }); // 🔻 TASK-861
       await tx.update(bookings).set(patch).where(eq(bookings.id, b.id));
       await reconcileBookingHolds(tx, b.id, newTeacherId, b.status, change.override ?? false);
       // Notify BOTH sides of the swap: the old teacher (off your schedule) + the new teacher (now yours).
@@ -4404,6 +4430,9 @@ async function applyConfirm(
     .update(bookings)
     .set({ status: "CONFIRMED", confirmedAt: new Date() })
     .where(eq(bookings.id, id));
+  // 🔻 TASK-864 (REQ-120 C1) — the revenue LEDGER line, written in the confirm's own transaction (so it rolls back with it) but in a
+  // SAVEPOINT that never throws: a ledger failure is logged, it can never fail the confirm. Trial · 1 HR · park fee · a course's first confirm.
+  await postConfirmRevenue(tx, id, { resolvePriceGroup, groupKindOf });
   // 🔴 SPEC-070 / TASK-228 (AC-16 revised) — **EVERY** assigned teacher is told, not just the first.
   // An อื่นๆ booking may carry several (TASK-224's `booking_teachers`), and a teacher who is on a
   // booking but never hears about it is worse than one who was never assigned.
@@ -4525,6 +4554,7 @@ export async function updateBookingStatus(
     let extendedId: string | null = null;
     let locked = false;
     let notification: NotifyResult | null = null;
+    let voucherWarning: string | undefined; // 🔻 TASK-870 — set only in WARN mode, on an empty-voucher attend
 
     // 🔴 TASK-185 (REQ-036 Part B): the REVIVING transitions are refused on an ended course.
     //
@@ -4547,6 +4577,11 @@ export async function updateBookingStatus(
       }
     } else if (action === "attend") {
       if (current.status !== "ATTENDED") {
+        // 🔻 TASK-870 (REQ-5008; ขวัญ «B») — a check-in on a voucher with NOTHING left (used ≥ total BEFORE this deduction): REFUSED (409 VOUCHER_EXHAUSTED, thrown BEFORE any write, so the transaction leaves nothing) — or, with the
+        // switch on "WARN", the deduction happens and the response carries `voucherWarning`. This ONE door serves the manual attend AND every check-in path (`checkin.service.ts` calls it); the day-end auto-attend is a separate writer and never refuses.
+        const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : "ALLOW";
+        if (emptyAct === "REFUSE") throw conflict("VOUCHER_EXHAUSTED", VOUCHER_EMPTY_MESSAGE);
+        if (emptyAct === "WARN") voucherWarning = VOUCHER_EMPTY_MESSAGE;
         await tx.update(bookings).set({ status: "ATTENDED", checkinSource: legacySourceOf(checkinSource), checkinChannel: checkinSource?.channel ?? null, checkinActor: checkinSource?.actor ?? null }).where(eq(bookings.id, id)); // TASK-475
         if (current.courseId && current.course) {
           // 🔴 TASK-496 — `sql` arithmetic, and the post-value read back from the WRITE (`.returning()`), exactly as the day-end
@@ -4925,7 +4960,7 @@ export async function updateBookingStatus(
 
     const booking = await loadBookingDTO(tx, id);
     const extended = extendedId ? await loadBookingDTO(tx, extendedId) : null;
-    return { booking, extended, course: booking.course, locked, notification };
+    return { booking, extended, course: booking.course, locked, notification, ...(voucherWarning ? { voucherWarning } : {}) };
   });
 
   if (reverseSaleAfterCommit) await reverseBookingSale(id); // TASK-496 — the attendance undo's reversal, after the commit
@@ -5021,6 +5056,7 @@ export async function moveBooking(
         tx,
         patch.teacherId ?? current.teacherId,
         patch.date ?? current.date,
+        { allowSystem: mayUseSystemTeacher(current.bookingType) }, // 🔻 TASK-861
       );
       await tx.update(bookings).set(patch).where(eq(bookings.id, id));
       // Reconcile whole-booking against the CURRENT teacher — `patch.teacherId` if it moved, else the one it
@@ -5048,14 +5084,15 @@ export async function setAvailability(input: {
   active: boolean;
 }) {
   if (input.teacherId) {
+    await assertNotSystemTeacher(db, input.teacherId); // 🔻 TASK-861 — the system teacher cannot be paused
     await db.update(teachers).set({ active: input.active }).where(eq(teachers.id, input.teacherId));
   } else {
-    await db.update(teachers).set({ active: input.active }).where(eq(teachers.type, input.type));
+    await db.update(teachers).set({ active: input.active }).where(and(eq(teachers.type, input.type), eq(teachers.isSystem, false))); // 🔻 TASK-861 — a whole-type pause never reaches the system teacher
   }
   const rows = await db.query.teachers.findMany({
     where: input.teacherId
       ? (t, { eq }) => eq(t.id, input.teacherId!)
-      : (t, { eq }) => eq(t.type, input.type),
+      : (t, { eq, and: a }) => a(eq(t.type, input.type), eq(t.isSystem, false)),
     with: { teacherSubjects: { with: { subject: true } } },
   });
   return { teachers: rows.map(toTeacherDTO) };
@@ -5096,6 +5133,7 @@ export async function previewWorkDaysChange(id: string, nextWorkDays: number[]) 
 }
 
 export async function setTeacherWorkDays(id: string, workDays: number[]) {
+  await assertNotSystemTeacher(db, id); // 🔻 TASK-861
   const sorted = [...new Set(workDays)].sort((a, b) => a - b);
   const [row] = await db
     .update(teachers)
@@ -5118,6 +5156,7 @@ export async function setLimitOverride(id: string, override: boolean) {
     with: { teacherSubjects: { with: { subject: true } } },
   });
   if (!teacher) throw notFound("ไม่พบครู");
+  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget
   await db
     .insert(appSettings)
     .values({ key: `${LIMIT_OVERRIDE_PREFIX}${id}`, value: override })
@@ -5182,6 +5221,7 @@ export async function updateTeacher(
 ) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
+  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget
 
   await db.transaction(async (tx) => {
     const set: Partial<typeof teachers.$inferInsert> = {};
@@ -5226,6 +5266,7 @@ export async function updateTeacher(
 export async function archiveTeacher(id: string, viewer: Viewer) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
+  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget
 
   const today = bangkokNow().date;
   const future = await db.query.bookings.findFirst({
@@ -5257,6 +5298,7 @@ export async function archiveTeacher(id: string, viewer: Viewer) {
 export async function reactivateTeacher(id: string, viewer: Viewer) {
   const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });
   if (!current) throw notFound("ไม่พบครู");
+  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget
   await db.update(teachers).set({ archived: false, active: true }).where(eq(teachers.id, id));
   return loadTeacherFull(id, viewer);
 }
@@ -5273,6 +5315,7 @@ export async function setFreelanceBudget(
 ) {
   const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, teacherId) });
   if (!teacher) throw notFound("ไม่พบครู");
+  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget
   if (input.rateMinor <= 0) throw badRequest("เรทต่อชั่วโมงต้องมากกว่า 0");
 
   const ceilingQty = Math.round(input.monthlyBudgetMinor / input.rateMinor);
@@ -5309,6 +5352,7 @@ export async function setFreelanceBudget(
 
 /** Top up remaining now (unlock a capped teacher / add mid-month hours). amount is baht → hours. */
 export async function topUpFreelanceBudget(teacherId: string, amountMinor: number, viewer: Viewer) {
+  await assertNotSystemTeacher(db, teacherId); // 🔻 TASK-861
   const item = await findFreelanceItem(db, teacherId);
   if (!item) throw notFound("ครูยังไม่ได้ตั้งงบ — ตั้งงบก่อนจึงจะเติมได้");
   const hours = Math.round(amountMinor / item.unitPriceMinor);
@@ -5572,6 +5616,8 @@ export async function confirmCourse(id: string) {
     // 🔻 TASK-573 §1 — nothing left PENDING ⇒ a moved course has been re-confirmed: the attention mark is cleared. A session the
     // confirm SKIPPED (a budget refusal) is still pending, so the mark stays and the panel keeps asking.
     if (pending.length === confirmed) await tx.update(coursePackages).set({ reconfirmNeededSince: null }).where(eq(coursePackages.id, id));
+    // 🔻 TASK-864 (REQ-120 C1) — the course's revenue line, ONCE per course after the loop and only when this call confirmed a session. The key (`rl:course:<id>`) absorbs any repeat.
+    if (confirmed > 0) await postCourseRevenue(tx, id);
 
     // 🔴 EXACTLY ONE outbox row PER PERSON for the whole course — one teacher, one parent. Never per booking:
     // a 10-session course would otherwise be ten messages each for one decision (TASK-207).
@@ -5766,7 +5812,7 @@ export async function resumeBooking(id: string, input: { date: string; startTime
     // invent one. 📌 The existing `booking_resumed` send below reads the row AFTER this update, so it goes to
     // the NEW teacher; the old one is told nothing (item 7's family, not this task).
     const teacherId = input.teacherId ?? current.teacherId;
-    if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date);
+    if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(current.bookingType) }); // 🔻 TASK-861
 
     try {
       await tx
@@ -6418,7 +6464,11 @@ async function runCourseTeacherTimeChange(tx: any, id: string, input: { teacherI
   const expiryDate = replanExpiry(course.expiryDate, plan.lastDate); // grows to cover the new last session, never shrinks
   await tx
     .update(coursePackages)
-    .set({ weekday: weekdayOf(input.startDate), startTime: input.startTime, expiryDate, ...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {}) })
+    .set({
+      weekday: weekdayOf(input.startDate), startTime: input.startTime, expiryDate, ...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {}),
+      // 🔻 TASK-860 (F4) — a REAL whole-course teacher change is recorded (the pick is between the first and the latest coach); a time-only act (same teacher) writes nothing. A single-session cover never comes through here (Khwan 5A).
+      ...(isWholeCourseTeacherChange(plan.moves, input.teacherId) ? { coachChangedAt: new Date(), latestTeacherId: input.teacherId } : {}),
+    })
     .where(eq(coursePackages.id, id));
   await recordExpiryChange(tx, { courseId: id, from: course.expiryDate, to: expiryDate, actor });
   await sendCourseTeacherChange(tx, plan.moves);

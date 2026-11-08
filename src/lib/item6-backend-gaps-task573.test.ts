@@ -69,10 +69,10 @@ describe("🔴 §2 — the preview is the ACT's own plan, run without writes (TA
 
 describe("🔴 §3 — `CourseSummary.startDate`, ONE field; public confirmed by value AND source; the scoped answer stated", () => {
   const C = { id: "c1", startDate: "2026-10-05", size: 4, usedSessions: 0, leaveUsed: 0, adminUnlocked: false, expiryDate: "2026-11-02" };
-  test("by value, and the key set is the previous 14 + `startDate` — nothing else added", () => {
+  test("by value, and the key set is the previous 14 + `startDate` + the nine nullable F4 facts (🔻 TASK-860) — nothing else added", () => {
     const s = toCourseSummary(C, "2026-10-01");
     expect(s.startDate).toBe("2026-10-05");
-    expect(Object.keys(s).sort()).toEqual(["adminUnlocked", "dropReason", "droppedAt", "endReason", "endedAt", "expiryDate", "id", "leaveLocked", "leaveQuota", "leaveRemaining", "leaveUsed", "maxWeek", "size", "startDate", "status", "usedSessions"]);
+    expect(Object.keys(s).sort()).toEqual(["adminUnlocked", "bonus100Pick", "bonus100PickAt", "bonus100PickBy", "coachChangedAt", "dropReason", "droppedAt", "endReason", "endedAt", "expiryDate", "firstTeacherId", "fromTrialBookingId", "id", "latestTeacherId", "leaveLocked", "leaveQuota", "leaveRemaining", "leaveUsed", "maxWeek", "prevCourseId", "prevVoucherId", "size", "startDate", "status", "usedSessions"]); // 🔻 TASK-860: + the nine F4 facts
   });
   test("🔒 PUBLIC, by value: the check-in answer is the six-field allow-list — no course, so no `startDate`", () => {
     const dto = toBookingDTO({ id: "b1", date: "2026-10-05", startTime: "10:00:00", endTime: "11:00:00", bookingType: "COURSE_PACKAGE", status: "CONFIRMED", student: { id: "s1", name: "Mali" }, teacher: { id: "t1", nickname: "Ek" }, course: { ...C } });

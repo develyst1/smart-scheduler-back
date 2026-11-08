@@ -1,7 +1,7 @@
 // Voucher validity rule (requirement.md). Hours → months, counted from the FIRST
 // booking. Vouchers have no fixed schedule and cannot pick a teacher.
 
-import { COURSE_LIVE } from "./course-plan";
+import { COURSE_LIVE, COURSE_LIVE_STATUSES } from "./course-plan";
 import { fmtDate } from "./time";
 
 export const VOUCHER_HOURS = [5, 10, 15] as const;
@@ -34,10 +34,26 @@ export const VOUCHER_ENDED_MESSAGE = "วอยเชอร์นี้ถูก
 export const voucherRemaining = (v: VoucherLike): number =>
   Math.max(0, v.totalHours - v.usedHours);
 
-/** Can a session on `onDate` be booked against this voucher? (hours left + not expired) */
-export function voucherUsable(v: VoucherLike, onDate: string): { ok: boolean; reason?: string } {
+/** 🔻 TASK-870 (REQ-5008) — the approved sentence «ชั่วโมงในวอยเชอร์หมดแล้ว», reused by the booking refusal AND the empty check-in (refusal / warning): no new words. */
+export const VOUCHER_EMPTY_MESSAGE = "ชั่วโมงในวอยเชอร์หมดแล้ว";
+/**
+ * 🔻 TASK-870 (REQ-5008; ขวัญ ruled «B ka», 2026-11-08) — what a check-in on a voucher with NOTHING left does: "REFUSE" (the default) = 409 `VOUCHER_EXHAUSTED`, nothing written; "WARN" = the deduction happens and the response carries `voucherWarning`.
+ * ONE constant — flipping it is one line + a deploy (no DB setting, no UI). The day-end auto-attend never refuses (a refused row would stay unsettled).
+ */
+export const VOUCHER_EMPTY_CHECKIN: "WARN" | "REFUSE" = "REFUSE";
+/** 🔻 TASK-870 — what an attend does on THIS voucher: "ALLOW" while any hour is left, else the switch's value ("REFUSE" by default). `mode` is injectable only so BOTH values are tested. */
+export const emptyVoucherCheckin = (v: Pick<VoucherLike, "totalHours" | "usedHours">, mode: "WARN" | "REFUSE" = VOUCHER_EMPTY_CHECKIN): "ALLOW" | "WARN" | "REFUSE" => (v.usedHours >= v.totalHours ? mode : "ALLOW");
+/** 🔻 TASK-870 — the bookings that RESERVE a voucher hour: the ones a later deduction can still turn into ATTENDED (PENDING · CONFIRMED · EXTENDED — the ONE live set; SICK_LEAVE / PAUSED / CANCELLED / delivered rows reserve nothing). */
+export const VOUCHER_RESERVING_STATUSES = COURSE_LIVE_STATUSES;
+export const isVoucherReserving = (status: string): boolean => COURSE_LIVE.has(status);
+/** 🔻 TASK-870 — hours still bookable = total − used − reserved (never below 0). `voucherRemaining` stays the used-based display figure. */
+export const voucherAvailable = (v: Pick<VoucherLike, "totalHours" | "usedHours">, reserved: number): number =>
+  Math.max(0, v.totalHours - v.usedHours - Math.max(0, reserved));
+
+/** Can a session on `onDate` be booked against this voucher? (hours left AFTER what is already booked + not expired) — `reserved` defaults to 0 for the old callers. */
+export function voucherUsable(v: VoucherLike, onDate: string, reserved = 0): { ok: boolean; reason?: string } {
   if (isVoucherEnded(v)) return { ok: false, reason: VOUCHER_ENDED_MESSAGE }; // TASK-439 — refused FIRST: an ended voucher draws nothing
-  if (voucherRemaining(v) <= 0) return { ok: false, reason: "ชั่วโมงในวอยเชอร์หมดแล้ว" };
+  if (voucherAvailable(v, reserved) <= 0) return { ok: false, reason: VOUCHER_EMPTY_MESSAGE };
   if (onDate > v.expiryDate) return { ok: false, reason: "วอยเชอร์หมดอายุแล้ว" };
   return { ok: true };
 }

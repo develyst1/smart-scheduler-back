@@ -1099,6 +1099,8 @@ export const resumeBooking = z.object({
 export const changeCourseStart = z.object({ startDate: DATE });
 /** 🔻 TASK-838 (REQ-127) — the rest of a course moves to a new teacher, day and time: the admin's three answers (the resume's pickers). The weekday is DERIVED from the start date, never asked. */
 export const changeCourseTeacherTime = z.object({ teacherId: ID, startDate: DATE, startTime: TIME });
+/** 🔻 TASK-860 (REQ-120 F4) — the admin's Bonus-100 pick after a whole-course coach change. */
+export const bonus100Pick = z.object({ pick: z.enum(["FIRST", "LATEST", "SHARE"]) });
 export const resumeCourse = z.object({
   startDate: DATE,
   startTime: TIME,

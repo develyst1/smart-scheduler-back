@@ -55,6 +55,16 @@ export const courseLeaveQuota = (c: { size: number; leaveQuota?: number | null }
 
 export interface CourseLike {
   id: string;
+  /** 🔻 TASK-860 (REQ-120 F4) — the stored conversion / first-coach facts; optional so fixtures and partial selects stay valid. */
+  fromTrialBookingId?: string | null;
+  prevCourseId?: string | null;
+  prevVoucherId?: string | null;
+  firstTeacherId?: string | null;
+  coachChangedAt?: Date | string | null;
+  latestTeacherId?: string | null;
+  bonus100Pick?: string | null;
+  bonus100PickBy?: string | null;
+  bonus100PickAt?: Date | string | null;
   /** TASK-573 §3 — the course's start (`course_packages.start_date`, NOT NULL), which TASK-570's start-date move writes. */
   startDate: string;
   size: number;
@@ -108,6 +118,16 @@ export interface CourseSummary {
    * is what let a cancelled course wear a green `ปกติ` badge in the first place.
    */
   status: CourseStatus;
+  /** 🔻 TASK-860 (REQ-120 F4) — additive, nullable (see CourseSummary in types/contract.ts). */
+  fromTrialBookingId: string | null;
+  prevCourseId: string | null;
+  prevVoucherId: string | null;
+  firstTeacherId: string | null;
+  coachChangedAt: string | null;
+  latestTeacherId: string | null;
+  bonus100Pick: string | null;
+  bonus100PickBy: string | null;
+  bonus100PickAt: string | null;
 }
 
 export const leaveQuota = (size: number) => LEAVE_QUOTA_BY_SIZE[size] ?? 0;
@@ -179,5 +199,15 @@ export function toCourseSummary(c: CourseLike, today?: string): CourseSummary {
     // the way `listCoursesPaged`'s did (TASK-205).
     status: courseStatus({ ...c, endedAt: c.endedAt ?? null, droppedAt: c.droppedAt ?? null }, today ?? bangkokNow().date),
     expiryDate: c.expiryDate,
+    // 🔻 TASK-860 (REQ-120 F4) — the stored facts, nullable; a fixture without them reads null.
+    fromTrialBookingId: c.fromTrialBookingId ?? null,
+    prevCourseId: c.prevCourseId ?? null,
+    prevVoucherId: c.prevVoucherId ?? null,
+    firstTeacherId: c.firstTeacherId ?? null,
+    coachChangedAt: c.coachChangedAt ? (typeof c.coachChangedAt === "string" ? c.coachChangedAt : c.coachChangedAt.toISOString()) : null,
+    latestTeacherId: c.latestTeacherId ?? null,
+    bonus100Pick: c.bonus100Pick ?? null,
+    bonus100PickBy: c.bonus100PickBy ?? null,
+    bonus100PickAt: c.bonus100PickAt ? (typeof c.bonus100PickAt === "string" ? c.bonus100PickAt : c.bonus100PickAt.toISOString()) : null,
   };
 }

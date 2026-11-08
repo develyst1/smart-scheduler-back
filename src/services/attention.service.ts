@@ -69,7 +69,7 @@ function buildCtx(today: string): AttentionCtx {
           with: { student: true, teacher: true },
           orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
         }),
-      teachers: () => (teachers ??= db.query.teachers.findMany()),
+      teachers: () => (teachers ??= db.query.teachers.findMany().then((rows: any[]) => rows.filter((t) => !t.isSystem))), // 🔻 TASK-861 (REQ-120 F5): no attention item about the system teacher
       courses: () => (courses ??= getCourses()),
       vouchers: () => (vouchers ??= getVouchers()),
       freelanceCeilings: () => (ceilings ??= listFreelanceCeilings()) as any,

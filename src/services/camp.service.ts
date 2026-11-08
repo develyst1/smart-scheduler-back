@@ -10,6 +10,7 @@ import { unitsToDays } from "../lib/camp-deduction";
 import { householdLineUserIds } from "../lib/family-link";
 import { enqueueLine } from "../lib/line";
 import { ApiException, badRequest, conflict, notFound } from "../lib/http";
+import { SYSTEM_TEACHER_NOT_BOOKABLE } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
@@ -199,6 +200,11 @@ export type CampDayTeacherInput = { teacherId: string; startTime?: string | null
  * the caller against the day AFTER this save): the old "a coach may sit outside the day's default, deliberately" is retired — the owner ruled it a silent mistake.
  */
 async function setDayTeachers(tx: any, dayId: string, teachers: CampDayTeacherInput[]) {
+  // 🔻 TASK-861 (REQ-120 F5) — the system teacher ("No Teacher") is never a camp coach (camp hours are not OTHER): 400 SYSTEM_TEACHER_NOT_BOOKABLE
+  if (teachers.length) {
+    const sys = await tx.query.teachers.findFirst({ columns: { nickname: true }, where: (x: any, { and: a, eq: e, inArray: inA }: any) => a(inA(x.id, teachers.map((t) => t.teacherId)), e(x.isSystem, true)) });
+    if (sys?.isSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(sys.nickname); // the flag is judged HERE too, not only by the where
+  }
   for (const t of teachers) {
     if (t.startTime || t.endTime) {
       if (!t.startTime || !t.endTime) throw badRequest("ครูที่ตั้งเวลาเองต้องระบุทั้งเวลาเริ่มและเวลาจบ");

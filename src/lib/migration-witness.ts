@@ -733,6 +733,22 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "and re-runs. Rerunnable: `ADD COLUMN IF NOT EXISTS`; NO data is written and no coach is named.",
     rerunnable: true,
   },
+  {
+    tag: "0074_conversion_links_first_coach",
+    probe: { kind: "index", index: "voucher_from_trial_uq" },
+    why:
+      "TASK-860 (REQ-120 F4). The trial → course / voucher link, the previous-entitlement link, the first coach, the whole-course coach change and the Bonus-100 pick, as nullable columns on course_packages / vouchers. The probe is the LAST object the file " +
+      "creates (the vouchers' partial unique index), so a run that died half-way is not called applied. Rerunnable: every object IF NOT EXISTS, each CHECK DROP IF EXISTS + ADD; NO data is written.",
+    rerunnable: true,
+  },
+  {
+    tag: "0075_system_teacher",
+    probe: { kind: "index", index: "teachers_one_system_uq" },
+    why:
+      "TASK-861 (REQ-120 F5). The ONE system teacher \"No Teacher\" (teachers.is_system) for park-fee OTHER blocks. The probe is the LAST object the file creates (the partial unique index that makes it the only one), so a run that died after the column or the row is " +
+      "not called applied. Rerunnable: the column IF NOT EXISTS, the INSERT guarded by WHERE NOT EXISTS (… is_system), the index IF NOT EXISTS.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

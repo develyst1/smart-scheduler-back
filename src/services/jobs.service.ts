@@ -20,6 +20,7 @@
 // had not turned up because nobody pressed a button. On `uat` it did that to 15 real children in one weekend.
 // Good customers are separated by **CRM points at check-in**, and this path awards none — that absence is the
 // signal, and it is deliberately kept. `NO_SHOW` stays in the enum so historical rows still render.
+import { stampFirstCoach } from "../lib/first-coach"; // 🔻 TASK-860 (REQ-120 F4)
 import { notUndoneAttendance } from "../lib/booking-undo"; // TASK-492 · TASK-497 (widened: any undone attendance)
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -135,6 +136,9 @@ export async function runEndOfDayJob(date?: string) {
     // reader must not be able to read "noShow" out of a system that can no longer produce one.
     return { autoAttended: due.length, coursesAutoAttended, vouchersAutoAttended, campDaysAutoAttended, campDeductionsNotified };
   });
+
+  // 🔻 TASK-860 (REQ-120 F4) — AFTER the statuses settle: stamp the first coach (the coach on the first ATTENDED session) on every course / voucher that has none yet. Idempotent; the first night it fills the old rows too.
+  await stampFirstCoach(db);
 
   // 🔴 REQ-070 / TASK-180 — a consequence worth naming, because it is money. This select is
   // `status = ATTENDED`, and the block above now writes ATTENDED where it used to write NO_SHOW. So a 1st
@@ -438,7 +442,7 @@ export async function runDailyReminderJob(date?: string) {
       date: r.date,
       startTime: r.startTime,
       status: r.status,
-      teacherId: r.teacherId ?? null,
+      teacherId: r.teacher?.isSystem ? null : (r.teacherId ?? null), // 🔻 TASK-861 (REQ-120 F5): the system teacher is never a reminder recipient
       teacherLineUserId: r.teacher?.lineUserId ?? null,
       // TASK-228 (AC-16) — every other assigned teacher gets this session on their own schedule too.
       additionalTeachers: (r.additionalTeachers ?? [])
@@ -599,7 +603,7 @@ export async function runWeeklyTeacherDigestJob(date?: string) {
     // TASK-453b — `seats` rides along: the weekly digest's clash note needs the live-seat half of the derivation.
     with: { teacher: true, student: true, coStudent: true, subject: true, seats: true, additionalTeachers: { with: { teacher: true } } },
   });
-  const groups = groupWeekRows(rows);
+  const groups = groupWeekRows(rows.filter((r: any) => !r.teacher?.isSystem)); // 🔻 TASK-861 (REQ-120 F5): the system teacher gets no weekly digest (and no «not linked» skip row)
   let sent = 0, skipped = 0, duplicate = 0;
   for (const g of groups) {
     const result = await enqueueLine({

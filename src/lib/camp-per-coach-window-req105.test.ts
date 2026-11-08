@@ -50,8 +50,8 @@ describe("🔴 the migration — 0053, counted; the merge, the backfill and BOTH
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0053_camp_day_teachers.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0053_camp_day_teachers` is the 54th file, idx 53, the last; 'expects 54'; the four statements in THIS order", () => {
-    expect(files.length).toBe(74); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073
-    expect(journal.entries.length).toBe(74); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073
+    expect(files.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[53]).toBe("0053_camp_day_teachers.sql");
     expect(journal.entries[53]).toMatchObject({ idx: 53, tag: "0053_camp_day_teachers" });
     expect(sql).toContain("`db:verify` expects 54");
@@ -139,7 +139,7 @@ describe("🔴 each coach's OWN window — by value", () => {
   test("`setDayTeachers` by value: upsert each, delete whoever left; a half-given window ⇒ 400; a window OUTSIDE the day's default is allowed", async () => {
     const writes: any[] = [];
     const tx: any = {
-      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ campWeekDays: { findFirst: async () => ({ ...day(), week: { status: "CLOSED" } }) }, campWeekDayTeachers: { findMany: async () => [] }, teachers: { findMany: async () => [] } },
+      query: { teacherLeaveDays: { findFirst: async () => undefined }, /* TASK-561: no advance leave in this fixture */ campWeekDays: { findFirst: async () => ({ ...day(), week: { status: "CLOSED" } }) }, campWeekDayTeachers: { findMany: async () => [] }, teachers: { findMany: async () => [], findFirst: async () => undefined /* 🔻 TASK-861: the system-teacher flag read finds none */ } },
       insert: (table: any) => ({ values: (val: any) => ({ onConflictDoUpdate: async (o: any) => { writes.push(["upsert", table === campWeekDayTeachers ? "teachers" : "other", val, Object.keys(o.set)]); } }) }),
       delete: (table: any) => ({ where: async () => { writes.push(["delete", table === campWeekDayTeachers ? "teachers" : "other"]); } }),
       update: () => ({ set: () => ({ where: async () => {} }) }),

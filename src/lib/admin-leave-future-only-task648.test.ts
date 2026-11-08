@@ -14,6 +14,7 @@ import * as leaveLib from "./teacher-leave";
 import { isAdvanceLeave, ADMIN_LEAVE_FUTURE_ONLY } from "./teacher-leave";
 import { bangkokNow } from "./bangkok-time";
 import * as ownScope from "./own-scope";
+import * as sysTeacher from "./system-teacher"; // 🔻 TASK-861
 import { ApiException } from "./http";
 import { readSrc } from "./read-src";
 
@@ -40,6 +41,7 @@ const FUTURE = new Date(Date.parse(TODAY) + 7 * 24 * 3600 * 1000).toISOString().
 const watchAct = () => {
   const calls: Array<{ date: string; onBehalf: boolean }> = [];
   spies.push(spyOn(svc, "reportTeacherLeave").mockImplementation((async (_t: string, input: any, _a: any, opts: any) => { calls.push({ date: input.date, onBehalf: opts.onBehalf }); return { mode: "advance", cancelled: 0, bookingIds: [], familiesNotified: 0, leave: {}, alreadyRecorded: false, bookings: [], teacherNotified: 1 }; }) as any));
+  spies.push(spyOn(sysTeacher, "assertTeacherMayHaveLeave").mockImplementation((async () => {}) as any)); // 🔻 TASK-861: the route's system-teacher guard reads the flag by id — a normal teacher here
   spies.push(spyOn(svc, "reportOwnLeave").mockImplementation((async (_t: string, input: any) => { calls.push({ date: input.date, onBehalf: false }); return { mode: "same-day", cancelled: 2, bookingIds: ["b1", "b2"], familiesNotified: 2 }; }) as any));
   return calls;
 };

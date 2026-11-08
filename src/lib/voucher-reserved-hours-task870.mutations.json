@@ -1,0 +1,398 @@
+{
+  "task": "TASK-870",
+  "proves": "src/lib/voucher-reserved-hours-task870.test.ts",
+  "note": "REQ-5008: a voucher counts its booked sessions (R, D) and an empty-voucher check-in is REFUSED by default (G); the day-end never refuses (J).",
+  "tests": "src/lib/voucher-reserved-hours-task870.test.ts",
+  "mutations": [
+    {
+      "id": "G1",
+      "what": "the empty check-in default is WARN again (the ruling «B» undone)",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "export const VOUCHER_EMPTY_CHECKIN: \"WARN\" | \"REFUSE\" = \"REFUSE\";",
+              "to": "export const VOUCHER_EMPTY_CHECKIN: \"WARN\" | \"REFUSE\" = \"WARN\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "what": "an empty voucher is allowed through (ALLOW whatever the mode)",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "(v.usedHours >= v.totalHours ? mode : \"ALLOW\")",
+              "to": "\"ALLOW\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "what": "the empty test is off by one (> instead of ≥): a voucher with used = total is not empty",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "(v.usedHours >= v.totalHours ? mode : \"ALLOW\")",
+              "to": "(v.usedHours > v.totalHours ? mode : \"ALLOW\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "what": "WARN mode refuses (the other value of the switch is ignored)",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "(v.usedHours >= v.totalHours ? mode : \"ALLOW\")",
+              "to": "(v.usedHours >= v.totalHours ? \"REFUSE\" : \"ALLOW\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "what": "the attend door never refuses",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (emptyAct === \"REFUSE\") throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);",
+              "to": "if (false) throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "what": "the attend refusal uses a different code",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);",
+              "to": "throw conflict(\"VOUCHER_EMPTY\", VOUCHER_EMPTY_MESSAGE);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G7",
+      "what": "WARN mode sets no warning",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (emptyAct === \"WARN\") voucherWarning = VOUCHER_EMPTY_MESSAGE;",
+              "to": "if (emptyAct === \"WARN\") voucherWarning = undefined;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G8",
+      "what": "the response never carries the warning",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(voucherWarning ? { voucherWarning } : {})",
+              "to": "...({})"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G9",
+      "what": "the gate is judged only for booking rows with a voucher relation missing (a course session is gated)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : \"ALLOW\";",
+              "to": "const emptyAct = current.voucher ? emptyVoucherCheckin(current.voucher) : \"REFUSE\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G10",
+      "what": "the refusal comes AFTER the status write (the row would be left ATTENDED if the throw rolled back nothing)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : \"ALLOW\";\n        if (emptyAct === \"REFUSE\") throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);\n        if (emptyAct === \"WARN\") voucherWarning = VOUCHER_EMPTY_MESSAGE;\n        await tx.update(bookings).set({ status: \"ATTENDED\",",
+              "to": "        await tx.update(bookings).set({ status: \"ATTENDED\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "what": "the booking gate ignores the reserved hours",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "{ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date, reserved)",
+              "to": "{ totalHours: v.totalHours, usedHours: v.usedHours, expiryDate }, date, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "a CANCELLED / leave row reserves (the JS filter is gone)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const reserved = reservedRows.filter((b: any) => isVoucherReserving(b.status)).length;",
+              "to": "const reserved = reservedRows.length;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "the reserved read takes every status of the voucher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "and(eq(b.voucherId, voucherId), inArray(b.status, [...VOUCHER_RESERVING_STATUSES]))",
+              "to": "eq(b.voucherId, voucherId)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "the reserved read takes ANOTHER voucher's bookings too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "and(eq(b.voucherId, voucherId), inArray(b.status, [...VOUCHER_RESERVING_STATUSES]))",
+              "to": "inArray(b.status, [...VOUCHER_RESERVING_STATUSES])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "what": "voucherAvailable forgets the used hours",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "Math.max(0, v.totalHours - v.usedHours - Math.max(0, reserved))",
+              "to": "Math.max(0, v.totalHours - Math.max(0, reserved))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "what": "voucherAvailable forgets the reserved hours",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "Math.max(0, v.totalHours - v.usedHours - Math.max(0, reserved))",
+              "to": "Math.max(0, v.totalHours - v.usedHours)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "what": "voucherUsable still judges by the used-based remaining",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "if (voucherAvailable(v, reserved) <= 0) return",
+              "to": "if (voucherRemaining(v) <= 0) return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "what": "voucherStatus becomes reserved-based (the SOM / list status would shift)",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "  if (voucherRemaining(v) <= 0) return \"EXHAUSTED\";",
+              "to": "  if (voucherRemaining(v) <= 1) return \"EXHAUSTED\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "what": "EXTENDED stops reserving",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "export const VOUCHER_RESERVING_STATUSES = COURSE_LIVE_STATUSES;",
+              "to": "export const VOUCHER_RESERVING_STATUSES = [\"PENDING\", \"CONFIRMED\"] as const;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "what": "the message is a new sentence",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "export const VOUCHER_EMPTY_MESSAGE = \"ชั่วโมงในวอยเชอร์หมดแล้ว\";",
+              "to": "export const VOUCHER_EMPTY_MESSAGE = \"วอยเชอร์ไม่พอ\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D1",
+      "what": "the DTO reserves nothing",
+      "files": [
+        {
+          "file": "src/db/mappers.ts",
+          "edits": [
+            {
+              "from": "hoursReserved: (v.bookings ?? []).filter((b: any) => isVoucherReserving(b.status)).length,",
+              "to": "hoursReserved: 0,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "what": "the DTO's available ignores the reserved hours",
+      "files": [
+        {
+          "file": "src/db/mappers.ts",
+          "edits": [
+            {
+              "from": "hoursAvailable: voucherAvailable(v, (v.bookings ?? []).filter((b: any) => isVoucherReserving(b.status)).length),",
+              "to": "hoursAvailable: voucherAvailable(v, 0),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "what": "the list does not load the voucher's bookings",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "with: { student: true, bookings: { columns: { status: true }, where: (b, { inArray: inB }) => inB(b.status, [...VOUCHER_RESERVING_STATUSES]) } },",
+              "to": "with: { student: true },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D4",
+      "what": "the plan summary reports no reserved hours",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "hoursReserved: rows.filter((r: any) => isVoucherReserving(r.status)).length,",
+              "to": "hoursReserved: 0,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D5",
+      "what": "the plan summary's available ignores them",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "hoursAvailable: voucherAvailable(voucher, rows.filter((r: any) => isVoucherReserving(r.status)).length),",
+              "to": "hoursAvailable: voucherAvailable(voucher, 0),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "J1",
+      "what": "the day-end gets a gate (it would refuse and leave the row unsettled)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": ".set({ usedHours: sql`${vouchers.usedHours} + 1` })",
+              "to": ".set({ usedHours: sql`${vouchers.usedHours} + 1` }) /* VOUCHER_EXHAUSTED emptyVoucherCheckin */"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

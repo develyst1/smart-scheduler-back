@@ -125,7 +125,7 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
   test("booking rows are created in exactly four places: the ONE inserter, the two make-up writers, and the dev seed", () => {
     const sites = all.flatMap(([f, s]) => [...s.matchAll(/\.insert\(bookings\)/g)].map(() => f));
     expect(sites.sort()).toEqual(["src/db/seed.ts", "src/services/scheduler.service.ts", "src/services/scheduler.service.ts", "src/services/scheduler.service.ts"]);
-    expect(fnBody(S, "export async function insertBooking(")).toContain("await assertTeacherBookable(exec, input.teacherId, input.date);"); // Seam A
+    expect(fnBody(S, "export async function insertBooking(")).toContain("await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });"); // Seam A · 🔻 TASK-861: + allowSystem
     for (const head of ["export async function reconcileCoursePlan(", "export async function updateBookingStatus("]) {
       const body = fnBody(S, head);
       expect(body.indexOf("findFreeExtensionDate(")).toBeGreaterThan(-1); // Seam B, before its direct insert

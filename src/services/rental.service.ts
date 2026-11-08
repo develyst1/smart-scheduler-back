@@ -14,6 +14,7 @@ import { bangkokNow } from "../lib/bangkok-time";
 import { reminderRanOn } from "../lib/reminder-run";
 import { enqueueLine } from "../lib/line";
 import { recordSale } from "../lib/sale-post";
+import { postRentalRevenue } from "../lib/revenue-line"; // TASK-864 (C1)
 import { listPriceMinor, rentalIdBase, rentalIdempotencyKey } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
 
@@ -55,6 +56,16 @@ export async function recordRental(input: {
       `บันทึกค่าเช่าอุปกรณ์ไม่สำเร็จ (${result.skipped ?? "error"}) — ยังไม่ได้ลงบัญชี กรุณาลองใหม่หรือแจ้งแอดมิน`,
     );
   }
+
+  // 🔻 TASK-864 (REQ-120 C1; SA review 1) — the rental's revenue LEDGER line, right after the movement: ONE call for every rental post (the paid press, a
+  // course's paid-upfront rental, a standalone one). It mirrors what that post netted (list × hours − discount), under `rl:` + the movement's own key. Never throws.
+  await postRentalRevenue(db, {
+    movementKey: idempotencyKey,
+    refId: input.refId ?? idBase,
+    code: input.code,
+    hours: input.hours,
+    discountMinor: discount?.discountMinor ?? 0,
+  });
 
   return {
     status: result.skipped === "duplicate" ? ("duplicate" as const) : ("recorded" as const),

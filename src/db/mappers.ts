@@ -3,7 +3,7 @@
 
 import type { ProvenanceView } from "../lib/checkin-channel";
 import { toCourseSummary } from "../lib/leave";
-import { voucherRemaining, voucherStatus } from "../lib/voucher";
+import { isVoucherReserving, voucherAvailable, voucherRemaining, voucherStatus } from "../lib/voucher";
 import { fmtDate, hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
 import { COURSE_LIVE } from "../lib/course-plan";
@@ -21,6 +21,7 @@ export const toTeacherBase = (t: any) => ({
 
 export const toTeacherDTO = (t: any) => ({
   id: t.id,
+  isSystem: t.isSystem ?? false, // 🔻 TASK-861 (REQ-120 F5) — the ONE system teacher ("No Teacher"): the screens place / filter by this flag, never by the name
   name: t.name,
   nickname: t.nickname,
   type: t.type,
@@ -356,9 +357,17 @@ export const toVoucherDTO = (v: any) => ({
   remaining: voucherRemaining(v),
   expiryDate: v.expiryDate,
   student: studentRef(v.student),
+  // 🔻 TASK-870 (REQ-5008) — additive: the live bookings reserve hours; the picker gates on `hoursAvailable` (= total − used − reserved). Absent `bookings` (a single-row write) reads 0 reserved.
+  hoursReserved: (v.bookings ?? []).filter((b: any) => isVoucherReserving(b.status)).length,
+  hoursAvailable: voucherAvailable(v, (v.bookings ?? []).filter((b: any) => isVoucherReserving(b.status)).length),
   // TASK-439 (REQ-103): the ONE derived status (ENDED > EXPIRED > EXHAUSTED > ACTIVE) + the end stamp; `remaining` stays
   // readable on an ended voucher — the balance is frozen, not hidden ("ENDED · Nh left").
   status: voucherStatus(v, fmtDate(new Date())),
   endedAt: v.endedAt ?? null,
   endReason: v.endReason ?? null,
+  // 🔻 TASK-860 (REQ-120 F4) — additive, nullable: the trial this voucher converted, the previous entitlement, the first coach.
+  fromTrialBookingId: v.fromTrialBookingId ?? null,
+  prevCourseId: v.prevCourseId ?? null,
+  prevVoucherId: v.prevVoucherId ?? null,
+  firstTeacherId: v.firstTeacherId ?? null,
 });

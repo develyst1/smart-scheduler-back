@@ -1,0 +1,668 @@
+{
+  "task": "TASK-861",
+  "proves": "src/lib/system-teacher-task861.test.ts",
+  "note": "REQ-120 F5: the ONE system teacher. B = the booking rule (OTHER only), W = the writes it refuses (409 SYSTEM_TEACHER), E = the exclusion walk, D = the DTO flag, M = migration / witness.",
+  "tests": "src/lib/system-teacher-task861.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "the system teacher is bookable on ANY booking (the refusal is gone)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!opts.allowSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);",
+              "to": "if (false) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "what": "the system teacher is refused even for an OTHER",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!opts.allowSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);",
+              "to": "if (true) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "what": "an allowed OTHER still runs the workday / leave / budget checks",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (!opts.allowSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);\n    return teacher;\n  }",
+              "to": "    if (!opts.allowSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(teacher.nickname);\n  }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "what": "mayUseSystemTeacher accepts a course too",
+      "files": [
+        {
+          "file": "src/lib/system-teacher.ts",
+          "edits": [
+            {
+              "from": "bookingType === \"OTHER\";",
+              "to": "bookingType === \"OTHER\" || bookingType === \"COURSE_PACKAGE\";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "what": "the inserter passes allowSystem for every booking type",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });",
+              "to": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "what": "TASK-838's act accepts the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date);",
+              "to": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { allowSystem: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "what": "an additional coach may be the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await assertTeacherBookable(exec, teacherId, booking!.date);",
+              "to": "await assertTeacherBookable(exec, teacherId, booking!.date, { allowSystem: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "what": "an OTHER series' EXTRA coach may be the system teacher",
+      "files": [
+        {
+          "file": "src/services/other-series.service.ts",
+          "edits": [
+            {
+              "from": "{ allowSystem: !onExtra }",
+              "to": "{ allowSystem: true }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B9",
+      "what": "the swap door lets a LESSON go to the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: mayUseSystemTeacher(b.bookingType) });",
+              "to": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "what": "a group-row move accepts the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await assertTeacherBookable(tx, input.teacherId, g.date);",
+              "to": "await assertTeacherBookable(tx, input.teacherId, g.date, { allowSystem: true });"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W1",
+      "what": "updateTeacher: the system teacher can be edited",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "viewer: Viewer,\n) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");\n  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname);",
+              "to": "viewer: Viewer,\n) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "what": "archiveTeacher: the system teacher can be archived",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "export async function archiveTeacher(id: string, viewer: Viewer) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");\n  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname);",
+              "to": "export async function archiveTeacher(id: string, viewer: Viewer) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W3",
+      "what": "reactivateTeacher: the system teacher can be reactivated",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "export async function reactivateTeacher(id: string, viewer: Viewer) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");\n  if (current.isSystem) throw SYSTEM_TEACHER(current.nickname);",
+              "to": "export async function reactivateTeacher(id: string, viewer: Viewer) {\n  const current = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) });\n  if (!current) throw notFound(\"ไม่พบครู\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "what": "setFreelanceBudget: the system teacher can be given a budget",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget\n  if (input.rateMinor <= 0)",
+              "to": "  if (input.rateMinor <= 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W5",
+      "what": "setLimitOverride: the system teacher can be given an override",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher cannot be edited, archived, paused, linked to LINE, given leave or a budget\n  await db\n    .insert(appSettings)",
+              "to": "  await db\n    .insert(appSettings)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W6",
+      "what": "topUpFreelanceBudget: the system teacher can be topped up",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await assertNotSystemTeacher(db, teacherId); // 🔻 TASK-861\n  const item = await findFreelanceItem(db, teacherId);",
+              "to": "  const item = await findFreelanceItem(db, teacherId);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W7",
+      "what": "setTeacherWorkDays: the system teacher can be given work days",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "  await assertNotSystemTeacher(db, id); // 🔻 TASK-861\n  const sorted",
+              "to": "  const sorted"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W8",
+      "what": "setAvailability: the system teacher can be paused",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    await assertNotSystemTeacher(db, input.teacherId); // 🔻 TASK-861 — the system teacher cannot be paused\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W9",
+      "what": "a whole-type pause reaches the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".where(and(eq(teachers.type, input.type), eq(teachers.isSystem, false))); // 🔻 TASK-861",
+              "to": ".where(eq(teachers.type, input.type)); // 🔻 TASK-861"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W10",
+      "what": "the calendar feed can be issued for the system teacher",
+      "files": [
+        {
+          "file": "src/services/calendar.service.ts",
+          "edits": [
+            {
+              "from": "  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher has no calendar feed\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W11",
+      "what": "the system teacher can be unlinked / linked-check skipped on unlink",
+      "files": [
+        {
+          "file": "src/services/teacher-link.service.ts",
+          "edits": [
+            {
+              "from": "  if (before?.isSystem) throw SYSTEM_TEACHER(before.nickname);",
+              "to": "  if (false) throw SYSTEM_TEACHER(before!.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W12",
+      "what": "a LINE link request can be approved onto the system teacher",
+      "files": [
+        {
+          "file": "src/services/teacher-link.service.ts",
+          "edits": [
+            {
+              "from": "  if (teacher?.isSystem) throw SYSTEM_TEACHER(teacher.nickname);",
+              "to": "  if (false) throw SYSTEM_TEACHER(teacher!.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W13",
+      "what": "the admin leave route no longer asks the system guard",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "    await assertTeacherMayHaveLeave(teacherId); // 🔻 TASK-861 (REQ-120 F5)",
+              "to": "    // (guard removed) // 🔻 TASK-861 (REQ-120 F5)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W14",
+      "what": "the leave guard reads nothing",
+      "files": [
+        {
+          "file": "src/lib/system-teacher.ts",
+          "edits": [
+            {
+              "from": "(teacherId: string): Promise<void> => assertNotSystemTeacher(db, teacherId);",
+              "to": "(teacherId: string): Promise<void> => Promise.resolve();"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W15",
+      "what": "the flag is never read: a system teacher is a normal teacher",
+      "files": [
+        {
+          "file": "src/lib/system-teacher.ts",
+          "edits": [
+            {
+              "from": "export const isSystemTeacher = (t: { isSystem?: boolean | null } | null | undefined): boolean => !!t?.isSystem;",
+              "to": "export const isSystemTeacher = (t: { isSystem?: boolean | null } | null | undefined): boolean => false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W16",
+      "what": "a sign-in identity can be the system teacher",
+      "files": [
+        {
+          "file": "src/services/user.service.ts",
+          "edits": [
+            {
+              "from": "  if (t.isSystem) throw SYSTEM_TEACHER(t.nickname);",
+              "to": "  if (false) throw SYSTEM_TEACHER(t.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W17",
+      "what": "a LINE nickname claim can match the system teacher",
+      "files": [
+        {
+          "file": "src/services/teacher-link.service.ts",
+          "edits": [
+            {
+              "from": "  const rows = await db.select().from(teachers).where(eq(teachers.isSystem, false));",
+              "to": "  const rows = await db.select().from(teachers);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "what": "the Daily Report counts the system teacher as a coach",
+      "files": [
+        {
+          "file": "src/services/daily-report.service.ts",
+          "edits": [
+            {
+              "from": "if ((b as any).teacher?.isSystem) rows[i]",
+              "to": "if (false) rows[i]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "the weekly digest includes the system teacher",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "groupWeekRows(rows.filter((r: any) => !r.teacher?.isSystem))",
+              "to": "groupWeekRows(rows)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "what": "the daily reminder keeps the system teacher as a recipient",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "teacherId: r.teacher?.isSystem ? null : (r.teacherId ?? null),",
+              "to": "teacherId: r.teacherId ?? null,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "what": "the SOM roster includes the system teacher",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "teachers.filter((t: any) => !t.isSystem).map(",
+              "to": "teachers.map("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "what": "lesson availability lists the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "(t, { eq, and: a }) => a(eq(t.archived, false), eq(t.isSystem, false)), // 🔻 TASK-861",
+              "to": "(t, { eq }) => eq(t.archived, false), // 🔻 TASK-861"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "what": "the system teacher is flagged setup-incomplete",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "!d.archived && !d.isSystem;",
+              "to": "!d.archived;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E7",
+      "what": "the hold reconcile looks for a ceiling for the system teacher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "teacher?.type === \"FREELANCE\" && !teacher.isSystem ?",
+              "to": "teacher?.type === \"FREELANCE\" ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E8",
+      "what": "ops money-setup calls the system teacher incomplete",
+      "files": [
+        {
+          "file": "src/lib/ops-client.ts",
+          "edits": [
+            {
+              "from": "if (teacher.archived || teacher.isSystem) return false;",
+              "to": "if (teacher.archived) return false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E9",
+      "what": "the ops drift report flags the system teacher",
+      "files": [
+        {
+          "file": "src/lib/ops-client.ts",
+          "edits": [
+            {
+              "from": "    if (t.isSystem) continue; // 🔻 TASK-861 (REQ-120 F5): no ops party, no money — never drift\n",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E10",
+      "what": "attention raises items about the system teacher",
+      "files": [
+        {
+          "file": "src/services/attention.service.ts",
+          "edits": [
+            {
+              "from": ".then((rows: any[]) => rows.filter((t) => !t.isSystem))",
+              "to": ".then((rows: any[]) => rows)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E11",
+      "what": "the badge breakdown has a «No Teacher» line",
+      "files": [
+        {
+          "file": "src/services/badge.service.ts",
+          "edits": [
+            {
+              "from": ".where(and(inRange, eq(teachers.isSystem, false)))",
+              "to": ".where(inRange)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E12",
+      "what": "a camp day can take the system teacher as a coach",
+      "files": [
+        {
+          "file": "src/services/camp.service.ts",
+          "edits": [
+            {
+              "from": "    if (sys?.isSystem) throw SYSTEM_TEACHER_NOT_BOOKABLE(sys.nickname);",
+              "to": "    if (false) throw SYSTEM_TEACHER_NOT_BOOKABLE(sys!.nickname);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D1",
+      "what": "the teacher DTO never says it is the system teacher",
+      "files": [
+        {
+          "file": "src/db/mappers.ts",
+          "edits": [
+            {
+              "from": "isSystem: t.isSystem ?? false,",
+              "to": "isSystem: false,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "what": "the migration inserts the row again on every run",
+      "files": [
+        {
+          "file": "drizzle/0075_system_teacher.sql",
+          "edits": [
+            {
+              "from": "WHERE NOT EXISTS (SELECT 1 FROM \"teachers\" WHERE \"is_system\");",
+              "to": ";"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the system row is created non-FREELANCE",
+      "files": [
+        {
+          "file": "drizzle/0075_system_teacher.sql",
+          "edits": [
+            {
+              "from": "SELECT 'No Teacher', 'No Teacher', 'FREELANCE', true, false, true",
+              "to": "SELECT 'No Teacher', 'No Teacher', 'FULL_TIME', true, false, true"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the unique index covers every teacher, not only the flagged one",
+      "files": [
+        {
+          "file": "drizzle/0075_system_teacher.sql",
+          "edits": [
+            {
+              "from": "ON \"teachers\" (\"is_system\") WHERE \"is_system\";",
+              "to": "ON \"teachers\" (\"is_system\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "the witness probes the wrong object",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "probe: { kind: \"index\", index: \"teachers_one_system_uq\" }",
+              "to": "probe: { kind: \"index\", index: \"teachers_pkey\" }"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

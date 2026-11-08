@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { teachers } from "../db/schema";
 import { notFound } from "../lib/http";
+import { SYSTEM_TEACHER } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { addDays } from "../lib/time";
 import { bangkokNow } from "../lib/bangkok-time";
 
@@ -25,6 +26,7 @@ const generateCalendarToken = () => randomBytes(24).toString("base64url");
 export async function getOrCreateCalendarToken(teacherId: string, opts: { rotate?: boolean } = {}) {
   const teacher = await db.query.teachers.findFirst({ where: (t, { eq: e }) => e(t.id, teacherId) });
   if (!teacher) throw notFound("ไม่พบครู");
+  if (teacher.isSystem) throw SYSTEM_TEACHER(teacher.nickname); // 🔻 TASK-861 (REQ-120 F5) — the system teacher has no calendar feed
   if (teacher.calendarToken && !opts.rotate) return { token: teacher.calendarToken, rotated: false };
   const token = generateCalendarToken();
   await db.update(teachers).set({ calendarToken: token }).where(eq(teachers.id, teacherId));

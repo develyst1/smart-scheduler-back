@@ -78,6 +78,6 @@ describe("🔴 TASK-732 — migration 0068: ONE nullable column, IF NOT EXISTS, 
     expect(SCHEDULING_WITNESSES.find((w: any) => w.tag === "0068_vouchers_note")).toMatchObject({ probe: { kind: "column", table: "vouchers", column: "note" }, rerunnable: true });
     const schema = read("src/db/schema.ts");
     const from = schema.indexOf('export const vouchers = pgTable("vouchers"');
-    expect(schema.slice(from, schema.indexOf(String.fromCharCode(10) + "});", from))).toContain('note: text("note"),'); // inside the vouchers table only
+    expect(schema.slice(from, schema.indexOf(String.fromCharCode(10) + "}, (t) => [", from))).toContain('note: text("note"),'); // inside the vouchers table only
   });
 });

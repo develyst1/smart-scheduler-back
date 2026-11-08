@@ -519,6 +519,20 @@
       "when": 1783000000069,
       "tag": "0073_teacher_weekend_capacity_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1783000000070,
+      "tag": "0074_conversion_links_first_coach",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1783000000071,
+      "tag": "0075_system_teacher",
+      "breakpoints": true
     }
   ]
 }

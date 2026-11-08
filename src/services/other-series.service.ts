@@ -312,7 +312,7 @@ export async function swapOtherSeriesTeacher(key: string, input: { from: string;
     for (const r of targets) {
       if (onExtra ? !extrasOf(r).includes(input.from) : r.teacherId !== input.from) throw NOT_ON_ROW(r.date); // §T-629-MERGE — one sentence, both cases
       if (r.teacherId === input.to || extrasOf(r).includes(input.to)) throw ALREADY_ON_ROW(r.date);
-      await assertTeacherBookable(tx, input.to, r.date); // ✅ TASK-561's leave block applies to a cover too — and to an extra
+      await assertTeacherBookable(tx, input.to, r.date, { allowSystem: !onExtra }); // ✅ TASK-561's leave block applies to a cover too — and to an extra · 🔻 TASK-861: an OTHER series' PRIMARY may be the system teacher (a park-fee block); an EXTRA coach may not
       if (onExtra) {
         // 🔴 The extra path: the outgoing extra's row GONE, the incoming extra's row INSERTED carrying their OWN rate, and the
         // insert goes THROUGH `attachAdditionalTeachers` — which runs `assertTeacherBookable` + `assertAdditionalTeacherFree`

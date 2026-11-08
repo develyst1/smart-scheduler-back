@@ -40,7 +40,7 @@ const fakeCreate = (leave: Array<{ teacherId: string; date: string }>) => {
   const tx: any = {
     insert: (table: any) => ({ values: (val: any) => ({ returning: async () => { const id = table === coursePackages ? "course-1" : `b-${++n}`; inserted.push({ table: table === coursePackages ? "coursePackages" : table === bookings ? "bookings" : "other", v: val }); return [{ id }]; } }) }),
     // the make-up appended by the reconcile asks "does this course carry a rental?" — none here (an empty chain)
-    select: () => { const q: any = { from: () => q, innerJoin: () => q, where: () => q, limit: async () => [] }; return q; },
+    select: () => { const q: any = { from: () => q, innerJoin: () => q, where: () => q, orderBy: () => q /* 🔻 TASK-860: the sale's link reads */, limit: async () => [] }; return q; },
     update: (t: any) => ({ set: () => ({ where: async () => { touchedLeaveTable.push(String(t?.[Symbol.for("drizzle:Name")] ?? "")); } }) }),
     delete: (t: any) => ({ where: () => { touchedLeaveTable.push(`delete:${String(t?.[Symbol.for("drizzle:Name")] ?? "")}`); const p: any = Promise.resolve(); p.returning = async () => [{ id: "x" }]; return p; } }),
     query: {
@@ -158,8 +158,8 @@ describe("TASK-813 — by source: one place, one reader, nothing else moved", ()
   const INSERT = code(region(SVC, "export async function insertBooking(", "\n}\n"));
   test("the skip is passed ONLY by `insertBooking`, ONLY for `SICK_LEAVE` + `plannedAtCreation === true`", () => {
     expect([...code(SVC).matchAll(/allowLeave: true/g)]).toHaveLength(1);
-    expect(INSERT).toContain('if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true });');
-    expect(INSERT).toContain("else await assertTeacherBookable(exec, input.teacherId, input.date);");
+    expect(INSERT).toContain('if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(input.bookingType) });'); // 🔻 TASK-861: + allowSystem
+    expect(INSERT).toContain("else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });"); // 🔻 TASK-861: + allowSystem
   });
   test("the gate keeps ONE reader and ONE text; the leave check is the only thing `allowLeave` guards", () => {
     expect(GATE).toContain("if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);\n  }");

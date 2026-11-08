@@ -15,7 +15,7 @@ const world = (o: { expiryDate: string; liveBooking?: boolean; records?: Rec[] }
   const exec = {
     query: {
       vouchers: { findFirst: async () => v },
-      bookings: { findFirst: async () => (o.liveBooking ? { id: "b-live" } : undefined) },
+      bookings: { findFirst: async () => (o.liveBooking ? { id: "b-live" } : undefined), findMany: async () => (o.liveBooking ? [{ status: "CONFIRMED" }] : []) /* 🔻 TASK-870: the reserved-hours count */ },
       voucherExpiryChanges: {
         findFirst: async (q: any) => {
           // THE service's own where, evaluated: the voucher AND "an actor is set"

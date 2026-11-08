@@ -12,6 +12,7 @@ import { rolePermissions, userPermissions, users } from "../db/schema";
 import { findRole, roleKeysByIds } from "./role.service";
 import { ACTION_KEYS, MENU_KEYS, isActionKey, isMenuKey, type ActionKey, type MenuKey } from "../lib/permissions";
 import { ApiException, conflict, notFound, pgErrorCode } from "../lib/http";
+import { SYSTEM_TEACHER } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { unlinkLineOfUser } from "./line-admin-links.service";
 
 export const PASSWORD_MIN = 8;
@@ -208,6 +209,7 @@ export async function changeOwnPassword(id: string, currentPassword: string, new
 async function assertTeacherFree(teacherId: string, exceptUserId: string | null, exec: any = db): Promise<void> {
   const t = await exec.query.teachers.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, teacherId) });
   if (!t) throw notFound("ไม่พบครู");
+  if (t.isSystem) throw SYSTEM_TEACHER(t.nickname); // 🔻 TASK-861 (REQ-120 F5): the system teacher is never a sign-in identity
   const [taken] = await exec.select({ id: users.id }).from(users).where(and(eq(users.teacherId, teacherId), ...(exceptUserId ? [ne(users.id, exceptUserId)] : []))).limit(1);
   if (taken) throw conflict("TEACHER_LINKED", "ครูคนนี้มีบัญชีแล้ว");
 }

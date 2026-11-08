@@ -82,6 +82,8 @@ export interface SubjectRef {
 
 export interface TeacherDTO {
   id: string;
+  /** 🔻 TASK-861 (REQ-120 F5) — the ONE system teacher ("No Teacher", park-fee blocks): bookable only for OTHER; every picker except the OTHER form filters it out. Decide by this flag, never by the name. */
+  isSystem: boolean;
   name: string;
   nickname: string;
   type: TeacherType;
@@ -130,6 +132,16 @@ export interface CourseSummary {
   /** The course's sport program, derived from its bookings (a course ⇔ one subject). null only when the
    *  course's bookings aren't loaded (e.g. post-mutation responses) — the list re-fetches. (REQ-010) */
   subject: SubjectRef | null;
+  /** 🔻 TASK-860 (REQ-120 F4) — additive, nullable facts the Salary Bonus lines read; the front office ignores them. */
+  fromTrialBookingId?: string | null;
+  prevCourseId?: string | null;
+  prevVoucherId?: string | null;
+  firstTeacherId?: string | null;
+  coachChangedAt?: string | null;
+  latestTeacherId?: string | null;
+  bonus100Pick?: "FIRST" | "LATEST" | "SHARE" | null;
+  bonus100PickBy?: string | null;
+  bonus100PickAt?: string | null;
 }
 
 /** The universal booking shape — used by calendar cells, the table, and the modal. */
@@ -437,6 +449,8 @@ export interface UpdateBookingStatusResponse {
   extended: BookingDTO | null; // auto-created make-up slot (sick-leave within quota)
   course: CourseSummary | null; // updated quota, if course-linked
   locked: boolean; // sick-leave over quota → needs admin unlock
+  /** 🔻 TASK-870 (REQ-5008) — present ONLY when `VOUCHER_EMPTY_CHECKIN` is "WARN" and the attend drew on an empty voucher: the approved sentence. In the default "REFUSE" mode the attend answers 409 VOUCHER_EXHAUSTED instead. */
+  voucherWarning?: string;
   notification:
     | { channel: "line"; status: "queued" | "skipped"; reason?: string }
     | null; // what happened with LINE, so the toast is accurate
@@ -511,6 +525,14 @@ export interface VoucherSummary {
   remaining: number;
   expiryDate: IsoDate;
   student: StudentRef;
+  /** 🔻 TASK-870 (REQ-5008) — additive: hours reserved by the voucher's live bookings, and total − used − reserved (the picker gates on this). */
+  hoursReserved?: number;
+  hoursAvailable?: number;
+  /** 🔻 TASK-860 (REQ-120 F4) — additive, nullable. */
+  fromTrialBookingId?: string | null;
+  prevCourseId?: string | null;
+  prevVoucherId?: string | null;
+  firstTeacherId?: string | null;
 }
 /** GET /api/vouchers?studentId&q — voucher tab + booking picker source. */
 export type VouchersResponse = VoucherSummary[];

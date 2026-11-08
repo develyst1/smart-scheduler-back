@@ -106,7 +106,8 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     subjects: subjects.map((s: any) => ({ id: s.id, name: s.name, active: s.active })),
     districtLabel,
     subdistrictLabel: (code: string) => areaName(code, "TH"), // 🔻 744
-    teachers: teachers.map((t: any) => ({ id: t.id, nickname: t.nickname, type: t.type, active: t.active, archived: t.archived, workDays: t.workDays ?? [], weekendCapacityHours: t.weekendCapacityHours ?? null, createdAt: t.createdAt ?? null })),
+    teachers: teachers.filter((t: any) => !t.isSystem).map((t: any) => ({ // 🔻 TASK-861 (REQ-120 F5): not a coach — out of the roster, so out of capacity and the coach counts
+ id: t.id, nickname: t.nickname, type: t.type, active: t.active, archived: t.archived, workDays: t.workDays ?? [], weekendCapacityHours: t.weekendCapacityHours ?? null, createdAt: t.createdAt ?? null })),
     leaveDays: leaveRows.map((l: any) => ({ teacherId: l.teacherId, date: l.date })),
   };
 }

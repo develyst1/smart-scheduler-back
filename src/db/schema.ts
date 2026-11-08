@@ -217,6 +217,8 @@ export const teachers = pgTable("teachers", {
   workDays: smallint("work_days").array().notNull().default(sql`ARRAY[0,1,2,3,4,5,6]::smallint[]`),
   /** REQ-5004 / TASK-756 — a PART_TIME coach's own capacity per weekend day worked, in hours. NULL = the type's rate (Coach Capacity). Set by a DATA REQUEST, no form. */
   weekendCapacityHours: smallint("weekend_capacity_hours"),
+  /** 🔻 TASK-861 (REQ-120 F5, `0075`) — the ONE system teacher ("No Teacher") for park-fee OTHER blocks: excluded from everything that measures, pays or messages a coach; bookable only for OTHER. Exactly one row (partial unique index). */
+  isSystem: boolean("is_system").notNull().default(false),
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.
   lineUserId: text("line_user_id"),
   lineLang: text("line_lang"), // "TH" | "EN" — LINE bot reply language (null → TH). REQ-015 / TASK-039.
@@ -228,7 +230,7 @@ export const teachers = pgTable("teachers", {
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
-});
+}, (t) => [uniqueIndex("teachers_one_system_uq").on(t.isSystem).where(sql`${t.isSystem}`)]);
 
 // REQ-006 (TASK-024): the freelance ceiling now lives as a `bo.item` (unit=hour) in the SHARED DB.
 // `bo` migrations are owned by backoffice-back; scheduling only reads/writes item + movement here
@@ -389,6 +391,21 @@ export const coursePackages = pgTable(
     // revenue). Recorded, not inferred: `sales_not_posted` must skip imports or it flags ~30 families as
     // revenue faults on go-live morning and gets muted.
     source: text("source").notNull().default("SALE"),
+    // 🔻 TASK-860 (REQ-120 F4, `0074`) — the facts the Salary Bonus lines read; F4 STORES them and decides nothing. All nullable; written at the SALE (never the import), the first coach at day-end.
+    /** the 1st Trial this sale converted (the child's latest ATTENDED trial not yet linked) */
+    fromTrialBookingId: uuid("from_trial_booking_id").references((): AnyPgColumn => bookings.id, { onDelete: "set null" }),
+    /** the child's previous course / voucher (the latest entitlement, either kind) — at most one of the two */
+    prevCourseId: uuid("prev_course_id").references((): AnyPgColumn => coursePackages.id, { onDelete: "set null" }),
+    prevVoucherId: uuid("prev_voucher_id").references((): AnyPgColumn => vouchers.id, { onDelete: "set null" }),
+    /** the coach on the first ATTENDED session (day-end stamps it) */
+    firstTeacherId: uuid("first_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+    /** the last whole-course teacher change (TASK-838 act) and the teacher it moved the course to — a 1–2 day cover writes nothing (Khwan 5A) */
+    coachChangedAt: timestamp("coach_changed_at", { withTimezone: true }),
+    latestTeacherId: uuid("latest_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+    /** the admin's Special Case pick for Bonus 100 after a coach change: FIRST | LATEST | SHARE */
+    bonus100Pick: text("bonus100_pick"),
+    bonus100PickBy: text("bonus100_pick_by"),
+    bonus100PickAt: timestamp("bonus100_pick_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -396,6 +413,9 @@ export const coursePackages = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
+    check("course_prev_one_chk", sql`${t.prevCourseId} is null or ${t.prevVoucherId} is null`),
+    check("course_bonus100_pick_chk", sql`${t.bonus100Pick} is null or ${t.bonus100Pick} in ('FIRST', 'LATEST', 'SHARE')`),
+    uniqueIndex("course_from_trial_uq").on(t.fromTrialBookingId).where(sql`${t.fromTrialBookingId} is not null`),
     // TASK-217 (`0027`): the DB keeps a SANITY bound; the APP owns which sizes may be sold or imported
     // (`decideImportSize` for imports, `isCourseSize` for sales). The old `size in (4,6,10)` here is what made
     // every off-card import 500 — the price card lived in the one place that needs a migration to change it.
@@ -421,7 +441,15 @@ export const vouchers = pgTable("vouchers", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
   endedBy: text("ended_by"),
   endReason: text("end_reason"),
-});
+  // 🔻 TASK-860 (REQ-120 F4, `0074`) — the same facts as on a course (see course_packages): the trial it converted, the previous entitlement, the first coach.
+  fromTrialBookingId: uuid("from_trial_booking_id").references((): AnyPgColumn => bookings.id, { onDelete: "set null" }),
+  prevCourseId: uuid("prev_course_id").references((): AnyPgColumn => coursePackages.id, { onDelete: "set null" }),
+  prevVoucherId: uuid("prev_voucher_id").references((): AnyPgColumn => vouchers.id, { onDelete: "set null" }),
+  firstTeacherId: uuid("first_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+}, (t) => [
+  check("voucher_prev_one_chk", sql`${t.prevCourseId} is null or ${t.prevVoucherId} is null`),
+  uniqueIndex("voucher_from_trial_uq").on(t.fromTrialBookingId).where(sql`${t.fromTrialBookingId} is not null`),
+]);
 
 // ───────────────────────────── Bookings ─────────────────────────────
 
@@ -1086,8 +1114,9 @@ export const coursePackagesRelations = relations(coursePackages, ({ one, many })
   subject: one(subjects, { fields: [coursePackages.subjectId], references: [subjects.id] }),
 }));
 
-export const vouchersRelations = relations(vouchers, ({ one }) => ({
+export const vouchersRelations = relations(vouchers, ({ one, many }) => ({
   student: one(students, { fields: [vouchers.studentId], references: [students.id] }),
+  bookings: many(bookings), // 🔻 TASK-870 — the voucher's bookings (the reserved hours)
 }));
 
 export const bookingsRelations = relations(bookings, ({ one, many }) => ({
