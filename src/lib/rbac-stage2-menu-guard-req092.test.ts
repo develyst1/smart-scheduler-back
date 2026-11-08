@@ -53,9 +53,12 @@ describe("🔴 the enumeration — every route in `routes/api.ts` has a ROUTE_ME
   // 🔻 TASK-401: the Camp routes live in their own file, mounted at `/camp` — the enumeration reads BOTH files, the second
   // with its mount prefix, so the table's "declared" set is every menu-gated route the app serves.
   const CAMP = readSrc(readFileSync(resolve(root, "src/routes/camp.ts"), "utf8"));
+  const PAYMENTS = readSrc(readFileSync(resolve(root, "src/routes/payments.ts"), "utf8")); // 🔻 TASK-875
   const declared = [
     ...[...ROUTES.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`),
     ...[...CAMP.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} /camp${m[2]}`),
+    // 🔻 TASK-875 (mirror edit, as TASK-401's camp line): the payment routes live in `routes/payments.ts`, mounted at `/payments`; its root path "/" is the mount itself.
+    ...[...PAYMENTS.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1]!.toUpperCase()} /payments${m[2] === "/" ? "" : m[2]}`),
   ];
   test("the router declares 85 routes (the floor that keeps this list non-empty), and every one is mapped", () => {
     expect(declared.length).toBeGreaterThanOrEqual(85);
@@ -284,6 +287,6 @@ describe("🔴 the service and the wiring (source)", () => {
     expect(code(src("src/middleware/auth.ts"))).toContain("row.isSuperAdmin ? [] : await effectiveGrantKeys(row.id, row.roleId)"); // 🔻 TASK-387: effective
   });
   test("56 = 56 — Stage 2 added no migration (0037 … 0054 are other tasks')", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
   });
 });

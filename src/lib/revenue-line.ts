@@ -16,6 +16,7 @@ import { boPayment, boRevenueCategory, boRevenueLine } from "../db/bo-revenue";
 import { studentNamesOf } from "../db/mappers";
 import { bangkokNow } from "./bangkok-time";
 import {
+  branchOf,
   courseLine,
   courseSaleKeys,
   netSaleMinor,
@@ -95,12 +96,12 @@ export async function writeRevenueLine(exec: any, line: RevenueLineInput): Promi
         category = await findCategory();
         if (!category) throw new Error(`category ${line.type} / "${line.categoryName}" is missing after its insert`);
       }
-      const method = await methodFromRowOne(sp, line);
+      const method = line.method ?? (await methodFromRowOne(sp, line)); // 🔻 TASK-900: an explicit method (Confirm camp) wins over row 1's
       const inserted = await sp
         .insert(boRevenueLine)
         .values({
           occurredOn: line.occurredOn ?? bangkokNow().date,
-          branch: DEFAULT_BRANCH,
+          branch: branchOf(line.branch), // 🔻 TASK-889 (F1): the SOURCE row's branch (course / voucher / booking); absent ⇒ BRAVO. A line already written is never touched (ON CONFLICT DO NOTHING below).
           type: line.type,
           categoryId: category.id,
           productName: line.productName,
@@ -158,7 +159,7 @@ async function writeCourseLine(sp: any, courseId: string): Promise<void> {
   }
   const subject = course.subjectId ? await sp.query.subjects.findFirst({ where: (s: any, { eq: e }: any) => e(s.id, course.subjectId) }) : null;
   const line = courseLine(
-    { id: courseId, subjectName: subject?.name ?? null, duo: !!course.coStudentId, who: studentNamesOf(course) },
+    { id: courseId, subjectName: subject?.name ?? null, duo: !!course.coStudentId, who: studentNamesOf(course), branch: course.branch },
     await courseNetPosted(sp, courseId),
   );
   if (line) await writeRevenueLine(sp, line);
@@ -199,6 +200,7 @@ export async function postConfirmRevenue(tx: any, bookingId: string, deps: Confi
           discountValue: b.discountValue,
           discountReason: b.discountReason,
           discountActor: b.discountActor,
+          branch: b.branch, // 🔻 TASK-889
         },
         priceGroup,
       );
@@ -210,7 +212,7 @@ export async function postConfirmRevenue(tx: any, bookingId: string, deps: Confi
         ? await sp.query.boItem.findFirst({ where: (i: any, { eq: e }: any) => e(i.id, b.otherPriceItemId) })
         : null;
       const line = parkFeeLine(
-        { id: b.id, otherPriceMinor: b.otherPriceMinor ?? null, otherPriceItemId: b.otherPriceItemId ?? null },
+        { id: b.id, otherPriceMinor: b.otherPriceMinor ?? null, otherPriceItemId: b.otherPriceItemId ?? null, branch: b.branch }, // 🔻 TASK-889
         item ? { active: item.active, unitPriceMinor: item.unitPriceMinor } : null,
       );
       if (line) await writeRevenueLine(sp, line);
@@ -226,7 +228,7 @@ export async function postVoucherRevenue(exec: any, voucherId: string, discountM
       console.error(`[revenue] NOT WRITTEN — rl:voucher:${voucherId}: the voucher does not exist. This sale is NOT in the revenue ledger.`);
       return;
     }
-    const line = voucherLine({ id: voucherId, hours: v.totalHours, who: studentNamesOf(v) }, discountMinor);
+    const line = voucherLine({ id: voucherId, hours: v.totalHours, who: studentNamesOf(v), branch: v.branch }, discountMinor);
     if (line) await writeRevenueLine(sp, line);
   });
 }
@@ -238,10 +240,10 @@ export async function postVoucherRevenue(exec: any, voucherId: string, discountM
  */
 export async function postRentalRevenue(
   exec: any,
-  r: { movementKey: string; refId: string; code: string; hours: number; discountMinor?: number },
+  r: { movementKey: string; refId: string; code: string; hours: number; discountMinor?: number; branch?: string },
 ): Promise<void> {
   await safely(exec, `rental ${r.movementKey}`, async (sp) => {
-    const line = rentalLine({ movementKey: r.movementKey, refId: r.refId, code: r.code, hours: r.hours }, r.discountMinor ?? 0);
+    const line = rentalLine({ movementKey: r.movementKey, refId: r.refId, code: r.code, hours: r.hours, branch: r.branch }, r.discountMinor ?? 0);
     if (line) await writeRevenueLine(sp, line);
   });
 }

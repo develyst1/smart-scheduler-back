@@ -13,6 +13,7 @@ const world = (o: { expiryDate: string; liveBooking?: boolean; records?: Rec[] }
   const records = [...(o.records ?? [])];
   const writes: Array<[string, string, any]> = [];
   const exec = {
+    select: () => ({ from: () => ({ where: () => ({ for: async () => [v] }) }) }), // 🔻 TASK-870 A3: the gate reads the voucher through the FOR UPDATE lock
     query: {
       vouchers: { findFirst: async () => v },
       bookings: { findFirst: async () => (o.liveBooking ? { id: "b-live" } : undefined), findMany: async () => (o.liveBooking ? [{ status: "CONFIRMED" }] : []) /* 🔻 TASK-870: the reserved-hours count */ },

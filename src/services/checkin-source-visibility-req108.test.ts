@@ -48,6 +48,7 @@ describe("✅ sessions — `toBookingDTO`: raw for an admin read, null otherwise
 describe("✅ camp — `markedBy` under the SAME rule, surfaced on the package read", () => {
   const world = () => {
     spies.push(spyOn(db.query.campPackages, "findMany").mockImplementation((async () => [{ id: "cp1", studentId: "s1", totalUnits: 10, usedUnits: 4, createdAt: new Date("2026-09-01T00:00:00Z") }]) as any));
+    spies.push(spyOn(db, "select").mockImplementation((() => ({ from: () => ({ where: async () => [] }) })) as any)); // 🔻 TASK-900: listPackages' confirmedOn lookup (one select on the ledger) — none confirmed here
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => [
       { id: "d1", campPackageId: "cp1", campWeekId: "w1", date: "2026-09-25", half: "FULL", units: 2, status: "ATTENDED", markedBy: "shopfront-qr", week: { name: "W1" } },
       { id: "d2", campPackageId: "cp1", campWeekId: "w1", date: "2026-09-24", half: "FULL", units: 2, status: "ABSENT", markedBy: "admin-dong", week: { name: "W1" } },

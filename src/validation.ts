@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BRANCHES } from "./lib/booking-sale-amount"; // 🔻 TASK-889
 import { GROUP_KINDS, GROUP_KINDS_CREATABLE, HUMAN_OTHER_KINDS } from "./lib/other-kind";
 import { CAMP_DAY_STATUSES, CAMP_HALVES, CAMP_KINDS, CAMP_PLANS, CAMP_WEEK_STATUSES, MAX_DAILY_DAYS } from "./lib/camp";
 import { bookingStatus } from "./db/schema";
@@ -29,6 +30,8 @@ export const attendeeNote = z.string().trim().max(200, "โน้ตต้อง
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
 const ID = z.string().uuid();
+/** 🔻 TASK-889 (F1, SPEC-099 §9) — the branch a booking / course / voucher belongs to. Optional everywhere it is accepted: absent on a create ⇒ BRAVO, absent on an edit ⇒ unchanged. */
+export const BRANCH = z.enum(BRANCHES);
 
 const BOOKING_TYPE = z.enum([
   "FIRST_TRIAL",
@@ -208,6 +211,7 @@ const studentInputStrict = studentInput.superRefine((s, ctx) => {
 
 export const createBooking = z
   .object({
+    branch: BRANCH.optional(), // 🔻 TASK-889 (F1)
     // TASK-224: optional in the OBJECT so `OTHER` may omit them; the four lesson types still refuse the
     // absence in the refinements below (`isLessonType`). Relaxing the shape must not relax the contract.
     student: studentInputStrict.optional(), // TASK-644 — strict; `.optional()` kept: an OTHER booking takes no student
@@ -350,6 +354,7 @@ export const recordBookingRental = z.object({
 
 export const createCoursePackage = z
   .object({
+    branch: BRANCH.optional(), // 🔻 TASK-889 (F1): the course and every session it creates
     student: studentInputStrict, // TASK-644
     teacherId: ID,
     subjectId: ID,
@@ -436,6 +441,7 @@ export const slotAvailabilityQuery = z.object({
 
 // Issue a voucher (B.5): hours bucket only, no teacher/slot.
 export const createVoucher = z.object({
+  branch: BRANCH.optional(), // 🔻 TASK-889 (F1)
   student: studentInputStrict, // TASK-644
   totalHours: z.union([z.literal(5), z.literal(10), z.literal(15)]),
   // TASK-160 (REQ-063) — optional discount at the point of sale (admin-only route).
@@ -632,6 +638,7 @@ export const campCheckinBody = z.object({ token: z.string().trim().min(8) });
 
 export const moveBooking = z
   .object({
+    branch: BRANCH.optional(), // 🔻 TASK-889 (F1): THIS booking's branch only
     teacherId: ID.optional(),
     subjectId: ID.optional(),
     date: DATE.optional(),
@@ -692,6 +699,7 @@ export const setAvailability = z
   });
 
 export const updateCourse = z.object({
+  branch: BRANCH.optional(), // 🔻 TASK-889 (F1): the whole course + its not-yet-attended sessions
   adminUnlocked: z.boolean().optional(),
   /** TASK-420 / TASK-423 — the course's DEFAULT coach rate (minor units), any course; a session may override it. */
   classRateMinor: z.number().int().min(0).optional(),

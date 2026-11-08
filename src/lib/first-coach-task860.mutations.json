@@ -372,8 +372,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      .values({\n        ...links,\n        studentId,\n        coStudentId, // TASK-420",
-              "to": "      .values({\n        studentId,\n        coStudentId, // TASK-420"
+              "from": "      .values({\n        ...links,\n        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO (the column default)\n        studentId,\n        coStudentId, // TASK-420",
+              "to": "      .values({\n        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO (the column default)\n        studentId,\n        coStudentId, // TASK-420"
             }
           ]
         }
@@ -387,8 +387,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      .values({\n        ...links,\n        studentId,\n        totalHours: input.totalHours,",
-              "to": "      .values({\n        studentId,\n        totalHours: input.totalHours,"
+              "from": "      .values({\n        ...links,\n        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO\n        studentId,\n        totalHours: input.totalHours,",
+              "to": "      .values({\n        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO\n        studentId,\n        totalHours: input.totalHours,"
             }
           ]
         }

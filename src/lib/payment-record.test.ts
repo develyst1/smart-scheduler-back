@@ -7,6 +7,7 @@ import { courseSaleKeys, voucherLine } from "./booking-sale-amount";
 import {
   addInstallment,
   createSalePayment,
+  createSalePaymentFromPosted,
   feeFromMovements,
   feeKeys,
   followsRevenueLine,
@@ -328,5 +329,116 @@ describe("the file's reach", () => {
     expect(src).not.toMatch(/\.delete\(/);
     expect(src.match(/\.insert\(([A-Za-z]+)\)/g)).toEqual([".insert(boPayment)", ".insert(boPayment)"]);
     expect(src.match(/\.update\(([A-Za-z]+)\)/g)).toEqual([".update(boPayment)", ".update(boRevenueLine)"]);
+  });
+});
+
+// ───────────────────────────────── the sale paths' call: createSalePaymentFromPosted + the wiring ─────────────────────────────────
+describe("createSalePaymentFromPosted — row 1 from the movements the sale POSTED", () => {
+  const NOW = { attempts: 3, delayMs: 0 };
+
+  test("amount = sale + discount read from the movements; one row, TRANSFER, n 1", async () => {
+    const f = fakeExec([[SALE(), DISC()], [{ id: "p" }]]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: true });
+    expect(f.of("insert", boPayment)[0].values[0]).toMatchObject({ refType: "COURSE", refId: C, n: 1, amountMinor: 90000, method: "TRANSFER", actor: null });
+  });
+  test("a voucher reads voucher-sale:<id> (and its discount)", async () => {
+    const f = fakeExec([[{ key: `voucher-sale:${V}`, valueMinor: 50000 }, DISC(V, -5000)], [{ id: "p" }]]);
+    await createSalePaymentFromPosted("VOUCHER", V, f.exec, NOW);
+    expect(f.of("insert", boPayment)[0].values[0]).toMatchObject({ refType: "VOUCHER", refId: V, amountMinor: 45000 });
+  });
+  test("🔑 it WAITS for a movement that has not landed yet: empty, empty, then posted → the row is written", async () => {
+    const f = fakeExec([[], [], [SALE()], [{ id: "p" }]]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: true });
+    expect(f.of("select", boMovement)).toHaveLength(3);
+    expect(f.of("insert", boPayment)[0].values[0].amountMinor).toBe(100000);
+  });
+  test("it gives up after `attempts` reads, loudly, with NO row and no throw (the API will answer NO_FEE)", async () => {
+    const f = fakeExec([[], [], []]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: false, skipped: "error" });
+    expect(f.of("select", boMovement)).toHaveLength(3);
+    expect(f.of("insert")).toHaveLength(0);
+    expect(errors.join("\n")).toContain(`payment:COURSE:${C}`);
+    expect(errors.join("\n")).toContain("NOT WRITTEN");
+  });
+  test("a read that THROWS gives up at once (no retry loop on a broken database) and never throws", async () => {
+    const f = fakeExec([new Error("connection refused")]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: false, skipped: "error" });
+    expect(f.of("select", boMovement)).toHaveLength(1);
+    expect(errors.join("\n")).toContain("could not read the posted sale");
+  });
+  test("a replayed sale: the row exists → a success marked duplicate, still one row", async () => {
+    const f = fakeExec([[SALE()], []]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: true, skipped: "duplicate" });
+  });
+  test("the waits are real: 3 attempts 30 ms apart take at least two waits (≥ 50 ms) before it gives up", async () => {
+    const f = fakeExec([[], [], []]);
+    const t0 = Date.now();
+    await createSalePaymentFromPosted("COURSE", C, f.exec, { attempts: 3, delayMs: 30 });
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(50);
+    const g = fakeExec([[]]);
+    const t1 = Date.now();
+    await createSalePaymentFromPosted("COURSE", C, g.exec, { attempts: 1, delayMs: 500 });
+    expect(Date.now() - t1).toBeLessThan(400); // the last attempt is not followed by a wait
+  });
+  test("the DEFAULT is patient enough for a recordSale that lands a moment later (6 attempts, 250 ms apart)", async () => {
+    const f = fakeExec([[], [SALE()], [{ id: "p" }]]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec)).toEqual({ ok: true });
+  });
+  test("a NEGATIVE net (a discount larger than the sale) writes no row; it is never turned positive", async () => {
+    const f = fakeExec([[SALE(C, 1000), DISC(C, -6000)]]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: false, skipped: "bad-amount" });
+    expect(f.of("insert")).toHaveLength(0);
+  });
+  test("a fully-discounted sale (net 0) writes no row, loudly (a payment is > 0)", async () => {
+    const f = fakeExec([[SALE(C, 100000), DISC(C, -100000)]]);
+    expect(await createSalePaymentFromPosted("COURSE", C, f.exec, NOW)).toEqual({ ok: false, skipped: "bad-amount" });
+    expect(f.of("insert")).toHaveLength(0);
+  });
+});
+
+describe("the wiring in the shared files (TASK-875's held hunks)", () => {
+  const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+  const sched = read("../services/scheduler.service.ts");
+  const region = (from: string, to: string) => sched.slice(sched.indexOf(from), sched.indexOf(to, sched.indexOf(from)));
+
+  test("createCoursePackage calls it once, AFTER its transaction and beside `void recordSale(` (which is untouched)", () => {
+    const fn = region("export async function createCoursePackage(", "// List vouchers for the voucher tab");
+    expect((fn.match(/createSalePaymentFromPosted\(/g) ?? []).length).toBe(1);
+    expect(fn).toContain('void createSalePaymentFromPosted("COURSE", result.course.id);');
+    expect(fn.indexOf("void recordSale(")).toBeGreaterThan(fn.indexOf("db.transaction"));
+    expect(fn.indexOf("void recordSale(")).toBeLessThan(fn.indexOf("createSalePaymentFromPosted("));
+  });
+  test("createVoucher calls it once, after its transaction and its recordSale", () => {
+    const fn = region("export async function createVoucher(", "// ───────────────────────── Overbooking a leave slot");
+    expect((fn.match(/createSalePaymentFromPosted\(/g) ?? []).length).toBe(1);
+    expect(fn).toContain('void createSalePaymentFromPosted("VOUCHER", result.voucher.id);');
+    expect(fn.indexOf("void recordSale(")).toBeLessThan(fn.indexOf("createSalePaymentFromPosted("));
+  });
+  test("it is called nowhere else in the service: one import and exactly two calls (course sale, voucher sale)", () => {
+    expect((sched.match(/import \{ createSalePaymentFromPosted \}/g) ?? []).length).toBe(1);
+    expect((sched.match(/void createSalePaymentFromPosted\(/g) ?? []).length).toBe(2);
+  });
+  test("both calls are `void`-ed: neither can fail nor delay the sale", () => {
+    for (const m of sched.matchAll(/^\s*(\w+ )?createSalePaymentFromPosted\(/gm)) expect(m[1]).toBe("void ");
+  });
+  test("index.ts mounts the router at /api/payments, behind the guard, beside the camp line", () => {
+    const idx = read("../index.ts");
+    expect(idx).toContain('app.route("/api/payments", paymentRoutes);');
+    expect(idx.indexOf('app.use("/api/*", accessGuard)')).toBeLessThan(idx.indexOf('app.route("/api/payments"'));
+    expect(idx.indexOf('app.route("/api/camp"')).toBeLessThan(idx.indexOf('app.route("/api/payments"'));
+  });
+  test("🔑 the three routes are MAPPED in route-access (an unmapped route fails closed with 403): read(BOOKINGS) for GET, course-edit for POST / PATCH", async () => {
+    const { ROUTE_ACCESS } = await import("./route-access");
+    expect(ROUTE_ACCESS["GET /payments"]).toEqual({ menus: ["menu:bookings"] });
+    expect(ROUTE_ACCESS["POST /payments"]).toEqual({ menus: ["menu:bookings"], action: "action:bookings.course-edit" });
+    expect(ROUTE_ACCESS["PATCH /payments/:id"]).toEqual({ menus: ["menu:bookings"], action: "action:bookings.course-edit" });
+    expect(Object.keys(ROUTE_ACCESS).filter((k) => k.includes("/payments"))).toHaveLength(3);
+  });
+  test("every route the payments router declares has an entry (GET / → GET /payments, PATCH /:id → PATCH /payments/:id)", async () => {
+    const { ROUTE_ACCESS } = await import("./route-access");
+    const src = read("../routes/payments.ts");
+    const declared = [...src.matchAll(/\.(get|post|patch|put|delete)\(\s*"(\/[^"]*)"/g)].map((m) => `${m[1].toUpperCase()} /payments${m[2] === "/" ? "" : m[2]}`);
+    expect(declared.sort()).toEqual(["GET /payments", "PATCH /payments/:id", "POST /payments"]);
+    for (const k of declared) expect(k in ROUTE_ACCESS).toBe(true);
   });
 });

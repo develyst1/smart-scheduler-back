@@ -13,10 +13,13 @@ const { readSrc } = await import("./read-src");
 const file = async (p: string) => Bun.file(new URL(p, import.meta.url)).text();
 const code = (s: string) => s.replace(/^\s*\/\/.*$/gm, "");
 const SVC = code(readSrc(await file("../services/scheduler.service.ts")));
+const vlibSrc = await file("./voucher.ts");
 const JOBS = code(readSrc(await file("../services/jobs.service.ts")));
 const CHECKIN = code(readSrc(await file("../services/checkin.service.ts")));
 const fnBody = (src: string, start: string, end: string) => { const a = src.indexOf(start); return src.slice(a, src.indexOf(end, a + 1)); };
 
+/** 🔻 A3: the executor's `select().from().where().for(mode)` — the voucher row lock; `locks` records the modes asked for, in order with the other calls (`order`). */
+const lockOf = (row: object, order: string[] = []) => ({ select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => { order.push(`lock:${mode}`); return [row]; } }) }) }) });
 const V = (o: Partial<{ totalHours: number; usedHours: number; expiryDate: string; endedAt: string | null }> = {}) => ({ totalHours: 5, usedHours: 0, expiryDate: "2027-06-01", endedAt: null, ...o });
 
 describe("🔴 TASK-870 — the rule: available = total − used − reserved; the switch is ONE constant, REFUSE by default", () => {
@@ -54,7 +57,8 @@ describe("🔴 TASK-870 — the rule: available = total − used − reserved; t
 
 describe("🔴 TASK-870 — the BOOKING gate (prepareVoucherBooking): the live bookings reserve hours", () => {
   /** an executor whose voucher has `used` of `total`, a prior booking (so no expiry re-count), and `rows` as the voucher's bookings (the fake ignores the where, as the real `inArray` is pinned by source) */
-  const exec = (used: number, total: number, rows: Array<{ status: string }>) => ({
+  const exec = (used: number, total: number, rows: Array<{ status: string }>, order: string[] = []) => ({
+    ...lockOf({ id: "v1", studentId: "s1", totalHours: total, usedHours: used, expiryDate: "2027-06-01", endedAt: null }, order),
     query: {
       vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: total, usedHours: used, expiryDate: "2027-06-01", endedAt: null }) },
       bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => rows },
@@ -86,12 +90,12 @@ describe("🔴 TASK-870 — the BOOKING gate (prepareVoucherBooking): the live b
     expect(SVC).not.toContain('bookingType === "VOUCHER" && input.voucherId');
   });
   test("an OTHER booking with a voucher: 1 h left + 1 reserved ⇒ refused with the sentence; 1 left + 0 reserved ⇒ OK (the gate is the same function, whatever the booking type)", async () => {
-    const e = (rows: Array<{ status: string }>) => ({ query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 4, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => rows }, voucherExpiryChanges: { findFirst: async () => undefined } } });
+    const e = (rows: Array<{ status: string }>) => ({ ...lockOf({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 4, expiryDate: "2027-06-01", endedAt: null }), query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 4, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => rows }, voucherExpiryChanges: { findFirst: async () => undefined } } });
     await expect(svc.prepareVoucherBooking(e([{ status: "CONFIRMED" }]), "v1", "2026-11-10", "s1")).rejects.toMatchObject({ message: "ชั่วโมงในวอยเชอร์หมดแล้ว" });
     await expect(svc.prepareVoucherBooking(e([]), "v1", "2026-11-10", "s1")).resolves.toBeUndefined();
   });
   test("an OTHER booking WITH a voucher and NO student is refused by the existing «not this child's voucher» check (a voucher belongs to a child)", async () => {
-    const e: any = { query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 0, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => [] }, voucherExpiryChanges: { findFirst: async () => undefined } } };
+    const e: any = { ...lockOf({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 0, expiryDate: "2027-06-01", endedAt: null }), query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 0, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => [] }, voucherExpiryChanges: { findFirst: async () => undefined } } };
     await expect(svc.prepareVoucherBooking(e, "v1", "2026-11-10", null as any)).rejects.toMatchObject({ status: 400, message: "วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก" });
   });
   test("an OTHER booking with a voucher RESERVES an hour for the next VOUCHER booking: the reserved count has no booking-type filter (its where is voucher id + the live statuses only)", () => {
@@ -113,7 +117,9 @@ describe("🔴 TASK-870 — the CHECK-IN gate: an empty voucher is REFUSED with 
   const done = () => { for (const s of spies.splice(0)) s.mockRestore(); };
   const run = async (voucher: { usedHours: number; totalHours: number } | null) => {
     const writes: string[] = [];
+    const locks: string[] = [];
     const tx: any = {
+      ...lockOf({ id: "v1", ...(voucher ?? {}) }, locks),
       query: { bookings: { findFirst: async () => ({ id: "b1", status: "CONFIRMED", voucherId: voucher ? "v1" : null, voucher, courseId: null, course: null, studentId: "s1", coStudentId: null, teacherId: "t1", bookingType: voucher ? "VOUCHER" : "SINGLE_SESSION" }) } },
       update: () => { writes.push("update"); return { set: () => ({ where: () => ({ returning: async () => [{ usedHours: 99 }] }) }) }; },
       insert: () => { writes.push("insert"); return { values: async () => [] }; },
@@ -170,5 +176,74 @@ describe("🔴 TASK-870 — the DTO: hoursReserved / hoursAvailable (additive)",
     expect(SVC).toContain("with: { student: true, bookings: { columns: { status: true }, where: (b, { inArray: inB }) => inB(b.status, [...VOUCHER_RESERVING_STATUSES]) } }");
     expect(SVC).toContain("hoursReserved: rows.filter((r: any) => isVoucherReserving(r.status)).length,");
     expect(SVC).toContain("hoursAvailable: voucherAvailable(voucher, rows.filter((r: any) => isVoucherReserving(r.status)).length),");
+  });
+});
+
+describe("🔴 TASK-870 AMENDMENT 3 (D-148-1) — the voucher ROW LOCK: two simultaneous bookings / check-ins cannot both take the last hour", () => {
+  const exec = (used: number, total: number, rows: Array<{ status: string }>, order: string[] = []): any => ({
+    ...lockOf({ id: "v1", studentId: "s1", totalHours: total, usedHours: used, expiryDate: "2027-06-01", endedAt: null }, order),
+    query: { vouchers: { findFirst: async () => undefined }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => rows }, voucherExpiryChanges: { findFirst: async () => undefined } },
+  });
+  const spies3: Array<{ mockRestore: () => void }> = [];
+  afterAll(() => { for (const s3 of spies3) s3.mockRestore(); });
+  test("the lock is the FIRST statement of the booking gate (before the prior-booking read, the expiry write and the reserved count), and it asks for FOR UPDATE", async () => {
+    const order: string[] = [];
+    const e: any = exec(4, 5, [], order);
+    e.query.bookings = { findFirst: async () => { order.push("prior-read"); return { id: "prior" }; }, findMany: async () => { order.push("reserved-count"); return []; } };
+    await svc.prepareVoucherBooking(e, "v1", "2026-11-10", "s1");
+    expect(order).toEqual(["lock:update", "prior-read", "reserved-count"]);
+  });
+  test("the REAL statement the lock builds is `select … from \"vouchers\" where \"vouchers\".\"id\" = $1 for update`", async () => {
+    let sql = "";
+    const captured: any = { select: () => ({ from: (t: any) => ({ where: (w: any) => ({ for: async (mode: any) => { sql = (db as any).select().from(t).where(w).for(mode).toSQL().sql; return [{ id: "v1" }]; } }) }) }) };
+    await svc.lockVoucherRow(captured, "11111111-1111-4111-8111-111111111111");
+    expect(sql.startsWith("select ")).toBe(true);
+    expect(sql.endsWith('from "vouchers" where "vouchers"."id" = $1 for update')).toBe(true);
+  });
+  test("a second booking that waits for the first and then sees the hour taken is refused: the lock hands the SECOND gate the first's reservation (simulated: the voucher row is the same, the reserved count has grown)", async () => {
+    await expect(svc.prepareVoucherBooking(exec(4, 5, []), "v1", "2026-11-10", "s1")).resolves.toBeUndefined();
+    await expect(svc.prepareVoucherBooking(exec(4, 5, [{ status: "PENDING" }]), "v1", "2026-11-10", "s1")).rejects.toMatchObject({ message: "ชั่วโมงในวอยเชอร์หมดแล้ว" });
+  });
+  test("the ATTEND door locks the row and judges the FRESH used_hours: the booking's embedded voucher says 4 of 5 (stale), the locked row says 5 of 5 ⇒ 409 VOUCHER_EXHAUSTED, nothing written", async () => {
+    const locks: string[] = [], writes: string[] = [];
+    const tx: any = {
+      ...lockOf({ id: "v1", totalHours: 5, usedHours: 5 }, locks),
+      query: { bookings: { findFirst: async () => ({ id: "b1", status: "CONFIRMED", voucherId: "v1", voucher: { id: "v1", totalHours: 5, usedHours: 4 }, courseId: null, course: null, studentId: "s1", coStudentId: null, teacherId: "t1", bookingType: "VOUCHER" }) } },
+      update: () => { writes.push("update"); return { set: () => ({ where: () => ({ returning: async () => [{ usedHours: 99 }] }) }) }; },
+      insert: () => { writes.push("insert"); return { values: async () => [] }; },
+    };
+    spies3.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn(tx)) as any), spyOn(leaveLib, "assertNoCoachOnLeave").mockImplementation((async () => {}) as any));
+    try {
+      const err: any = await svc.updateBookingStatus("b1", "attend").then(() => null, (e) => e);
+      expect(err).toMatchObject({ status: 409, code: "VOUCHER_EXHAUSTED" });
+      expect(locks).toEqual(["lock:update"]);
+      expect(writes).toEqual([]);
+    } finally { for (const s3 of spies3.splice(0)) s3.mockRestore(); }
+  });
+  test("by source: the attend door asks for the lock BEFORE its first write, and the gate before the lock-free parts; the DAY-END never locks", () => {
+    const U = fnBody(SVC, "export async function updateBookingStatus(", "if (reverseSaleAfterCommit) await");
+    const lock = U.indexOf("lockVoucherRow(tx, current.voucherId)");
+    expect(lock).toBeGreaterThan(U.indexOf('} else if (action === "attend") {'));
+    expect(lock).toBeLessThan(U.indexOf('.set({ status: "ATTENDED"'));
+    expect(JOBS).not.toContain("lockVoucherRow");
+    expect(JOBS).not.toContain('.for("update")');
+  });
+});
+
+describe("🔴 TASK-870 AMENDMENT 3 (O-148-1) — a voucher END cancels every future draw: a VOUCHER row AND an อื่นๆ row that carries the voucher", () => {
+  const draws = (today: string) => [
+    { date: "2026-11-08", status: "CONFIRMED", bookingType: "OTHER" }, // yesterday: the day-end's, left alone
+    { date: "2026-11-10", status: "CONFIRMED", bookingType: "OTHER" }, // tomorrow: cancelled
+    { date: "2026-11-10", status: "PENDING", bookingType: "VOUCHER" }, // as before
+    { date: "2026-11-10", status: "CANCELLED", bookingType: "OTHER" }, // already gone
+    { date: today, status: "ATTENDED", bookingType: "VOUCHER" }, // delivered
+  ];
+  test("an OTHER row with the voucher dated tomorrow is doomed; one dated yesterday is left; a VOUCHER row behaves as before; delivered / cancelled rows are untouched", () => {
+    const doomed = vlib.endableVoucherDraws(draws("2026-11-09"), "2026-11-09");
+    expect(doomed.map((r) => [r.date, r.bookingType])).toEqual([["2026-11-10", "OTHER"], ["2026-11-10", "VOUCHER"]]);
+  });
+  test("both callers (the cancel PREVIEW and the cancel itself) pass the voucher's own rows through the same function — there is no type filter left to drop an OTHER row", () => {
+    expect(SVC.split("endableVoucherDraws<any>(rows, fmtDate(new Date()))").length - 1).toBe(2);
+    expect(code(readSrc(vlibSrc))).not.toContain('bookingType === "VOUCHER" && COURSE_LIVE');
   });
 });

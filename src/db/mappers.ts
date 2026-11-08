@@ -3,6 +3,7 @@
 
 import type { ProvenanceView } from "../lib/checkin-channel";
 import { toCourseSummary } from "../lib/leave";
+import { branchOf } from "../lib/booking-sale-amount"; // 🔻 TASK-889
 import { isVoucherReserving, voucherAvailable, voucherRemaining, voucherStatus } from "../lib/voucher";
 import { fmtDate, hhmm } from "../lib/time";
 import { courseRentalSummary, toRentalDTO } from "../lib/rental-row";
@@ -213,6 +214,7 @@ const bookingProvenance = (b: any, view: ProvenanceView | undefined) =>
       : { checkinSource: (b.checkinSource as string | null | undefined) ?? null, checkinChannel: (b.checkinChannel as string | null | undefined) ?? null, checkinActor: (b.checkinActor as string | null | undefined) ?? null };
 export const toBookingDTO = (b: any, opts: { courseLast?: boolean; campKidCount?: number | null; provenance?: ProvenanceView } = {}) => ({
   id: b.id,
+  branch: branchOf(b.branch), // 🔻 TASK-889 (F1) — additive: BRAVO | OTHER
   ...bookingProvenance(b, opts.provenance),
   date: b.date,
   startTime: hhmm(b.startTime),
@@ -326,6 +328,7 @@ export const duoCourseFacts = (c: any) => ({
 
 export const toCourseWithStudent = (c: any) => ({
   ...toCourseSummary(c),
+  branch: branchOf(c.branch), // 🔻 TASK-889 (F1) — additive: BRAVO | OTHER
   student: studentRef(c.student),
   ...duoCourseFacts(c), // TASK-420
   // TASK-140: the course's OWN program (`course_packages.subject_id`) is the source of truth now. The old
@@ -352,6 +355,7 @@ const courseRentalDTO = (c: any): { code: string; remark: string | null; paidUpf
 
 export const toVoucherDTO = (v: any) => ({
   id: v.id,
+  branch: branchOf(v.branch), // 🔻 TASK-889 (F1) — additive: BRAVO | OTHER
   totalHours: v.totalHours,
   usedHours: v.usedHours,
   remaining: voucherRemaining(v),

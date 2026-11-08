@@ -13,6 +13,7 @@ import { ApiException, badRequest, conflict, notFound } from "../lib/http";
 import { SYSTEM_TEACHER_NOT_BOOKABLE } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import { bangkokNow } from "../lib/bangkok-time";
 import { recordSale } from "../lib/sale-post";
+import { confirmedOnByPackage } from "../lib/camp-confirm"; // 🔻 TASK-900
 import { CAMP_CARD, campItemRef, listPriceMinor } from "../lib/sale-items";
 import { notifyCampBooked } from "../lib/camp-booked-notice"; // 🔻 TASK-735
 import { validateSaleDiscount } from "../lib/discount-plan";
@@ -354,7 +355,7 @@ export async function updateWeekDay(weekId: string, date: string, input: { teach
 /** TASK-488 — the three-state read for a camp day's mark: raw (admin) · null (scoped) · ABSENT (every other response). */
 const campProvenance = (d: any, view: ProvenanceView | undefined) =>
   !view ? {} : view === "masked" ? { markedBy: null, markChannel: null, markActor: null } : { markedBy: d.markedBy ?? null, markChannel: d.markChannel ?? null, markActor: d.markActor ?? null };
-const toPackageDTO = (p: any, days: any[], opts: { provenance?: ProvenanceView } = {}) => {
+const toPackageDTO = (p: any, days: any[], opts: { provenance?: ProvenanceView; confirmedOn?: string | null } = {}) => {
   const planned = days.filter((d) => d.status === "PLANNED").reduce((s, d) => s + d.units, 0);
   return {
     id: p.id, studentId: p.studentId, kind: p.kind, plan: p.plan, totalUnits: p.totalUnits, usedUnits: p.usedUnits, plannedUnits: planned, credit: creditOf(p, planned),
@@ -362,6 +363,9 @@ const toPackageDTO = (p: any, days: any[], opts: { provenance?: ProvenanceView }
     discount: p.discountKind ? { kind: p.discountKind, value: p.discountValue, reason: p.discountReason, actor: p.discountActor } : null,
     days: days.map((d) => ({ dayId: d.id, weekId: d.campWeekId, weekName: d.week?.name ?? null, date: d.date, half: d.half, units: d.units, status: d.status, undoReason: d.undoReason ?? null, ...campProvenance(d, opts.provenance) })),
     createdBy: p.createdBy ?? null, createdAt: new Date(p.createdAt).toISOString(),
+    // 🔻 TASK-900 (D3): the date its revenue line counts on (YYYY-MM-DD), or null while it is only SOLD. Present ONLY where the caller looked it up (the LIST);
+    // the single-package answers (sale, redeem, scans) carry no `confirmedOn` rather than a false null.
+    ...(opts.confirmedOn !== undefined ? { confirmedOn: opts.confirmedOn } : {}),
   };
 };
 
@@ -376,7 +380,8 @@ export async function listPackages(studentId: string, opts: { provenance?: Prove
   const rows = await db.query.campPackages.findMany({ where: (p, { eq: e }) => e(p.studentId, studentId), orderBy: (p, { desc }) => [desc(p.createdAt)] });
   const ids = rows.map((p) => p.id);
   const days = ids.length ? await db.query.campDays.findMany({ where: (d, { inArray: inA }) => inA(d.campPackageId, ids), with: { week: true }, orderBy: (d, { asc: a }) => [a(d.date)] }) : [];
-  return { packages: rows.map((p) => toPackageDTO(p, days.filter((d) => d.campPackageId === p.id), opts)) };
+  const confirmed = await confirmedOnByPackage(ids); // 🔻 TASK-900: ONE query for the whole list
+  return { packages: rows.map((p) => toPackageDTO(p, days.filter((d) => d.campPackageId === p.id), { ...opts, confirmedOn: confirmed.get(p.id) ?? null })) };
 }
 
 /**

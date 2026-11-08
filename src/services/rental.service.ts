@@ -18,6 +18,19 @@ import { postRentalRevenue } from "../lib/revenue-line"; // TASK-864 (C1)
 import { listPriceMinor, rentalIdBase, rentalIdempotencyKey } from "../lib/sale-items";
 import { validateSaleDiscount } from "../lib/discount-plan";
 
+/** 🔻 TASK-889 (F1) — the branch of the row a rental's `refId` points at: a course first, else a booking; no ref / no such row ⇒ undefined (the line reads BRAVO). Read-only; a failure reads as BRAVO, never blocks the rental. */
+export async function refBranchOf(refId: string | undefined): Promise<string | undefined> {
+  if (!refId) return undefined;
+  try {
+    const c = await db.query.coursePackages.findFirst({ columns: { branch: true }, where: (x, { eq: e }) => e(x.id, refId) });
+    if (c) return c.branch;
+    const b = await db.query.bookings.findFirst({ columns: { branch: true }, where: (x, { eq: e }) => e(x.id, refId) });
+    return b?.branch;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function recordRental(input: {
   code: string;
   hours: number;
@@ -61,6 +74,7 @@ export async function recordRental(input: {
   // course's paid-upfront rental, a standalone one). It mirrors what that post netted (list × hours − discount), under `rl:` + the movement's own key. Never throws.
   await postRentalRevenue(db, {
     movementKey: idempotencyKey,
+    branch: await refBranchOf(input.refId), // 🔻 TASK-889 (F1) — the branch of the course / booking the rental belongs to; a standalone rental ⇒ BRAVO
     refId: input.refId ?? idBase,
     code: input.code,
     hours: input.hours,

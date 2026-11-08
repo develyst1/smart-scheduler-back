@@ -41,8 +41,8 @@ describe("🔴 the migration — 0042, counted, witnessed by the UNIQUE index, n
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
   const sql = readFileSync(resolve(root, "drizzle/0042_camp.sql"), "utf8");
   test("56 = 56: `0042_camp` is the 43rd file, idx 42 (TASK-403 added 0043 after it); the order 0038 → 0042 named in the header", () => {
-    expect(files.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
-    expect(journal.entries.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(files.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[42]).toBe("0042_camp.sql");
     expect(journal.entries[42]).toMatchObject({ idx: 42, tag: "0042_camp" });
     expect(sql).toContain("`0038` → `0039` → `0040` → `0041` → THIS");
@@ -258,9 +258,10 @@ describe("🔑 RBAC — `menu:camp` after Badges (13), four `action:camp.*` (54)
     expect(A["POST /camp/packages/:id/days"]).toEqual({ menus: ["menu:camp"], action: "action:camp.redeem" });
     expect(A["PATCH /camp/days/:id"]).toEqual({ menus: ["menu:camp"], action: "action:camp.day-mark" });
     expect(A["GET /camp/days/:id/checkin"]).toEqual({ menus: ["menu:camp"] }); // TASK-403
+    expect(A["POST /camp/packages/:id/confirm"]).toEqual({ menus: ["menu:camp"], action: "action:camp.sell" }); // 🔻 TASK-900 (D3): confirming a camp is part of selling it
     expect(A["PATCH /camp/weeks/:id/days/:date"]).toEqual({ menus: ["menu:camp"], action: "action:camp.week-open" }); // TASK-418
     expect(A["DELETE /camp/weeks/:id"]).toEqual({ menus: ["menu:camp"], action: "action:camp.week-open" }); // TASK-560
-    expect(Object.keys(A).filter((k) => k.includes("/camp/")).length).toBe(12); // TASK-403: +1 (the QR); TASK-418: +1 (the per-day swap); TASK-560: +1 (delete an empty week)
+    expect(Object.keys(A).filter((k) => k.includes("/camp/")).length).toBe(13); // TASK-403: +1 (the QR); TASK-418: +1 (the per-day swap); TASK-560: +1 (delete an empty week); 🔻 TASK-900: +1 (confirm a camp)
     expect(code(src("src/index.ts"))).toContain('app.route("/api/camp", campRoutes);');
   });
 });

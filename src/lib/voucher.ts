@@ -77,8 +77,9 @@ export function voucherStatus(v: VoucherLike, today: string): VoucherStatus {
  *
  * The course twin (`endableSessions`) has no date rule — a course end forfeits every live row — but the owner's REQ-103 rule
  * is "future draws": a past-dated draw still PENDING/CONFIRMED is the day-end's to settle (attended or not), not the end's to
- * erase. "Live" is `COURSE_LIVE` itself, not a second list — the same definition a course end uses. Only VOUCHER rows: a
- * voucher never owns any other kind, so the type filter is a guard, not a rule.
+ * erase. "Live" is `COURSE_LIVE` itself, not a second list — the same definition a course end uses.
+ * 🔻 TASK-870 Amendment 3 (O-148-1) — EVERY booking type that carries this voucher: a VOUCHER row AND an อื่นๆ row that deducts it (Amendment 2 made that possible), so the caller passes the voucher's own rows and there is no
+ * type filter here any more (the old one said «a voucher never owns any other kind», which stopped being true).
  */
-export const endableVoucherDraws = <T extends { status: string; bookingType?: string; date: string }>(rows: T[], today: string): T[] =>
-  rows.filter((r) => r.bookingType === "VOUCHER" && COURSE_LIVE.has(r.status) && r.date >= today);
+export const endableVoucherDraws = <T extends { status: string; date: string }>(rows: T[], today: string): T[] =>
+  rows.filter((r) => COURSE_LIVE.has(r.status) && r.date >= today);

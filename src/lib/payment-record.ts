@@ -18,21 +18,24 @@ import { bangkokNow } from "./bangkok-time";
 
 export const PAYMENT_REF_TYPES = ["COURSE", "VOUCHER"] as const;
 export type PaymentRefType = (typeof PAYMENT_REF_TYPES)[number];
+/** 🔻 TASK-900 — the refs a payment ROW 1 can be written for. The API (`/api/payments`) still takes only COURSE | VOUCHER; a camp package's row 1 is written by "Confirm camp". */
+export type SaleRefType = PaymentRefType | "CAMP";
+const SALE_KEY_PREFIX: Record<SaleRefType, string> = { COURSE: "course-sale", VOUCHER: "voucher-sale", CAMP: "camp-sale" };
 export const PAYMENT_METHODS = ["TRANSFER", "CASH", "CARD"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 // ───────────────────────────────── pure rules (twins of BB `lib/revenue-ledger.ts`) ─────────────────────────────────
-export function feeKeys(refType: PaymentRefType, refId: string): { sale: string; discount: string } {
-  return { sale: `${refType === "COURSE" ? "course-sale" : "voucher-sale"}:${refId}`, discount: `discount:${refId}` };
+export function feeKeys(refType: SaleRefType, refId: string): { sale: string; discount: string } {
+  return { sale: `${SALE_KEY_PREFIX[refType]}:${refId}`, discount: `discount:${refId}` };
 }
 /** The fee = the sale movement + the (negative) discount movement; `null` when the sale movement is not there. */
-export function feeFromMovements(refType: PaymentRefType, refId: string, rows: readonly { key: string | null; valueMinor: number }[]): number | null {
+export function feeFromMovements(refType: SaleRefType, refId: string, rows: readonly { key: string | null; valueMinor: number }[]): number | null {
   const k = feeKeys(refType, refId);
   if (!rows.some((r) => r.key === k.sale)) return null;
   return rows.filter((r) => r.key === k.sale || r.key === k.discount).reduce((n, r) => n + r.valueMinor, 0);
 }
 /** The revenue line a payment's method follows (TASK-864 writes `rl:course:<id>` / `rl:voucher:<id>`). */
-export const revenueLineKeyFor = (refType: PaymentRefType, refId: string): string => `rl:${refType.toLowerCase()}:${refId}`;
+export const revenueLineKeyFor = (refType: SaleRefType, refId: string): string => `rl:${refType.toLowerCase()}:${refId}`;
 /** §8.4: only an edit of ROW 1's method moves the line. */
 export const followsRevenueLine = (n: number, patch: { method?: string; paidOn?: string; amountMinor?: number }): boolean => n === 1 && patch.method !== undefined;
 /** §8.9: the sum of the rows may never exceed the fee. */
@@ -70,7 +73,7 @@ async function lockRef(tx: any, refType: string, refId: string): Promise<void> {
 const overFee = (refType: string) => badRequest(`the installments add up to more than the ${refType === "VOUCHER" ? "voucher" : "course"} fee`);
 
 /** The sale's fee from its posted movements; `null` when the sale movement is absent. */
-export async function feeOf(d: any, refType: PaymentRefType, refId: string): Promise<number | null> {
+export async function feeOf(d: any, refType: SaleRefType, refId: string): Promise<number | null> {
   const k = feeKeys(refType, refId);
   const rows: { key: string | null; valueMinor: number }[] = await d
     .select({ key: boMovement.idempotencyKey, valueMinor: boMovement.valueMinor })
@@ -92,11 +95,12 @@ export interface SalePaymentResult {
  * `(ref_type, ref_id, n)`: a replayed sale leaves exactly one row. Never throws.
  */
 export async function createSalePayment(
-  refType: PaymentRefType,
+  refType: SaleRefType,
   refId: string,
   amountMinor: number,
   d: any = db,
   paidOn: string = bangkokNow().date,
+  method: PaymentMethod = "TRANSFER", // 🔻 TASK-900: "Confirm camp" writes row 1 with the method the admin chose; the sale paths keep TRANSFER
 ): Promise<SalePaymentResult> {
   const tag = `payment:${refType}:${refId}`;
   if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
@@ -106,12 +110,45 @@ export async function createSalePayment(
   try {
     const inserted = await d
       .insert(boPayment)
-      .values({ refType, refId, n: 1, paidOn, amountMinor, method: "TRANSFER", actor: null })
+      .values({ refType, refId, n: 1, paidOn, amountMinor, method, actor: null })
       .onConflictDoNothing({ target: [boPayment.refType, boPayment.refId, boPayment.n] })
       .returning({ id: boPayment.id });
     return inserted.length ? { ok: true } : { ok: true, skipped: "duplicate" };
   } catch (e) {
     console.error(`[payment] NOT WRITTEN — write failed (${tag}). This sale has no payment row:`, e);
+    return { ok: false, skipped: "error" };
+  }
+}
+
+/**
+ * What the sale paths call (TASK-875), beside `void recordSale(...)`: row 1's amount is the net the sale POSTED, read back from the
+ * movements (`course-sale:<id>` / `voucher-sale:<id>` + `discount:<id>` — the very fee the API checks installments against, so row 1
+ * and the fee can never disagree, whatever a unit price was).
+ *
+ * `recordSale` is `void` (fire-and-forget; its call sites are pinned by other tests and stay as they are), so its two inserts may not
+ * have landed when this runs: it WAITS for the sale movement, `attempts` reads `delayMs` apart (default 6 × 250 ms), and only then gives
+ * up — loudly, with no row (the API then answers `NO_FEE`). A read that THROWS gives up at once. Never throws.
+ */
+export async function createSalePaymentFromPosted(
+  refType: PaymentRefType,
+  refId: string,
+  d: any = db,
+  wait: { attempts: number; delayMs: number } = { attempts: 6, delayMs: 250 },
+): Promise<SalePaymentResult> {
+  try {
+    let fee: number | null = null;
+    for (let i = 0; i < wait.attempts; i++) {
+      fee = await feeOf(d, refType, refId);
+      if (fee !== null) break;
+      if (i < wait.attempts - 1) await new Promise((r) => setTimeout(r, wait.delayMs));
+    }
+    if (fee === null) {
+      console.error(`[payment] NOT WRITTEN — payment:${refType}:${refId}: the sale's movement is not posted, so there is no fee to record. This sale has no payment row.`);
+      return { ok: false, skipped: "error" };
+    }
+    return await createSalePayment(refType, refId, fee, d);
+  } catch (e) {
+    console.error(`[payment] NOT WRITTEN — payment:${refType}:${refId} could not read the posted sale. This sale has no payment row:`, e);
     return { ok: false, skipped: "error" };
   }
 }

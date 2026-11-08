@@ -749,6 +749,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "not called applied. Rerunnable: the column IF NOT EXISTS, the INSERT guarded by WHERE NOT EXISTS (… is_system), the index IF NOT EXISTS.",
     rerunnable: true,
   },
+  {
+    tag: "0076_branch_on_course_voucher_booking",
+    probe: { kind: "constraint", constraint: "bookings_branch_ck" },
+    why:
+      "TASK-889 (REQ-120 F1). `branch` (BRAVO | OTHER, default BRAVO) on course_packages / vouchers / bookings. The probe is the LAST object the file creates (bookings' CHECK), so a run that died after a column or an earlier CHECK is not called applied. " +
+      "Rerunnable: every column IF NOT EXISTS, each CHECK DROP IF EXISTS + ADD; NO data is written (existing rows take the constant default BRAVO).",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

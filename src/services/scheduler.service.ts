@@ -1,7 +1,7 @@
 // Business logic — the source of truth for scheduling. Routes stay thin and call
 // these; all domain rules (quota/extension/idempotency) live here.
 
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { isRealMove } from "../lib/class-move"; // TASK-516
 import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
@@ -68,6 +68,7 @@ import { assertSubjectKindForCourse } from "../lib/subject-kinds";
 import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { postConfirmRevenue, postCourseRevenue, postVoucherRevenue } from "../lib/revenue-line"; // TASK-864 (C1)
+import { createSalePaymentFromPosted } from "../lib/payment-record"; // 🔻 TASK-875 (F2)
 import { validateSaleDiscount } from "../lib/discount-plan";
 import { GENERIC_SLOT_TAKEN, slotClashMessage } from "../lib/slot-clash";
 import {
@@ -1301,6 +1302,8 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
   // TASK-420 — THE chokepoint for the course's second child: a course-linked row copies `co_student_id` from its course
   // (one read, unless the caller already knows it), so every per-row reader sees both kids without the course.
   const coStudentId: string | null = input.coStudentId ?? (input.courseId ? await courseCoStudentId(exec, input.courseId) : null);
+  // 🔻 TASK-889 (F1) — a row's branch: its own when the caller names one (a trial / single / OTHER booking, or the course create), else the COURSE's (a make-up / extra session born later is held where the course is), else the column default (BRAVO).
+  const branch: string | undefined = input.branch ?? (input.courseId ? await courseBranchOf(exec, input.courseId) : undefined);
   assertKindForType(input.bookingType, input.otherKind); // TASK-397 — `booking_type ⇔ other_kind`, both ways
   // REQ-019 / TASK-048: a suspended household gets no NEW bookings (existing ones are untouched). Server-side,
   // so hiding the button in the UI isn't the only defence. Walk-in students with no parent are never blocked.
@@ -1376,6 +1379,7 @@ export async function insertBooking( // TASK-418: exported — the camp sync ins
         coStudentId,
         otherSeriesKey: input.otherSeriesKey ?? null, // TASK-428 — the series creator / add-dates stamp their key
         pendingSlot: opts.pendingSlot ?? false,
+        ...(branch ? { branch } : {}), // 🔻 TASK-889 (F1)
       })
       .returning({ id: bookings.id });
     return row.id;
@@ -1400,10 +1404,23 @@ async function courseCoStudentId(exec: any, courseId: string): Promise<string | 
   return c?.coStudentId ?? null;
 }
 
+/** 🔻 TASK-889 (F1) — the course's branch (undefined when unknown, so the column default applies). */
+async function courseBranchOf(exec: any, courseId: string): Promise<string | undefined> {
+  const c = await exec.query.coursePackages.findFirst({ columns: { branch: true }, where: (x: any, { eq: e }: any) => e(x.id, courseId) });
+  return c?.branch ?? undefined;
+}
+
+/**
+ * 🔻 TASK-870 Amendment 3 (D-148-1) — LOCK the voucher row (`SELECT … FROM vouchers WHERE id = $1 FOR UPDATE`) inside the caller's transaction and return it. Two bookings (or two check-ins) on the same voucher then run ONE AT A TIME: the second waits for
+ * the first to commit and sees its hour already taken. Never called by the day-end (it never refuses, so it has nothing to protect, and it would serialise the whole night's run).
+ */
+export async function lockVoucherRow(exec: any, voucherId: string): Promise<any | undefined> {
+  const [row] = await exec.select().from(vouchers).where(eq(vouchers.id, voucherId)).for("update");
+  return row;
+}
+
 export async function prepareVoucherBooking(exec: any, voucherId: string, date: string, studentId: string) { // TASK-569: exported — both directions pinned by value
-  const v = await exec.query.vouchers.findFirst({
-    where: (x: any, { eq }: any) => eq(x.id, voucherId),
-  });
+  const v = await lockVoucherRow(exec, voucherId); // 🔻 TASK-870 A3: the FIRST statement of the gate — the row lock; used_hours / reserved are read only after it
   if (!v) throw badRequest("ไม่พบวอยเชอร์");
   if (v.studentId !== studentId) throw badRequest("วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก");
   // TASK-439 (REQ-103): an ENDED voucher draws nothing — refused here, BEFORE the first-booking expiry write below, with the
@@ -2552,6 +2569,7 @@ export async function createCoursePackage(input: any) {
       .insert(coursePackages)
       .values({
         ...links,
+        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO (the column default)
         studentId,
         coStudentId, // TASK-420 — DUO's second child (null = Private)
         classRateMinor: input.duo?.classRateMinor ?? null, // TASK-420 — stored, never posted; TASK-434 — optional at create
@@ -2578,6 +2596,7 @@ export async function createCoursePackage(input: any) {
           startTime: s.startTime,
           bookingType: "COURSE_PACKAGE",
           courseId: course.id,
+          branch: input.branch ?? "BRAVO", // 🔻 TASK-889 (F1) — every session is born with the course's branch
           coStudentId, // TASK-420 — known here; the inserter would read it from the course otherwise
           groupId,
           note: input.note,
@@ -2665,6 +2684,9 @@ export async function createCoursePackage(input: any) {
     idempotencyKey: `course-sale:${result.course.id}`,
     discount, // TASK-160 — validated at the top of this function, BEFORE the course was written
   });
+  // 🔻 TASK-875 (F2, SPEC-099 §8) — the sale's own payment row (n=1, TRANSFER, the net `recordSale` posts, read back from the movements).
+  // Best-effort and loud, never fails the sale; it waits for the movement above to land (see `createSalePaymentFromPosted`).
+  void createSalePaymentFromPosted("COURSE", result.course.id);
   // TASK-373 — the rental's ONE post, where the course sale posts and in its shape: after the transaction,
   // best-effort, `hours = size` (a 10-lesson course is ten rentals on one line), key `rental:<courseId>:<code>`,
   // NO discount. ⚠️ One line the course sale does not need: `recordRental` THROWS on a failed post (TASK-108 —
@@ -3075,6 +3097,7 @@ export async function createVoucher(input: any) {
       .insert(vouchers)
       .values({
         ...links,
+        ...(input.branch ? { branch: input.branch } : {}), // 🔻 TASK-889 (F1) — absent ⇒ BRAVO
         studentId,
         totalHours: input.totalHours,
         expiryDate: voucherExpiry(input.totalHours, fmtDate(new Date())),
@@ -3096,6 +3119,8 @@ export async function createVoucher(input: any) {
     idempotencyKey: `voucher-sale:${result.voucher.id}`,
     discount, // TASK-160 — validated before the voucher was written
   });
+  // 🔻 TASK-875 (F2, SPEC-099 §8) — the voucher's own payment row, beside its movement (see `createCoursePackage`). Best-effort and loud.
+  void createSalePaymentFromPosted("VOUCHER", result.voucher.id);
   // 🔻 TASK-864 (REQ-120 C1) — the voucher's revenue LEDGER line, beside its movement, after the commit; best-effort and loud like `recordSale`.
   void postVoucherRevenue(db, result.voucher.id, discount?.discountMinor ?? 0);
 
@@ -4581,7 +4606,9 @@ export async function updateBookingStatus(
       if (current.status !== "ATTENDED") {
         // 🔻 TASK-870 (REQ-5008; ขวัญ «B») — a check-in on a voucher with NOTHING left (used ≥ total BEFORE this deduction): REFUSED (409 VOUCHER_EXHAUSTED, thrown BEFORE any write, so the transaction leaves nothing) — or, with the
         // switch on "WARN", the deduction happens and the response carries `voucherWarning`. This ONE door serves the manual attend AND every check-in path (`checkin.service.ts` calls it); the day-end auto-attend is a separate writer and never refuses.
-        const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : "ALLOW";
+        // 🔻 TASK-870 A3 — lock the voucher row FIRST and judge the FRESH used_hours (two check-ins on the last hour run one at a time; the row read with the booking above may be stale)
+        const lockedVoucher = current.voucherId && current.voucher ? ((await lockVoucherRow(tx, current.voucherId)) ?? current.voucher) : null;
+        const emptyAct = lockedVoucher ? emptyVoucherCheckin(lockedVoucher) : "ALLOW";
         if (emptyAct === "REFUSE") throw conflict("VOUCHER_EXHAUSTED", VOUCHER_EMPTY_MESSAGE);
         if (emptyAct === "WARN") voucherWarning = VOUCHER_EMPTY_MESSAGE;
         await tx.update(bookings).set({ status: "ATTENDED", checkinSource: legacySourceOf(checkinSource), checkinChannel: checkinSource?.channel ?? null, checkinActor: checkinSource?.actor ?? null }).where(eq(bookings.id, id)); // TASK-475
@@ -5001,7 +5028,7 @@ export async function bulkConfirm(ids: string[]): Promise<{ results: BulkConfirm
 
 export async function moveBooking(
   id: string,
-  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string; classRateMinor?: number | null },
+  input: { teacherId?: string; subjectId?: string; date?: string; startTime?: string; note?: string; classRateMinor?: number | null; branch?: "BRAVO" | "OTHER" },
 ) {
   // TASK-185 (REQ-036 Part B): moving an ended course's session relocates a forfeited slot onto a teacher's
   // calendar — it is the "revive" case wearing a different verb. Refused for course-linked bookings only; a
@@ -5026,6 +5053,7 @@ export async function moveBooking(
     patch.startTime = input.startTime;
     patch.endTime = addHour(input.startTime); // re-derive end on a time change
   }
+  if (input.branch) patch.branch = input.branch; // 🔻 TASK-889 (F1) — THIS booking's branch only (a one-off move); absent ⇒ unchanged
   if (input.note !== undefined) {
     patch.note = input.note;
     patch.leaveNoteReplaced = false; // 🔻 TASK-540 — a person's edit supersedes a leave's note: an Undo must never overwrite it
@@ -5401,7 +5429,7 @@ export async function resetFreelanceBudgets() {
 // party model is retired (freelance money is a local `bo.item`), so there is no external roster to
 // reconcile against. `GET /api/teachers/reconcile` was removed with it.
 
-export async function updateCourse(id: string, input: { adminUnlocked?: boolean; classRateMinor?: number }) {
+export async function updateCourse(id: string, input: { adminUnlocked?: boolean; classRateMinor?: number; branch?: "BRAVO" | "OTHER" }) {
   // TASK-185 (REQ-036 Part B): `updateCourse` only sets `adminUnlocked` today — the flag that unlocks further
   // rescheduling once leave quota is spent. On an ended course that is meaningless at best and a door to the
   // plan paths at worst, so it is refused rather than narrowly allowed. If a future field here is genuinely
@@ -5417,6 +5445,14 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean;
     // TASK-423 — the course's DEFAULT coach rate (any course; TASK-420's DUO-only refusal is gone). A session's
     // override (`bookings.teacher_rate_minor`) is untouched — the default moves, the substituted week keeps its own.
     await db.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, id));
+  }
+  if (input.branch !== undefined) {
+    // 🔻 TASK-889 (F1, SPEC-099 §9) — a WHOLE-COURSE branch change: the course, and every session of it that has not happened (not ATTENDED / NO_SHOW / CANCELLED). A class already held keeps where it happened. One transaction.
+    const branch = input.branch;
+    await db.transaction(async (tx) => {
+      await tx.update(coursePackages).set({ branch }).where(eq(coursePackages.id, id));
+      await tx.update(bookings).set({ branch }).where(and(eq(bookings.courseId, id), notInArray(bookings.status, ["ATTENDED", "NO_SHOW", "CANCELLED"])));
+    });
   }
   const row = await db.query.coursePackages.findFirst({
     where: (c, { eq }) => eq(c.id, id),

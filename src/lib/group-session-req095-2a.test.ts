@@ -43,10 +43,10 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(files.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(j.entries.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -173,7 +173,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(C).toContain("if (input.groupKey) await assertCourseMatchesGroup(input.groupKey, input);");
     expect(C.indexOf("assertCourseMatchesGroup(")).toBeLessThan(C.indexOf("db.transaction("));
     expect(C).toContain("const groupId = input.groupKey && !absent ? await seatOnGroup(tx, input.groupKey, s.date) : null;");
-    expect(C).toContain("          courseId: course.id,\n          coStudentId, // TASK-420 — known here; the inserter would read it from the course otherwise\n          groupId,");
+    expect(C).toContain("          courseId: course.id,\n          branch: input.branch ?? \"BRAVO\", // 🔻 TASK-889 (F1) — every session is born with the course's branch\n          coStudentId, // TASK-420 — known here; the inserter would read it from the course otherwise\n          groupId,"); // 🔻 TASK-889: the branch line sits between courseId and coStudentId
     const M = region(SCHED, "async function assertCourseMatchesGroup(", "\n}\n");
     expect(M).toContain('if (!same) throw badRequest("คอร์สต้องใช้ครู/วัน/เวลาเดียวกับกลุ่ม");');
     expect(M).toContain("g.teacherId === input.teacherId && hhmm(g.startTime) === hhmm(input.startTime) && weekdayOf(g.date) === weekdayOf(input.startDate)");

@@ -15,6 +15,15 @@ import { safeStoredDiscount } from "./discount-plan";
 /** SPEC-098 §2 — the 8 revenue types a category can belong to (REFUND is a line type only, never written here). */
 export type RevenueType = "COURSE" | "TRIAL" | "VOUCHER" | "ECA" | "SALES" | "FNB" | "RENT" | "OTHER";
 
+/**
+ * 🔻 TASK-889 (F1, SPEC-099 §9) — the two branches. `bookings` / `course_packages` / `vouchers` each carry one (default BRAVO); a revenue line
+ * takes the branch of the row that PRODUCED it. A value that is absent or not one of the two reads as BRAVO (the column's default), never as a guess.
+ */
+export const BRANCHES = ["BRAVO", "OTHER"] as const;
+export type Branch = (typeof BRANCHES)[number];
+export const isBranch = (v: unknown): v is Branch => v === "BRAVO" || v === "OTHER";
+export const branchOf = (v: unknown): Branch => (isBranch(v) ? v : "BRAVO");
+
 /** What `writeRevenueLine` takes. `occurredOn` is optional: omitted ⇒ the Asia/Bangkok date of the write (R2.2). */
 export interface RevenueLineInput {
   idempotencyKey: string;
@@ -24,10 +33,14 @@ export interface RevenueLineInput {
   amountMinor: number;
   /** SPEC-098 `source`: 'BOOKING' for course · trial · 1 HR · park fee · voucher; 'RENT' for a rental. */
   source: "BOOKING" | "RENT";
-  /** What produced it — 'BOOKING' | 'COURSE' | 'VOUCHER' | 'RENTAL'. */
-  refType: "BOOKING" | "COURSE" | "VOUCHER" | "RENTAL";
+  /** What produced it — 'BOOKING' | 'COURSE' | 'VOUCHER' | 'RENTAL' | 'CAMP' (🔻 TASK-900: a confirmed camp package). */
+  refType: "BOOKING" | "COURSE" | "VOUCHER" | "RENTAL" | "CAMP";
   refId: string;
   occurredOn?: string;
+  /** 🔻 TASK-889 — the source row's branch. Omitted ⇒ BRAVO. */
+  branch?: Branch;
+  /** 🔻 TASK-900 — an explicit method (the admin's choice at "Confirm camp"). Omitted ⇒ payment row 1's method for a COURSE / VOUCHER line, else TRANSFER. */
+  method?: "TRANSFER" | "CASH" | "CARD";
 }
 
 const skip = (key: string, why: string): null => {
@@ -50,6 +63,8 @@ export interface ConfirmedBookingFacts {
   discountValue?: number | null;
   discountReason?: string | null;
   discountActor?: string | null;
+  /** 🔻 TASK-889 — `bookings.branch`. */
+  branch?: string | null;
 }
 
 /**
@@ -86,6 +101,7 @@ export function trialOrSingleLine(b: ConfirmedBookingFacts, priceGroup: string |
     source: "BOOKING",
     refType: "BOOKING",
     refId: b.id,
+    branch: branchOf(b.branch),
   };
 }
 
@@ -104,7 +120,7 @@ export const courseSaleKeys = (courseId: string): string[] => [`course-sale:${co
  * `courseSaleKeys`), or `null` when no sale movement exists — then there is no line, loudly, never an invented price.
  */
 export function courseLine(
-  c: { id: string; subjectName: string | null; duo: boolean; who: string | null },
+  c: { id: string; subjectName: string | null; duo: boolean; who: string | null; branch?: string | null },
   netMinor: number | null,
 ): RevenueLineInput | null {
   const key = `rl:course:${c.id}`;
@@ -122,6 +138,7 @@ export function courseLine(
     source: "BOOKING",
     refType: "COURSE",
     refId: c.id,
+    branch: branchOf(c.branch),
   };
 }
 
@@ -133,7 +150,7 @@ export function courseLine(
  * else the typed `otherPriceMinor`. An inactive or missing item writes nothing (no fallback price is invented).
  */
 export function parkFeeLine(
-  b: { id: string; otherPriceMinor: number | null; otherPriceItemId: string | null },
+  b: { id: string; otherPriceMinor: number | null; otherPriceItemId: string | null; branch?: string | null },
   item: { active: boolean; unitPriceMinor: number } | null,
 ): RevenueLineInput | null {
   const key = `rl:booking:${b.id}`;
@@ -154,6 +171,7 @@ export function parkFeeLine(
     source: "BOOKING",
     refType: "BOOKING",
     refId: b.id,
+    branch: branchOf(b.branch),
   };
 }
 
@@ -161,7 +179,7 @@ export function parkFeeLine(
 
 /** A voucher sold: list price of `voucher-<hours>` less the discount `validateSaleDiscount` already accepted (a positive number of satang). */
 export function voucherLine(
-  v: { id: string; hours: number; who: string | null },
+  v: { id: string; hours: number; who: string | null; branch?: string | null },
   discountMinor: number,
 ): RevenueLineInput | null {
   const key = `rl:voucher:${v.id}`;
@@ -178,6 +196,7 @@ export function voucherLine(
     source: "BOOKING",
     refType: "VOUCHER",
     refId: v.id,
+    branch: branchOf(v.branch),
   };
 }
 
@@ -193,7 +212,7 @@ export function voucherLine(
  * the booking / course / client id the rental belongs to.
  */
 export function rentalLine(
-  r: { movementKey: string; refId: string; code: string; hours: number },
+  r: { movementKey: string; refId: string; code: string; hours: number; branch?: string | null },
   discountMinor = 0,
 ): RevenueLineInput | null {
   const key = `rl:${r.movementKey}`;
@@ -210,5 +229,6 @@ export function rentalLine(
     source: "RENT",
     refType: "RENTAL",
     refId: r.refId,
+    branch: branchOf(r.branch), // 🔻 TASK-889 (F1) — the ref's branch (course / booking); standalone ⇒ BRAVO
   };
 }

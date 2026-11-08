@@ -46,6 +46,7 @@ function world(status: "PLANNED" | "ATTENDED") {
   spies.push(spyOn(db.query.students, "findFirst").mockImplementation((async () => ({ id: S1, parentId: null })) as any));
   spies.push(spyOn(db.query.campPackages, "findFirst").mockImplementation((async () => PKG) as any));
   spies.push(spyOn(db.query.campPackages, "findMany").mockImplementation((async () => [PKG]) as any));
+  spies.push(spyOn(db, "select").mockImplementation((() => ({ from: () => ({ where: async () => [] }) })) as any)); // 🔻 TASK-900: listPackages' confirmedOn lookup (one select on the ledger) — none confirmed here
   spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => [d, other]) as any));
   const tx = {
     query: { campDays: { findFirst: async () => d } },
@@ -111,7 +112,7 @@ describe("🔴 TASK-502 — the public camp scan answers ONE allow-listed shape,
   test("🔑 the ADMIN package DTO is UNCHANGED — pinned by value (a leak fix must not narrow the admin's own view)", async () => {
     world("ATTENDED");
     const day = { dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null };
-    const base = { id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, plannedUnits: 1, saleId: null, note: null, discount: null, createdBy: "u-staff-1", createdAt: "2026-09-01T03:00:00.000Z" };
+    const base = { id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, plannedUnits: 1, saleId: null, note: null, discount: null, createdBy: "u-staff-1", createdAt: "2026-09-01T03:00:00.000Z", confirmedOn: null /* 🔻 TASK-900: the LIST now says whether the camp is confirmed; nothing else moved */ };
     const other = { dayId: D2, weekId: W1, weekName: "Week 1", date: "2099-01-01", half: "AM", units: 1, status: "PLANNED", undoReason: null };
     const plain = (await camp.listPackages(S1)).packages[0] as any;
     expect({ ...plain, credit: undefined }).toEqual({ ...base, credit: undefined, days: [day, other] });

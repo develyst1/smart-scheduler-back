@@ -6,6 +6,7 @@ import * as jobs from "../services/jobs.service";
 import * as attention from "../services/attention.service";
 import * as payConfirm from "../services/pay-confirm-reminder.service"; // 🔻 TASK-888
 import { resetFreelanceBudgets } from "../services/scheduler.service";
+import { refundCancel, refundCancelDeps } from "../lib/refund-cancel"; // 🔻 TASK-892
 
 const endOfDayBody = z.object({
   // Optional business date (Asia/Bangkok, YYYY-MM-DD). Defaults to today. Handy for
@@ -32,6 +33,13 @@ const salaryRemindBody = z.object({
 });
 
 const payConfirmNowBody = z.object({ periodId: z.string().uuid() }); // 🔻 TASK-888 - the CEO's remind-now: the period only
+
+// 🔻 TASK-892 (SPEC-099 §10 (1)) — a refund cancels the refunded plan: which plan, and who asked (the back office's actor).
+const refundCancelBody = z.object({
+  refType: z.enum(["COURSE", "VOUCHER"]),
+  refId: z.string().uuid(),
+  actor: z.string().trim().min(1).max(100).optional(),
+});
 
 // TASK-467 — the read-only runs window's query: an optional job name, and a limit that cannot be raised past the cap.
 const jobRunsQuery = z.object({
@@ -135,6 +143,13 @@ export const internalJobs = new Hono()
     const err = internalSecretError(c);
     if (err) return err;
     return c.json(await jobs.listJobRuns(c.req.valid("query")));
+  })
+  // 🔻 TASK-892 (SPEC-099 §10 (1)) — the back office's refund ends the refunded COURSE / VOUCHER through the admin's own end functions.
+  // 200 { cancelledSessions, alreadyCancelled } · an already-ended plan is a 200 with alreadyCancelled:true · unknown id → 404. Logic: lib/refund-cancel.ts
+  .post("/refund-cancel", zValidator("json", refundCancelBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await refundCancel(c.req.valid("json"), await refundCancelDeps()));
   })
   // SPEC-005 / TASK-019: monthly freelance budget reset (replaces the retired ops month-start job).
   .post("/jobs/month-reset", async (c) => {

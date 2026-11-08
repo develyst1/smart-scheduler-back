@@ -69,7 +69,7 @@ describe("TASK-266 — it refuses TONIGHT'S batch, read off disk", () => {
     // `ALTER TYPE` file rather than the first use.
     expect(scanBatch([real("0034_course_expiry_changes")])).toEqual([]);
     const noAdders = ALL.filter(
-      (m) => m.tag !== "0001_add_reschedule_fields" && m.tag !== "0032_booking_paused_status",
+      (m) => m.tag !== "0001_add_reschedule_fields" && m.tag !== "0032_booking_paused_status" && m.tag !== "0029_other_booking_type", // 🔻 TASK-889: 0029 is an adder now that 0076 names 'OTHER'
     );
     expect(scanBatch(noAdders)).toEqual([]);
   });
@@ -90,6 +90,12 @@ describe("TASK-266 — it refuses TONIGHT'S batch, read off disk", () => {
         label: "PENDING_RESCHEDULE",
         adds: "0001_add_reschedule_fields",
         uses: "0002_reschedule_slot_index",
+      },
+      { // 🔻 TASK-889 (Silver GO): 0076's CHECK literal 'OTHER' reads as a use of the label 0029 adds — a false positive on any applied database (0029 is long applied); it only shows in a from-scratch batch
+        kind: "enum-label",
+        label: "OTHER",
+        adds: "0029_other_booking_type",
+        uses: "0076_branch_on_course_voucher_booking",
       },
       {
         kind: "enum-label",

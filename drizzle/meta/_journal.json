@@ -533,6 +533,13 @@
       "when": 1783000000071,
       "tag": "0075_system_teacher",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1783000000072,
+      "tag": "0076_branch_on_course_voucher_booking",
+      "breakpoints": true
     }
   ]
 }

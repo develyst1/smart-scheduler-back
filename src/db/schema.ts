@@ -399,6 +399,7 @@ export const coursePackages = pgTable(
     prevVoucherId: uuid("prev_voucher_id").references((): AnyPgColumn => vouchers.id, { onDelete: "set null" }),
     /** the coach on the first ATTENDED session (day-end stamps it) */
     firstTeacherId: uuid("first_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+    branch: text("branch").notNull().default("BRAVO"), // 🔻 TASK-889 (F1, `0076`) — BRAVO | OTHER, CHECK in the migration; every existing row is BRAVO
     /** the last whole-course teacher change (TASK-838 act) and the teacher it moved the course to — a 1–2 day cover writes nothing (Khwan 5A) */
     coachChangedAt: timestamp("coach_changed_at", { withTimezone: true }),
     latestTeacherId: uuid("latest_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
@@ -446,6 +447,7 @@ export const vouchers = pgTable("vouchers", {
   prevCourseId: uuid("prev_course_id").references((): AnyPgColumn => coursePackages.id, { onDelete: "set null" }),
   prevVoucherId: uuid("prev_voucher_id").references((): AnyPgColumn => vouchers.id, { onDelete: "set null" }),
   firstTeacherId: uuid("first_teacher_id").references(() => teachers.id, { onDelete: "restrict" }),
+  branch: text("branch").notNull().default("BRAVO"), // 🔻 TASK-889 (F1, `0076`) — BRAVO | OTHER, CHECK in the migration; every existing row is BRAVO
 }, (t) => [
   check("voucher_prev_one_chk", sql`${t.prevCourseId} is null or ${t.prevVoucherId} is null`),
   uniqueIndex("voucher_from_trial_uq").on(t.fromTrialBookingId).where(sql`${t.fromTrialBookingId} is not null`),
@@ -516,6 +518,7 @@ export const bookings = pgTable(
     // is proposed to move (parent confirms/cancels via LINE).
     incomingBookingId: uuid("incoming_booking_id"),
     pendingSlot: boolean("pending_slot").notNull().default(false),
+    branch: text("branch").notNull().default("BRAVO"), // 🔻 TASK-889 (F1, `0076`) — BRAVO | OTHER, CHECK in the migration; every existing row is BRAVO
     rescheduleTo: jsonb("reschedule_to").$type<{
       reason: "MOVE_DAY" | "MOVE_WEEK" | "MOVE_TEACHER";
       date: string;

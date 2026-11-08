@@ -126,14 +126,14 @@
     },
     {
       "id": "G9",
-      "what": "the gate is judged only for booking rows with a voucher relation missing (a course session is gated)",
+      "what": "the gate is judged on a booking with no voucher relation too (a course session is gated)",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : \"ALLOW\";",
-              "to": "const emptyAct = current.voucher ? emptyVoucherCheckin(current.voucher) : \"REFUSE\";"
+              "from": "const emptyAct = lockedVoucher ? emptyVoucherCheckin(lockedVoucher) : \"ALLOW\";",
+              "to": "const emptyAct = lockedVoucher ? emptyVoucherCheckin(lockedVoucher) : \"REFUSE\";"
             }
           ]
         }
@@ -141,13 +141,13 @@
     },
     {
       "id": "G10",
-      "what": "the refusal comes AFTER the status write (the row would be left ATTENDED if the throw rolled back nothing)",
+      "what": "the whole check-in gate is gone",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "        const emptyAct = current.voucherId && current.voucher ? emptyVoucherCheckin(current.voucher) : \"ALLOW\";\n        if (emptyAct === \"REFUSE\") throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);\n        if (emptyAct === \"WARN\") voucherWarning = VOUCHER_EMPTY_MESSAGE;\n        await tx.update(bookings).set({ status: \"ATTENDED\",",
+              "from": "        // 🔻 TASK-870 A3 — lock the voucher row FIRST and judge the FRESH used_hours (two check-ins on the last hour run one at a time; the row read with the booking above may be stale)\n        const lockedVoucher = current.voucherId && current.voucher ? ((await lockVoucherRow(tx, current.voucherId)) ?? current.voucher) : null;\n        const emptyAct = lockedVoucher ? emptyVoucherCheckin(lockedVoucher) : \"ALLOW\";\n        if (emptyAct === \"REFUSE\") throw conflict(\"VOUCHER_EXHAUSTED\", VOUCHER_EMPTY_MESSAGE);\n        if (emptyAct === \"WARN\") voucherWarning = VOUCHER_EMPTY_MESSAGE;\n        await tx.update(bookings).set({ status: \"ATTENDED\",",
               "to": "        await tx.update(bookings).set({ status: \"ATTENDED\","
             }
           ]
@@ -464,6 +464,111 @@
             {
               "from": "        voucherId: input.voucherId ?? null,\n        note: input.note ?? null,",
               "to": "        voucherId: input.voucherId ?? null,\n        note: input.note ?? null, /* .set({ voucherId: x }) */"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L1",
+      "what": "A3: the booking gate reads the voucher WITHOUT the row lock",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const v = await lockVoucherRow(exec, voucherId);",
+              "to": "const [v] = await exec.select().from(vouchers).where(eq(vouchers.id, voucherId));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "A3: the lock is a share lock, not FOR UPDATE",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".where(eq(vouchers.id, voucherId)).for(\"update\");",
+              "to": ".where(eq(vouchers.id, voucherId)).for(\"share\");"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "what": "A3: the attend door does not lock the voucher row",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "((await lockVoucherRow(tx, current.voucherId)) ?? current.voucher)",
+              "to": "current.voucher"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "what": "A3: the attend door locks but judges the STALE embedded voucher",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "emptyVoucherCheckin(lockedVoucher) : \"ALLOW\"",
+              "to": "emptyVoucherCheckin(current.voucher) : \"ALLOW\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "what": "A3: the day-end takes a voucher row lock (it would serialise the night's run)",
+      "files": [
+        {
+          "file": "src/services/jobs.service.ts",
+          "edits": [
+            {
+              "from": "          .set({ usedHours: sql`${vouchers.usedHours} + 1` })",
+              "to": "          .set({ usedHours: sql`${vouchers.usedHours} + 1` }) /* lockVoucherRow */"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "what": "A3: a voucher end only cancels VOUCHER rows again",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "rows.filter((r) => COURSE_LIVE.has(r.status) && r.date >= today)",
+              "to": "rows.filter((r) => (r as any).bookingType === \"VOUCHER\" && COURSE_LIVE.has(r.status) && r.date >= today)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "what": "A3: a voucher end also cancels PAST live draws",
+      "files": [
+        {
+          "file": "src/lib/voucher.ts",
+          "edits": [
+            {
+              "from": "rows.filter((r) => COURSE_LIVE.has(r.status) && r.date >= today)",
+              "to": "rows.filter((r) => COURSE_LIVE.has(r.status))"
             }
           ]
         }

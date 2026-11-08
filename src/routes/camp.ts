@@ -8,6 +8,14 @@ import { campPriceList } from "../lib/sale-items";
 import { viewerOf } from "../lib/budget-visibility";
 import { scopeOf } from "../lib/own-scope";
 import { assertMayEditCoachRate } from "../lib/coach-rate-visibility";
+import { z } from "zod"; // 🔻 TASK-900
+import { confirmCamp } from "../lib/camp-confirm"; // 🔻 TASK-900
+
+// 🔻 TASK-900 (SPEC-099 §11) — "Confirm camp": the date the money was received and how it was paid.
+const confirmCampBody = z.object({
+  receivedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD"),
+  method: z.enum(["TRANSFER", "CASH", "CARD"]),
+});
 
 // TASK-401 (REQ-095 Stage 3a, SPEC-082) — Balance camp. Mounted at `/api/camp` behind the guard; the access table maps
 // every read to `menu:camp` and every write to its own act. The sale's discount (early bird) is gated like every other
@@ -32,6 +40,8 @@ export const campRoutes = new Hono()
     assertMayDiscount(body.discount, c.get("user"));
     return c.json(await camp.createPackage({ ...body, actor: actorOf(c) }), 201);
   })
+  // 🔻 TASK-900 (D3 = B): the camp's revenue counts on the day the admin CONFIRMS it. 200 { packageId, confirmedOn, amountMinor, method } · 409 NO_FEE / ALREADY_CONFIRMED · 404. Logic: lib/camp-confirm.ts
+  .post("/packages/:id/confirm", zValidator("json", confirmCampBody), async (c) => c.json(await confirmCamp(c.req.param("id"), c.req.valid("json"))))
   .post("/packages/:id/days", zValidator("json", v.redeemCampDays), async (c) => c.json(await camp.redeemDays(c.req.param("id"), c.req.valid("json"), actorOf(c)), 201))
   // TASK-403: `status: "PLANNED"` + `reason` is the UNDO (units back, no money); the same act key — a mark is a mark.
   .patch("/days/:id", zValidator("json", v.markCampDay), async (c) => {

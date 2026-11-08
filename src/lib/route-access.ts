@@ -162,6 +162,10 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses": act(BOOKINGS, "action:bookings.course-create"), // + `action:sales.discount` (service)
   "PATCH /courses/:id": act(BOOKINGS, "action:bookings.course-edit"),
   "POST /courses/preview": act(BOOKINGS, "action:bookings.course-create"),
+  // 🔻 TASK-875 (F2 payment record, DECISIONS row 19): reads on the menu; a write reuses the course-edit act (no new key)
+  "GET /payments": read(BOOKINGS),
+  "POST /payments": act(BOOKINGS, "action:bookings.course-edit"),
+  "PATCH /payments/:id": act(BOOKINGS, "action:bookings.course-edit"),
   "POST /courses/:id/plan": act(BOOKINGS, "action:bookings.course-plan"),
   "POST /courses/:id/plan/preview": act(BOOKINGS, "action:bookings.course-plan"),
   "PATCH /courses/:id/expiry": act(BOOKINGS, "action:bookings.course-expiry"),
@@ -228,6 +232,7 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "GET /camp/weeks/:id/days": read(["menu:camp"]),
   "GET /camp/packages": read(["menu:camp", "menu:people"]), // the student's Camp card reads it from the People page too
   "POST /camp/packages": act(["menu:camp"], "action:camp.sell"),
+  "POST /camp/packages/:id/confirm": act(["menu:camp"], "action:camp.sell"), // 🔻 TASK-900 (D3 = B): confirming a camp is part of selling it; no new key (DECISIONS row 19 pattern)
   "POST /camp/packages/:id/days": act(["menu:camp"], "action:camp.redeem"),
   "PATCH /camp/days/:id": act(["menu:camp"], "action:camp.day-mark"), // TASK-403: the undo (status PLANNED + reason) rides the same act
   "GET /camp/days/:id/checkin": read(["menu:camp"]), // TASK-403: the day's QR (lazy token)

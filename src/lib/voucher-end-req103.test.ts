@@ -83,8 +83,8 @@ describe("🔴 the migration — 0051, counted, three nullable columns on a smal
   const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
   const sql = readFileSync(resolve(root, "drizzle/0051_voucher_end.sql"), "utf8").replace(/\r\n/g, "\n");
   test("56 = 56: `0051_voucher_end` is the 52nd file, idx 51 (TASK-443 added 0052 after it); 'expects 52'; the six statements", () => {
-    expect(files.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
-    expect(journal.entries.length).toBe(76); // TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(files.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[51]).toBe("0051_voucher_end.sql");
     expect(journal.entries[51]).toMatchObject({ idx: 51, tag: "0051_voucher_end" });
     expect(sql).toContain("`db:verify` expects 52");
@@ -134,14 +134,14 @@ describe("🔴 the pure rules by value — status precedence, the gate refuses E
     expect(SVC).toContain("voucherEligible(v, date) &&");
     expect(code(src("src/services/som-report.service.ts"))).toContain("voucherEligible(v, today)");
   });
-  test("`endableVoucherDraws`: live AND date ≥ today — a past live draw is left, today's is doomed, delivered / cancelled / a COURSE row untouched", () => {
+  test("`endableVoucherDraws`: live AND date ≥ today — a past live draw is left, today's is doomed, delivered / cancelled untouched; 🔻 TASK-870 A3: an อื่นๆ row that carries the voucher is doomed too (no type filter)", () => {
     const rows = [
       draw({ date: shift(-1), status: "PENDING" }), draw({ date: shift(-1), status: "CONFIRMED" }),
       draw({ date: TODAY, status: "CONFIRMED" }), draw({ date: shift(1), status: "PENDING" }), draw({ date: shift(2), status: "CONFIRMED" }), draw({ date: shift(3), status: "EXTENDED" }),
       draw({ date: shift(4), status: "ATTENDED" }), draw({ date: shift(5), status: "CANCELLED" }), draw({ date: shift(6), status: "SICK_LEAVE" }), draw({ date: shift(7), status: "NO_SHOW" }),
-      draw({ date: shift(8), status: "CONFIRMED", bookingType: "COURSE_PACKAGE" }),
+      draw({ date: shift(8), status: "CONFIRMED", bookingType: "OTHER" }), // 🔻 TASK-870 A3 (was a COURSE_PACKAGE row the old VOUCHER-only filter dropped)
     ];
-    expect(endableVoucherDraws(rows, TODAY).map((r) => [r.date, r.status])).toEqual([[TODAY, "CONFIRMED"], [shift(1), "PENDING"], [shift(2), "CONFIRMED"], [shift(3), "EXTENDED"]]);
+    expect(endableVoucherDraws(rows, TODAY).map((r) => [r.date, r.status])).toEqual([[TODAY, "CONFIRMED"], [shift(1), "PENDING"], [shift(2), "CONFIRMED"], [shift(3), "EXTENDED"], [shift(8), "CONFIRMED"]]);
   });
   test("`toVoucherDTO` carries `status` + `endedAt` + `endReason`; `remaining` stays readable on an ENDED voucher", () => {
     const at = new Date("2026-09-22T10:00:00.000Z");
