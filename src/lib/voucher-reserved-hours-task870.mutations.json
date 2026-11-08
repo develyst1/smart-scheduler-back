@@ -393,6 +393,81 @@
           ]
         }
       ]
+    },
+    {
+      "id": "A1",
+      "what": "Amendment 2 undone: the booking gate runs only for VOUCHER bookings again",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (input.voucherId) {\n      await prepareVoucherBooking(",
+              "to": "    if (input.bookingType === \"VOUCHER\" && input.voucherId) {\n      await prepareVoucherBooking("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "what": "an OTHER booking with a voucher is skipped by the gate",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "    if (input.voucherId) {\n      await prepareVoucherBooking(",
+              "to": "    if (input.voucherId && input.bookingType !== \"OTHER\") {\n      await prepareVoucherBooking("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "what": "the reserved count only counts VOUCHER bookings (an OTHER draw reserves nothing)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "and(eq(b.voucherId, voucherId), inArray(b.status, [...VOUCHER_RESERVING_STATUSES]))",
+              "to": "and(eq(b.voucherId, voucherId), eq(b.bookingType, \"VOUCHER\"), inArray(b.status, [...VOUCHER_RESERVING_STATUSES]))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "what": "a voucher is accepted for a booking with no / another student (the ownership check is gone)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (v.studentId !== studentId) throw badRequest(\"วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก\");",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "what": "an update path starts writing voucher_id (a move could add a draw un-gated)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "        voucherId: input.voucherId ?? null,\n        note: input.note ?? null,",
+              "to": "        voucherId: input.voucherId ?? null,\n        note: input.note ?? null, /* .set({ voucherId: x }) */"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

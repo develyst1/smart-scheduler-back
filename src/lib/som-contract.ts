@@ -86,6 +86,8 @@ export interface SomBooking {
   bookingType: string;
   status: string;
   date: string;
+  /** 🔻 TASK-877 (REQ-5009) — an `OTHER` row's kind (ECA · CAMP · FREE · KOL …); optional so every other reader is untouched. Coach Capacity counts ECA / CAMP hours. */
+  otherKind?: string | null;
   subjectId: string | null;
   courseId: string | null;
   voucherId: string | null;
@@ -582,13 +584,17 @@ export function countNvr(input: SomContractInput): { counts: NvrCounts; rows: Re
 
 // ───────────── Coach Capacity (Palm §4) ─────────────
 /**
- * 🔒 REQ-5004 §1 row 4 — available hours PER DAY WORKED (`teachers.work_days`, minus recorded leave), by type. No coach's name lives in the code.
- *  FULL_TIME: 5 h on a weekday, 6 h on Sat–Sun. PART_TIME: 6 h on Sat–Sun (or the coach's own `weekend_capacity_hours` when set), 0 on a weekday. FREELANCE: 0 everywhere (his booked hours are still real).
+ * 🔒 REQ-5009 (ขวัญ for พี่ปุ้ม + พี่ตั้ม, 2026-11-08; supersedes REQ-5004 §1 row 4) — available hours PER DAY WORKED (`teachers.work_days`, minus recorded leave), by type. No coach's name lives in the code.
+ *  FULL_TIME: 4 h on a weekday, 5 h on Sat–Sun. PART_TIME: 5 h on Sat–Sun (or the coach's own `weekend_capacity_hours` when set — one PT row carries 4), 0 on a weekday. FREELANCE: 0 everywhere (his booked hours are still real).
+ * The two weekend rates are separate constants so they can differ later.
  */
-export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 5;
-export const CAPACITY_WEEKEND_HOURS = 6;
+export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 4;
+export const CAPACITY_FULL_TIME_WEEKEND_HOURS = 5;
+export const CAPACITY_PART_TIME_WEEKEND_HOURS = 5;
 export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 0;
 export const CAPACITY_FREELANCE_HOURS = 0;
+/** 🔒 REQ-5009 («ต้องรวม ECA / CAMP ด้วยค่ะ นับเป็นรายชั่วโมง») — the `OTHER` kinds whose rows ALSO count as booked hours, in clock minutes like a lesson. `FREE`, `KOL` and a no-kind OTHER stay out (SA decision; she named ECA and CAMP only). */
+export const CAPACITY_OTHER_KINDS: ReadonlySet<string> = new Set(["ECA", "CAMP"]);
 /** 🔒 Q4.5 — the statuses that do NOT count as booked hours (Palm: «not CANCELLED»; PENDING and PAUSED rows still hold the coach's hour). */
 export const CAPACITY_NOT_COUNTED_STATUSES: ReadonlySet<string> = new Set(["CANCELLED"]);
 /** Palm's contract: a percentage is 0–100. Hours stay raw, so an over-booked coach still shows his real hours. */
@@ -633,10 +639,10 @@ export function countCapacity(input: SomContractInput): CoachCapacity {
   // Q4.6: the ACTIVE, non-archived coaches. Q4.3: the whole calendar month.
   const coaches = (input.teachers ?? []).filter((t) => t.active && !t.archived);
 
-  // booked MINUTES per coach, split weekday / weekend: lessons + the GROUP row (never its seats, never ECA / camp), badge-filtered (Q0.2: booked only), an extra coach counts too
+  // booked MINUTES per coach, split weekday / weekend: lessons + the GROUP row + the ECA / CAMP `OTHER` rows (REQ-5009; never a GROUP's seats; FREE / KOL / no-kind OTHER stay out), badge-filtered (Q0.2: booked only), an extra coach counts too
   const minutes = new Map<string, { wd: number; we: number }>();
   for (const b of input.bookings) {
-    if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES.has(b.status) || !(isLesson(b) || b.bookingType === "GROUP") || b.date < rangeFrom || b.date > rangeTo || !passes(b)) continue;
+    if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES.has(b.status) || !(isLesson(b) || b.bookingType === "GROUP" || (b.bookingType === "OTHER" && CAPACITY_OTHER_KINDS.has(b.otherKind ?? ""))) || b.date < rangeFrom || b.date > rangeTo || !passes(b)) continue;
     for (const id of new Set([b.teacherId, ...(b.extraTeacherIds ?? [])].filter((x): x is string => !!x))) {
       const m = minutes.get(id) ?? { wd: 0, we: 0 };
       if (isWeekend(b.date)) m.we += minutesOf(b); else m.wd += minutesOf(b);
@@ -647,7 +653,7 @@ export function countCapacity(input: SomContractInput): CoachCapacity {
   const people = coaches.map((t) => {
     const wd = { b: Math.round((minutes.get(t.id)?.wd ?? 0) / 60), a: 0 };
     const we = { b: Math.round((minutes.get(t.id)?.we ?? 0) / 60), a: 0 };
-    const weekendRate = t.type === "FULL_TIME" ? CAPACITY_WEEKEND_HOURS : t.type === "PART_TIME" ? (t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS) : CAPACITY_FREELANCE_HOURS;
+    const weekendRate = t.type === "FULL_TIME" ? CAPACITY_FULL_TIME_WEEKEND_HOURS : t.type === "PART_TIME" ? (t.weekendCapacityHours ?? CAPACITY_PART_TIME_WEEKEND_HOURS) : CAPACITY_FREELANCE_HOURS;
     const weekdayRate = t.type === "FULL_TIME" ? CAPACITY_FULL_TIME_WEEKDAY_HOURS : t.type === "PART_TIME" ? CAPACITY_PART_TIME_WEEKDAY_HOURS : CAPACITY_FREELANCE_HOURS;
     for (const d of days) {
       if (!t.workDays.includes(dayOfWeek(d)) || leave.has(`${t.id}|${d}`)) continue;

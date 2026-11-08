@@ -4,6 +4,7 @@ import { zValidator } from "../lib/validate";
 import { z } from "zod";
 import * as jobs from "../services/jobs.service";
 import * as attention from "../services/attention.service";
+import * as payConfirm from "../services/pay-confirm-reminder.service"; // 🔻 TASK-888
 import { resetFreelanceBudgets } from "../services/scheduler.service";
 
 const endOfDayBody = z.object({
@@ -22,6 +23,15 @@ const extenderBody = endOfDayBody.extend({
   maxSeries: z.number().int().min(1).max(500).optional(),
   maxDates: z.number().int().min(1).max(5000).optional(),
 });
+
+// 🔻 TASK-888 - the sender's body: who to remind and why. `periodId` (optional) keys the send-once guard to the pay period.
+const salaryRemindBody = z.object({
+  teacherIds: z.array(z.string().uuid()).max(500),
+  reason: z.enum(["0900", "1100", "now"]),
+  periodId: z.string().uuid().optional(),
+});
+
+const payConfirmNowBody = z.object({ periodId: z.string().uuid() }); // 🔻 TASK-888 - the CEO's remind-now: the period only
 
 // TASK-467 — the read-only runs window's query: an optional job name, and a limit that cannot be raised past the cap.
 const jobRunsQuery = z.object({
@@ -67,6 +77,31 @@ export const internalJobs = new Hono()
     const err = internalSecretError(c);
     if (err) return err;
     return c.json(await jobs.runDailyReminderJob(c.req.valid("json").date));
+  })
+  // 🔻 TASK-888 (REQ-120 R1.5): the 09:00 and 11:00 "please confirm your pay slip" reminders on the LAST DAY of the month. Queues one outbox row per unconfirmed
+  // coach (send-once per period+person+slot), READS bo.* only, does nothing without a LINE token, and ALWAYS writes a job_runs row.
+  // 🔻 TASK-888 - THE SENDER (the agreed contract): backoffice-back's "remind now" and our own 09:00 / 11:00 jobs send through this one door. No pay in the message.
+  // Fail closed: no LINE token / OA not on LINE_OA_WRITE_ALLOW => every id comes back `skipped`, no call. Idempotent per (period, teacher, reason).
+  .post("/salary-remind", zValidator("json", salaryRemindBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await payConfirm.sendSalaryRemind(c.req.valid("json")));
+  })
+  // 🔻 TASK-888 - the CEO's "remind now": BB's E4b passes ONLY the periodId; we fetch that period's unconfirmed list from BB and send. Not under /jobs/ (it is a call, not a scheduled job: no .ps1 trigger).
+  .post("/salary-remind-now", zValidator("json", payConfirmNowBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await payConfirm.runPayConfirmNowJob(c.req.valid("json").periodId));
+  })
+  .post("/jobs/pay-confirm-0900", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await payConfirm.runPayConfirmReminderJob("0900", c.req.valid("json").date));
+  })
+  .post("/jobs/pay-confirm-1100", zValidator("json", endOfDayBody), async (c) => {
+    const err = internalSecretError(c);
+    if (err) return err;
+    return c.json(await payConfirm.runPayConfirmReminderJob("1100", c.req.valid("json").date));
   })
   // TASK-441 (REQ-104 §2): the Monday 08:15 weekly coach digest — one `weekly_schedule_teacher` per teacher with a CONFIRMED
   // row in Mon–Sun, send-once per teacher per week, and it ALWAYS writes a job_runs row.

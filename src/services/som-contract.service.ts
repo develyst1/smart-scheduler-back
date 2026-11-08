@@ -34,7 +34,7 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
 
   const [bookingRows, courseRows, voucherRows, courseMoves, voucherMoves, students, parents, subjects, teachers] = await Promise.all([
     db.query.bookings.findMany({
-      columns: { studentId: true, coStudentId: true, bookingType: true, status: true, date: true, subjectId: true, courseId: true, voucherId: true, groupId: true, teacherId: true, startTime: true, endTime: true },
+      columns: { studentId: true, coStudentId: true, bookingType: true, status: true, date: true, subjectId: true, courseId: true, voucherId: true, groupId: true, teacherId: true, startTime: true, endTime: true, otherKind: true },
       where: (b: any, { eq }: any) => eq(b.pendingSlot, false),
       with: { badges: { columns: { badgeValueId: true } }, additionalTeachers: { columns: { teacherId: true } } },
     }),
@@ -57,6 +57,7 @@ async function loadInput(q: SomQuery): Promise<SomContractInput> {
     subjectId: b.subjectId ?? null,
     courseId: b.courseId ?? null,
     voucherId: b.voucherId ?? null,
+    otherKind: b.otherKind ?? null, // 🔻 TASK-877 (REQ-5009) — Coach Capacity counts the ECA / CAMP rows
     badgeIds: (b.badges ?? []).map((x: any) => x.badgeValueId),
     isSeat: b.groupId != null,
     teacherId: b.teacherId ?? null,

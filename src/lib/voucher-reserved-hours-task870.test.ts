@@ -78,11 +78,32 @@ describe("🔴 TASK-870 — the BOOKING gate (prepareVoucherBooking): the live b
   });
   test("🔑 moving / rescheduling / re-teaching a booked voucher session books NOTHING new: no door but the create path calls the gate, so a full voucher's booked session can still be moved", () => {
     expect(SVC.match(/prepareVoucherBooking\(/g)).toHaveLength(2); // the definition + the ONE call
-    const create = fnBody(SVC, 'if (input.bookingType === "VOUCHER" && input.voucherId) {', "}");
+    const create = fnBody(SVC, "    if (input.voucherId) {", "}");
     expect(create).toContain("await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);");
   });
-  test("the อื่นๆ path: an OTHER booking never calls the gate (the call is inside `bookingType === \"VOUCHER\"`) — reported to Silver", () => {
-    expect(SVC).toContain('if (input.bookingType === "VOUCHER" && input.voucherId) {');
+  test("🔻 AMENDMENT 2 — the gate runs for ANY booking that carries a voucherId (a VOUCHER booking AND an อื่นๆ that deducts a voucher), not by booking type", () => {
+    expect(SVC).toContain("    if (input.voucherId) {\n      await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);\n    }");
+    expect(SVC).not.toContain('bookingType === "VOUCHER" && input.voucherId');
+  });
+  test("an OTHER booking with a voucher: 1 h left + 1 reserved ⇒ refused with the sentence; 1 left + 0 reserved ⇒ OK (the gate is the same function, whatever the booking type)", async () => {
+    const e = (rows: Array<{ status: string }>) => ({ query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 4, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => rows }, voucherExpiryChanges: { findFirst: async () => undefined } } });
+    await expect(svc.prepareVoucherBooking(e([{ status: "CONFIRMED" }]), "v1", "2026-11-10", "s1")).rejects.toMatchObject({ message: "ชั่วโมงในวอยเชอร์หมดแล้ว" });
+    await expect(svc.prepareVoucherBooking(e([]), "v1", "2026-11-10", "s1")).resolves.toBeUndefined();
+  });
+  test("an OTHER booking WITH a voucher and NO student is refused by the existing «not this child's voucher» check (a voucher belongs to a child)", async () => {
+    const e: any = { query: { vouchers: { findFirst: async () => ({ id: "v1", studentId: "s1", totalHours: 5, usedHours: 0, expiryDate: "2027-06-01", endedAt: null }) }, bookings: { findFirst: async () => ({ id: "prior" }), findMany: async () => [] }, voucherExpiryChanges: { findFirst: async () => undefined } } };
+    await expect(svc.prepareVoucherBooking(e, "v1", "2026-11-10", null as any)).rejects.toMatchObject({ status: 400, message: "วอยเชอร์นี้ไม่ใช่ของนักเรียนที่เลือก" });
+  });
+  test("an OTHER booking with a voucher RESERVES an hour for the next VOUCHER booking: the reserved count has no booking-type filter (its where is voucher id + the live statuses only)", () => {
+    const P = fnBody(SVC, "export async function prepareVoucherBooking(", "/**\n * TASK-162");
+    expect(P).toContain("and(eq(b.voucherId, voucherId), inArray(b.status, [...VOUCHER_RESERVING_STATUSES]))");
+    expect(P).not.toMatch(/bookingType/);
+  });
+  test("the other doors: the OTHER series creator passes no voucherId, and no update path writes `voucher_id` — so a move / edit of an OTHER row (even on a full voucher) can never reach the gate", async () => {
+    const OS = code(readSrc(await file("../services/other-series.service.ts")));
+    expect(OS).not.toMatch(/voucherId/);
+    expect(SVC.match(/voucherId: input\.voucherId \?\? null/g)).toHaveLength(1); // the ONE writer of the column is the inserter
+    expect(SVC).not.toMatch(/\.set\(\{[^}]*voucherId:/);
   });
 });
 

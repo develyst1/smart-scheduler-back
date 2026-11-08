@@ -2,7 +2,7 @@
 // real Hono app. Today in every fixture is Monday 2026-10-12; October 2026 has 22 weekdays + 9 weekend days.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import {
-  CAPACITY_FREELANCE_HOURS, CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_NOT_COUNTED_STATUSES, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_WEEKEND_HOURS, CAPACITY_PCT_CAP, NVR_BUCKETS, RENEW_ENDED_STATUSES, RENEW_ONLY_AFTER_OLD_FINISHED, VOUCHER_FINISHED_STATUSES, addMonths, cancelledIds, countCapacity, countNvr, countSom, mergeSom,
+  CAPACITY_FREELANCE_HOURS, CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_NOT_COUNTED_STATUSES, CAPACITY_FULL_TIME_WEEKEND_HOURS, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_PART_TIME_WEEKEND_HOURS, CAPACITY_PCT_CAP, NVR_BUCKETS, RENEW_ENDED_STATUSES, RENEW_ONLY_AFTER_OLD_FINISHED, VOUCHER_FINISHED_STATUSES, addMonths, cancelledIds, countCapacity, countNvr, countSom, mergeSom,
   type SomBooking, type SomContractInput, type SomCourse, type SomStudent, type SomTeacher, type SomVoucher,
 } from "./som-contract";
 import { ROUTE_ACCESS, routeKey } from "./route-access";
@@ -46,7 +46,7 @@ describe("🔴 TASK-742 — the declared defaults and the contract's shape", () 
   });
   test("🔒 Q4.5 / Palm: only CANCELLED is out of the booked hours; one day = 9 hours; a percentage is capped at 100", () => {
     expect([...CAPACITY_NOT_COUNTED_STATUSES]).toEqual(["CANCELLED"]);
-    expect([CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_WEEKEND_HOURS, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_FREELANCE_HOURS]).toEqual([5, 6, 0, 0]); // REQ-5004 row 4: FT 5 h weekday / 6 h Sat–Sun · PT 6 h Sat–Sun, 0 weekday · FL 0
+    expect([CAPACITY_FULL_TIME_WEEKDAY_HOURS, CAPACITY_FULL_TIME_WEEKEND_HOURS, CAPACITY_PART_TIME_WEEKEND_HOURS, CAPACITY_PART_TIME_WEEKDAY_HOURS, CAPACITY_FREELANCE_HOURS]).toEqual([4, 5, 5, 0, 0]); // 🔻 TASK-877 (REQ-5009, was REQ-5004 5 / 6 / 6): FT 4 h weekday / 5 h Sat–Sun · PT 5 h Sat–Sun, 0 weekday · FL 0
     expect(CAPACITY_PCT_CAP).toBe(100);
   });
 });
@@ -395,37 +395,37 @@ describe("🔴 TASK-742 — the list IS the card; the badge filter; the first se
   });
 });
 
-describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per day worked (FT 5 / 6, PT 6 weekend or his own, FL 0) minus recorded leave, booked hours, weekday / weekend", () => {
+describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per day worked (FT 4 / 5, PT 5 weekend or his own, FL 0) minus recorded leave, booked hours, weekday / weekend", () => {
   const coach = (id: string, type: SomTeacher["type"], o: Partial<SomTeacher> = {}): SomTeacher => ({ id, nickname: id, type, active: true, archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], ...o });
   const cap = (o: Partial<SomContractInput>) => countCapacity(base(o));
   const MONFRI = [1, 2, 3, 4, 5];
-  test("October 2026 (22 weekdays + 9 weekend days): FT working every day = 22 × 5 + 9 × 6; PT = weekend only (9 × 6), weekday capacity 0; PT with his own value 4 = 9 × 4; FL = 0 everywhere", () => {
+  test("October 2026 (22 weekdays + 9 weekend days): FT working every day = 22 × 4 + 9 × 5; PT = weekend only (9 × 5), weekday capacity 0; PT with his own value 4 = 9 × 4; FL = 0 everywhere", () => {
     const r = cap({ teachers: [coach(TA, "FULL_TIME"), coach(TB, "PART_TIME"), coach("pt4", "PART_TIME", { weekendCapacityHours: 4 }), coach(TC, "FREELANCE")] });
     const by = (id: string) => r.byPerson.find((p) => p.teacherId === id)!;
-    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 110, weekendAvailableHours: 54, availableHours: 164 });
-    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 54, availableHours: 54 });
+    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 88, weekendAvailableHours: 45, availableHours: 133 });
+    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 45, availableHours: 45 });
     expect(by("pt4")).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 36, availableHours: 36 });
     expect(by(TC)).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 0, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
   });
   test("a PT whose own value is 0 has no capacity (set means set); null / absent = the type's rate", () => {
     expect(cap({ teachers: [coach(TA, "PART_TIME", { weekendCapacityHours: 0 })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 0 });
-    expect(cap({ teachers: [coach(TA, "PART_TIME", { weekendCapacityHours: null })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 54 });
-    expect(cap({ teachers: [coach(TA, "FULL_TIME", { weekendCapacityHours: 2 })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 54 }); // only a PT reads it
+    expect(cap({ teachers: [coach(TA, "PART_TIME", { weekendCapacityHours: null })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 45 });
+    expect(cap({ teachers: [coach(TA, "FULL_TIME", { weekendCapacityHours: 2 })] }).byPerson[0]).toMatchObject({ weekendAvailableHours: 45 }); // only a PT reads it
   });
-  test("an advance-leave day is taken off per the coach's own rate (FT Monday ⇒ −5; PT Saturday ⇒ −6, his own 4 ⇒ −4; a Saturday he does not work ⇒ nothing; a day in ANOTHER month ⇒ nothing)", () => {
+  test("an advance-leave day is taken off per the coach's own rate (FT Monday ⇒ −4; PT Saturday ⇒ −5, his own 4 ⇒ −4; a Saturday he does not work ⇒ nothing; a day in ANOTHER month ⇒ nothing)", () => {
     const leave = [{ teacherId: TB, date: "2026-10-05" }, { teacherId: TB, date: "2026-10-03" }, { teacherId: TB, date: "2026-11-02" }, { teacherId: TA, date: "2026-10-06" }, { teacherId: TC, date: "2026-10-10" }];
     const r = cap({ teachers: [coach(TB, "FULL_TIME", { workDays: MONFRI }), coach(TA, "PART_TIME", { workDays: [0, 6] }), coach(TC, "PART_TIME", { weekendCapacityHours: 4 })], leaveDays: leave });
     const by = (id: string) => r.byPerson.find((p) => p.teacherId === id)!;
-    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 105, weekendAvailableHours: 0 }); // Mon 5 Oct off; Sat 3 Oct he does not work
-    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 54 }); // a weekday leave day changes nothing for a weekend coach
+    expect(by(TB)).toMatchObject({ weekdayAvailableHours: 84, weekendAvailableHours: 0 }); // Mon 5 Oct off; Sat 3 Oct he does not work
+    expect(by(TA)).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 45 }); // a weekday leave day changes nothing for a weekend coach
     expect(by(TC)).toMatchObject({ weekendAvailableHours: 32 }); // 9 × 4 − Sat 10 Oct (4)
   });
   test("🔴 a PT's Hours (x / y) = WEEKEND booked only: his weekday classes stay real in the weekday cell (0 available, 0 %) but out of bookedHours; his weekend % is unaffected", () => {
     const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-03"), lesson("2026-10-04"), lesson("2026-10-10")]; // 2 weekday + 3 weekend
     const r = cap({ teachers: [coach(TA, "PART_TIME")], bookings: b }).byPerson[0]!;
     expect([r.weekdayBookedHours, r.weekdayAvailableHours, r.weekdayPct]).toEqual([2, 0, 0]);
-    expect([r.weekendBookedHours, r.weekendAvailableHours, r.weekendPct, r.bookedHours]).toEqual([3, 54, 6, 3]); // 3 / 54 = 5.6 %
-    expect(r.availableHours).toBe(54);
+    expect([r.weekendBookedHours, r.weekendAvailableHours, r.weekendPct, r.bookedHours]).toEqual([3, 45, 7, 3]); // 3 / 45 = 6.7 %
+    expect(r.availableHours).toBe(45);
   });
   test("🔴 FREELANCE: booked hours real (both cells and the total), available 0, % 0", () => {
     const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-03")];
@@ -434,10 +434,10 @@ describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per
     expect([r.availableHours, r.weekdayPct, r.weekendPct]).toEqual([0, 0, 0]);
   });
   test("a weekend-only FULL_TIME coach: weekday 0 / 0, weekend 9 × 6", () => {
-    expect(cap({ teachers: [coach(TA, "FULL_TIME", { workDays: [0, 6] })] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 54 });
+    expect(cap({ teachers: [coach(TA, "FULL_TIME", { workDays: [0, 6] })] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 0, weekdayPct: 0, weekendAvailableHours: 45 });
   });
-  test("February 2026 (20 weekdays + 8 weekend days): FT = 20 × 5 + 8 × 6; a FREELANCE gets 0 whatever his workDays", () => {
-    expect(cap({ month: "2026-02", teachers: [coach(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 100, weekendAvailableHours: 48 });
+  test("February 2026 (20 weekdays + 8 weekend days): FT = 20 × 4 + 8 × 5; a FREELANCE gets 0 whatever his workDays", () => {
+    expect(cap({ month: "2026-02", teachers: [coach(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ weekdayAvailableHours: 80, weekendAvailableHours: 40 });
     expect(cap({ month: "2026-02", teachers: [coach(TC, "FREELANCE")] }).byPerson[0]).toMatchObject({ availableHours: 0 });
   });
   const lesson = (date: string, o: Partial<SomBooking> = {}) => bk({ date, status: "CONFIRMED", teacherId: TA, ...o });
@@ -445,7 +445,7 @@ describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per
     const b = [lesson("2026-10-05"), lesson("2026-10-06"), lesson("2026-10-07"), lesson("2026-10-08"), lesson("2026-10-03"), lesson("2026-10-04")]; // 4 weekday + Sat + Sun
     const r = cap({ teachers: [coach(TA, "FULL_TIME")], bookings: b }).byPerson[0]!;
     expect([r.weekdayBookedHours, r.weekendBookedHours, r.bookedHours]).toEqual([4, 2, 6]);
-    expect([r.weekdayPct, r.weekendPct]).toEqual([4, 4]); // 4/110 = 3.6 · 2/54 = 3.7
+    expect([r.weekdayPct, r.weekendPct]).toEqual([5, 4]); // 4/88 = 4.5 · 2/45 = 4.4
   });
   test("what counts as booked: lessons + the GROUP row (once per coach, extras too); NOT cancelled rows, a group's SEATS, ECA / camp rows, other months; PENDING / PAUSED / SICK_LEAVE still hold the hour (Q4.5 default)", () => {
     const b = [
@@ -467,31 +467,31 @@ describe("🔴 TASK-756 (REQ-5004 row 4) — Coach Capacity: available hours per
   test("the badge filter applies to BOOKED only (Q0.2) — available is not filtered", () => {
     const b = [lesson("2026-10-05", { badgeIds: [BV1] }), lesson("2026-10-06", { badgeIds: [BV2] }), lesson("2026-10-07")];
     const r = cap({ teachers: [coach(TA, "FULL_TIME")], bookings: b, badgeValueIds: [BV1] }).byPerson[0]!;
-    expect([r.bookedHours, r.availableHours]).toEqual([1, 164]);
+    expect([r.bookedHours, r.availableHours]).toEqual([1, 133]);
   });
   test("only ACTIVE, non-archived coaches; ordered Full-time → Part-time → Freelance, then nickname", () => {
     const r = cap({ teachers: [coach("z", "FREELANCE"), coach("b", "PART_TIME"), coach("y", "FULL_TIME"), coach("a", "FULL_TIME"), coach("off", "FULL_TIME", { active: false }), coach("gone", "PART_TIME", { archived: true })] });
     expect(r.byPerson.map((p) => p.teacherId)).toEqual(["a", "y", "b", "z"]);
   });
   test("byType: always the three rows; coaches counted; hours are SUMS and the % comes from the sums — not an average of percentages", () => {
-    const b = ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"].map((d) => lesson(d, { teacherId: TA }));
+    const b = ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"].map((d) => lesson(d, { teacherId: TA }));
     const r = cap({ teachers: [coach(TA, "FULL_TIME", { workDays: MONFRI }), coach(TB, "FULL_TIME", { workDays: MONFRI })], bookings: b });
     expect(r.byType.map((t) => [t.teacherType, t.coaches])).toEqual([["FULL_TIME", 2], ["PART_TIME", 0], ["FREELANCE", 0]]);
     const ft = r.byType[0]!;
-    expect([ft.weekdayBookedHours, ft.weekdayAvailableHours, ft.weekdayPct]).toEqual([5, 220, 2]); // 5/220 = 2.3% — the mean of A's 5% and B's 0% would be 3%
-    expect(r.byPerson[0]!.weekdayPct).toBe(5); // 5/110 = 4.5% ⇒ 5
+    expect([ft.weekdayBookedHours, ft.weekdayAvailableHours, ft.weekdayPct]).toEqual([4, 176, 2]); // 4/176 = 2.3% — the mean of A's 5% and B's 0% would be 3%
+    expect(r.byPerson[0]!.weekdayPct).toBe(5); // 4/88 = 4.5% ⇒ 5
     expect(r.byType[1]).toMatchObject({ coaches: 0, bookedHours: 0, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
   });
   test("byType sums the same rule: a PT type's bookedHours is the sum of his PTs' WEEKEND hours; FL's booked hours are real with available 0", () => {
     const b = [lesson("2026-10-05"), lesson("2026-10-03"), lesson("2026-10-06", { teacherId: TC })];
     const r = cap({ teachers: [coach(TA, "PART_TIME"), coach(TC, "FREELANCE")], bookings: b });
-    expect(r.byType[1]).toMatchObject({ teacherType: "PART_TIME", coaches: 1, bookedHours: 1, weekdayBookedHours: 1, weekdayAvailableHours: 0, weekendBookedHours: 1, weekendAvailableHours: 54, availableHours: 54 });
+    expect(r.byType[1]).toMatchObject({ teacherType: "PART_TIME", coaches: 1, bookedHours: 1, weekdayBookedHours: 1, weekdayAvailableHours: 0, weekendBookedHours: 1, weekendAvailableHours: 45, availableHours: 45 });
     expect(r.byType[2]).toMatchObject({ teacherType: "FREELANCE", coaches: 1, bookedHours: 1, availableHours: 0, weekdayPct: 0, weekendPct: 0 });
   });
-  test("a percentage never passes 100 (an over-booked coach), but his hours stay real: 12 booked vs ONE available Saturday (6) ⇒ 200% ⇒ 100", () => {
+  test("a percentage never passes 100 (an over-booked coach), but his hours stay real: 12 booked vs ONE available Saturday (5) ⇒ 240% ⇒ 100", () => {
     const b = Array.from({ length: 12 }, () => lesson("2026-10-03"));
     const r = cap({ month: "2026-10", teachers: [coach(TA, "FULL_TIME", { workDays: [6] })], leaveDays: ["10", "17", "24", "31"].map((d) => ({ teacherId: TA, date: `2026-10-${d}` })), bookings: b }).byPerson[0]!;
-    expect([r.weekendAvailableHours, r.weekendBookedHours, r.weekendPct]).toEqual([6, 12, 100]);
+    expect([r.weekendAvailableHours, r.weekendBookedHours, r.weekendPct]).toEqual([5, 12, 100]);
   });
   test("with no roster the report is empty but whole: three type rows at zero, month echoed", () => {
     const r = cap({});
@@ -571,7 +571,7 @@ describe("🔴 TASK-742 — the READ (service), the list endpoint and its access
       expect([all.coachCapacity.month, all.coachCapacity.from, all.coachCapacity.to]).toEqual([null, "2026-08-03", T]);
       expect(leaveCalls[before + 1]).toEqual(["2026-08-03", T]);
       const dowT = new Date(`${T}T00:00:00Z`).getUTCDay();
-      expect(all.coachCapacity.byPerson[0]!.availableHours).toBe(dowT === 0 || dowT === 6 ? 6 : 5); // all data: a coach created today counts from today only (the READ hands over created_at)
+      expect(all.coachCapacity.byPerson[0]!.availableHours).toBe(dowT === 0 || dowT === 6 ? 5 : 4); // all data: a coach created today counts from today only (the READ hands over created_at)
       const m = await svc.getSomContract({ month: "2026-09" });
       expect([m.newVsRenewing.month, m.newVsRenewing.from, m.newVsRenewing.to]).toEqual(["2026-09", "2026-09-01", "2026-09-30"]);
       expect(leaveCalls[before + 2]).toEqual(["2026-09-01", "2026-09-30"]);
@@ -589,7 +589,7 @@ describe("🔴 TASK-742 — the READ (service), the list endpoint and its access
       expect(cc.byPerson.map((p) => [p.teacherId, p.bookedHours])).toEqual([[TA, 2], [TB, 2], [TC, 0]]); // the 2-hour group row counts for both coaches
       const a = cc.byPerson[0]!, b = cc.byPerson[1]!, c = cc.byPerson[2]!;
       const dow = new Date(`${M}-15T00:00:00Z`).getUTCDay();
-      expect(a.availableHours - b.availableHours).toBe(dow === 0 || dow === 6 ? 6 : 5); // B's leave day, at his own rate
+      expect(a.availableHours - b.availableHours).toBe(dow === 0 || dow === 6 ? 5 : 4); // B's leave day, at his own rate
       const weekendDays = Array.from({ length: +new Date(Date.UTC(+M.slice(0, 4), +M.slice(5), 0)).toISOString().slice(8, 10) }, (_, i) => new Date(Date.UTC(+M.slice(0, 4), +M.slice(5) - 1, i + 1)).getUTCDay()).filter((d) => d === 0 || d === 6).length;
       expect(c.availableHours).toBe(weekendDays * 3); // the READ hands over `weekend_capacity_hours`: a PT's own value
       expect(leaveCalls[0]).toEqual([`${M}-01`, new Date(Date.UTC(+M.slice(0, 4), +M.slice(5), 0)).toISOString().slice(0, 10)]); // the whole month, through THE reader
@@ -735,18 +735,18 @@ describe("🔴 TASK-757 (REQ-5004 row 1) — the period: all data by default, fr
   test("Coach Capacity over a range: each day of the range at the rates; a range of one Saturday = the weekend rate", () => {
     const cap = (o: Partial<SomContractInput>) => countCapacity(base({ month: undefined, ...o }));
     const r = cap({ from: "2026-10-01", to: "2026-10-05", teachers: [coachOf(TA, "FULL_TIME"), coachOf(TB, "PART_TIME")] });
-    expect(r.byPerson[0]).toMatchObject({ weekdayAvailableHours: 15, weekendAvailableHours: 12, availableHours: 27 }); // Thu Fri Mon · Sat Sun
-    expect(r.byPerson[1]).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 12 });
-    expect(cap({ from: "2026-10-03", to: "2026-10-03", teachers: [coachOf(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ availableHours: 6 });
+    expect(r.byPerson[0]).toMatchObject({ weekdayAvailableHours: 12, weekendAvailableHours: 10, availableHours: 22 }); // Thu Fri Mon · Sat Sun
+    expect(r.byPerson[1]).toMatchObject({ weekdayAvailableHours: 0, weekendAvailableHours: 10 });
+    expect(cap({ from: "2026-10-03", to: "2026-10-03", teachers: [coachOf(TA, "FULL_TIME")] }).byPerson[0]).toMatchObject({ availableHours: 5 });
   });
   test("🔴 ALL DATA counts a coach from the LATER of the range start and the day he was created; a month or a from–to stays as asked", () => {
     const late = coachOf(TA, "FULL_TIME", { createdAt: "2026-10-10T03:00:00Z" });
     const b = [att(S1, "2026-10-01")];
     const all = countCapacity(base({ month: undefined, teachers: [late], bookings: b })).byPerson[0]!;
-    expect(all.availableHours).toBe(17); // Sat 10 (6) + Sun 11 (6) + Mon 12 (5)
+    expect(all.availableHours).toBe(14); // Sat 10 (5) + Sun 11 (5) + Mon 12 (4)
     const ranged = countCapacity(base({ month: undefined, from: "2026-10-01", to: "2026-10-12", teachers: [late], bookings: b })).byPerson[0]!;
-    expect(ranged.availableHours).toBe(64); // 8 weekdays × 5 + 4 weekend days × 6 — he is counted from the day the range starts, as asked
-    expect(countCapacity(base({ month: "2026-10", teachers: [late], bookings: b })).byPerson[0]!.availableHours).toBe(164);
+    expect(ranged.availableHours).toBe(52); // 8 weekdays × 4 + 4 weekend days × 5 — he is counted from the day the range starts, as asked
+    expect(countCapacity(base({ month: "2026-10", teachers: [late], bookings: b })).byPerson[0]!.availableHours).toBe(133);
   });
   test("booked hours follow the range too (a class outside it is not booked)", () => {
     const les = (d: string) => bk({ date: d, status: "CONFIRMED", teacherId: TA });

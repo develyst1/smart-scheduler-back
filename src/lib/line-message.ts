@@ -12,6 +12,7 @@ import { buildDigestMessage } from "./attention";
 import { renderWeeklySchedule, type WeekRow } from "./weekly-digest";
 import { renderCampDeduction } from "./camp-deduction";
 import { campHoursOf } from "./camp-hours"; // 🔻 TASK-736
+import { renderPayConfirmReminder } from "./pay-confirm-reminder"; // 🔻 TASK-888
 import { renderTodaySchedule, type TodayRow } from "./line-today-schedule";
 import {
   notifyTypeOf,
@@ -476,6 +477,9 @@ function buildOutboxMessage(
         extra(t("ob_f_rental", lang), r?.code ? rentalPrintLine(r.code, r.remark ?? null) : undefined)
       );
     }
+    // 🔻 TASK-888 (REQ-120 R1.5) - the pay-slip confirm reminder to a coach. No pay figure, ever: the period and the 12:00 deadline only.
+    case "pay_confirm_reminder":
+      return renderPayConfirmReminder(payload, lang === "EN" ? "EN" : "TH");
     case "daily_reminder":
       return renderTodaySchedule((payload.rows as TodayRow[]) ?? [], lang, recipientType);
     // TASK-441 (REQ-104 §3) — the Monday weekly coach digest: ENGLISH ONLY by the owner's ruling — no `t()`, no `lang`

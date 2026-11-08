@@ -68,6 +68,8 @@ const NAMED_BY_DESIGN: Record<string, string> = {
   [`${S}#notifyTeacherOfLeaveDay`]: "the ONE teacher whose day it is — a day, not a class; no other coach and no family",
   // 🔻 TASK-827 (REQ-125 ruling B, D5) — a teacher of a CO-TAUGHT class is away and the class goes on: each REMAINING teacher is told, ONE message per coach per day. 🔑 Recipients = `remainingTeachersOf` / the
   // collection built from it (the class's OTHER teachers who are not on leave that day) — never the leaver, never a coach on leave, never a family (a class that continues is not a cancellation). Called only by the committing paths.
+  // 🔻 TASK-888 (REQ-120 R1.5) - the pay-slip confirm reminder: a NAMED coach (the one whose slip is unconfirmed), by their own pay profile - not a class, no booking, no family.
+  "src/services/pay-confirm-reminder.service.ts#enqueuePayConfirm": "the ONE coach whose pay slip is unconfirmed - a pay fact, not a class: no booking, no other coach, no family; no pay figure in the text",
   [`${S}#sendCoLeaveNotices`]: "the REMAINING teachers of a co-taught class — a day-level notice (ruling B, D5): the collection is the class's other teachers not on leave that day; never the leaver, never a family",
 };
 /** Reaches the additional teachers TODAY, but through its own answer — a copy that currently agrees (named, not yet converged). */

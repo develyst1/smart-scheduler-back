@@ -141,14 +141,14 @@
     },
     {
       "id": "N10",
-      "what": "an ECA / camp (OTHER) row counts as booked hours",
+      "what": "877: EVERY OTHER row counts as booked hours (the ECA / CAMP kind test is gone)",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "|| !(isLesson(b) || b.bookingType === \"GROUP\") ||",
-              "to": "|| false ||"
+              "from": "(b.bookingType === \"OTHER\" && CAPACITY_OTHER_KINDS.has(b.otherKind ?? \"\"))",
+              "to": "(b.bookingType === \"OTHER\")"
             }
           ]
         }
@@ -231,14 +231,14 @@
     },
     {
       "id": "N16",
-      "what": "756: a full-timer's weekday is 4 hours, not 5",
+      "what": "877: a full-timer's weekday is 3 hours, not 4",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 5;",
-              "to": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 4;"
+              "from": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 4;",
+              "to": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 3;"
             }
           ]
         }
@@ -1101,14 +1101,14 @@
     },
     {
       "id": "S1",
-      "what": "756: the weekend day is 5 hours, not 6",
+      "what": "877: the part-timer's weekend day is 4 hours, not 5",
       "files": [
         {
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "export const CAPACITY_WEEKEND_HOURS = 6;",
-              "to": "export const CAPACITY_WEEKEND_HOURS = 5;"
+              "from": "export const CAPACITY_PART_TIME_WEEKEND_HOURS = 5;",
+              "to": "export const CAPACITY_PART_TIME_WEEKEND_HOURS = 4;"
             }
           ]
         }
@@ -1152,8 +1152,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "(t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS)",
-              "to": "(CAPACITY_WEEKEND_HOURS)"
+              "from": "(t.weekendCapacityHours ?? CAPACITY_PART_TIME_WEEKEND_HOURS)",
+              "to": "(CAPACITY_PART_TIME_WEEKEND_HOURS)"
             }
           ]
         }
@@ -1167,8 +1167,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "(t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS)",
-              "to": "(t.weekendCapacityHours || CAPACITY_WEEKEND_HOURS)"
+              "from": "(t.weekendCapacityHours ?? CAPACITY_PART_TIME_WEEKEND_HOURS)",
+              "to": "(t.weekendCapacityHours || CAPACITY_PART_TIME_WEEKEND_HOURS)"
             }
           ]
         }
@@ -1182,8 +1182,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "t.type === \"FULL_TIME\" ? CAPACITY_WEEKEND_HOURS :",
-              "to": "t.type === \"FULL_TIME\" ? (t.weekendCapacityHours ?? CAPACITY_WEEKEND_HOURS) :"
+              "from": "t.type === \"FULL_TIME\" ? CAPACITY_FULL_TIME_WEEKEND_HOURS :",
+              "to": "t.type === \"FULL_TIME\" ? (t.weekendCapacityHours ?? CAPACITY_FULL_TIME_WEEKEND_HOURS) :"
             }
           ]
         }

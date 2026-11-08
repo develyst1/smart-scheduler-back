@@ -1551,7 +1551,9 @@ export async function createBooking(input: any) {
     // on the four lesson types, so this is only ever null where the schema now allows it.
     const studentId = input.student ? await resolveStudentId(tx, input.student) : null;
     if (studentId) await assertStudentActive(tx, studentId); // TASK-392 — an archived child takes no new session
-    if (input.bookingType === "VOUCHER" && input.voucherId) {
+    // 🔻 TASK-870 Amendment 2 — the gate runs for ANY booking that carries a `voucherId` (a VOUCHER booking, and an อื่นๆ one that deducts a voucher): the attend draws on `booking.voucherId` whatever the type, so the booking must reserve against the same hours.
+    // An OTHER booking has no student: `studentId` is null here, and `prepareVoucherBooking`'s «belongs to the child» check refuses it with the existing sentence (a voucher belongs to a child).
+    if (input.voucherId) {
       await prepareVoucherBooking(tx, input.voucherId, input.date, studentId!);
     }
     // TASK-399 — the cap, through the SAME count the course seat uses (the cap half of `seatOnGroup`), inside the tx.

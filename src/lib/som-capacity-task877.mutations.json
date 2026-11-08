@@ -1,0 +1,263 @@
+{
+  "task": "TASK-877",
+  "proves": "src/lib/som-capacity-task877.test.ts",
+  "note": "REQ-5009 Coach Capacity: K = the rates (K6, FT-weekend read from the PT constant, is EQUIVALENT while both are 5 — they are separate only so they can differ later), O = the ECA / CAMP booked hours and what stays out.",
+  "tests": "src/lib/som-capacity-task877.test.ts",
+  "mutations": [
+    {
+      "id": "K1",
+      "what": "FT weekday back to 5 hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 4;",
+              "to": "export const CAPACITY_FULL_TIME_WEEKDAY_HOURS = 5;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K2",
+      "what": "FT weekend back to 6 hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_FULL_TIME_WEEKEND_HOURS = 5;",
+              "to": "export const CAPACITY_FULL_TIME_WEEKEND_HOURS = 6;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K3",
+      "what": "PT weekend back to 6 hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_PART_TIME_WEEKEND_HOURS = 5;",
+              "to": "export const CAPACITY_PART_TIME_WEEKEND_HOURS = 6;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K4",
+      "what": "a PT gets weekday hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 0;",
+              "to": "export const CAPACITY_PART_TIME_WEEKDAY_HOURS = 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K5",
+      "what": "a FL gets hours",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "export const CAPACITY_FREELANCE_HOURS = 0;",
+              "to": "export const CAPACITY_FREELANCE_HOURS = 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K7",
+      "what": "a PT's own weekend rate is ignored",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(t.weekendCapacityHours ?? CAPACITY_PART_TIME_WEEKEND_HOURS)",
+              "to": "(CAPACITY_PART_TIME_WEEKEND_HOURS)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O1",
+      "what": "the kind set loses CAMP",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set([\"ECA\", \"CAMP\"])",
+              "to": "new Set([\"ECA\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O2",
+      "what": "the kind set loses ECA",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set([\"ECA\", \"CAMP\"])",
+              "to": "new Set([\"CAMP\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O3",
+      "what": "the kind set gains FREE",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set([\"ECA\", \"CAMP\"])",
+              "to": "new Set([\"ECA\", \"CAMP\", \"FREE\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O4",
+      "what": "the kind set gains KOL",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set([\"ECA\", \"CAMP\"])",
+              "to": "new Set([\"ECA\", \"CAMP\", \"KOL\"])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O5",
+      "what": "a no-kind OTHER row counts",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "CAPACITY_OTHER_KINDS.has(b.otherKind ?? \"\")",
+              "to": "CAPACITY_OTHER_KINDS.has(b.otherKind ?? \"ECA\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O6",
+      "what": "the OTHER clause is gone: ECA / CAMP rows do not count",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "(b.bookingType === \"OTHER\" && CAPACITY_OTHER_KINDS.has(b.otherKind ?? \"\"))",
+              "to": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O7",
+      "what": "a lesson stops counting (the clause replaces, not extends)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "!(isLesson(b) || b.bookingType === \"GROUP\" || (b.bookingType === \"OTHER\"",
+              "to": "!(b.bookingType === \"GROUP\" || (b.bookingType === \"OTHER\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O8",
+      "what": "a CANCELLED ECA row counts",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "CAPACITY_NOT_COUNTED_STATUSES.has(b.status) || !(isLesson(b)",
+              "to": "false || !(isLesson(b)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O9",
+      "what": "a seat counts",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.isSeat || CAPACITY_NOT_COUNTED_STATUSES",
+              "to": "if (CAPACITY_NOT_COUNTED_STATUSES"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O10",
+      "what": "the READ does not read the kind column",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "startTime: true, endTime: true, otherKind: true },",
+              "to": "startTime: true, endTime: true },"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O11",
+      "what": "the mapper drops the kind",
+      "files": [
+        {
+          "file": "src/services/som-contract.service.ts",
+          "edits": [
+            {
+              "from": "otherKind: b.otherKind ?? null, // 🔻 TASK-877",
+              "to": "otherKind: null, // 🔻 TASK-877"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -37,7 +37,7 @@ describe("🔑 TASK-461 — every internal job has a trigger, and every trigger 
     const have = new Set(triggers.map((t) => t.name));
     expect(routeJobs.filter((j) => !have.has(j))).toEqual([]);
     // the census, so a route added without its trigger is visible as a number too
-    expect(routeJobs).toEqual(["daily-digest", "daily-reminder", "end-of-day", "group-series-extender", "job-runs", "month-reset", "weekly-teacher-digest"]);
+    expect(routeJobs).toEqual(["daily-digest", "daily-reminder", "end-of-day", "group-series-extender", "job-runs", "month-reset", "pay-confirm-0900", "pay-confirm-1100", "weekly-teacher-digest"]); // 🔻 TASK-888: + the two R1.5 pay-confirm reminders
   });
 
   test("← no trigger is DANGLING: every `sm-jobs/*.ps1` posts to a job the router serves, and to its OWN name", () => {
