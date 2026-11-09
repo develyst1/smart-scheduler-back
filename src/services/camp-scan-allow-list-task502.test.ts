@@ -112,7 +112,7 @@ describe("🔴 TASK-502 — the public camp scan answers ONE allow-listed shape,
   test("🔑 the ADMIN package DTO is UNCHANGED — pinned by value (a leak fix must not narrow the admin's own view)", async () => {
     world("ATTENDED");
     const day = { dayId: D1, weekId: W1, weekName: "Week 1", date: TODAY, half: "AM", units: 1, status: "ATTENDED", undoReason: null };
-    const base = { id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, plannedUnits: 1, saleId: null, note: null, discount: null, createdBy: "u-staff-1", createdAt: "2026-09-01T03:00:00.000Z", confirmedOn: null /* 🔻 TASK-900: the LIST now says whether the camp is confirmed; nothing else moved */ };
+    const base = { id: P1, studentId: S1, kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 3, plannedUnits: 1, saleId: null, note: null, discount: null, createdBy: "u-staff-1", createdAt: "2026-09-01T03:00:00.000Z", confirmedOn: null /* 🔻 TASK-900: the LIST now says whether the camp is confirmed */, amountMinor: null /* 🔻 TASK-916: …and its net sale; nothing else moved */ };
     const other = { dayId: D2, weekId: W1, weekName: "Week 1", date: "2099-01-01", half: "AM", units: 1, status: "PLANNED", undoReason: null };
     const plain = (await camp.listPackages(S1)).packages[0] as any;
     expect({ ...plain, credit: undefined }).toEqual({ ...base, credit: undefined, days: [day, other] });

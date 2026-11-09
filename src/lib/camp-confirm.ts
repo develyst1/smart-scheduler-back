@@ -15,7 +15,8 @@ import { db } from "../db";
 import { boRevenueLine } from "../db/bo-revenue";
 import { badRequest, conflict, notFound } from "./http";
 import { bangkokNow } from "./bangkok-time";
-import { createSalePayment, feeOf, revenueLineKeyFor, type PaymentMethod, PAYMENT_METHODS } from "./payment-record";
+import { createSalePayment, feeFromMovements, feeKeys, feeOf, revenueLineKeyFor, type PaymentMethod, PAYMENT_METHODS } from "./payment-record";
+import { boMovement } from "../db/schema"; // 🔻 TASK-916
 import { writeRevenueLine } from "./revenue-line";
 
 export const CAMP_CATEGORY = "Balance Camp";
@@ -95,4 +96,24 @@ export async function confirmedOnByPackage(ids: readonly string[], d: any = db):
     .where(inArray(boRevenueLine.idempotencyKey, keys));
   const byKey = new Map(rows.map((r) => [r.key, r.occurredOn]));
   return new Map(ids.flatMap((id) => (byKey.has(campLineKey(id)) ? [[id, byKey.get(campLineKey(id))!] as [string, string]] : [])));
+}
+
+/**
+ * 🔻 TASK-916 — the camp list's `amountMinor`: package id → its NET posted sale (`camp-sale:<id>` + `discount:<id>`), for the whole list in ONE query. It is the
+ * very number `confirmCamp` records, by the very same rule (`feeFromMovements`, not a copy): a package with no posted sale, or a net of 0 or less, is NOT in the
+ * map (that is exactly the `NO_FEE` case of the confirm), so the caller reads `map.get(id) ?? null`.
+ */
+export async function feeByPackage(ids: readonly string[], d: any = db): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const keys = ids.flatMap((id) => Object.values(feeKeys("CAMP", id)));
+  const rows: { key: string | null; valueMinor: number }[] = await d
+    .select({ key: boMovement.idempotencyKey, valueMinor: boMovement.valueMinor })
+    .from(boMovement)
+    .where(inArray(boMovement.idempotencyKey, keys));
+  const out = new Map<string, number>();
+  for (const id of ids) {
+    const net = feeFromMovements("CAMP", id, rows); // filters to THIS package's two keys
+    if (net !== null && net > 0) out.set(id, net);
+  }
+  return out;
 }

@@ -4,8 +4,8 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { boPayment, boRevenueCategory, boRevenueLine } from "../db/bo-revenue";
 import { boMovement } from "../db/schema";
 import { ApiException } from "./http";
-import { CAMP_CATEGORY, campLineKey, confirmCamp, confirmedOnByPackage } from "./camp-confirm";
-import { feeFromMovements, feeKeys, revenueLineKeyFor } from "./payment-record";
+import { CAMP_CATEGORY, campLineKey, confirmCamp, confirmedOnByPackage, feeByPackage } from "./camp-confirm";
+import { feeFromMovements, feeKeys, feeOf, revenueLineKeyFor } from "./payment-record";
 
 // TASK-900 (SPEC-099 §11) — Confirm camp. DB-free: a recording fake stands in for the drizzle executor. The real writers (`writeRevenueLine`, `createSalePayment`)
 // run on it, so what is proved is the exact rows they would insert and which of them roll back together.
@@ -381,6 +381,7 @@ describe("the route, the access table and the list (the shared files)", () => {
     expect(fn).not.toContain("confirmedOn");
     expect(fn).toContain("return toPackageDTO(p, days);");
     expect(src).toContain("...(opts.confirmedOn !== undefined ? { confirmedOn: opts.confirmedOn } : {})");
+    expect(src).toContain("...(opts.amountMinor !== undefined ? { amountMinor: opts.amountMinor } : {})"); // 🔻 TASK-916: the same rule — list only, no false null on the single answers
   });
   test("the list asks the ledger ONCE for all its packages", () => {
     const src = read("../services/camp.service.ts");
@@ -398,25 +399,40 @@ describe("GET /camp/packages — `confirmedOn` in the list, on the REAL listPack
   });
   const PKG2 = "22222222-2222-4222-8222-222222222222";
   const pkg = (id: string, at: string) => ({ id, studentId: "s1", kind: "FULL", plan: "FULL_WEEK", totalUnits: 10, usedUnits: 0, createdAt: new Date(at) });
-  const world = (rows: { key: string; occurredOn: string }[]) => {
+  // 🔻 TASK-916: the list now makes TWO ledger-side queries (which packages are confirmed; each one's net sale). The stub answers by what is selected.
+  const world = (rows: { key: string; occurredOn: string }[], movements: { key: string; valueMinor: number }[] = []) => {
     const asked: any[] = [];
     spies.push(spyOn(db.query.campPackages, "findMany").mockImplementation((async () => [pkg(PKG, "2026-10-02T00:00:00Z"), pkg(PKG2, "2026-10-01T00:00:00Z")]) as any));
     spies.push(spyOn(db.query.campDays, "findMany").mockImplementation((async () => []) as any));
     spies.push(
       spyOn(db, "select").mockImplementation(((...a: any[]) => {
         asked.push(a);
-        return { from: () => ({ where: async () => rows }) };
+        return { from: () => ({ where: async () => ("occurredOn" in (a[0] ?? {}) ? rows : movements) }) };
       }) as any),
     );
     return asked;
   };
 
-  test("🔑 a confirmed package carries its line's date, an unconfirmed one carries null; ONE ledger query for the whole list", async () => {
+  test("🔑 a confirmed package carries its line's date, an unconfirmed one carries null; ONE query per field for the whole list (two packages, two queries)", async () => {
     const asked = world([{ key: `rl:camp:${PKG}`, occurredOn: "2026-11-09" }]);
     const { listPackages } = await import("../services/camp.service");
     const { packages } = await listPackages("s1");
     expect(packages.map((p: any) => [p.id, p.confirmedOn])).toEqual([[PKG, "2026-11-09"], [PKG2, null]]);
-    expect(asked).toHaveLength(1);
+    expect(asked).toHaveLength(2); // one for the confirmed dates, one for the nets: never one per package
+  });
+  test("🔑 TASK-916: amountMinor is the package's NET posted sale (sale + discount), null with no sale and null for a net of 0; the list is still two queries", async () => {
+    const PKG3 = "33333333-3333-4333-8333-333333333333";
+    const asked = world([], [
+      { key: `camp-sale:${PKG}`, valueMinor: 1_000_000 },
+      { key: `discount:${PKG}`, valueMinor: -50_000 },
+      { key: `camp-sale:${PKG3}`, valueMinor: 100_000 },
+      { key: `discount:${PKG3}`, valueMinor: -100_000 },
+    ]);
+    spies.push(spyOn(db.query.campPackages, "findMany").mockImplementation((async () => [pkg(PKG, "2026-10-03T00:00:00Z"), pkg(PKG2, "2026-10-02T00:00:00Z"), pkg(PKG3, "2026-10-01T00:00:00Z")]) as any));
+    const { listPackages } = await import("../services/camp.service");
+    const { packages } = await listPackages("s1");
+    expect(packages.map((p: any) => [p.id, p.amountMinor])).toEqual([[PKG, 950_000], [PKG2, null], [PKG3, null]]);
+    expect(asked).toHaveLength(2);
   });
   test("an empty student list asks nothing of the ledger and returns []", async () => {
     const asked = world([]);
@@ -425,12 +441,78 @@ describe("GET /camp/packages — `confirmedOn` in the list, on the REAL listPack
     expect((await listPackages("s1")).packages).toEqual([]);
     expect(asked).toHaveLength(0);
   });
-  test("the other fields of the package DTO are untouched by it (only `confirmedOn` was added)", async () => {
+  test("the other fields of the package DTO are untouched (only `confirmedOn` and `amountMinor` were added)", async () => {
     world([]);
     const { listPackages } = await import("../services/camp.service");
     const p: any = (await listPackages("s1")).packages[0];
-    const { confirmedOn, ...rest } = p;
-    expect(confirmedOn).toBeNull();
+    const { confirmedOn, amountMinor, ...rest } = p;
+    expect([confirmedOn, amountMinor]).toEqual([null, null]);
     expect(Object.keys(rest).sort()).toEqual(["createdAt", "createdBy", "credit", "days", "discount", "id", "kind", "note", "plan", "plannedUnits", "saleId", "studentId", "totalUnits", "usedUnits"]);
+  });
+});
+
+// ───────────────────────────────── TASK-916 — the camp list's amountMinor (feeByPackage) ─────────────────────────────────
+describe("feeByPackage — the list's net posted sale, ONE query, the same rule as the confirm", () => {
+  const B = "22222222-2222-4222-8222-222222222222";
+  const C3 = "33333333-3333-4333-8333-333333333333";
+  type Mv = { key: string; valueMinor: number };
+  const batchFake = (rows: Mv[]) => {
+    const seen: any[] = [];
+    const d: any = {
+      select: (...a: any[]) => {
+        const rec: any = { args: a };
+        seen.push(rec);
+        const p: any = new Proxy({}, { get: (_t, prop: string) => (prop === "then" ? (res: any) => Promise.resolve(rows).then(res) : (...x: any[]) => ((rec[prop] = x), p)) });
+        return p;
+      },
+    };
+    return { d, seen };
+  };
+  const sale = (id: string, v: number): Mv => ({ key: `camp-sale:${id}`, valueMinor: v });
+  const disc = (id: string, v: number): Mv => ({ key: `discount:${id}`, valueMinor: v });
+
+  test("an empty list asks nothing", async () => {
+    const f = batchFake([]);
+    expect((await feeByPackage([], f.d)).size).toBe(0);
+    expect(f.seen).toHaveLength(0);
+  });
+  test("🔑 ONE query for N packages, over exactly their 2N keys", async () => {
+    const f = batchFake([sale(PKG, 100), sale(B, 200), sale(C3, 300)]);
+    await feeByPackage([PKG, B, C3], f.d);
+    expect(f.seen).toHaveLength(1);
+    const q = new PgDialect().sqlToQuery(f.seen[0].where[0]);
+    expect(q.params).toEqual([`camp-sale:${PKG}`, `discount:${PKG}`, `camp-sale:${B}`, `discount:${B}`, `camp-sale:${C3}`, `discount:${C3}`]);
+  });
+  test("🔑 the NET: with a discount it is sale + (negative) discount; with none it is the sale; each package gets its own", async () => {
+    const f = batchFake([sale(PKG, 1_000_000), disc(PKG, -50_000), sale(B, 400_000), sale(C3, 90_000), disc(C3, -10_000)]);
+    const m = await feeByPackage([PKG, B, C3], f.d);
+    expect([m.get(PKG), m.get(B), m.get(C3)]).toEqual([950_000, 400_000, 80_000]);
+  });
+  test("🔑 no posted sale ⇒ absent (the list shows null); a net of ZERO ⇒ absent; a negative net ⇒ absent; a discount alone ⇒ absent", async () => {
+    const f = batchFake([sale(PKG, 100_000), disc(PKG, -100_000), disc(B, -5_000), sale(C3, 1_000), disc(C3, -6_000)]);
+    const m = await feeByPackage([PKG, B, C3, "44444444-4444-4444-8444-444444444444"], f.d);
+    expect(m.size).toBe(0);
+  });
+  test("another package's rows and a course's sale never count (keys are per package and per kind)", async () => {
+    const f = batchFake([sale(B, 500_000), { key: `course-sale:${PKG}`, valueMinor: 900_000 }, { key: `voucher-sale:${PKG}`, valueMinor: 700_000 }]);
+    const m = await feeByPackage([PKG, B], f.d);
+    expect([m.has(PKG), m.get(B)]).toEqual([false, 500_000]);
+  });
+  test("🔑 the batch and the per-id rule AGREE on the same rows (the confirm's feeOf, run on each package, gives the same net or the same refusal)", async () => {
+    const rows: Mv[] = [sale(PKG, 1_000_000), disc(PKG, -50_000), sale(B, 400_000), disc(C3, -1_000), sale("55555555-5555-4555-8555-555555555555", 5_000), disc("55555555-5555-4555-8555-555555555555", -5_000)];
+    const ids = [PKG, B, C3, "55555555-5555-4555-8555-555555555555", "66666666-6666-4666-8666-666666666666"];
+    const batch = await feeByPackage(ids, batchFake(rows).d);
+    for (const id of ids) {
+      const mine = rows.filter((r) => r.key === `camp-sale:${id}` || r.key === `discount:${id}`);
+      const single = await feeOf(batchFake(mine).d, "CAMP", id); // what confirmCamp reads
+      const confirmable = single !== null && single > 0; // confirmCamp's NO_FEE rule
+      expect([id, batch.get(id) ?? null]).toEqual([id, confirmable ? single : null]);
+    }
+  });
+  test("it reuses the confirm's pure rule (feeFromMovements) rather than a second copy of it (source pin)", () => {
+    const src = readFileSync(new URL("./camp-confirm.ts", import.meta.url), "utf8").replace(/\/\/.*$/gm, "");
+    const fn = src.slice(src.indexOf("export async function feeByPackage("));
+    expect(fn).toContain('feeFromMovements("CAMP", id, rows)');
+    expect(fn).not.toMatch(/\.reduce\(|valueMinor\s*\+/);
   });
 });

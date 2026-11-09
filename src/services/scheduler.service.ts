@@ -69,6 +69,7 @@ import { enqueueLine, type NotifyResult } from "../lib/line";
 import { recordSale, reverseBookingSale } from "../lib/sale-post";
 import { postConfirmRevenue, postCourseRevenue, postVoucherRevenue } from "../lib/revenue-line"; // TASK-864 (C1)
 import { createSalePaymentFromPosted } from "../lib/payment-record"; // 🔻 TASK-875 (F2)
+import { branchOf } from "../lib/booking-sale-amount"; // 🔻 TASK-916
 import { validateSaleDiscount } from "../lib/discount-plan";
 import { GENERIC_SLOT_TAKEN, slotClashMessage } from "../lib/slot-clash";
 import {
@@ -2831,6 +2832,7 @@ export async function getEntitlementPlan(id: string) {
         // construction not by luck. 🚫 `summary.usedSessions` is the course's stored counter and answers a
         // different question — do not read it as the plan's progress.
         owedCount: Math.max(0, courseOwedTarget(course) - current),
+        branch: branchOf(course.branch), // 🔻 TASK-916 (F1): BRAVO | OTHER, from the course row (the SF reads `plan.summary.branch`, TASK-898)
       },
     };
   }
@@ -2857,6 +2859,7 @@ export async function getEntitlementPlan(id: string) {
         hoursReserved: rows.filter((r: any) => isVoucherReserving(r.status)).length,
         hoursAvailable: voucherAvailable(voucher, rows.filter((r: any) => isVoucherReserving(r.status)).length),
         expiryDate: voucher.expiryDate,
+        branch: branchOf(voucher.branch), // 🔻 TASK-916 (F1): BRAVO | OTHER, from the voucher row
       },
     };
   }
