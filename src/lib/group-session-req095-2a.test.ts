@@ -211,7 +211,8 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
   });
   test("the cancel CASCADE: a GROUP row's cancel first cancels every live seat (status + note + the course's make-up via `reconcileCoursePlan`) in the SAME tx, then the group row; GROUP joins the audited-reason set; a seat's own cancel is ordinary", () => {
     const U = region(SCHED, "export async function updateBookingStatus(", "\nexport async function bulkConfirm(");
-    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}), reseat: true });');
+    // 🔻 TASK-946 — the group cancel passes `coachOff` for EVERY reason now (it was «ครูลา» only): the pinned call text changes, nothing else does.
+    expect(U).toContain('if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), coachOff: await coachOffOfRow(tx, current), reseat: true });');
     expect(U.indexOf('cancelSeatsOfGroup(tx, current.id')).toBeLessThan(U.indexOf('status: "CANCELLED",'));
     expect(U).toContain('new Set(["SINGLE_SESSION", "VOUCHER", "FIRST_TRIAL", "OTHER", "GROUP"])');
     const C = region(SCHED, "async function cancelSeatsOfGroup(", "\n}\n");

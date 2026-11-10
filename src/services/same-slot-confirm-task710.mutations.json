@@ -17,7 +17,7 @@
     {
       "id": "S3",
       "what": "🔴 the replacement is left unconfirmed when its notices are held — silence bought by not confirming",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await applyConfirm(tx, row.id, row, hold);\n", "to": "  if (!hold) await applyConfirm(tx, row.id, row, hold);\n" }] }]
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  await applyConfirm(tx, row.id, row, hold, {", "to": "  if (!hold) await applyConfirm(tx, row.id, row, hold, {" }] }]
     },
     {
       "id": "S4",

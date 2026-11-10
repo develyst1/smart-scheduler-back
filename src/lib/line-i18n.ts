@@ -694,6 +694,7 @@ const TABLE: Record<string, Entry> = {
   // the value line is his ruled print shape.
   ob_rental_added_title: { TH: "RENT/ อุปกรณ์เช่า ‼️", EN: "RENT/ อุปกรณ์เช่า ‼️" },
   ob_f_rental: { TH: "Rental", EN: "Rental" },
+  ob_f_makeup: { TH: "ขยายคาบ", EN: "Extended" }, // 🔻 TASK-947 — the app's own make-up word (the TASK-702 badge): the make-up dates line of «CONFIRMED SCHEDULE»
   // 📖 **PLACEHOLDER — MINE, and the customer has NOT seen it** (TASK-394, `REQ-095 §4`). The coach's reminder prints
   // an ECA/Free/KOL entry's head count after its title; the LABEL is pinned by FORM, not bytes — @Porter carries the
   // owner's word; the moment it comes back this line changes and the pin flips to bytes (the `ob_deduct_title` path).

@@ -86,8 +86,9 @@ describe("🔴 TEST-098 — «ครูลา» on a COURSE make-up: the notice 
     expect((withLeave.w.bookings[0] as any).cancelReason ?? null).toBe((without.w.bookings[0] as any).cancelReason ?? null); // the stored code is not widened
     expect((withLeave.w.bookings[0] as any).cancelReason ?? null).toBeNull(); // a COURSE cancel stores no TEACHER_LEAVE
     // the re-plan is asked what it was ALWAYS asked for «ครูลา»: a coach's leave already hands it `coachOff` (from the raw `reasonCode`, not from `enumReason`) — TEST-098 changes none of it
+    expect(withLeave.w.replanAsked).toEqual(without.w.replanAsked); // 🔻 TASK-946 — the same ask for every reason
     expect(withLeave.w.replanAsked).toEqual([{ reowedFor: [], coachOff: [{ date: "2026-10-30", teacherId: "t1" }, { date: "2026-10-30", teacherId: "t2" }], holdConfirmNotices: [] }]);
-    expect(without.w.replanAsked).toEqual([{ reowedFor: [], holdConfirmNotices: [] }]); // …and without «ครูลา» there is no coachOff, as ever
+    expect(without.w.replanAsked).toEqual([{ reowedFor: [], coachOff: [{ date: "2026-10-30", teacherId: "t1" }, { date: "2026-10-30", teacherId: "t2" }], holdConfirmNotices: [] }]); // 🔻 TASK-946 — …and without «ครูลา» the SAME coachOff is passed now (it was absent, "as ever"): the reason no longer decides it, so the two asks are identical
   });
   test("an ORDINARY (non make-up) course cancel with «ครูลา» is UNCHANGED: the same class_cancelled_parent payload as before (no reason)", async () => {
     const h = run({ status: "CONFIRMED", isMakeup: false });

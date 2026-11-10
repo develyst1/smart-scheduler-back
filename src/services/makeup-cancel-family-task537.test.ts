@@ -277,14 +277,14 @@ describe("🔴 TASK-552 (B) — the re-plan is ASKED to re-owe to the cancelled 
   test("a make-up WITH a link ⇒ the re-plan is asked with exactly that leave", async () => {
     const h = run({ extendedFromId: "L-own" });
     await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
-    expect(h.w.replanAsked).toEqual([{ reowedFor: ["L-own"], holdConfirmNotices: [] }]) /* 🔻 TASK-710: the admin cancel also hands the re-plan its (empty here) hold list */;
+    expect(h.w.replanAsked).toEqual([{ reowedFor: ["L-own"], coachOff: [{ date: "2026-10-30", teacherId: "t1" }, { date: "2026-10-30", teacherId: "t2" }], holdConfirmNotices: [] }]) /* 🔻 TASK-710: the admin cancel also hands the re-plan its (empty here) hold list · 🔻 TASK-946: and, for EVERY reason, the cancelled row's coaches × its date (was absent unless «ครูลา») */;
   });
   test("⚠️ a make-up with NO link (the pause case) ⇒ the re-plan is asked with NOTHING — and it is said, not invented", async () => {
     const logs: string[] = [];
     spies.push(spyOn(console, "info").mockImplementation(((...a: unknown[]) => { logs.push(a.map(String).join(" ")); }) as any));
     const h = run({ extendedFromId: null });
     await sched.updateBookingStatus(M1, "cancel", "x", false, undefined, STAFF);
-    expect(h.w.replanAsked).toEqual([{ reowedFor: [], holdConfirmNotices: [] }]) /* 🔻 TASK-710 */;
+    expect(h.w.replanAsked).toEqual([{ reowedFor: [], coachOff: [{ date: "2026-10-30", teacherId: "t1" }, { date: "2026-10-30", teacherId: "t2" }], holdConfirmNotices: [] }]) /* 🔻 TASK-710 · 🔻 TASK-946: the coachOff pairs are always passed now */;
     expect(logs.join("\n")).toContain("carries no link — its re-owe inherits NO leave (TASK-553)");
   });
 });

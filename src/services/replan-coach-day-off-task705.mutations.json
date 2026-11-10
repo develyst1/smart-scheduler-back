@@ -51,14 +51,14 @@
     },
     {
       "id": "C4",
-      "what": "🔴 the admin's cancel with TEACHER_LEAVE does not pass it",
+      "what": "🔴 the admin's cancel does not pass it (🔻 TASK-946: for ANY reason now)",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "const coachOff: CoachOff[] | undefined = reasonCode === \"TEACHER_LEAVE\"",
-              "to": "const coachOff: CoachOff[] | undefined = false"
+              "from": "const coachOff: CoachOff[] = await coachOffOfRow(tx, current);",
+              "to": "const coachOff: CoachOff[] = [];"
             }
           ]
         }
@@ -66,14 +66,14 @@
     },
     {
       "id": "C5",
-      "what": "🔴 the admin's cancel passes it for ANY reason — TASK-551's same-slot ruling broken",
+      "what": "🔴 🔻 TASK-946 — the admin's cancel passes it ONLY for TEACHER_LEAVE again (TASK-551 back: a make-up regrows on its own date)",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "const coachOff: CoachOff[] | undefined = reasonCode === \"TEACHER_LEAVE\"",
-              "to": "const coachOff: CoachOff[] | undefined = true"
+              "from": "const coachOff: CoachOff[] = await coachOffOfRow(tx, current);",
+              "to": "const coachOff: CoachOff[] = reasonCode === \"TEACHER_LEAVE\" ? await coachOffOfRow(tx, current) : [];"
             }
           ]
         }
@@ -96,14 +96,14 @@
     },
     {
       "id": "C7",
-      "what": "the admin GROUP-row cancel with TEACHER_LEAVE does not pass the pair to its seats",
+      "what": "the admin GROUP-row cancel does not pass the pair to its seats (🔻 TASK-946: for ANY reason now)",
       "files": [
         {
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": ", ...(reasonCode === \"TEACHER_LEAVE\" ? { coachOff: await coachOffOfRow(tx, current) } : {})",
-              "to": ""
+              "from": ", coachOff: await coachOffOfRow(tx, current), reseat: true }",
+              "to": ", reseat: true }"
             }
           ]
         }

@@ -123,6 +123,7 @@ function world(courses: Course[], rows: any[]) {
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
+  spies.push(spyOn(sched, "courseIsConfirmed").mockImplementation((async (_tx: any, courseId: string | null) => !courseId || w.bookings.some((b: any) => b.courseId === courseId && b.bookingType === "COURSE_PACKAGE" && ["CONFIRMED", "ATTENDED"].includes(b.status) && b.isMakeup !== true)) as any)); // 🔻 TASK-947 — the predicate, over this world
   spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_tx: any, teacherId: string, startTime: string, after: string, taken: ReadonlySet<string> = new Set()) => {
     let d = plus(after, 7);
     for (let i = 0; i < 20; i++, d = plus(d, 7)) {
@@ -159,15 +160,15 @@ const family = () => spies.push(spyOn(familyLink, "householdLineUserIds").mockIm
 const make = () => lastClassToday({ isMakeup: true, extendedFromId: "c1-b3" });
 
 describe("🔴 F — the SAME slot: the replacement is CONFIRMED, and tells NOBODY a second time", () => {
-  test("admin cancel (any reason but «ครูลา») of the last live make-up ⇒ replacement CONFIRMED + marked + token, ZERO booking_confirmed rows, ZERO cancel notices (TASK-551 intact)", async () => {
+  test("🔻 TASK-946 (was: any reason but «ครูลา» ⇒ the SAME slot, ZERO notices — TASK-551; the owner REVERSED it) admin cancel of the last live make-up ⇒ the replacement is CONFIRMED + marked + token on the NEXT free week, and IT IS announced (family and coach), with the cancel notice", async () => {
     const w = make(); family(); coaches(() => [T1]);
     await sched.updateBookingStatus("c1-b4", "cancel", "x", false, "ADMIN_ERROR", STAFF);
     const r = replacementOf(w);
-    expect(r).toMatchObject({ date: today, status: "CONFIRMED", isMakeup: true });
+    expect(r).toMatchObject({ date: plus(today, 7), status: "CONFIRMED", isMakeup: true }); // was `date: today`
     expect(r.confirmedAt).toBeInstanceOf(Date);
     expect(typeof r.checkinToken).toBe("string");
-    expect(confirms(r.id)).toEqual([]);
-    expect(cancels()).toEqual([]);
+    expect(confirms(r.id)).toEqual(["parent", "teacher"]); // was []
+    expect(cancels().length).toBeGreaterThan(0); // was []
   });
   test("same date + time but a DIFFERENT coach ⇒ the FAMILY stays silent (their class did not move), the COACH is told (the decider's own split)", async () => {
     const w = make(); family();

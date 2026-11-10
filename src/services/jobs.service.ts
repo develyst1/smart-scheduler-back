@@ -44,7 +44,7 @@ import { campReminderSends } from "../lib/camp-reminder";
 import { WEEKLY_DIGEST_JOB, groupWeekRows, weekOf, weeklyDigestKey } from "../lib/weekly-digest";
 import { GROUP_EXTENDER_JOB, weeklyDatesToCreate } from "../lib/group-extend";
 import { COURSE_LIVE, COURSE_LIVE_STATUSES } from "../lib/course-plan";
-import { attachAdditionalTeachers, insertBooking } from "./scheduler.service";
+import { attachAdditionalTeachers, insertBooking, unconfirmedCourseIds } from "./scheduler.service";
 import { ApiException } from "../lib/http";
 import { addDays, hhmm } from "../lib/time";
 import { campReminderInputs } from "./camp.service";
@@ -398,6 +398,18 @@ const reminderRanToday = (runDate: string): Promise<boolean> => reminderRanOn(ru
  * times a day: each run sends only to people not already reminded today, so a 07:00 ops trigger reminds whoever
  * is due, the 08:15 run reminds the rest, and nobody is sent to twice.
  */
+/**
+ * 🔻 TASK-947 (F2) — the parent side of a PENDING course's make-up is quiet: such a row (a make-up, born CONFIRMED, of a course with no confirmed session of its own) is handed to the grouper with its
+ * children's `parentId` blanked, so no PARENT entry is built for it; the coach's entry is the same row's and is untouched. Every other row is returned as it came (the same object).
+ */
+export function quietPendingMakeupParents(rows: any[], pendingCourseIds: ReadonlySet<string>): any[] {
+  return rows.map((r: any) =>
+    r.isMakeup === true && r.courseId && pendingCourseIds.has(r.courseId)
+      ? { ...r, student: r.student ? { ...r.student, parentId: null } : r.student, coStudent: r.coStudent ? { ...r.coStudent, parentId: null } : r.coStudent }
+      : r,
+  );
+}
+
 export async function runDailyReminderJob(date?: string) {
   const runDate = date ?? bangkokNow().date;
 
@@ -436,8 +448,13 @@ export async function runDailyReminderJob(date?: string) {
   // the same function underneath, so its answer cannot differ from the one every other sender gets.
   const familyAccounts = await familyLineUserIdsBulk(parentIds);
 
+  // 🔻 TASK-947 — the day-before reminder is a parent message too: a MAKE-UP of a PENDING course (born CONFIRMED) was never announced, so its family is not reminded (the coach's entry is the same row's, untouched).
+  // The parent ids are blanked on such a row, so the grouper builds no parent entry for it. ONE batched query for the day's make-up courses.
+  const pendingCourseIds = await unconfirmedCourseIds(db, rows.filter((r: any) => r.isMakeup === true && r.courseId).map((r: any) => r.courseId as string));
+  const remindRows = quietPendingMakeupParents(rows, pendingCourseIds);
+
   const groups = groupReminders(
-    rows.map((r: any) => ({
+    remindRows.map((r: any) => ({
       id: r.id,
       date: r.date,
       startTime: r.startTime,

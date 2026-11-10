@@ -3594,6 +3594,7 @@ export async function sendClassOnAgainToFamilies(
   tx: any,
   current: { id: string; studentId?: string | null; coStudentId?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null; seats?: { studentId?: string | null }[] | null },
 ): Promise<string[] | null> {
+  if (!(await courseIsConfirmed(tx, (current as any).courseId))) return null; // 🔻 TASK-947 — nothing for the family while the course is pending
   const accounts = await familyAccountsOfRow(tx, current);
   if (accounts === null) return null;
   await enqueueParentCopies(tx, accounts, { bookingId: current.id, payload: { kind: "class_on_again_parent", bookingId: current.id, bookingType: current.bookingType ?? null, size: current.course?.size ?? current.voucher?.totalHours ?? null } });
@@ -3631,6 +3632,8 @@ export async function classCancelledFamilyAccounts(
     if (!confirmed.length) return null;
     target = { ...current, seats: confirmed };
   }
+  // 🔻 TASK-947 — a MAKE-UP of a PENDING course was never announced to the family, so its cancel has nothing to retract (the coach notice is the caller's, unchanged). Only a make-up: a regular session that is CONFIRMED already makes the course confirmed.
+  if ((current as any).isMakeup === true && !(await courseIsConfirmed(tx, (current as any).courseId))) return null;
   const accounts = await familyAccountsOfRow(tx, target);
   if (accounts === null) return null;
   // 🔻 TASK-704 (REQ-115 F1) — "is this a MAKE-UP?" ⇒ the MARKER, never the status: a make-up is born CONFIRMED now (TASK-702), so a status test sent a cancelled
@@ -3711,7 +3714,7 @@ async function announceMove(tx: any, bookingId: string, before: { status: string
   for (const coach of await teachersOfBooking(tx, bookingId)) {
     await enqueueLine({ recipientType: "teacher", recipientLineUserId: coach.lineUserId ?? null, bookingId, payload: { kind: "class_moved_teacher", ...common } }, tx);
   }
-  const accounts = await familyAccountsOfRow(tx, after);
+  const accounts = (after as any).isMakeup === true && !(await courseIsConfirmed(tx, (after as any).courseId)) ? null : await familyAccountsOfRow(tx, after); // 🔻 TASK-947 — a pending course's make-up was never announced: its move is not either (the coach was told above)
   if (accounts !== null) await enqueueParentCopies(tx, accounts, { bookingId, payload: { kind: "class_moved_parent", ...common } });
 }
 
@@ -4454,6 +4457,7 @@ async function applyConfirm(
   id: string,
   current: { teacherId: string; studentId?: string | null; coStudentId?: string | null; attendeeNote?: string | null; bookingType?: string | null; course?: { size: number } | null; voucher?: { totalHours: number } | null },
   hold?: HeldConfirmNotice[], // 🔻 TASK-710 — given ⇒ the two notices are collected here instead of queued; omitted ⇒ byte-identical to before
+  opts: { skipParent?: boolean } = {}, // 🔻 TASK-947 — `confirmMakeupAtBirth` of a PENDING course: the coach is told as ever, the parent is NOT (the confirm is still the ONE confirm: status, token, hold, coach notices)
 ): Promise<NotifyResult | null> {
   let notification: NotifyResult | null = null;
   await tx
@@ -4523,6 +4527,7 @@ async function applyConfirm(
   // session as well as the teacher row it already did. That fan-out is pre-existing and is flagged in
   // TASK-207's notes — `confirmCourse` is the one-message-per-person path, and the FE should prefer it.
   // 🔴 TASK-259 — one row per LINE account the family has linked, not one for the primary column.
+  if (opts.skipParent) return notification; // 🔻 TASK-947 — nothing for the family while the course is pending (neither queued nor held)
   const parentAccounts = await householdLineUserIds(tx, [current.studentId, current.coStudentId]); // TASK-420 — both households
   if (hold) { hold.push({ audience: "parent", send: () => enqueueParentCopies(tx, parentAccounts, { bookingId: id, payload: confirmPayload }) }); return notification; } // 🔻 TASK-710
   await enqueueParentCopies(tx, parentAccounts, {
@@ -4530,6 +4535,34 @@ async function applyConfirm(
     payload: confirmPayload,
   });
   return notification;
+}
+
+/**
+ * 🔻 TASK-947 (F2; ขวัญ 2026-11-09: «ยังไม่ส่งการแจ้งเตือนใด ๆ ไปยังผู้ปกครองในสถานะ Pending Course»; owner GO 2026-11-10 «แก้ให้ถูกอ่ะ») — **THE ONE PREDICATE: has this course been confirmed to the family?**
+ * There is no course flag: a course is PENDING until one of its OWN sessions is CONFIRMED or ATTENDED. **Make-ups are excluded** (`isMakeup`): they are born CONFIRMED (REQ-115, TASK-702), so counting them would make
+ * every course "confirmed" the moment a leave grew one. A voucher / a single booking has no course ⇒ confirmed (unchanged). One query. While it is false, no PARENT message goes out about the course's make-ups
+ * (the confirm, the undo-leave, the expiry change, a make-up's cancel / move, its day-before reminder): the parent hears the WHOLE schedule once, at Confirm Course (which now lists the make-ups). The coach is told as ever.
+ */
+export async function courseIsConfirmed(tx: any, courseId: string | null | undefined): Promise<boolean> {
+  if (!courseId) return true;
+  const hit = await tx.query.bookings.findFirst({
+    columns: { id: true },
+    where: (b: any, { and: a, eq: e, inArray: inA }: any) => a(e(b.courseId, courseId), e(b.bookingType, "COURSE_PACKAGE"), inA(b.status, ["CONFIRMED", "ATTENDED"]), e(b.isMakeup, false)),
+  });
+  return !!hit;
+}
+
+/** 🔻 TASK-947 — the SAME condition for MANY courses in ONE query (the day-before reminder job): the ids that are NOT confirmed. */
+export async function unconfirmedCourseIds(exec: any, courseIds: readonly string[]): Promise<Set<string>> {
+  const ids = [...new Set(courseIds.filter(Boolean))];
+  if (!ids.length) return new Set();
+  const rows = await exec
+    .select({ courseId: bookings.courseId })
+    .from(bookings)
+    .where(and(inArray(bookings.courseId, ids), eq(bookings.bookingType, "COURSE_PACKAGE"), inArray(bookings.status, ["CONFIRMED", "ATTENDED"]), eq(bookings.isMakeup, false)))
+    .groupBy(bookings.courseId);
+  const confirmed = new Set(rows.map((r: any) => r.courseId as string));
+  return new Set(ids.filter((id) => !confirmed.has(id)));
 }
 
 /**
@@ -4552,7 +4585,7 @@ export async function confirmMakeupAtBirth(tx: any, makeupId: string, hold?: Hel
     await notifyAdmins({ kind: "makeup_not_confirmed", bookingId: row.id, reason: e.message }, tx, row.id);
     return "refused";
   }
-  await applyConfirm(tx, row.id, row, hold);
+  await applyConfirm(tx, row.id, row, hold, { skipParent: !(await courseIsConfirmed(tx, row.courseId)) }); // 🔻 TASK-947 — born CONFIRMED + badged as ever (REQ-115); only the PARENT copy waits for Confirm Course
   return "confirmed";
 }
 
@@ -4709,7 +4742,7 @@ export async function updateBookingStatus(
       // 🔴 TASK-516 addendum — the seats AS THEY WERE, read BEFORE the cascade cancels them: the family notice below tells the families
       // of the seats that were live (the one household rule drops CANCELLED seats — re-read after this line, it would drop them all).
       const seatsBefore = current.bookingType === "GROUP" ? await tx.query.bookings.findMany({ where: (b: any, { eq: e }: any) => e(b.groupId, current.id) }) : undefined;
-      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), ...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {}), reseat: true }); // 🔻 TASK-705 §2 — «ครูลา» on a GROUP row: its coaches are off that date // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
+      if (current.bookingType === "GROUP") await cancelSeatsOfGroup(tx, current.id, cancelReason ?? null, { ...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {}), coachOff: await coachOffOfRow(tx, current), reseat: true }); // 🔻 TASK-705 §2 / TASK-946 — the GROUP row's coaches are off that date, for EVERY reason (was «ครูลา» only) // 🔻 TASK-656 — T3 reaches each SEAT's course ONLY for SCHOOL_ISSUE
       await tx
         .update(bookings)
         .set({
@@ -4752,11 +4785,9 @@ export async function updateBookingStatus(
         // can test* — the same reason `EXPIRY_REQUIRED` went in TASK-287.
         // ✅ The reconcile still runs, and still re-owes the make-up: **every course-session cancel is a
         // reschedule, not a forfeit** (SPEC-028 §11.3). Only the refusal it could raise is gone.
-        // 🔻 TASK-705 — ONLY the reason «ครูลา» (`TEACHER_LEAVE`) says the coach is off: then the class's coaches (primary + additional) are off THAT date, so the replacement skips it.
-        // 🚫 Every other reason passes nothing — TASK-551 (owner): a make-up put straight back in the same slot changed nothing. Read from the raw `reasonCode`: a course cancel ignores it in `enumReason`.
-        const coachOff: CoachOff[] | undefined = reasonCode === "TEACHER_LEAVE"
-          ? (await teachersOfBooking(tx, current.id)).map((c: any) => ({ teacherId: c.id as string, date: current.date }))
-          : undefined;
+        // 🔻 TASK-705 — the class's coaches (primary + additional) are off THAT date, so the replacement skips it.
+        // 🔻 TASK-946 (REQ-5006 / TEST-140; owner GO 2026-11-10, «แก้สิ เราทำไม่ถูก» — REVERSES TASK-551): for EVERY reason, not only «ครูลา». A cancelled make-up is always the course's LAST class, so the search anchors a week earlier and its first candidate IS the date just cancelled: it used to regrow there, read as "the same slot", and the +1 week and the family notice were withheld. The cancelled row's own coach(es) × date are now always taken, the make-up lands on the next free week, `slot.family` is false, and both follow as for any other cancel.
+        const coachOff: CoachOff[] = await coachOffOfRow(tx, current);
         replanned = await reconcileCoursePlan(tx, current.courseId, { reowedFor: reowedForOf(current), ...(coachOff ? { coachOff } : {}), holdConfirmNotices: heldConfirm }); // 🔻 TASK-548 — kept: the family notice below reads its append result · 🔻 TASK-552 (B) — re-owed to the cancelled make-up's own leave
         // 🔻 TASK-656 — the school-cancel week (trigger T3) is decided BELOW, once `slot` is known: a week here depends on the REASON and on whether
         // the class was really lost, and the same-slot answer does not exist until the re-plan has run.
@@ -5664,6 +5695,8 @@ export async function confirmCourse(id: string) {
     // a 10-session course would otherwise be ten messages each for one decision (TASK-207).
     const teacher = rows[0]?.teacher ?? null;
     const student = rows[0]?.student ?? null;
+    // 🔻 TASK-947 — the course's live MAKE-UPS (born CONFIRMED, never announced to the parent while the course was pending) join THIS one message: the parent hears the whole schedule once. Absent when there are none (the payload is byte-identical then).
+    const makeupDates: string[] = rows.filter((r: any) => r.isMakeup === true && (r.status === "CONFIRMED" || r.status === "EXTENDED")).map((r: any) => r.date as string).sort();
     const coursePayload = {
       kind: "course_confirmed",
       courseId: id,
@@ -5698,6 +5731,7 @@ export async function confirmCourse(id: string) {
         .filter((r: any) => r.status === "SICK_LEAVE")
         .map((r: any) => r.date)
         .sort(),
+      ...(makeupDates.length ? { makeupDates } : {}), // 🔻 TASK-947
       // 🔴 TASK-284 — the FIRST NON-EMPTY note, in date order. This read `rows[0]?.attendeeNote`, the
       // EARLIEST session's note, and I documented that as a known limitation in TASK-269 §2 and chose not to
       // fix it. The owner then put a note on a session that was not the earliest, confirmed the course, and
@@ -6056,7 +6090,7 @@ export async function updateCourseExpiry(
     // 🚫 No notice for a no-op (`from === to` — `recordExpiryChange`'s own rule) or for an ENDED course (no classes left: a validity date would tell the family something
     // false — Sober's ruling, Porter may overturn). A DROPPED (paused) course IS told: that is exactly when an admin extends before resuming. Longer and shorter are ONE notice.
     // 🚫 Family accounts only — no coach, no admin. The snapshot (`from`/`to`) is taken here, so two quick edits send two TRUE messages.
-    if (from !== input.expiryDate && !course.endedAt) {
+    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id))) { // 🔻 TASK-947 — and not while the course is still pending
       const anyRow = await tx.query.bookings.findFirst({ where: (b: any, { and: a, eq: e }: any) => a(e(b.courseId, id), e(b.bookingType, "COURSE_PACKAGE")) }); // the enriched row the worker reads the student / program from
       await enqueueParentCopies(tx, await householdLineUserIds(tx, [course.studentId, course.coStudentId]), {
         ...(anyRow ? { bookingId: anyRow.id } : {}),

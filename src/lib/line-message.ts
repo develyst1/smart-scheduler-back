@@ -614,7 +614,9 @@ function buildOutboxMessage(
         // 🔻 TASK-390 (REQ-091 §14) — `Rental : Rent 200 / Full Set (…)` LAST, after `Remark`, as the reminder prints it;
         // the line arrives RENDERED on the payload (built once where the payload is), `*ถ้ามี` — absent when the course
         // has none, so an unrented course renders byte-for-byte as before. Both audiences: the one renderer.
-        extra(t("ob_f_rental", lang), fieldValue(payload.rental))
+        extra(t("ob_f_rental", lang), fieldValue(payload.rental)) +
+        // 🔻 TASK-947 — the course's make-ups, as a comma-joined dated list (the planned-leave line's shape); ONE line, only when there are any, so a course without make-ups renders byte-for-byte as before.
+        extra(t("ob_f_makeup", lang), Array.isArray(payload.makeupDates) && payload.makeupDates.length ? (payload.makeupDates as string[]).map(ddmmyyyy).join(", ") : undefined)
       );
     }
     // SPEC-072 §3 / TASK-254 (REQ-077 Parent 3) — a session was used, and here is what is left.

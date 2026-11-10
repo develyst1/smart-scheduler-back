@@ -12,8 +12,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
-              "to": "    if (!course.endedAt) {"
+              "from": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id))) {",
+              "to": "    if (!course.endedAt && (await courseIsConfirmed(tx, id))) {"
             }
           ]
         }
@@ -27,8 +27,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
-              "to": "    if (from !== input.expiryDate) {"
+              "from": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id))) {",
+              "to": "    if (from !== input.expiryDate && (await courseIsConfirmed(tx, id))) {"
             }
           ]
         }
@@ -42,8 +42,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
-              "to": "    if (from !== input.expiryDate && !course.endedAt && input.expiryDate > from) {"
+              "from": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id))) {",
+              "to": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id)) && input.expiryDate > from) {"
             }
           ]
         }
@@ -132,8 +132,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "    if (from !== input.expiryDate && !course.endedAt) {",
-              "to": "    if (from !== input.expiryDate && !course.endedAt && !course.droppedAt) {"
+              "from": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id))) {",
+              "to": "    if (from !== input.expiryDate && !course.endedAt && (await courseIsConfirmed(tx, id)) && !course.droppedAt) {"
             }
           ]
         }

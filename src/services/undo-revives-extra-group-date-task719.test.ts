@@ -123,6 +123,7 @@ function world(courses: Course[], rows: any[]) {
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
+  spies.push(spyOn(sched, "courseIsConfirmed").mockImplementation((async (_tx: any, courseId: string | null) => !courseId || w.bookings.some((b: any) => b.courseId === courseId && b.bookingType === "COURSE_PACKAGE" && ["CONFIRMED", "ATTENDED"].includes(b.status) && b.isMakeup !== true)) as any)); // 🔻 TASK-947 REWORK — the predicate, over this world (a leave Undo restores PENDING only on an UNCONFIRMED course)
   spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_tx: any, teacherId: string, startTime: string, after: string, taken: ReadonlySet<string> = new Set()) => {
     let d = plus(after, 7);
     for (let i = 0; i < 20; i++, d = plus(d, 7)) {

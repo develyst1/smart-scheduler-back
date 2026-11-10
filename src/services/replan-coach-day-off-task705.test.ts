@@ -123,6 +123,7 @@ function world(courses: Course[], rows: any[]) {
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => w.bookings.filter((b: any) => b.status !== "CANCELLED").map(withRels)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
+  spies.push(spyOn(sched, "courseIsConfirmed").mockImplementation((async (_tx: any, courseId: string | null) => !courseId || w.bookings.some((b: any) => b.courseId === courseId && b.bookingType === "COURSE_PACKAGE" && ["CONFIRMED", "ATTENDED"].includes(b.status) && b.isMakeup !== true)) as any)); // 🔻 TASK-947 — the predicate, over this world
   spies.push(spyOn(sched, "findFreeExtensionDate").mockImplementation((async (_tx: any, teacherId: string, startTime: string, after: string, taken: ReadonlySet<string> = new Set()) => {
     let d = plus(after, 7);
     for (let i = 0; i < 20; i++, d = plus(d, 7)) {
@@ -192,15 +193,15 @@ describe("🔴 F2 — which doors pass it (by value, through the real entry poin
     expect(fam?.payload?.newClassDates).toContain(plus(today, 7)); // (the fake `findMany` ignores the id filter and returns the course rows — what matters: the NEW date is named, and today is not the new class)
     expect(replacementOf(w)!.date).not.toBe(today);
   });
-  test("🚫 the admin's cancel with ANY OTHER reason passes NOTHING — TASK-551 stands (the replacement may land in the same slot)", async () => {
+  test("🔻 TASK-946 (was: 🚫 ANY OTHER reason passes NOTHING — TASK-551 stands; the owner REVERSED it) — the admin's cancel passes the row's coach × date for EVERY reason: the replacement never lands on the cancelled date", async () => {
     for (const reason of [undefined, "ADMIN_ERROR", "CUSTOMER_CANCELLED"]) {
       const w = lastClassToday();
       spyReplan();
       spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async () => [{ id: T1, lineUserId: "U-coach" }]) as any));
       spies.push(spyOn(familyLink, "householdLineUserIds").mockImplementation((async () => ["U-mum"]) as any));
       await sched.updateBookingStatus("c1-b4", "cancel", "x", false, reason, STAFF);
-      expect(askedCoachOff).toEqual([null]);
-      expect(replacementOf(w)!.date).toBe(today);
+      expect(askedCoachOff).toEqual([[{ teacherId: T1, date: today }]]); // 🔻 TASK-946 — was [null]
+      expect(replacementOf(w)!.date).toBe(plus(today, 7)); // 🔻 TASK-946 — was `today` (the same slot)
       for (const s of spies.splice(0)) s.mockRestore();
     }
   });
@@ -224,14 +225,14 @@ describe("🔴 F2 §2 — the GROUP doors: the row's coaches × its date go to t
     spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async () => [{ id: T1 }, { id: OTHER }]) as any));
     expect(await sched.coachOffOfRow({}, { id: "g1", date: today })).toEqual([{ teacherId: T1, date: today }, { teacherId: OTHER, date: today }]);
   });
-  test("by source: the admin's GROUP-row cancel and the series cancel-all pass it ONLY for the raw reason TEACHER_LEAVE (SCHOOL_ISSUE keeps its trigger, every other reason passes nothing)", () => {
+  test("by source: 🔻 TASK-946 — the admin's GROUP-row cancel passes it for EVERY reason (SCHOOL_ISSUE keeps its trigger); the series cancel-all still passes it ONLY for the raw reason TEACHER_LEAVE (not changed by TASK-946)", () => {
     const A = readFileSync(resolve(import.meta.dir, "scheduler.service.ts"), "utf8");
     const O = readFileSync(resolve(import.meta.dir, "other-series.service.ts"), "utf8");
-    expect(A).toContain('...(reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, current) } : {})');
+    expect(A).toContain('coachOff: await coachOffOfRow(tx, current), reseat: true }'); // 🔻 TASK-946 — was `...(reasonCode === "TEACHER_LEAVE" ? { coachOff: … } : {})`
     expect(A).toContain('...(enumReason === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {})');
     expect(O).toContain('...(input.reasonCode === "TEACHER_LEAVE" ? { coachOff: await coachOffOfRow(tx, r) } : {})');
     expect(O).toContain('...(input.reasonCode === SCHOOL_ISSUE ? { weekTrigger: "T3_SCHOOL_ISSUE" as const } : {})');
-    expect([...(A + O).matchAll(/coachOffOfRow\(tx, /g)]).toHaveLength(2);
+    expect([...(A + O).matchAll(/coachOffOfRow\(tx, /g)]).toHaveLength(3); // 🔻 TASK-946 — the single cancel + the group cancel (scheduler) + the series cancel-all (other-series); was 2
   });
 });
 

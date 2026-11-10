@@ -151,6 +151,7 @@ const run = (w: World, opts: { plan?: { appended: string[]; cancelled: string[] 
   };
   spies.push(spyOn(db, "transaction").mockImplementation((async (cb: any) => cb(tx)) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async (_tx: any, id: string, _t: string, status: string) => { h.holds.push([id, status]); }) as any));
+  spies.push(spyOn(sched, "courseIsConfirmed").mockImplementation((async () => true) as any)); // 🔻 TASK-947 — these undo fixtures are CONFIRMED courses (the family notice is gated by the predicate; the pending case is pinned in pending-course-no-parent-message-task947.test.ts)
   spies.push(spyOn(sched, "reconcileCoursePlan").mockImplementation((async () => opts.plan ?? { appended: [], cancelled: [] }) as any));
   spies.push(spyOn(sched, "recordExpiryChange").mockImplementation((async (_tx: any, row: any) => { h.expiry.push(row); }) as any));
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
@@ -690,7 +691,7 @@ describe("🔴 TASK-540 — the leave's note is UNDONE, not cleared: the note it
     expect(S.match(/\.\.\.leaveNoteWrite\(/g)).toHaveLength(2);
     expect(S).not.toMatch(/status: "SICK_LEAVE", note: /); // no leave writes the note by hand any more
     expect(S).toContain("    patch.note = input.note;\n    patch.leaveNoteReplaced = false;");
-    expect(src("src/services/undo.service.ts")).toContain('.set({ status: "CONFIRMED", leaveCharged: null, ...leaveNoteUndo(row) })');
+    expect(src("src/services/undo.service.ts")).toContain('.set({ status: restored, leaveCharged: null, ...leaveNoteUndo(row) })');
   });
 });
 

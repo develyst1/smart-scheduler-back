@@ -87,8 +87,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "...(enumReason === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" as const } : {}), ...(reasonCode",
-              "to": "...(reasonCode"
+              "from": "...(enumReason === SCHOOL_ISSUE ? { weekTrigger: \"T3_SCHOOL_ISSUE\" as const } : {}), coachOff: await coachOffOfRow(tx, current)",
+              "to": "coachOff: await coachOffOfRow(tx, current)"
             }
           ]
         }

@@ -28,6 +28,7 @@ import { MAKEUP_NOTE_UNDONE } from "../lib/makeup-marker"; // TASK-702
 import { assertNoCoachOnLeave } from "../lib/teacher-leave"; // TASK-561
 import { retireEmptyExtraGroupDate } from "./scheduler.service"; // TASK-716 — a SEAT make-up undone may have been an extra group date's last
 import { assertCourseWritable, assertNotCampRow, loadBookingDTO, reconcileBookingHolds, reconcileCoursePlan, sendClassCancelledToCoaches, sendClassCancelledToFamilies } from "./scheduler.service";
+import { courseIsConfirmed } from "./scheduler.service"; // 🔻 TASK-947 REWORK (TEST-152) — a leave Undo restores PENDING while the course is unconfirmed
 import { sendClassOnAgainToFamilies } from "./scheduler.service"; // 🔻 TASK-711 — the family hears «class on again» after an Undo of its leave
 import { planReviveOfRetiredExtraDate, reviveRetiredExtraGroupDate } from "./scheduler.service"; // 🔻 TASK-719 — a retired extra group date comes back with its seat
 
@@ -141,10 +142,14 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
     const { row, kind, leaveRefunded, makeup, reviveGroup } = await planUndo(tx, bookingId, today);
 
     // ── 🔑 THE GUARD: one conditional update on the status the row was read with (a check-in's is the shared `revertAttendance`) ──
+    // 🔻 TASK-947 REWORK (TEST-152, found on sid) — the class comes back as it would have been BORN: while the course has no confirmed session of its own it is PENDING, so the family gates
+    // (`courseIsConfirmed`) stay shut and no parent message leaves a pending course. Asked BEFORE the flip: the row is still SICK_LEAVE, so it cannot count itself. A non-course row ⇒ confirmed.
+    let restored: "PENDING" | "CONFIRMED" = "CONFIRMED";
     if (kind === "leave") {
+      restored = row.courseId && !(await courseIsConfirmed(tx, row.courseId)) ? "PENDING" : "CONFIRMED";
       const flipped = await tx
         .update(bookings)
-        .set({ status: "CONFIRMED", leaveCharged: null, ...leaveNoteUndo(row) }) // 🔻 TASK-540 — the note the leave replaced comes back (only if it recorded one)
+        .set({ status: restored, leaveCharged: null, ...leaveNoteUndo(row) }) // 🔻 TASK-540 — the note the leave replaced comes back (only if it recorded one)
         .where(and(eq(bookings.id, row.id), eq(bookings.status, row.status)))
         .returning({ id: bookings.id });
       if (!flipped.length) throw UNDO_ALREADY_CHANGED();
@@ -204,7 +209,7 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       await revertAttendance(tx, row);
     }
     // The coach's freelance hold for the row's new status (a leave had released it; ATTENDED → CONFIRMED holds the same).
-    await reconcileBookingHolds(tx, row.id, row.teacherId, "CONFIRMED", false);
+    await reconcileBookingHolds(tx, row.id, row.teacherId, restored, false); // 🔻 TASK-947 REWORK — the row's REAL new status (a check-in Undo, the `else` above, stays CONFIRMED)
 
     // The EVENT, append-only — with the original check-in's provenance kept (owner ruling 2). The shared writer (TASK-497).
     await recordUndo(tx, row, {
