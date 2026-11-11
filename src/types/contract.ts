@@ -333,10 +333,15 @@ export interface SomBreakdown {
 export interface SomReportResponse {
   today: { date: IsoDate; confirmed: number; attended: number; attendanceRate: number; expected: number };
   existingCustomers: { month: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
-  demographics: { month: string; gender: SomBreakdown; ageBand: SomBreakdown; nationality: SomBreakdown; province: SomBreakdown; district: SomBreakdown; subdistrictByDistrict: Record<string, SomBreakdown> };
+  demographics: { month: string; base: "CUSTOMERS_PLUS_RECENT_1HR"; gender: SomBreakdown; ageBand: SomBreakdown; nationality: SomBreakdown; province: SomBreakdown; district: SomBreakdown; subdistrictByDistrict: Record<string, SomBreakdown> };
   activityProgram: {
     month: string;
     categories: Array<{ key: string; label: string; course: number; voucher: number; singleSession: number; typeTotal: number; firstTrial: number; total: number }>;
+  };
+  // 🔻 TASK-950 (SPEC-104 #5) — Activity / Program by package: active courses by subject + size, 1 HR children, 1st Trial beside (not in `total`); vouchers never.
+  activityPackages: {
+    month: string; from: string; to: string; base: "CUSTOMERS_PLUS_RECENT_1HR";
+    activities: Array<{ key: string; label: string; total: number; packages: Array<{ kind: "COURSE"; size: number; count: number } | { kind: "SINGLE_SESSION"; count: number }>; firstTrial: number }>;
   };
   // 🔻 TASK-742 — Palm §3 / §4. The old `newVsRenewing.{newByFirstTrial,newByRegistration,renewing}` ride along until the front switches.
   newVsRenewing: { month: string; firstTrial: number; newCourseThisMonth: number; newCoursePrevMonth: number; renewCourse: number; trialNotConverted: number; notRenewed: number };

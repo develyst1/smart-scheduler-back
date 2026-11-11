@@ -1,0 +1,293 @@
+{
+  "task": "TASK-950",
+  "proves": "src/lib/som-activity-packages-task950.test.ts",
+  "note": "SPEC-104: B = the demographics base (customers ∪ 1 HR children, archived out); P = activityPackages (active courses by subject + size, 1 HR children, trial beside, vouchers never).",
+  "tests": "src/lib/som-activity-packages-task950.test.ts",
+  "mutations": [
+    {
+      "id": "B1",
+      "what": "base loses the 1 HR children",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set<string>([...customers, ...recentSingleIds])",
+              "to": "new Set<string>([...customers])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "what": "base loses the customers",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "new Set<string>([...customers, ...recentSingleIds])",
+              "to": "new Set<string>([...recentSingleIds])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "what": "an archived child stays in the base",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const id of archived) baseIds.delete(id);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "what": "the base is back to «attended in the range»",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const people = [...baseIds].map(",
+              "to": "const people = [...new Set(attended.flatMap((b) => [...b.studentIds]))].map("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "what": "non-active courses are counted",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const c of activeCourses) {",
+              "to": "for (const c of courses) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "a course is counted once per child, not as a course",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "p.course.set(c.size, (p.course.get(c.size) ?? 0) + 1);",
+              "to": "p.course.set(c.size, (p.course.get(c.size) ?? 0) + c.studentIds.length + 1);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "courses are not grouped by size",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "p.course.set(c.size, (p.course.get(c.size) ?? 0) + 1);",
+              "to": "p.course.set(10, (p.course.get(10) ?? 0) + 1);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "a voucher is counted as a package",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "for (const s of subjects) if (s.active) slot(s.id);",
+              "to": "for (const s of subjects) if (s.active) slot(s.id);\n  for (const v of vouchers) slot(UNKNOWN_KEY).single += 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "the 1st Trial is inside `total`",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "total: packages.reduce((n, x) => n + x.count, 0),",
+              "to": "total: packages.reduce((n, x) => n + x.count, 0) + p.trial,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "what": "1 HR counted per row, not per child",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (recentSingleIds.has(id)) set.add(id);",
+              "to": "if (recentSingleIds.has(id)) set.add(id + b.date + b.startTime);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "what": "1 HR ignores the card's set (a child who opened a course stays)",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (recentSingleIds.has(id)) set.add(id);",
+              "to": "set.add(id);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "what": "the trial ignores the range",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.bookingType === \"FIRST_TRIAL\" && inMonth(b.date)",
+              "to": "b.bookingType === \"FIRST_TRIAL\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "what": "the 1 HR ignores the last-3-months window",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.bookingType === \"SINGLE_SESSION\" && b.date >= recentFromDate && b.date <= monthTo) {",
+              "to": "b.bookingType === \"SINGLE_SESSION\") {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "what": "packages smallest first",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "b.count - a.count || (a.kind === \"COURSE\"",
+              "to": "a.count - b.count || (a.kind === \"COURSE\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "what": "`unknown` is always listed",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": ".filter((a) => a.key !== UNKNOWN_KEY || a.total > 0 || a.firstTrial > 0)",
+              "to": ".filter(() => true)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "what": "a cancelled 1 HR / trial is counted",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.status === \"CANCELLED\" || !passes(b)) continue;",
+              "to": "if (!passes(b)) continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P13",
+      "what": "the badge filter is ignored in the packages",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "if (b.status === \"CANCELLED\" || !passes(b)) continue;",
+              "to": "if (b.status === \"CANCELLED\") continue;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "what": "the merge drops activityPackages",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "activityPackages: fresh.activityPackages,",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "what": "an unknown subject is dropped instead of `unknown`",
+      "files": [
+        {
+          "file": "src/lib/som-contract.ts",
+          "edits": [
+            {
+              "from": "const keyOfSubject = (id: string | null | undefined): string => (id && nameOf.has(id) ? id : UNKNOWN_KEY);",
+              "to": "const keyOfSubject = (id: string | null | undefined): string => (id ?? UNKNOWN_KEY);"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

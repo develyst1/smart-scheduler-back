@@ -147,8 +147,8 @@
           "file": "src/lib/som-contract.ts",
           "edits": [
             {
-              "from": "[...new Set(attended.flatMap((b) => [...b.studentIds]))]",
-              "to": "attended.flatMap((b) => [...b.studentIds])"
+              "from": "const people = [...baseIds].map(",
+              "to": "const people = [...customers, ...recentSingleIds].map("
             }
           ]
         }

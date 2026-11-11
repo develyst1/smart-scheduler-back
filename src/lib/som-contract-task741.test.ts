@@ -37,6 +37,8 @@ const SUBJECTS = [{ id: BIKE, name: "Bike", active: true }, { id: SKATE, name: "
 /** REQ-5002 §5 Q2: an Active course needs a class scheduled AFTER the as-of day — `runA` gives every course one (CONFIRMED, 2027-01-15). */
 const runA = (o: Partial<SomContractInput> = {}) =>
   run({ ...o, bookings: [...(o.bookings ?? []), ...(o.courses ?? []).map((c) => bk({ courseId: c.id, studentIds: [...c.studentIds], status: "CONFIRMED", date: "2027-01-15" }))] });
+/** 🔻 TASK-950 — the demographics base is customers ∪ 1 HR (last 3 months) children (was «attended in the range»): the people fixtures below are 1 HR children of the window. */
+const kid = (o: Partial<SomBooking> = {}): SomBooking => bk({ bookingType: "SINGLE_SESSION", ...o });
 const run = (o: Partial<SomContractInput> = {}) =>
   countSom({ month: MONTH, today: TODAY, badgeValueIds: [], bookings: [], courses: [], vouchers: [], students: [], subjects: SUBJECTS, districtLabel: (c) => LABELS[c] ?? null, subdistrictLabel: (c) => SUBS[c] ?? null, ...o });
 
@@ -278,14 +280,14 @@ describe("🔴 TASK-741 — Existing Customers: 1st Trial / 1 HR (3 FULL months,
 
 describe("🔴 TASK-741 — the badge filter on the PERSON sections (any qualifying booking of theirs matches; each child ONCE)", () => {
   const b = [
-    bk({ studentIds: [S1], badgeIds: [BV1], date: "2026-10-03" }), bk({ studentIds: [S1], badgeIds: [BV2], date: "2026-10-04" }), // S1 in TWO branches
-    bk({ studentIds: [S2], badgeIds: [BV2] }), bk({ studentIds: [S3], badgeIds: [BV3] }), bk({ studentIds: [S4], badgeIds: [] }),
+    kid({ studentIds: [S1], badgeIds: [BV1], date: "2026-10-03" }), kid({ studentIds: [S1], badgeIds: [BV2], date: "2026-10-04" }), // S1 in TWO branches
+    kid({ studentIds: [S2], badgeIds: [BV2] }), kid({ studentIds: [S3], badgeIds: [BV3] }), kid({ studentIds: [S4], badgeIds: [] }),
   ];
   const students = [S1, S2, S3, S4].map((id) => student(id));
   test("OR across the chosen badges; one child in two selected branches is ONE person but two sessions", () => {
     const r = run({ bookings: b, students, badgeValueIds: [BV1, BV2] });
     expect(r.demographics.gender.total).toBe(2); // S1 · S2
-    expect(r.activityProgram.categories.find((c) => c.key === BIKE)!.course).toBe(3); // rows, not people
+    expect(r.activityProgram.categories.find((c) => c.key === BIKE)!.singleSession).toBe(3); // rows, not people
   });
   test("no badge selected = every branch (a row with no badge too)", () => {
     expect(run({ bookings: b, students }).demographics.gender.total).toBe(4);
@@ -308,19 +310,23 @@ describe("🔴 TASK-741 — the badge filter on the PERSON sections (any qualify
 });
 
 describe("🔴 TASK-741 — Demographic: students who ATTENDED in the month", () => {
-  test("only ATTENDED lessons of THAT month make a person: CONFIRMED / CANCELLED / another month / ECA / the group row do not", () => {
+  test("🔻 TASK-950 — only the 1 HR children of the window (non-cancelled, in range) make a person: CANCELLED / before the window / after it / ECA / the group row do not", () => {
     const rows = [
-      bk({ studentIds: [S1] }), bk({ studentIds: [S2], status: "CONFIRMED" }), bk({ studentIds: [S3], status: "CANCELLED" }), bk({ studentIds: [S4], date: "2026-09-30" }), bk({ studentIds: [S5], date: "2026-11-01" }),
-      bk({ studentIds: [S6], bookingType: "OTHER" }), bk({ studentIds: [S7], bookingType: "GROUP" }), bk({ studentIds: [S8], status: "NO_SHOW" }),
+      kid({ studentIds: [S1] }), kid({ studentIds: [S2], status: "CANCELLED" }), kid({ studentIds: [S3], date: "2026-07-31" }), kid({ studentIds: [S4], date: "2026-11-01" }),
+      kid({ studentIds: [S5], bookingType: "OTHER" }), kid({ studentIds: [S6], bookingType: "GROUP" }),
     ];
     expect(run({ bookings: rows, students: [S1, S2, S3, S4, S5, S6, S7, S8].map((id) => student(id)) }).demographics.gender.total).toBe(1);
   });
+  test("🔻 TASK-950 — a child who is BOTH a customer (active voucher — a voucher does not take him off 1 HR) and a 1 HR child is ONE person (the person-once rule over the union)", () => {
+    const r = runA({ vouchers: [voucher({ id: "vx", studentId: S1 })], bookings: [kid({ studentIds: [S1] }), kid({ studentIds: [S2] })], students: [S1, S2].map((id) => student(id)) });
+    expect(r.demographics.gender.total).toBe(2); // S1 (course + 1 HR) once, S2 (1 HR) once
+  });
   test("a group SEAT is a student's own attended session; a DUO row is BOTH children; a child with 3 sessions is ONE", () => {
-    const rows = [bk({ studentIds: [S1], isSeat: true }), bk({ studentIds: [S2, S3] }), bk({ studentIds: [S4] }), bk({ studentIds: [S4], date: "2026-10-06" }), bk({ studentIds: [S4], date: "2026-10-07" })];
+    const rows = [kid({ studentIds: [S1], isSeat: true }), kid({ studentIds: [S2, S3] }), kid({ studentIds: [S4] }), kid({ studentIds: [S4], date: "2026-10-06" }), kid({ studentIds: [S4], date: "2026-10-07" })];
     expect(run({ bookings: rows, students: [S1, S2, S3, S4].map((id) => student(id)) }).demographics.gender.total).toBe(4);
   });
   test("gender / nationality / province carry their unknowns; a child with no parent is unknown, not dropped", () => {
-    const rows = [S1, S2, S3, S4].map((id) => bk({ studentIds: [id] }));
+    const rows = [S1, S2, S3, S4].map((id) => kid({ studentIds: [id] }));
     const students = [
       student(S1, { gender: "female", nationality: "TH", province: "กรุงเทพมหานคร" }), student(S2, { gender: "female", nationality: "TH", province: "กรุงเทพมหานคร" }),
       student(S3, { gender: "male", nationality: "JP", province: "เชียงใหม่" }), student(S4),
@@ -333,7 +339,7 @@ describe("🔴 TASK-741 — Demographic: students who ATTENDED in the month", ()
   test("🔒 the 9 NEW age bands: all nine always, in order, zeros kept, then unknown; edges 2|3 · 4|5 · 7|8 · 10|11 · 13|14 · 19|20 · 39|40 · 54|55; an infant is `1-2`", () => {
     const born = (age: number) => `${2026 - age}-01-01`; // today 2026-10-12 ⇒ exactly `age`
     const ages = [0, 1, 2, 3, 4, 5, 7, 8, 10, 11, 13, 14, 19, 20, 39, 40, 54, 55, 70];
-    const rows = [...ages.map((_, i) => bk({ studentIds: [`a${i}`] })), bk({ studentIds: ["nodob"] })];
+    const rows = [...ages.map((_, i) => kid({ studentIds: [`a${i}`] })), kid({ studentIds: ["nodob"] })];
     const students = [...ages.map((a, i) => student(`a${i}`, { birthDate: born(a) })), student("nodob")];
     const d = run({ bookings: rows, students }).demographics.ageBand;
     expect(d.buckets.map((x) => [x.key, x.count])).toEqual([["1-2", 3], ["3-4", 2], ["5-7", 2], ["8-10", 2], ["11-13", 2], ["14-19", 2], ["20-39", 2], ["40-54", 2], ["55+", 2], ["unknown", 1]]);
@@ -349,7 +355,7 @@ describe("🔴 TASK-741 — Demographic: students who ATTENDED in the month", ()
   test("District: key = the code, label = «district, province», most first, unknown LAST; a code outside the dataset is unknown", () => {
     const codes = ["1001", "1001", "1001", "5001", "9999", null];
     const ids = codes.map((_, i) => `d${i}`);
-    const d = run({ bookings: ids.map((id) => bk({ studentIds: [id] })), students: ids.map((id, i) => student(id, { districtCode: codes[i] })) }).demographics.district;
+    const d = run({ bookings: ids.map((id) => kid({ studentIds: [id] })), students: ids.map((id, i) => student(id, { districtCode: codes[i] })) }).demographics.district;
     expect(d.buckets).toEqual([
       { key: "1001", label: "บางรัก, กรุงเทพมหานคร", count: 3 },
       { key: "5001", label: "เมืองเชียงใหม่, เชียงใหม่", count: 1 },
@@ -366,7 +372,7 @@ describe("🔴 TASK-741 — Demographic: students who ATTENDED in the month", ()
 describe("🔴 TASK-744 — demographics.subdistrictByDistrict (K4 = B): the sub-district under each district", () => {
   const people = (specs: Array<[string | null, string | null]>, extra: Partial<SomBooking> = {}) => {
     const ids = specs.map((_, i) => `p${i}`);
-    return { bookings: ids.map((id) => bk({ studentIds: [id], ...extra })), students: ids.map((id, i) => student(id, { districtCode: specs[i]![0], subdistrictCode: specs[i]![1] })) };
+    return { bookings: ids.map((id) => kid({ studentIds: [id], ...extra })), students: ids.map((id, i) => student(id, { districtCode: specs[i]![0], subdistrictCode: specs[i]![1] })) };
   };
   test("two sub-districts in one district (2 + 1) ⇒ the district's total 3, every bucket sent, `unknown` last", () => {
     const d = run(people([["1001", "100101"], ["1001", "100101"], ["1001", "100102"]])).demographics.subdistrictByDistrict;
@@ -387,9 +393,9 @@ describe("🔴 TASK-744 — demographics.subdistrictByDistrict (K4 = B): the sub
   test("the SAME people as District: the badge OR and `month` change both together, and `district` itself is unchanged", () => {
     const specs: Array<[string | null, string | null]> = [["1001", "100101"], ["1001", "100102"], ["5001", "500101"]];
     const rows = people(specs);
-    rows.bookings[0] = bk({ studentIds: ["p0"], badgeIds: [BV1] });
-    rows.bookings[1] = bk({ studentIds: ["p1"], badgeIds: [BV2] });
-    rows.bookings[2] = bk({ studentIds: ["p2"], badgeIds: [BV1], date: "2026-09-10" });
+    rows.bookings[0] = kid({ studentIds: ["p0"], badgeIds: [BV1] });
+    rows.bookings[1] = kid({ studentIds: ["p1"], badgeIds: [BV2] });
+    rows.bookings[2] = kid({ studentIds: ["p2"], badgeIds: [BV1], date: "2026-07-20" });
     const one = run({ ...rows, badgeValueIds: [BV1] }).demographics;
     expect(Object.keys(one.subdistrictByDistrict)).toEqual(["1001"]);
     expect(one.subdistrictByDistrict["1001"]!.total).toBe(1);
@@ -487,14 +493,14 @@ describe("🔴 TASK-741 — the READ (service) through fake db, and the district
   test("rows → the pure input: a DUO row names both children, the badges ride along, a seat is flagged, a pending_slot row is not read at all", async () => {
     const withBadge = [{ badgeValueId: BV1 }];
     const { bookingsSpy } = stub({
-      bookings: [B({ studentId: S1, coStudentId: S2, badges: withBadge }), B({ studentId: S3, groupId: "g1", badges: withBadge }), B({ studentId: S4, pendingSlot: true, badges: withBadge })],
+      bookings: [B({ bookingType: "SINGLE_SESSION", studentId: S1, coStudentId: S2, badges: withBadge }), B({ bookingType: "SINGLE_SESSION", studentId: S3, groupId: "g1", badges: withBadge }), B({ studentId: S4, pendingSlot: true, badges: withBadge })],
       students: [1, 2, 3, 4].map((n) => ({ id: S(n), gender: null, nationality: null, birthDate: null, parentId: null })),
       subjects: [{ id: BIKE, name: "Bike", active: true }],
     });
     try {
       const r = await svc.getSomContract({ month: M, badgeValueIds: [BV1] });
       expect(r.demographics.gender.total).toBe(3); // the DUO row's two children + the SEAT's child (a seat is a student's own session); the pending_slot row never read
-      expect(r.activityProgram.categories[0]).toMatchObject({ key: BIKE, course: 2 }); // the DUO row (one class) + the seat
+      expect(r.activityProgram.categories[0]).toMatchObject({ key: BIKE, singleSession: 2 }); // the DUO row (one class) + the seat
       expect(r.today).toMatchObject({ date: T, confirmed: 1, attended: 1 }); // the DUO row only: the seat is out of the day
       expect(bookingsSpy).toHaveBeenCalledTimes(1);
     } finally { done(); }
@@ -522,7 +528,7 @@ describe("🔴 TASK-741 — the READ (service) through fake db, and the district
   });
   test("the parents are read through `activeParentWhere` (an archived household is not counted); the province / district come from the ACTIVE parent only", async () => {
     const { parentsSpy } = stub({
-      bookings: [B({ studentId: S1 }), B({ studentId: S2 })],
+      bookings: [B({ bookingType: "SINGLE_SESSION", studentId: S1 }), B({ bookingType: "SINGLE_SESSION", studentId: S2 })],
       students: [{ id: S1, parentId: "p1" }, { id: S2, parentId: "p-archived" }],
       parents: [{ id: "p1", province: "กรุงเทพมหานคร", districtCode: "1001" }], // p-archived is filtered out by the real SQL predicate
       subjects: [],

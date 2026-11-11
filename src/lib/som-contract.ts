@@ -190,11 +190,15 @@ export interface SomContractInput {
 export interface SomContractSections {
   today: { date: string; confirmed: number; attended: number; attendanceRate: number };
   existingCustomers: { month: string | null; from: string; to: string; activeCourse: number; activeVoucher: number; recentFirstTrial: number; recentSingleSession: number; totalCustomers: number; recentFrom: string; recentTo: string };
-  demographics: { month: string | null; from: string; to: string; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown; subdistrictByDistrict: Record<string, Breakdown> };
+  demographics: { month: string | null; from: string; to: string; base: "CUSTOMERS_PLUS_RECENT_1HR"; gender: Breakdown; ageBand: Breakdown; nationality: Breakdown; province: Breakdown; district: Breakdown; subdistrictByDistrict: Record<string, Breakdown> };
   activityProgram: { month: string | null; from: string; to: string; categories: ActivityCategory[] };
+  /** 🔻 TASK-950 (SPEC-104 #5) */
+  activityPackages: { month: string | null; from: string; to: string; base: "CUSTOMERS_PLUS_RECENT_1HR"; activities: ActivityPackages[] };
   newVsRenewing: NvrCounts;
   coachCapacity: CoachCapacity;
 }
+export type ActivityPackage = { kind: "COURSE"; size: number; count: number } | { kind: "SINGLE_SESSION"; count: number };
+export interface ActivityPackages { key: string; label: string; total: number; packages: ActivityPackage[]; firstTrial: number }
 export interface ActivityCategory { key: string; label: string; course: number; voucher: number; singleSession: number; typeTotal: number; firstTrial: number; total: number }
 
 const isLesson = (b: { bookingType: string }): boolean => (LESSON_TYPES as readonly string[]).includes(b.bookingType);
@@ -296,7 +300,9 @@ export function countSom(input: SomContractInput): SomContractSections {
   const singleAfterTrial = (studentId: string, trialDate: string): boolean =>
     bookings.some((b) => b.bookingType === "SINGLE_SESSION" && b.status !== "CANCELLED" && b.date >= trialDate && b.date <= asOf && b.studentIds.includes(studentId) && passes(b));
   const recentFirstTrial = [...trialsRecent].filter(([id, trialDate]) => !boughtByAsOf(id, TRIAL_MOVES_OUT_ON_VOUCHER) && !(FIRST_TRIAL_MOVES_OUT_ON_SINGLE_SESSION && singleAfterTrial(id, trialDate))).length;
-  const recentSingleSession = [...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, SINGLE_SESSION_MOVES_OUT_ON_VOUCHER)).length;
+  /** 🔻 TASK-950 — the children the «1 HR (last 3 months)» card counts, as a NAMED set (demographics + activityPackages read it; one definition). */
+  const recentSingleIds = new Set([...singlesRecent].filter(([id]) => !SINGLE_SESSION_MOVES_OUT || !boughtByAsOf(id, SINGLE_SESSION_MOVES_OUT_ON_VOUCHER)).map(([id]) => id));
+  const recentSingleSession = recentSingleIds.size;
   // Total customers (REQ-5004 §1 row 3, supersedes REQ-5002 §7.3's «known by»): the DISTINCT children on the courses and vouchers that cards 1 + 2 count (`courseHolders` ∪ `voucherHolders`), so it moves with them; ARCHIVED students stay out
   // (`archivedAt`, REQ-5004 §4a). A child on both cards, or with two courses, is ONE; a child with only an ended / cancelled / paused course is out.
   const archived = new Set(input.students.filter((s) => s.archivedAt != null).map((s) => s.id));
@@ -319,7 +325,10 @@ export function countSom(input: SomContractInput): SomContractSections {
 
   // ── Demographics — each student ONCE (any qualifying attended session of the month matches) ──
   const studentById = new Map(input.students.map((s) => [s.id, s]));
-  const people = [...new Set(attended.flatMap((b) => [...b.studentIds]))].map((id) => studentById.get(id)).filter((s): s is SomStudent => !!s);
+  // 🔻 TASK-950 (SPEC-104 #3) — the base is «Total Customer + 1 HR (last 3 months)»: the customers' set ∪ the 1 HR card's children, each once, archived out (replaces «attended in the range»).
+  const baseIds = new Set<string>([...customers, ...recentSingleIds]);
+  for (const id of archived) baseIds.delete(id);
+  const people = [...baseIds].map((id) => studentById.get(id)).filter((s): s is SomStudent => !!s);
   const labelOfDistrict = new Map<string, string | null>();
   const districtKey = (s: SomStudent): string | null => {
     if (!s.districtCode) return null;
@@ -328,6 +337,7 @@ export function countSom(input: SomContractInput): SomContractSections {
   };
   const demographics = {
     month, from: rangeFrom, to: rangeTo,
+    base: "CUSTOMERS_PLUS_RECENT_1HR" as const,
     gender: breakdown(people, (s) => s.gender),
     ageBand: ageBreakdown(people, today),
     nationality: breakdown(people, (s) => s.nationality),
@@ -358,7 +368,48 @@ export function countSom(input: SomContractInput): SomContractSections {
     .filter((c) => c.key !== UNKNOWN_KEY || c.total > 0)
     .sort((a, b) => (a.key === UNKNOWN_KEY ? 1 : 0) - (b.key === UNKNOWN_KEY ? 1 : 0) || b.total - a.total || a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
-  return { today: todaySection, existingCustomers, demographics, activityProgram: { month, from: rangeFrom, to: rangeTo, categories }, newVsRenewing: countNvr(input).counts, coachCapacity: countCapacity(input) };
+  // ── 🔻 TASK-950 (SPEC-104 #5) — Activity / Program by PACKAGE: ACTIVE courses (counted as courses, by their own subject + size) + 1 HR CHILDREN of the card's window; vouchers never; 1st Trial beside, not in `total`. ──
+  const pkgs = new Map<string, { course: Map<number, number>; single: number; trial: number }>();
+  const slot = (key: string) => {
+    const p = pkgs.get(key) ?? { course: new Map<number, number>(), single: 0, trial: 0 };
+    pkgs.set(key, p);
+    return p;
+  };
+  const keyOfSubject = (id: string | null | undefined): string => (id && nameOf.has(id) ? id : UNKNOWN_KEY);
+  for (const s of subjects) if (s.active) slot(s.id);
+  for (const c of activeCourses) {
+    const p = slot(keyOfSubject(c.subjectId));
+    p.course.set(c.size, (p.course.get(c.size) ?? 0) + 1);
+  }
+  const singleKids = new Map<string, Set<string>>();
+  const trialCount = new Map<string, number>();
+  for (const b of bookings) {
+    if (b.status === "CANCELLED" || !passes(b)) continue;
+    if (b.bookingType === "SINGLE_SESSION" && b.date >= recentFromDate && b.date <= monthTo) {
+      const k = keyOfSubject(b.subjectId);
+      const set = singleKids.get(k) ?? new Set<string>();
+      for (const id of b.studentIds) if (recentSingleIds.has(id)) set.add(id);
+      singleKids.set(k, set);
+    } else if (b.bookingType === "FIRST_TRIAL" && inMonth(b.date)) {
+      const k = keyOfSubject(b.subjectId);
+      trialCount.set(k, (trialCount.get(k) ?? 0) + 1);
+    }
+  }
+  for (const [k, set] of singleKids) slot(k).single = set.size;
+  for (const [k, n] of trialCount) slot(k).trial = n;
+  const activities = [...pkgs.entries()]
+    .map(([key, p]) => {
+      const packages: ActivityPackage[] = [
+        ...[...p.course].map(([size, count]) => ({ kind: "COURSE" as const, size, count })),
+        ...(p.single > 0 ? [{ kind: "SINGLE_SESSION" as const, count: p.single }] : []),
+      ].sort((a, b) => b.count - a.count || (a.kind === "COURSE" && b.kind === "COURSE" ? b.size - a.size : 0));
+      return { key, label: key === UNKNOWN_KEY ? "ไม่ระบุ" : nameOf.get(key)!, total: packages.reduce((n, x) => n + x.count, 0), packages, firstTrial: p.trial };
+    })
+    .filter((a) => a.key !== UNKNOWN_KEY || a.total > 0 || a.firstTrial > 0)
+    .sort((a, b) => Number(a.key === UNKNOWN_KEY) - Number(b.key === UNKNOWN_KEY) || b.total - a.total || a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const activityPackages = { month, from: rangeFrom, to: rangeTo, base: "CUSTOMERS_PLUS_RECENT_1HR" as const, activities };
+
+  return { today: todaySection, existingCustomers, demographics, activityProgram: { month, from: rangeFrom, to: rangeTo, categories }, activityPackages, newVsRenewing: countNvr(input).counts, coachCapacity: countCapacity(input) };
 }
 
 /**
@@ -409,6 +460,7 @@ export function mergeSom<O extends { today: object; existingCustomers: object; d
     newVsRenewing: { ...old.newVsRenewing, ...fresh.newVsRenewing }, // 🔻 742 — the old `newByFirstTrial` / `newByRegistration` / `renewing` (still 0) stay beside Palm's six
     coachCapacity: fresh.coachCapacity,
     activityProgram: fresh.activityProgram,
+    activityPackages: fresh.activityPackages,
   };
 }
 
