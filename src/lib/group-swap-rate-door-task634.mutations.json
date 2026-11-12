@@ -41,7 +41,7 @@
       "what": "the refusal moves INSIDE the loop — with a rate now suppliable, a half-moved series becomes easier to cause, not harder",
       "files": [{ "file": "src/services/scheduler.service.ts", "edits": [
         { "from": "  if (targets.length && rate == null) throw RATE_REQUIRED(targets[0]!.date);", "to": "" },
-        { "from": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  try {", "to": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {" }
+        { "from": "  await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime }); // 🔻 TASK-965\n  try {", "to": "  await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime }); // 🔻 TASK-965\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {" }
       ]}]
     },
     {

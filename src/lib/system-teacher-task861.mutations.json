@@ -72,8 +72,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });",
-              "to": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: true });"
+              "from": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: !!input.extendedFromId });",
+              "to": "else await assertTeacherBookable(exec, input.teacherId, input.date, { allowClosedDay, allowSystem: true, startTime, allowOutsideHours: !!input.extendedFromId });"
             }
           ]
         }
@@ -87,8 +87,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date);",
-              "to": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { allowSystem: true });"
+              "from": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { startTime: m.to.startTime });",
+              "to": "await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { allowSystem: true, startTime: m.to.startTime });"
             }
           ]
         }
@@ -102,8 +102,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await assertTeacherBookable(exec, teacherId, booking!.date);",
-              "to": "await assertTeacherBookable(exec, teacherId, booking!.date, { allowSystem: true });"
+              "from": "await assertTeacherBookable(exec, teacherId, booking!.date, { startTime: booking!.startTime });",
+              "to": "await assertTeacherBookable(exec, teacherId, booking!.date, { allowSystem: true, startTime: booking!.startTime });"
             }
           ]
         }
@@ -117,8 +117,8 @@
           "file": "src/services/other-series.service.ts",
           "edits": [
             {
-              "from": "{ allowSystem: !onExtra }",
-              "to": "{ allowSystem: true }"
+              "from": "{ allowSystem: !onExtra, startTime: r.startTime }",
+              "to": "{ allowSystem: true, startTime: r.startTime }"
             }
           ]
         }
@@ -132,8 +132,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: mayUseSystemTeacher(b.bookingType) });",
-              "to": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: true });"
+              "from": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: mayUseSystemTeacher(b.bookingType), startTime: patch.startTime ?? b.startTime });",
+              "to": "await assertTeacherBookable(tx, newTeacherId, patch.date ?? b.date, { allowSystem: true, startTime: patch.startTime ?? b.startTime });"
             }
           ]
         }
@@ -147,8 +147,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "await assertTeacherBookable(tx, input.teacherId, g.date);",
-              "to": "await assertTeacherBookable(tx, input.teacherId, g.date, { allowSystem: true });"
+              "from": "await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime });",
+              "to": "await assertTeacherBookable(tx, input.teacherId, g.date, { allowSystem: true, startTime: g.startTime });"
             }
           ]
         }

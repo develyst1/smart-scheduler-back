@@ -217,6 +217,8 @@ export const teachers = pgTable("teachers", {
   workDays: smallint("work_days").array().notNull().default(sql`ARRAY[0,1,2,3,4,5,6]::smallint[]`),
   /** REQ-5004 / TASK-756 — a PART_TIME coach's own capacity per weekend day worked, in hours. NULL = the type's rate (Coach Capacity). Set by a DATA REQUEST, no form. */
   weekendCapacityHours: smallint("weekend_capacity_hours"),
+  /** 🔻 TASK-965 (REQ-5015, SPEC-108 §2, `0080`) — the coach's WORKING HOURS per weekday: `{"0":["13:00","18:00"]}`. NULL, or a weekday missing from the map = the whole day (no limit). Keys are a subset of `workDays`. */
+  workHours: jsonb("work_hours").$type<Record<string, [string, string]>>(),
   /** 🔻 TASK-861 (REQ-120 F5, `0075`) — the ONE system teacher ("No Teacher") for park-fee OTHER blocks: excluded from everything that measures, pays or messages a coach; bookable only for OTHER. Exactly one row (partial unique index). */
   isSystem: boolean("is_system").notNull().default(false),
   // Phase-1 notify target. No id → cannot push; surfaced as `lineLinked` in the API.
@@ -560,6 +562,8 @@ export const bookings = pgTable(
      * the two resolutions. 🚫 Never a job, never the day-end.
      */
     slotYieldedAt: timestamp("slot_yielded_at", { withTimezone: true }),
+    /** 🔻 TASK-942 — a PARK-FEE block on the system teacher ("No Teacher") holds no coach-hour, so several groups may rent the park in one hour. Stamped ONLY by `insertBooking` / `moveBooking`, from the teacher ROW's `is_system` flag — never from a request field. The index and `slotHolderWhere` both read it. */
+    slotExempt: boolean("slot_exempt").notNull().default(false),
     /** TASK-453 (`0054`) — the GROUP SERIES is CLOSED (stamped on every row of the key): no new dates, no enrolment. Existing rows are untouched — a closed series still runs out its dates. */
     groupClosedAt: timestamp("group_closed_at", { withTimezone: true }),
     /** TASK-418 (`0047`) — a DERIVED camp hour's day object; set ⇒ owned by the day (`409 CAMP_ROW_OWNED` on human writes). */
@@ -614,7 +618,8 @@ export const bookings = pgTable(
       // 🔴 TASK-453 — `AND slot_yielded_at IS NULL`: a GROUP row that has yielded its hour to a Private holds nothing.
       // The SAME three terms are `lib/slot-holder.ts`'s, and `0054`'s WHERE is asserted EQUAL to both after
       // normalisation (`group-slot-yield-req105.test.ts`) — a partial index and its mirror are one fact in two places.
-      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null`),
+      // 🔻 TASK-942 — `AND NOT slot_exempt`: a park block on the system teacher holds no coach-hour (several groups may rent the park at once). The FOURTH term of the same predicate, in `0078`'s WHERE and `slotHolderWhere`.
+      .where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null and not ${t.slotExempt}`),
     index("bookings_group_id_idx").on(t.groupId),
     index("bookings_date_idx").on(t.date),
     index("bookings_teacher_date_idx").on(t.teacherId, t.date),
@@ -659,6 +664,39 @@ export const bookingTeachers = pgTable(
   // there is still exactly ONE booking row, so a cancel stays one status change.
   (t) => [primaryKey({ columns: [t.bookingId, t.teacherId] })],
 );
+
+// 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §3, `0079`) — the HISTORY of an activity change: a course's REMAINING classes (or one 1 HR / 1st Trial) moved to another subject. `course_id` XOR `booking_id`. The COLUMN NAMES are the contract with the back office (Detail «X → Y»).
+export const activityChanges = pgTable(
+  "activity_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    courseId: uuid("course_id").references(() => coursePackages.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "cascade" }),
+    fromSubjectId: uuid("from_subject_id").notNull().references(() => subjects.id),
+    toSubjectId: uuid("to_subject_id").notNull().references(() => subjects.id),
+    fromTeacherId: uuid("from_teacher_id").references(() => teachers.id),
+    toTeacherId: uuid("to_teacher_id").references(() => teachers.id),
+    remaining: integer("remaining").notNull(),
+    size: integer("size").notNull(),
+    oldPriceMinor: integer("old_price_minor").notNull(),
+    newPriceMinor: integer("new_price_minor").notNull(),
+    priceSource: text("price_source").notNull(),
+    differenceMinor: integer("difference_minor").notNull(),
+    revenueRelabelled: boolean("revenue_relabelled").notNull().default(false),
+    actor: text("actor"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("activity_changes_course_idx").on(t.courseId),
+    index("activity_changes_booking_idx").on(t.bookingId),
+    check("activity_changes_remaining_ck", sql`${t.remaining} > 0`),
+    check("activity_changes_size_ck", sql`${t.size} > 0`),
+    check("activity_changes_price_source_ck", sql`${t.priceSource} in ('CARD','MANUAL')`),
+    check("activity_changes_difference_ck", sql`${t.differenceMinor} >= 0`),
+    check("activity_changes_one_target_ck", sql`(${t.courseId} is null) <> (${t.bookingId} is null)`),
+  ],
+);
+
 
 // ───────────── TASK-371 (REQ-091 §9, Deploy A) — a rental is a ROW on a session, `0035` ─────────────
 //
@@ -1313,8 +1351,33 @@ export const teacherLeaveDays = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     /** TASK-817 (`0070`) — the RECORD this day belongs to when an admin entered a date RANGE (one row per day, one shared id). NULL = recorded as a single day. */
     rangeId: uuid("range_id"),
+    /** 🔻 TASK-965 (REQ-5015, `0080`) — a PART-DAY leave `[startTime, endTime)`. Both NULL = the WHOLE day (every row before this task). The CHECK `teacher_leave_days_time_ck` keeps them both-or-neither and start < end. */
+    startTime: time("start_time"),
+    endTime: time("end_time"),
   },
   (t) => [uniqueIndex("teacher_leave_days_teacher_date_uq").on(t.teacherId, t.date)],
+);
+
+// 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §2, `0077`) — a CLOSED DAY: the whole school is shut on `date` (a holiday, the venue, the weather…). One row per day; re-opening is SOFT (`reopened_at` / `reopened_by` are set and the row stays, so
+// who closed it, who re-opened it, when and why is the table itself). At most ONE OPEN row per date (the partial unique index). `note` is required (non-empty) when `reason = 'OTHER'`: checked in the service. Scope: the whole school (no branch).
+export const closedDays = pgTable(
+  "closed_days",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    date: date("date").notNull(),
+    reason: text("reason").notNull(),
+    note: text("note"),
+    /** the rows saved together (a date RANGE) share it; NULL = a single day */
+    rangeId: uuid("range_id"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+    reopenedBy: text("reopened_by"),
+  },
+  (t) => [
+    uniqueIndex("closed_days_open_date_uq").on(t.date).where(sql`${t.reopenedAt} is null`),
+    check("closed_days_reason_ck", sql`${t.reason} in ('HOLIDAY','VENUE_CLOSED','WEATHER','OTHER')`),
+  ],
 );
 
 // TASK-826 (REQ-125 ruling B, `0071`) — what an ADVANCE leave took a teacher OFF (a co-taught class that runs on with the others), remembered so Cancel leave can put them back as an extra teacher at their old rate.

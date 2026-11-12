@@ -113,6 +113,8 @@ const ATTENTION_LABELS: Record<AttentionKey, Entry> = {
     TH: "คอร์สที่เลื่อนแล้วแต่ยังไม่ได้ยืนยันใหม่ (ลูกค้ายังถือตารางเดิม)",
     EN: "Courses moved but not re-confirmed (the family still has the old dates)",
   },
+  // 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §3) — the live classes still sitting on an open CLOSED day: the admin moves or cancels each by hand. COUNT-ONLY in the digest (`namesPeopleInDigest` stays off).
+  classes_on_closed_days: { TH: "คลาสในวันปิดทำการ", EN: "Classes on a closed day" },
 };
 
 /** `sales_not_posted` → `att_sales_not_posted`, so the existing `t(`att_${…}`)` call site is unchanged. */
@@ -816,6 +818,11 @@ const TABLE: Record<string, Entry> = {
     EN: "⚠️ {name} reported leave for today ({date}). These classes have no teacher to take over (their other teachers aren't free then). Please handle them in the calendar: {list}",
   },
   // 🔻 TASK-827 — ✅ APPROVED by the owner 2026-10-20 (REQ-125 ruling B), COPY-REVIEW-2026-09-29.md, verbatim. One extra line on the LEAVING teacher's `teacher_leave_recorded`, only when n > 0.
+  // 🔻 TASK-961 (REQ-5014, SPEC-106 §5) — «เปลี่ยนกิจกรรม»: ONE message per person per act. TH wording is SA-PROPOSED — Porter confirms it with ขวัญ before Tanya's run; changing it is a string edit. EN is a plain translation.
+  ob_activity_changed: {
+    TH: "เปลี่ยนกิจกรรมจาก {from} เป็น {to} ตั้งแต่คาบวันที่ {firstDate} ({remaining} คาบ)",
+    EN: "Activity changed from {from} to {to} starting from the class on {firstDate} ({remaining} class(es))",
+  },
   ob_tl_co_taught_continue: { TH: "คาบที่สอนร่วม {n} คาบ ครูท่านอื่นจะสอนต่อ", EN: "{n} co-taught class(es) continue with the other teachers" },
   ob_teacher_unassigned_title: { TH: "📤 คาบสอนนี้ถูกย้ายออกจากตารางของคุณแล้ว", EN: "📤 A class has been removed from your schedule" },
 };

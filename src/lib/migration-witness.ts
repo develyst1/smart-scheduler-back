@@ -757,6 +757,39 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "Rerunnable: every column IF NOT EXISTS, each CHECK DROP IF EXISTS + ADD; NO data is written (existing rows take the constant default BRAVO).",
     rerunnable: true,
   },
+  {
+    tag: "0077_closed_days",
+    probe: { kind: "index", index: "closed_days_open_date_uq" },
+    why:
+      "TASK-959 (REQ-5013 option B, SPEC-105). `closed_days`: the whole school shut on a date (one row per day, soft re-open). The probe is the LAST object the file creates (the partial unique index: at most one OPEN row per date), so a run that died after the table or the CHECK is not called applied. " +
+      "Rerunnable: the table IF NOT EXISTS, the CHECK DROP IF EXISTS + ADD, the index IF NOT EXISTS; NO data is written.",
+    rerunnable: true,
+  },
+  {
+    tag: "0078_slot_exempt_park_blocks",
+    probe: { kind: "index-predicate", index: "bookings_teacher_slot_uq", contains: "slot_exempt" },
+    why:
+      "TASK-942 (several park groups in one hour). 🔴 NOT the index's existence — `bookings_teacher_slot_uq` exists before AND after; only its predicate gains `AND NOT slot_exempt` (a park block on the system teacher stops holding a coach-hour). " +
+      "🚫 NOT the column either: it is added BEFORE the rebuild, so a column probe passes on a file that stopped half way. The predicate is the LAST statement and the only witness of the whole file. " +
+      "Rerunnable: the column IF NOT EXISTS, the UPDATE sets the same value, DROP IF EXISTS then CREATE.",
+    rerunnable: true,
+  },
+  {
+    tag: "0079_activity_changes",
+    probe: { kind: "table", table: "activity_changes" },
+    why:
+      "TASK-961 (REQ-5014, SPEC-106 §3). `activity_changes`: the history of a course's / a 1 HR's activity change (the seam to the back office). The table is this file's FIRST object and the two indexes cannot exist without it, so its existence is the whole proof. " +
+      "Rerunnable: the table and both indexes IF NOT EXISTS; NO data is written.",
+    rerunnable: true,
+  },
+  {
+    tag: "0080_coach_time_ranges",
+    probe: { kind: "column", table: "teachers", column: "work_hours" },
+    why:
+      "TASK-965 (REQ-5015, SPEC-108 §2). A part-day leave (`teacher_leave_days.start_time/end_time` + the CHECK `teacher_leave_days_time_ck`) and a coach's working hours (`teachers.work_hours`). The probe is the LAST statement of the file (`teachers.work_hours`), so a run that died after the leave columns or the CHECK is not called applied. " +
+      "Rerunnable: every column IF NOT EXISTS, the CHECK is DROP IF EXISTS then ADD; NO data is written.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

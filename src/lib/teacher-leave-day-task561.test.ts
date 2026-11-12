@@ -39,7 +39,7 @@ describe("🔴 'advance', exactly — the block fires only for a booking dated T
   test("THE reader: a past date is answered WITHOUT a read; a recorded future day is found; another teacher's is not", async () => {
     today();
     const asked: string[] = [];
-    const exec = { query: { teacherLeaveDays: leaveTable([{ teacherId: "t1", date: "2026-10-21" }, { teacherId: "t1", date: "2026-09-20" }], asked) } };
+    const exec = { query: { closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: leaveTable([{ teacherId: "t1", date: "2026-10-21" }, { teacherId: "t1", date: "2026-09-20" }], asked) } };
     expect(await teacherLeaveOn(exec, "t1", "2026-09-20")).toBeNull(); // recorded, but in the past ⇒ never fires
     expect(asked).toEqual([]); // …and not even read
     expect(await teacherLeaveOn(exec, "t1", "2026-10-21")).toMatchObject({ teacherId: "t1" });
@@ -49,7 +49,7 @@ describe("🔴 'advance', exactly — the block fires only for a booking dated T
 
 describe("🔴 Seam A — `assertTeacherBookable`, the ONE availability gate every insert / move / swap / co-teacher door calls", () => {
   const exec = (leave: Array<{ teacherId: string; date: string }>) => ({
-    query: { teachers: { findFirst: async () => ({ id: "t1", nickname: "Ek", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) }, teacherLeaveDays: leaveTable(leave) },
+    query: { teachers: { findFirst: async () => ({ id: "t1", nickname: "Ek", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) }, closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: leaveTable(leave) },
   });
   test("a teacher on an advance leave that day ⇒ 409 TEACHER_ON_LEAVE, naming who, which day, what to do", async () => {
     today();
@@ -65,7 +65,7 @@ describe("🔴 Seam A — `assertTeacherBookable`, the ONE availability gate eve
 });
 
 describe("🔴 Seam B — the automatic make-up SKIPS the leave day to the next free week (never refused: §12)", () => {
-  const exec = (leave: Array<{ teacherId: string; date: string }>) => ({ query: { teacherLeaveDays: leaveTable(leave), bookings: { findFirst: async () => undefined } } });
+  const exec = (leave: Array<{ teacherId: string; date: string }>) => ({ query: { closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: leaveTable(leave), bookings: { findFirst: async () => undefined } } });
   test("the leave week is passed over exactly like a taken slot; another teacher's leave changes nothing", async () => {
     today();
     expect(await sched.findFreeExtensionDate(exec([{ teacherId: "t1", date: "2026-10-08" }]), "t1", "10:00:00", "2026-10-01")).toBe("2026-10-15");
@@ -78,7 +78,7 @@ describe("🔴 a class put back WITHOUT an insert (revive · leave-Undo · a sea
   test("a coach of the class on leave ⇒ refused; none on leave ⇒ passes", async () => {
     today();
     spies.push(spyOn(ownScope, "teachersOfBooking").mockImplementation((async () => [{ id: "t1", lineUserId: null }, { id: "t2", lineUserId: null }]) as any));
-    const exec = (leave: any[]) => ({ query: { teacherLeaveDays: leaveTable(leave), teachers: { findFirst: async (q: any) => ({ nickname: whereOf(q).id === "t2" ? "Nok" : "Ek" }) } } });
+    const exec = (leave: any[]) => ({ query: { closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: leaveTable(leave), teachers: { findFirst: async (q: any) => ({ nickname: whereOf(q).id === "t2" ? "Nok" : "Ek" }) } } });
     const e: any = await assertNoCoachOnLeave(exec([{ teacherId: "t2", date: "2026-10-21" }]), { id: "g1", date: "2026-10-21" }).catch((x) => x);
     expect([e.code, e.message.startsWith("ครู Nok ลาวันที่ 2026-10-21")]).toEqual(["TEACHER_ON_LEAVE", true]); // the CO-teacher
     await expect(assertNoCoachOnLeave(exec([{ teacherId: "t3", date: "2026-10-21" }]), { id: "g1", date: "2026-10-21" })).resolves.toBeUndefined(); // someone else's leave
@@ -92,7 +92,7 @@ describe("🔴 the camp sync — SKIP + LIST: the on-leave coach gets no new blo
       query: {
         campWeekDays: { findFirst: async () => ({ id: "wd1", date: "2026-10-06", startTime: "10:00:00", endTime: "12:00:00", week: { status: "OPEN", name: "Oct" } }) },
         campWeekDayTeachers: { findMany: async () => [{ teacherId: "t1", startTime: null, endTime: null, rateMinor: 0 }, { teacherId: "t2", startTime: null, endTime: null, rateMinor: 0 }] },
-        teacherLeaveDays: leaveTable(leave),
+        closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: leaveTable(leave),
         teachers: { findMany: async () => [] },
       },
       select: () => ({ from: () => ({ where: async () => [{ id: "old-t1", teacherId: "t1", startTime: "10:00:00" }] }) }), // t1 ALREADY holds 10:00
@@ -125,7 +125,7 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
   test("booking rows are created in exactly four places: the ONE inserter, the two make-up writers, and the dev seed", () => {
     const sites = all.flatMap(([f, s]) => [...s.matchAll(/\.insert\(bookings\)/g)].map(() => f));
     expect(sites.sort()).toEqual(["src/db/seed.ts", "src/services/scheduler.service.ts", "src/services/scheduler.service.ts", "src/services/scheduler.service.ts"]);
-    expect(fnBody(S, "export async function insertBooking(")).toContain("await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });"); // Seam A · 🔻 TASK-861: + allowSystem
+    expect(fnBody(S, "export async function insertBooking(")).toContain("await assertTeacherBookable(exec, input.teacherId, input.date, { allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: !!input.extendedFromId });"); // Seam A · 🔻 TASK-861: + allowSystem
     for (const head of ["export async function reconcileCoursePlan(", "export async function updateBookingStatus("]) {
       const body = fnBody(S, head);
       expect(body.indexOf("findFreeExtensionDate(")).toBeGreaterThan(-1); // Seam B, before its direct insert
@@ -133,10 +133,10 @@ describe("🔑 EVERY path, derived — the set is closed by source, and there is
     }
   });
   test("both seams read THE reader; the non-insert doors call the class check; nothing else defines 'on leave'", () => {
-    expect(code(fnBody(S, "export async function assertTeacherBookable("))).toContain("if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);");
-    expect(code(fnBody(S, "export async function findFreeExtensionDate("))).toContain("if (await teacherLeaveOn(exec, teacherId, d)) return true;");
+    expect(code(fnBody(S, "export async function assertTeacherBookable("))).toContain("if (await teacherLeaveOn(exec, teacher.id, date, opts.startTime)) throw TEACHER_ON_LEAVE(teacher.nickname, date);");
+    expect(code(fnBody(S, "export async function findFreeExtensionDate("))).toContain("if (await teacherLeaveOn(exec, teacherId, d, startTime)) return true;");
     expect(code(S)).toContain("if (REVIVING.has(action)) await assertNoCoachOnLeave(tx, current);");
-    expect(code(fnBody(S, "async function seatOnGroup("))).toContain("await assertNoCoachOnLeave(tx, { id: row.id, date });");
+    expect(code(fnBody(S, "async function seatOnGroup("))).toContain("await assertNoCoachOnLeave(tx, { id: row.id, date, startTime: row.startTime });"); // 🔻 TASK-965
     expect(code(read("src/services/undo.service.ts"))).toContain("await assertNoCoachOnLeave(tx, row);");
     expect(code(read("src/services/camp.service.ts"))).toContain("if (await teacherLeaveOn(tx, c.teacherId, d.date)) onLeave.push(c.teacherId);");
     const declares = new Set(["src/db/schema.ts", "src/lib/migration-witness.ts"]); // the table's declaration and its migration probe — not readers

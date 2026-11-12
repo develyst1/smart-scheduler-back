@@ -94,7 +94,7 @@ describe("🚫 the guard is NARROW — the feature is untouched", () => {
     expect(ATTACH).toContain("await assertAdditionalTeacherFree(");
     expect(ATTACH.indexOf("assertAdditionalTeacherFree")).toBeLessThan(ATTACH.indexOf("insert(bookingTeachers)"));
     // …and beside the archived-teacher check that was already there, so both run for every extra teacher.
-    expect(ATTACH).toContain("await assertTeacherBookable(exec, teacherId, booking!.date)");
+    expect(ATTACH).toContain("await assertTeacherBookable(exec, teacherId, booking!.date, { startTime: booking!.startTime })");
   });
 
   test("the primary teacher's refusal is untouched — it is still the index that refuses it", () => {

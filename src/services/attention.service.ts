@@ -1,9 +1,9 @@
 // The ONE producer of "what needs attention" (REQ-023 / TASK-053). Both the 08:00 LINE digest and the web
 // panel read this, so the two can never disagree.
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { boMovement, jobRuns } from "../db/schema";
+import { boMovement, closedDays, jobRuns, SLOT_INACTIVE_STATUSES } from "../db/schema"; // 🔻 TASK-959: + closedDays, SLOT_INACTIVE_STATUSES (the closed-day card)
 import { bangkokNow } from "../lib/bangkok-time";
 import { activeParentWhere } from "../lib/parent-archive";
 import { addDays } from "../lib/time";
@@ -33,11 +33,11 @@ export interface AttentionCheckResult {
   title: string;
   /** null = this check failed to run (degraded); the rest of the digest still goes out. */
   count: number | null;
-  items: Array<{ id: string; label: string; hint?: string; link?: { kind: "course" | "voucher"; id: string } }>; // 🔻 TASK-840: `link` only on the two entitlement checks
+  items: Array<{ id: string; label: string; hint?: string; link?: { kind: "course" | "voucher"; id: string } | { kind: "day"; date: string } }>; // 🔻 TASK-840: `link` only on the two entitlement checks · 🔻 TASK-959: + a closed-day item (the calendar on that date)
   error?: string;
 }
 
-function buildCtx(today: string): AttentionCtx {
+export function buildCtx(today: string): AttentionCtx { // 🔻 TASK-959: exported so the closed-day loader can be tested BY VALUE (one reader, no behaviour change)
   // Loaders are memoised per run so several checks sharing a source hit the DB once.
   let courses: Promise<any[]> | null = null;
   let vouchers: Promise<any[]> | null = null;
@@ -54,6 +54,7 @@ function buildCtx(today: string): AttentionCtx {
   let orphaned: Promise<Array<{ booking: any; teacher: any }>> | null = null;
   let yielded: Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>> | null = null;
   let reconfirm: Promise<Array<{ course: any; pendingCount: number }>> | null = null;
+  let closedClasses: Promise<Array<{ booking: any; teacher: any }>> | null = null; // 🔻 TASK-959
   const salesWindowStart = addDays(today, -NOT_POSTED_WINDOW_DAYS);
 
   return {
@@ -96,6 +97,18 @@ function buildCtx(today: string): AttentionCtx {
             with: { student: true, bookings: { where: (b, { eq: e }) => e(b.status, "PENDING") } },
           });
           return rows.map((c: any) => ({ course: c, pendingCount: c.bookings.length }));
+        })()),
+      // 🔻 TASK-959 (SPEC-105 §3) — the live classes on an OPEN closed day from today on: the open closed rows first, then ONE read of the slot-active classes on those dates (the same `SLOT_INACTIVE_STATUSES` rule as the make-up search; a seat is its group row's business; a planned absence is SICK_LEAVE, so it is never listed).
+      closedDayClasses: () =>
+        (closedClasses ??= (async () => {
+          const open: Array<{ date: string }> = await db.select({ date: closedDays.date }).from(closedDays).where(and(gte(closedDays.date, today), isNull(closedDays.reopenedAt)));
+          if (!open.length) return [];
+          const rows = await db.query.bookings.findMany({
+            where: (b, { and: a, inArray: inA, notInArray: notIn, isNull: nil }) => a(inA(b.date, open.map((o) => o.date)), notIn(b.status, [...SLOT_INACTIVE_STATUSES]), nil(b.groupId)),
+            with: { student: true, teacher: true },
+            orderBy: (b, { asc }) => [asc(b.date), asc(b.startTime)],
+          });
+          return rows.map((b) => ({ booking: b, teacher: b.teacher }));
         })()),
       // TASK-096 — future bookings with their teacher joined; the predicate flags archived / off-that-weekday.
       orphanedCandidates: () =>

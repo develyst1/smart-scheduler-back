@@ -7,16 +7,18 @@
 // green through the fix, before these tests existed.
 //
 // The setting is NOT spied (TASK-465): only the `app_settings` row and the GROUP rows are faked.
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { uuidFor } from "./test-uuid";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 process.env.JWT_SECRET ??= "test-secret";
 const { db } = await import("../db");
+const closedDayLib = await import("./closed-day"); // 🔻 TASK-959
 const jobs = await import("../services/jobs.service");
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => { for (const s of spies.splice(0)) s.mockRestore(); });
+beforeEach(() => { spies.push(spyOn(closedDayLib, "openClosedDates").mockImplementation((async () => new Set()) as any)); }); // 🔻 TASK-959: no closed day in ANY test of this file
 
 const T1 = uuidFor("c466-t1");
 /** A weekly Tuesday series; `status` per row. */
@@ -30,6 +32,7 @@ const RUN = "2026-10-01";
 const plan = async (rows: any[]) => {
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => ({ key: "group_series_weeks_ahead", value: 4 })) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => rows) as any));
+  spies.push(spyOn(closedDayLib, "openClosedDates").mockImplementation((async () => new Set()) as any)); // 🔻 TASK-959: no closed day in this fixture (the extender asks, in ONE read, which of its dates are closed)
   const out: any = await jobs.runGroupSeriesExtenderJob(RUN);
   return Object.fromEntries(out.plan.map((p: any) => [p.groupKey, p.dates]));
 };

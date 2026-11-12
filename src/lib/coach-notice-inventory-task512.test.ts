@@ -55,6 +55,7 @@ const NAMED_BY_DESIGN: Record<string, string> = {
   [`${S}#sendTeacherReassigned`]: "the coach taken off and the coach put on — two named people",
   [`${S}#sendCourseTeacherChange`]: "🔻 TASK-838 — the rest of a course moves to a new teacher: the old coach(es) taken off and the new coach put on — named people, ONE notice each per act (never one per session, never a family)",
   "src/services/other-series.service.ts#swapOtherSeriesTeacher": "the same, for an อื่นๆ series",
+  [`${S}#sendActivityChangedNotices`]: "🔻 TASK-961 — a course's remaining classes (or one 1 HR / Trial) change ACTIVITY: an UNCHANGED coach is told once (`activity_changed`) per act — the distinct coaches of the moved rows, named people, never per session; a CHANGED coach hears the TASK-838 pair through `sendCourseTeacherChange`; the family hears through `enqueueParentCopies`",
   "src/services/teacher-link.service.ts#approveTeacherLinkRequest": "the coach who asked to link",
   "src/lib/camp-reminder.ts#campReminderSends": "camp's own day-teacher model (`camp_week_day_teachers`), not a booking",
   // TASK-513 — argued, not converted: a course has ONE coach by construction — validation refuses `additionalTeacherIds` on every

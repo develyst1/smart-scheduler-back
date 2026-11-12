@@ -1,0 +1,263 @@
+{
+  "task": "TASK-942",
+  "proves": "src/lib/park-several-groups-task942.test.ts",
+  "note": "Several park groups in one hour: M1-M5 the inserter / isParkBlock, M6-M7 the app mirror, M8 moveBooking, M9-M12 the schema / migration / witness, M13 the money line's date, M14 the column default. C1-C3 = the calendar payload's `more` (fix D-155-1).",
+  "tests": "src/lib/park-several-groups-task942.test.ts",
+  "mutations": [
+    {
+      "id": "M1",
+      "what": "the inserter never exempts (3 park blocks → 409)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "slotExempt: await isParkBlock(exec, input.teacherId, input.bookingType),",
+              "to": "slotExempt: false,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the inserter exempts everyone (a real teacher double-books)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "slotExempt: await isParkBlock(exec, input.teacherId, input.bookingType),",
+              "to": "slotExempt: true,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the inserter trusts the request body",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "slotExempt: await isParkBlock(exec, input.teacherId, input.bookingType),",
+              "to": "slotExempt: input.slotExempt === true || (await isParkBlock(exec, input.teacherId, input.bookingType)),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "isParkBlock drops the OTHER gate",
+      "files": [
+        {
+          "file": "src/lib/system-teacher.ts",
+          "edits": [
+            {
+              "from": "if (!mayUseSystemTeacher(bookingType)) return false;",
+              "to": "if (false) return false;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "isParkBlock says yes to every teacher",
+      "files": [
+        {
+          "file": "src/lib/system-teacher.ts",
+          "edits": [
+            {
+              "from": "return isSystemTeacher(t);",
+              "to": "return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "the app mirror loses the fourth term",
+      "files": [
+        {
+          "file": "src/lib/slot-holder.ts",
+          "edits": [
+            {
+              "from": "isNull(b.slotYieldedAt), eq(b.slotExempt, false))!;",
+              "to": "isNull(b.slotYieldedAt))!;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "holdsSlot ignores the flag",
+      "files": [
+        {
+          "file": "src/lib/slot-holder.ts",
+          "edits": [
+            {
+              "from": "&& row.slotYieldedAt == null && !row.slotExempt;",
+              "to": "&& row.slotYieldedAt == null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "moveBooking never restamps the flag",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (patch.teacherId) patch.slotExempt = await isParkBlock(tx, patch.teacherId, current.bookingType);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "the schema's index WHERE loses the fourth term",
+      "files": [
+        {
+          "file": "src/db/schema.ts",
+          "edits": [
+            {
+              "from": " and not ${t.slotExempt}`),",
+              "to": "`),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "what": "the migration's backfill sets false",
+      "files": [
+        {
+          "file": "drizzle/0078_slot_exempt_park_blocks.sql",
+          "edits": [
+            {
+              "from": "UPDATE \"bookings\" SET \"slot_exempt\" = true WHERE",
+              "to": "UPDATE \"bookings\" SET \"slot_exempt\" = false WHERE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "what": "the migration's index loses `AND NOT slot_exempt`",
+      "files": [
+        {
+          "file": "drizzle/0078_slot_exempt_park_blocks.sql",
+          "edits": [
+            {
+              "from": " and \"slot_yielded_at\" is null and not \"slot_exempt\";",
+              "to": " and \"slot_yielded_at\" is null;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "what": "the witness probes the wrong predicate",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "index: \"bookings_teacher_slot_uq\", contains: \"slot_exempt\"",
+              "to": "index: \"bookings_teacher_slot_uq\", contains: \"group_id\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M13",
+      "what": "the revenue line is dated by a fixed day, not the confirm day",
+      "files": [
+        {
+          "file": "src/lib/revenue-line.ts",
+          "edits": [
+            {
+              "from": "occurredOn: line.occurredOn ?? bangkokNow().date,",
+              "to": "occurredOn: line.occurredOn ?? \"2026-11-12\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M14",
+      "what": "the schema column default flips to true",
+      "files": [
+        {
+          "file": "src/db/schema.ts",
+          "edits": [
+            {
+              "from": "slotExempt: boolean(\"slot_exempt\").notNull().default(false),",
+              "to": "slotExempt: boolean(\"slot_exempt\").notNull().default(true),"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "what": "D-155-1: a real coach's dropped row is listed in `more` too",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "} else if ((row as any).slotExempt) {",
+              "to": "} else {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "what": "D-155-1: the park blocks beyond the first are never collected",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "more.set(key, [...(more.get(key) ?? []), dto]);",
+              "to": "void dto;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "what": "D-155-1: every slot carries a `more` key (even an hour with one booking)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(more.get(`${date}|${teacher.id}|${time}`)?.length ? { more: more.get(`${date}|${teacher.id}|${time}`)! } : {}),",
+              "to": "more: more.get(`${date}|${teacher.id}|${time}`) ?? [],"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

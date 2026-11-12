@@ -44,7 +44,7 @@ const fakeCreate = (leave: Array<{ teacherId: string; date: string }>) => {
     update: (t: any) => ({ set: () => ({ where: async () => { touchedLeaveTable.push(String(t?.[Symbol.for("drizzle:Name")] ?? "")); } }) }),
     delete: (t: any) => ({ where: () => { touchedLeaveTable.push(`delete:${String(t?.[Symbol.for("drizzle:Name")] ?? "")}`); const p: any = Promise.resolve(); p.returning = async () => [{ id: "x" }]; return p; } }),
     query: {
-      teacherLeaveDays: { findFirst: async (q: any) => { const w = whereOf(q); return leave.find((r) => r.teacherId === w.teacherId && r.date === w.date); } },
+      closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async (q: any) => { const w = whereOf(q); return leave.find((r) => r.teacherId === w.teacherId && r.date === w.date); } },
       students: { findFirst: async ({ where }: any) => { const probe: string[] = []; where({ id: "id" }, { eq: (_: any, x: string) => { probe.push(x); return null; } }); const id = probe[0]!; return { id, parentId: null, archivedAt: null, name: id === A ? "Ploy" : "Pun", nickname: id === A ? "Ploy" : "Pun" }; } },
       teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME" }) },
       bookings: { findFirst: async () => null, findMany: async () => inserted.filter((r) => r.table === "bookings").map((r, i) => ({ id: `b-${i + 1}`, ...r.v, status: r.v.status ?? "PENDING", student: { id: A, name: "Ploy" }, coStudent: r.v.coStudentId ? { id: B, name: "Pun" } : null, teacher: { id: T1, nickname: "Bank", name: "Bank" }, subject: { id: SUBJ, name: "Balance" }, course: null, badges: [], additionalTeachers: [], rental: null, seats: [], group: null, campWeekDay: null })) },
@@ -122,7 +122,7 @@ describe("🔴 the skip is NARROW — by value at `insertBooking`", () => {
   const exec = (leave: Array<{ teacherId: string; date: string }>, teacher: any = {}) => ({
     query: {
       teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", ...teacher }) },
-      teacherLeaveDays: { findFirst: async (q: any) => { const w = whereOf(q); return leave.find((r) => r.teacherId === w.teacherId && r.date === w.date); } },
+      closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async (q: any) => { const w = whereOf(q); return leave.find((r) => r.teacherId === w.teacherId && r.date === w.date); } },
       boItem: { findFirst: async () => null }, // no freelance budget row
     },
   });
@@ -158,11 +158,11 @@ describe("TASK-813 — by source: one place, one reader, nothing else moved", ()
   const INSERT = code(region(SVC, "export async function insertBooking(", "\n}\n"));
   test("the skip is passed ONLY by `insertBooking`, ONLY for `SICK_LEAVE` + `plannedAtCreation === true`", () => {
     expect([...code(SVC).matchAll(/allowLeave: true/g)]).toHaveLength(1);
-    expect(INSERT).toContain('if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(input.bookingType) });'); // 🔻 TASK-861: + allowSystem
-    expect(INSERT).toContain("else await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });"); // 🔻 TASK-861: + allowSystem
+    expect(INSERT).toContain('if (input.status === "SICK_LEAVE" && input.plannedAtCreation === true) await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: true });'); // 🔻 TASK-861: + allowSystem
+    expect(INSERT).toContain("else await assertTeacherBookable(exec, input.teacherId, input.date, { allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: !!input.extendedFromId });"); // 🔻 TASK-861: + allowSystem
   });
   test("the gate keeps ONE reader and ONE text; the leave check is the only thing `allowLeave` guards", () => {
-    expect(GATE).toContain("if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date)) throw TEACHER_ON_LEAVE(teacher.nickname, date);\n  }");
+    expect(GATE).toContain("if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date, opts.startTime)) throw TEACHER_ON_LEAVE(teacher.nickname, date); // 🔻 TASK-965: the class's time, so a part-day leave refuses only the hours it covers\n  }");
     expect([...GATE.matchAll(/opts\.allowLeave/g)]).toHaveLength(1);
     expect(GATE).toContain("if (!teacher) throw badRequest");
     expect(GATE).toContain("teacher.archived");
@@ -177,6 +177,6 @@ describe("TASK-813 — by source: one place, one reader, nothing else moved", ()
   test("the make-up appended at the end still skips leave days (Seam B) and `createCoursePackage` writes no leave row", () => {
     const CREATE = code(region(SVC, "export async function createCoursePackage(", "\n}\n"));
     expect(CREATE).not.toMatch(/teacherLeaveDays|teacher_leave_days|liftAdvanceLeave|recordAdvanceLeave/);
-    expect(code(region(SVC, "export async function findFreeExtensionDate(", "\n}\n"))).toContain("if (await teacherLeaveOn(exec, teacherId, d)) return true;");
+    expect(code(region(SVC, "export async function findFreeExtensionDate(", "\n}\n"))).toContain("if (await teacherLeaveOn(exec, teacherId, d, startTime)) return true;");
   });
 });

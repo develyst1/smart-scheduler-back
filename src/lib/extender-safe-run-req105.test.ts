@@ -23,6 +23,7 @@ const region = (s: string, from: string, to: string) => {
   return s.slice(a, b < 0 ? undefined : b);
 };
 const { db } = await import("../db");
+const closedDayLib = await import("./closed-day"); // 🔻 TASK-959
 const { jobRuns } = await import("../db/schema");
 const jobs = await import("../services/jobs.service");
 const sched = await import("../services/scheduler.service");
@@ -49,6 +50,7 @@ const world = (rows: any[]) => {
   // value goes through the real resolver — a test that mocks the thing under test proves only the mock.
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => ({ key: "group_series_weeks_ahead", value: 2 })) as any)); // 2 weeks ahead
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => rows) as any));
+  spies.push(spyOn(closedDayLib, "openClosedDates").mockImplementation((async () => new Set()) as any)); // 🔻 TASK-959: no closed day in this fixture (the extender asks, in ONE read, which of its dates are closed)
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => { writes.push("tx"); return fn({} as any); }) as any));
   spies.push(spyOn(sched, "insertBooking").mockImplementation((async (_tx: any, _s: any, input: any) => { writes.push(`insert ${input.groupKey}/${input.date}`); return uuidFor(`n-${input.date}`); }) as any));
   return writes;

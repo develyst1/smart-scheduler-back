@@ -123,6 +123,11 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ⚠️ The menus are `CAL_BOOK`, the same pair the status door carries — not a third answer to "where does this live".
   // 🔴 Hung off the admin's OWN noun, not `/teachers/:id/leave`: a wildcard sibling of the literal `/teachers/me/leave` is resolved
   // from the OTHER END of the match list by `accessGuard`, which revoked the coach's own door. See the routes for the mechanism.
+  // 🔻 TASK-959 (REQ-5013 option B) — CLOSE A WHOLE DAY: the school-wide twin of the coach's advance leave, so it takes the SAME keys: the calendar's read key to LIST, and the leave door's own act key (the narrowest existing one that
+  // already covers "stop new bookings on a day") to close / re-open. NO new key. A linked teacher holds neither (the routes are not in `TEACHER_ALLOWED`) ⇒ 403.
+  "GET /closed-days": read(["menu:calendar"]),
+  "POST /closed-days": act(CAL_BOOK, "action:calendar.status"),
+  "DELETE /closed-days/:date": act(CAL_BOOK, "action:calendar.status"),
   "POST /teacher-leave-days": act(CAL_BOOK, "action:calendar.status"),
   "DELETE /teacher-leave-days/:teacherId/:date": act([...CAL_BOOK, ...TEACHERS], "action:calendar.status"), // 🔻 TASK-819 follow-up: + the Teachers menu (its panel cancels single days; the same as the range lift)
   "DELETE /teacher-leave-ranges/:id": act([...CAL_BOOK, ...TEACHERS], "action:calendar.status"), // 🔻 TASK-819 — lift a whole recorded range (future days): the SAME key as the per-day lift; the Teachers menu too, where its panel lives
@@ -180,6 +185,10 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses/:id/start-date/preview": act(BOOKINGS, "action:bookings.course-plan"), // TASK-573 §2 — the SAME gate as the act (pinned equal)
   "POST /courses/:id/change-teacher-time": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 (REQ-127) — RE-PLANS the rest of the course (to a new teacher / day / time), exactly like TASK-570's start-date change: the plan editor's key (@Sober's ruling 10-25; the FE button is gated by it too)
   "POST /courses/:id/change-teacher-time/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 — the SAME gate as the act
+  "POST /courses/:id/change-activity": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-961 (REQ-5014) — RE-LABELS the rest of the course (a new activity): the SAME gate as change-teacher-time
+  "POST /courses/:id/change-activity/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-961 — the SAME gate as the act
+  "POST /bookings/:id/change-activity": act(CAL_BOOK, "action:calendar.booking-edit"), // 🔻 TASK-961 — one 1 HR / 1st Trial's activity: an EDIT of the booking, gated like `PATCH /bookings/:id`
+  "POST /bookings/:id/change-activity/preview": act(CAL_BOOK, "action:calendar.booking-edit"), // 🔻 TASK-961 — the SAME gate as the act
   "PUT /courses/:id/bonus100-pick": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-860 (REQ-120 F4) — the admin's Bonus-100 pick after a whole-course coach change: the SAME key as that change (TASK-838), approved by Silver (DECISIONS row 9)
   "POST /courses/:id/cancel": act(BOOKINGS, "action:bookings.course-cancel"),
   "POST /courses/:id/cancel/preview": act(BOOKINGS, "action:bookings.course-cancel"),

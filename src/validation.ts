@@ -29,6 +29,7 @@ export const discountInput = z.object({
 export const attendeeNote = z.string().trim().max(200, "โน้ตต้องไม่เกิน 200 ตัวอักษร");
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
+const HALF_HOUR = (t: string) => t.endsWith(":00") || t.endsWith(":30"); // 🔻 TASK-965 (REQ-5015): a part-day window / working hours sit on the hour or the half hour
 const ID = z.string().uuid();
 /** 🔻 TASK-889 (F1, SPEC-099 §9) — the branch a booking / course / voucher belongs to. Optional everywhere it is accepted: absent on a create ⇒ BRAVO, absent on an edit ⇒ unchanged. */
 export const BRANCH = z.enum(BRANCHES);
@@ -775,6 +776,18 @@ export const groupSeriesPatch = z
   .object({ title: z.string().trim().min(1).optional(), headCount: z.number().int().min(0).nullable().optional(), teacherRates: z.record(ID, z.number().int().min(0)).optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุอย่างน้อย 1 ฟิลด์ที่จะแก้ไข" });
 
+// 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §3) — CLOSED DAYS. The reasons are the SAME four as `lib/closed-day.ts`'s `CLOSED_REASONS` (a test pins the two together); the three business refusals
+// (`PAST_DATE`, `NOTE_REQUIRED`, `RANGE_TOO_LONG`) carry their OWN codes and live in the service, so zod only judges the SHAPE (a bad shape is the generic 400 `VALIDATION`).
+const closedDaySpan = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+export const closedDaysQuery = z
+  .object({ from: DATE.optional(), to: DATE.optional() })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "วันเริ่มต้องไม่หลังวันสิ้นสุด" })
+  .refine((q) => !q.from || !q.to || closedDaySpan(q.from, q.to) <= 62, { message: "ดูได้ครั้งละไม่เกิน 62 วัน" }); // `to − from ≤ 62 days`
+export const closeDaysBody = z
+  .object({ from: DATE, to: DATE.optional(), reason: z.enum(["HOLIDAY", "VENUE_CLOSED", "WEATHER", "OTHER"]), note: z.string().trim().max(300).nullish() })
+  .refine((b) => !b.to || b.from <= b.to, { message: "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม", path: ["to"] });
+export const closedDayParam = z.object({ date: DATE });
+
 export const leaveDateParam = z.object({ date: DATE }); // TASK-582 — lifting ONE advance-leave day
 export const teacherLeaveDayParam = z.object({ teacherId: ID, date: DATE }); // TASK-608 — an admin lifting ONE teacher's day
 // TASK-587 (a) — the admin's window over recorded leave days: both optional (from = today, to = from + 60); at most 92 days, in order.
@@ -816,8 +829,18 @@ export const adminTeacherLeaveBody = z
     sessionIds: z.array(ID).min(1).max(50).optional(), // the single-day body only
     from: DATE.optional(), // the range body
     to: DATE.optional(),
+    startTime: TIME.optional(), // 🔻 TASK-965 (REQ-5015, SPEC-108 §4) — a PART-day leave [startTime, endTime): both or neither, on the hour or the half hour; a range applies the same window to every day
+    endTime: TIME.optional(),
   })
   .superRefine((b, ctx) => {
+    // 🔻 TASK-965 — the part-day window. 📋 ENGINEER WORDING (a validation line the dialog's own pickers make unreachable): LISTED for the owner's copy review.
+    if ((b.startTime === undefined) !== (b.endTime === undefined)) ctx.addIssue({ code: "custom", message: "ลาเป็นช่วงเวลาต้องระบุทั้งเวลาเริ่มและเวลาสิ้นสุด", path: [b.startTime === undefined ? "startTime" : "endTime"] });
+    else if (b.startTime !== undefined && b.endTime !== undefined) {
+      if (b.startTime >= b.endTime) ctx.addIssue({ code: "custom", message: "เวลาสิ้นสุดต้องหลังเวลาเริ่ม", path: ["endTime"] });
+      if (!HALF_HOUR(b.startTime)) ctx.addIssue({ code: "custom", message: "เวลาต้องเป็นต้นชั่วโมงหรือครึ่งชั่วโมง", path: ["startTime"] });
+      if (!HALF_HOUR(b.endTime)) ctx.addIssue({ code: "custom", message: "เวลาต้องเป็นต้นชั่วโมงหรือครึ่งชั่วโมง", path: ["endTime"] });
+      if (b.sessionIds !== undefined) ctx.addIssue({ code: "custom", message: "เลือกคาบรายคาบกับลาเป็นช่วงเวลาพร้อมกันไม่ได้", path: ["sessionIds"] }); // 400 VALIDATION: the picked-classes path is TODAY's act, a part-day window is an ADVANCE leave's
+    }
     const isRange = b.from !== undefined || b.to !== undefined;
     if (!isRange) {
       if (b.date === undefined) ctx.addIssue({ code: "custom", message: "Invalid input", path: ["date"] });
@@ -833,8 +856,8 @@ export const adminTeacherLeaveBody = z
   })
   .transform((b) =>
     b.from !== undefined
-      ? { teacherId: b.teacherId, date: b.from, to: b.to, reason: b.reason } // a range: `date` is its FIRST day — the door's future-only line reads it
-      : { teacherId: b.teacherId, date: b.date!, ...(b.sessionIds ? { sessionIds: b.sessionIds } : {}), reason: b.reason },
+      ? { teacherId: b.teacherId, date: b.from, to: b.to, reason: b.reason, ...(b.startTime !== undefined ? { startTime: b.startTime, endTime: b.endTime } : {}) } // a range: `date` is its FIRST day — the door's future-only line reads it
+      : { teacherId: b.teacherId, date: b.date!, ...(b.sessionIds ? { sessionIds: b.sessionIds } : {}), reason: b.reason, ...(b.startTime !== undefined ? { startTime: b.startTime, endTime: b.endTime } : {}) },
   );
 export const resetPassword = z.object({ password: z.string() });
 // TASK-381 (Stage 2) — shape only; the key registry and the password rule are the service's.
@@ -854,13 +877,29 @@ export const setTeacherTypeOrder = z.object({
     .refine((a) => new Set(a).size === 3, "ต้องระบุครบ 3 ประเภท ไม่ซ้ำ"),
 });
 
+/**
+ * 🔻 TASK-965 (REQ-5015, SPEC-108 §4) — a coach's WORKING HOURS: `{"0":["13:00","18:00"]}`. Each value `[from, to]` in `HH:MM`, `from < to`, on the hour or the half hour. A weekday with no key = the whole day.
+ * 📋 ENGINEER WORDING — LISTED for the owner's copy review (a line the «วันทำงาน» pickers make unreachable).
+ */
+export const workHoursShape = z
+  .record(z.string().regex(/^[0-6]$/, "วันต้องเป็น 0–6"), z.tuple([TIME, TIME]))
+  .superRefine((h, ctx) => {
+    for (const [k, [from, to]] of Object.entries(h)) {
+      if (from >= to) ctx.addIssue({ code: "custom", message: "เวลาสิ้นสุดต้องหลังเวลาเริ่ม", path: [k] });
+      if (!HALF_HOUR(from) || !HALF_HOUR(to)) ctx.addIssue({ code: "custom", message: "เวลาต้องเป็นต้นชั่วโมงหรือครึ่งชั่วโมง", path: [k] });
+    }
+  });
+
 // Teacher lifecycle (SPEC-004 / TASK-016).
 export const createTeacher = z.object({
   name: z.string().trim().min(1).max(128),
   nickname: z.string().trim().min(1).max(64),
   type: TEACHER_TYPE,
   workDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  workHours: workHoursShape.nullable().optional(), // 🔻 TASK-965 (REQ-5015, SPEC-108 §4a): the working hours at creation — keys must be among `workDays` when those are given (absent = every weekday)
   subjectIds: z.array(z.string().uuid()).optional(),
+}).superRefine((b, ctx) => {
+  for (const k of Object.keys(b.workHours ?? {})) if (b.workDays && b.workDays.length && !b.workDays.includes(Number(k))) ctx.addIssue({ code: "custom", message: "ตั้งเวลาทำงานได้เฉพาะวันที่ครูมาสอน", path: ["workHours", k] });
 });
 
 export const updateTeacher = z.object({
@@ -888,14 +927,19 @@ export const teachersQuery = z.object({
     .transform((v) => v === "true"),
 });
 
-/** 0=Sun … 6=Sat — วันที่ครูมาสอน (ตั้งในหน้าจัดการครู) */
-export const setTeacherWorkDays = z.object({
-  workDays: z
-    .array(z.number().int().min(0).max(6))
-    .min(1, "ต้องเลือกอย่างน้อย 1 วัน")
-    .max(7)
-    .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
-});
+/** 0=Sun … 6=Sat — วันที่ครูมาสอน (ตั้งในหน้าจัดการครู). 🔻 TASK-965: + `workHours` (optional; `null` clears every window; absent = unchanged) — its keys must be among `workDays`. */
+export const setTeacherWorkDays = z
+  .object({
+    workDays: z
+      .array(z.number().int().min(0).max(6))
+      .min(1, "ต้องเลือกอย่างน้อย 1 วัน")
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, "วันซ้ำ"),
+    workHours: workHoursShape.nullable().optional(),
+  })
+  .superRefine((b, ctx) => {
+    for (const k of Object.keys(b.workHours ?? {})) if (!b.workDays.includes(Number(k))) ctx.addIssue({ code: "custom", message: "ตั้งเวลาทำงานได้เฉพาะวันที่ครูมาสอน", path: ["workHours", k] });
+  });
 
 // TASK-100 — preview the orphan impact of a proposed workDays change (query: comma-separated weekdays, e.g. "1,2,3").
 export const workDaysImpactQuery = z.object({
@@ -903,6 +947,15 @@ export const workDaysImpactQuery = z.object({
     .string()
     .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean).map(Number))
     .pipe(z.array(z.number().int().min(0).max(6)).max(7)),
+  // 🔻 TASK-965 (REQ-5015): the proposed working hours as JSON (`{"0":["13:00","18:00"]}`); absent = hours are not part of the question (today's answer, unchanged)
+  workHours: z
+    .string()
+    .optional()
+    .transform((s, ctx) => {
+      if (s === undefined) return undefined;
+      try { return JSON.parse(s) as unknown; } catch { ctx.addIssue({ code: "custom", message: "workHours ต้องเป็น JSON" }); return z.NEVER; }
+    })
+    .pipe(workHoursShape.optional()),
 });
 
 /** Admin over-budget override for a freelance teacher (SPEC-001 / TASK-008). */
@@ -1107,6 +1160,13 @@ export const resumeBooking = z.object({
 export const changeCourseStart = z.object({ startDate: DATE });
 /** 🔻 TASK-838 (REQ-127) — the rest of a course moves to a new teacher, day and time: the admin's three answers (the resume's pickers). The weekday is DERIVED from the start date, never asked. */
 export const changeCourseTeacherTime = z.object({ teacherId: ID, startDate: DATE, startTime: TIME });
+/**
+ * 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2.1) — change the activity of a course's REMAINING classes: the new activity, an optional new coach, and — ONLY when the card has no price for (new group × size) — the typed price in whole baht. The
+ * range (an integer in 1..100 000) and "typed although the card has a price" are the planner's CODES (`MANUAL_PRICE_RANGE` / `MANUAL_PRICE_NOT_ALLOWED`), not a generic VALIDATION error: the dialog maps each to its own Thai message.
+ */
+export const changeCourseActivity = z.object({ subjectId: ID, teacherId: ID.optional(), manualPriceBaht: z.number().optional() });
+/** 🔻 TASK-961 (SPEC-106 §2.2) — a 1 HR / 1st Trial: the new activity and an optional new coach. NO typed price (every group has a 1 h price; a Trial is flat). */
+export const changeBookingActivity = z.object({ subjectId: ID, teacherId: ID.optional() });
 /** 🔻 TASK-860 (REQ-120 F4) — the admin's Bonus-100 pick after a whole-course coach change. */
 export const bonus100Pick = z.object({ pick: z.enum(["FIRST", "LATEST", "SHARE"]) });
 export const resumeCourse = z.object({

@@ -93,6 +93,8 @@ export interface TeacherDTO {
   lineLinked: boolean;
   /** 0=Sun … 6=Sat — days this teacher appears on the calendar */
   workDays: number[];
+  /** 🔻 TASK-965 (REQ-5015) — the hours the coach works per weekday, `{"0":["13:00","18:00"]}`; a weekday with no key (or null) = the whole day. Keys are among `workDays`. */
+  workHours: Record<string, [string, string]> | null;
   /** THB/hour = the teacher's EXPENSE item unit price in backoffice (UC-016). null when off. */
   hourlyRate?: number | null;
   /** Hours of monthly work quota left (backoffice EXPENSE item stock). null when none. */
@@ -249,7 +251,7 @@ export interface CalendarResponse {
     date: IsoDate;
     columns: Array<{
       teacher: TeacherDTO; // active teachers only, priority-sorted (full/part → freelance)
-      slots: Array<{ time: HhMm; booking: BookingDTO | null }>; // ordered, length = timeSlots
+      slots: Array<{ time: HhMm; booking: BookingDTO | null; more?: BookingDTO[] }>; // ordered, length = timeSlots · 🔻 TASK-942 fix D-155-1: `more` = the OTHER park blocks of the same hour on the "No Teacher" column (omitted when empty)
     }>;
   }>;
 }
@@ -324,6 +326,19 @@ export interface DailyReportResponse {
  * GET /api/reports/som?month=YYYY-MM[&badgeValueIds=a,b] — 🔻 TASK-741 (REQ-124, Palm's `docs/backend-som-dashboard.md`). ONLY the sections built so far are typed here; the old fields
  * (`sportShare`, `newVsRenewing`, …) ride along unchanged until the front switches. `month` is echoed in each section; integers only.
  */
+/**
+ * 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2) — `POST /courses/:id/change-activity[/preview]` and `POST /bookings/:id/change-activity[/preview]`. The booking twin takes no `manualPriceBaht`. The response is the same for the preview and the act (`changeId` = the history row, act only):
+ * `newPriceMinor` / `priceSource` / `differenceMinor` are `null` only in a PREVIEW that still needs the typed price. Errors are the course acts' envelope: SAME_ACTIVITY · MANUAL_PRICE_NOT_ALLOWED · MANUAL_PRICE_REQUIRED · MANUAL_PRICE_RANGE · NO_REMAINING_CLASSES · COURSE_ENDED · COURSE_DROPPED ·
+ * GROUP_COURSE · SLOT_TAKEN · OLD_PRICE_NOT_ON_CARD (a code SPEC-106 did not list: the OLD activity has no card price) · for a booking NOT_SINGLE_OR_TRIAL · ALREADY_DELIVERED · NOT_LIVE_BOOKING (also not listed: a cancelled / leave / paused row) · NO_PRICE_GROUP.
+ */
+export interface ChangeActivityRequest { subjectId: string; teacherId?: string; manualPriceBaht?: number }
+export interface ChangeActivityResponse {
+  remaining: number; firstDate: IsoDate; lastDate: IsoDate;
+  from: { subjectId: string; subjectName: string }; to: { subjectId: string; subjectName: string };
+  teacherChanged: boolean;
+  oldPriceMinor: number; newPriceMinor: number | null; priceSource: "CARD" | "MANUAL" | null; differenceMinor: number | null;
+  changeId?: string;
+}
 export interface SomBreakdown {
   buckets: Array<{ key: string; label?: string; count: number }>;
   known: number;
@@ -493,6 +508,8 @@ export interface SetAvailabilityResponse {
 /** PATCH /api/teachers/:id/work-days — วันที่ครูมาสอน (0=Sun … 6=Sat) */
 export interface SetTeacherWorkDaysRequest {
   workDays: number[];
+  /** 🔻 TASK-965 — optional: absent = unchanged, null = clear every window, a map = replace. Keys must be among `workDays`; each value `[from, to]` in HH:MM, from < to, on the hour or the half hour. */
+  workHours?: Record<string, [string, string]> | null;
 }
 export type SetTeacherWorkDaysResponse = TeacherDTO;
 
@@ -574,7 +591,7 @@ export interface RecordLeaveDayResponse extends LeaveSplitDTO {
   cancelled: 0;
   bookingIds: string[];
   familiesNotified: 0;
-  leave: { date: string; reason: string | null };
+  leave: { date: string; reason: string | null; /** 🔻 TASK-965 — ONLY on a part-day leave (`HH:MM`) */ startTime?: string; endTime?: string };
   alreadyRecorded: boolean;
   bookings: LeaveClassDTO[];
   teacherNotified: number;
@@ -618,11 +635,34 @@ export interface RecordedLeaveDayDTO {
   reason: string | null;
   createdBy: string | null;
   rangeId: string | null;
+  /** 🔻 TASK-965 (REQ-5015) — the part-day window `HH:MM`; both null = the WHOLE day. `bookings` then holds only the classes that overlap it. */
+  startTime: string | null;
+  endTime: string | null;
   bookings: LeaveClassDTO[];
   /** 🔻 TASK-826 — present ONLY when this leave day took the teacher OFF co-taught classes that run on with others (still live). `bookings` then lists only what is left to handle. */
   continues?: Array<{ bookingId: string; startTime: string; with: string[] }>;
 }
 export interface RecordedLeaveListResponse { items: RecordedLeaveDayDTO[] }
+
+/** 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §3) — the whole school is CLOSED on a date. The shapes are SPEC-105 §3 word for word; `bookings` is the SAME flat shape as a leave day's classes (`LeaveClassDTO`). */
+export type ClosedDayReason = "HOLIDAY" | "VENUE_CLOSED" | "WEATHER" | "OTHER";
+export interface ClosedDayRow {
+  date: string;
+  reason: ClosedDayReason;
+  note: string | null;
+  rangeId: string | null;
+  createdBy: string;
+  createdAt: string;
+  bookings: LeaveClassDTO[];
+}
+/** `GET /api/closed-days?from&to` (to − from ≤ 62 days) — open rows only, by date. */
+export interface ClosedDayListResponse { items: ClosedDayRow[] }
+/** `POST /api/closed-days` body — `to` defaults to `from`; a range is ≤ 31 days; OTHER needs a note. */
+export interface CloseDaysBody { from: string; to?: string; reason: ClosedDayReason; note?: string | null }
+/** `201` — a day already closed is skipped, never an error; `classesOnThem` = the live classes now on the created days. */
+export interface CloseDaysResponse { created: string[]; alreadyClosed: string[]; classesOnThem: number }
+/** `DELETE /api/closed-days/:date` → `200`. */
+export interface ReopenDayResponse { date: string; reopened: true }
 
 /** TASK-817 (REQ-123 P2) — the answer of `POST /api/teacher-leave-days` for a DATE RANGE body `{ teacherId, from, to, reason }`. */
 export interface RecordLeaveRangeResponse {

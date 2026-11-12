@@ -51,6 +51,15 @@ const skip = (key: string, why: string): null => {
 /** `<subject> — <who>`, tolerating a missing child name (the line still has to be readable). */
 const withWho = (head: string, who: string | null | undefined): string => (who && who.trim() ? `${head} — ${who.trim()}` : head);
 
+/**
+ * 🔻 TASK-961 (SPEC-106 §4) — THE revenue-category name for a sale of `subject`: ONE builder, called by `courseLine` / `trialOrSingleLine` (the writer) AND by `relabelRevenueLine` (the activity change), so a relabelled line can never carry a name
+ * the writer would not have built. COURSE → «<subject> · Private|Duo»; a 1 HR → «<subject> · 1 HR» (type COURSE); a 1st Trial → «1st Trial (<subject>)» (type TRIAL).
+ */
+export type RevenueCategoryKind = "COURSE" | "SINGLE_SESSION" | "FIRST_TRIAL";
+export const revenueCategoryName = (kind: RevenueCategoryKind, subject: string, duo = false): string =>
+  kind === "COURSE" ? `${subject} · ${duo ? "Duo" : "Private"}` : kind === "FIRST_TRIAL" ? `1st Trial (${subject})` : `${subject} · 1 HR`;
+export const revenueCategoryType = (kind: RevenueCategoryKind): RevenueType => (kind === "FIRST_TRIAL" ? "TRIAL" : "COURSE");
+
 // ───────────────────────────────── trial · 1 HR (applyConfirm) ─────────────────────────────────
 
 export interface ConfirmedBookingFacts {
@@ -95,7 +104,7 @@ export function trialOrSingleLine(b: ConfirmedBookingFacts, priceGroup: string |
   return {
     idempotencyKey: key,
     type: trial ? "TRIAL" : "COURSE",
-    categoryName: trial ? `1st Trial (${subject})` : `${subject} · 1 HR`,
+    categoryName: revenueCategoryName(trial ? "FIRST_TRIAL" : "SINGLE_SESSION", subject), // 🔻 TASK-961 — the ONE builder
     productName: withWho(trial ? `${subject} Trial` : `${subject} 1 HR`, b.who),
     amountMinor,
     source: "BOOKING",
@@ -132,7 +141,7 @@ export function courseLine(
   return {
     idempotencyKey: key,
     type: "COURSE",
-    categoryName: `${subject} · ${kind}`,
+    categoryName: revenueCategoryName("COURSE", subject, c.duo), // 🔻 TASK-961 — the ONE builder
     productName: withWho(`${subject} ${kind}`, c.who),
     amountMinor: netMinor,
     source: "BOOKING",

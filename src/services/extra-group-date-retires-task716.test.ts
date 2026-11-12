@@ -72,7 +72,7 @@ function world(courses: Course[], rows: any[]) {
         },
       },
       coursePackages: { findFirst: async ({ where }: any) => { const g = probe(where); return course(g("id")) ?? w.courses[0] ?? null; } },
-      teacherLeaveDays: { findFirst: async () => undefined },
+      closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async () => undefined },
       teachers: { findFirst: async () => ({ id: T1, nickname: "Bank", name: "Bank", archived: false, workDays: [0, 1, 2, 3, 4, 5, 6], type: "FULL_TIME", lineUserId: null }), findMany: async () => [{ id: T1, nickname: "Bank", lineUserId: "U-coach" }] /* 🔻 TASK-702: the confirm tells the booking's coach */ },
       students: { findFirst: async () => ({ id: "s1", nickname: "Mali", name: "Mali", parentId: "p1" }), findMany: async () => [] },
       parents: { findFirst: async () => ({ id: "p1", lineUserId: null }), findMany: async () => [] },

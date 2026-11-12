@@ -26,6 +26,7 @@ const arm = (leave: Array<{ teacherId: string; date: string }>, reads: string[] 
   setSystemTime(new Date("2026-10-01T10:00:00+07:00")); // every date is today-or-later ⇒ an advance leave FIRES on it
   spies.push(spyOn(db.query.teachers, "findFirst").mockImplementation((async () => ({ id: T1, name: "Bank", nickname: "Bank" })) as any));
   spies.push(spyOn(db.query.subjects, "findFirst").mockImplementation((async () => ({ id: SUBJ, name: "Balance" })) as any));
+  spies.push(spyOn(db.query.closedDays, "findFirst").mockImplementation((async () => undefined) as any)); // 🔻 TASK-959: no closed day in this fixture
   spies.push(spyOn(db.query.teacherLeaveDays, "findFirst").mockImplementation((async (q: any) => { const w = whereOf(q); reads.push(`${w.teacherId}|${w.date}`); return leave.find((r) => r.teacherId === w.teacherId && r.date === w.date); }) as any));
   spies.push(spyOn(db.query.bookings, "findFirst").mockImplementation((async () => null) as any));
   // 🚫 the preview writes nothing
@@ -89,7 +90,7 @@ describe("🔴 TASK-815 — each drawn week says whether the teacher is on advan
 describe("TASK-815 — by source: the ONE reader, no second date check, claim kept", () => {
   const PREVIEW = code(region(SVC, "export async function previewCoursePackage(", "\n}\n"));
   test("the flag comes from `teacherLeaveOn` over the drawn weeks, and the response carries the flagged list", () => {
-    expect(PREVIEW).toContain("const onLeave = await Promise.all(sessions.map((s) => teacherLeaveOn(db, input.teacherId, s.date)));");
+    expect(PREVIEW).toContain("const onLeave = await Promise.all(sessions.map((s) => teacherLeaveOn(db, input.teacherId, s.date, input.startTime)));");
     expect(PREVIEW).toContain("const flagged = sessions.map((s, i) => ({ ...s, teacherOnLeave: onLeave[i] != null }));");
     expect(PREVIEW).toContain("sessions: flagged,");
     expect(PREVIEW).not.toMatch(/teacherLeaveDays|new Date\(|Date\.parse|bangkokNow/);

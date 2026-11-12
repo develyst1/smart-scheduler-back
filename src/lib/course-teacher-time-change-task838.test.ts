@@ -258,7 +258,7 @@ describe("🔑 by source — the doors", () => {
     const run = SVC.slice(SVC.indexOf("async function runCourseTeacherTimeChange("), SVC.indexOf("export async function changeCourseTeacherAndTime("));
     expect(run.indexOf("await assertCourseWritable(tx, id)")).toBeGreaterThan(-1);
     expect(run.indexOf("await assertCourseWritable(tx, id)")).toBeLessThan(run.indexOf("planCourseTeacherTimeChange("));
-    expect(run).toContain("await assertTeacherBookable(tx, m.to.teacherId, m.to.date);");
+    expect(run).toContain("await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { startTime: m.to.startTime });");
     expect(run).not.toMatch(/\.insert\(|insertBooking\(|"CANCELLED"|droppedAt|usedSessions|leaveUsed/);
     expect(run).toContain("const expiryDate = replanExpiry(course.expiryDate, plan.lastDate);");
     expect(run).toContain("await sendCourseTeacherChange(tx, plan.moves);");
@@ -273,6 +273,6 @@ describe("🔑 by source — the doors", () => {
     expect(h).toContain('const changed = moves.filter((m) => m.from.teacherId !== m.to.teacherId);');
     expect(h).not.toMatch(/for \(const m of moves\)[^]*enqueueLine/);
     expect(h).not.toMatch(/enqueueParentCopies|recipientType: "parent"|sendClassCancelledToFamilies/);
-    expect([...SVC.matchAll(/sendCourseTeacherChange\(/g)]).toHaveLength(2); // the definition + the one call
+    expect([...SVC.matchAll(/sendCourseTeacherChange\(/g)]).toHaveLength(3); /* 🔻 TASK-961: + the activity change's call (it passes `{ subjectName }`) */ // the definition + the one call
   });
 });

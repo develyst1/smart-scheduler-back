@@ -47,6 +47,7 @@ export const toTeacherDTO = (t: any) => ({
   // SPEC-004 money-setup gate: set by attachSetupIncomplete (true = no budget/salary yet → not bookable).
   setupIncomplete: false,
   workDays: (t.workDays ?? [0, 1, 2, 3, 4, 5, 6]).map(Number),
+  workHours: t.workHours ?? null, // 🔻 TASK-965 (REQ-5015): per-weekday working hours `{"0":["13:00","18:00"]}`; null = no hours limit
   // Populated from the teacher's backoffice EXPENSE item by attachTeacherQuotas (SPEC-001).
   // All money fields are satang. remainingMinor = current stock; budgetMinor = configured
   // monthly budget; reorderMinor = near-cap warning threshold; overLimit = remainingMinor ≤ 0.

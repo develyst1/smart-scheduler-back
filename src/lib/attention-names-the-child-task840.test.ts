@@ -97,7 +97,7 @@ describe("🔑 by source — one helper, the one name rule; `link` rides the two
     expect(S).toContain("label: `${childLead(c)}course ${c.size} · ${c.expiryDate}`");
     expect(S).toContain("label: `${childLead(v)}voucher ${v.totalHours}h · ${v.expiryDate}`");
     expect(S).toContain("label: `${childLead(c)}course ${c.size} · เหลือ ${courseRemainingSessions(c)}`");
-    expect([...S.matchAll(/link: \{ kind: "/g)]).toHaveLength(3);
+    expect([...S.matchAll(/link: \{ kind: "/g)]).toHaveLength(4); // 🔻 TASK-959: + the closed-day card's `{ kind: "day", date }` (the type's own union member is `{ kind: "day"; date: string }`, with a semicolon, so it is not counted)
     expect(S).toContain('link: { kind: "voucher" as const, id: v.id }');
   });
 });

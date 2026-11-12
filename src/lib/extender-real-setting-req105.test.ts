@@ -18,6 +18,7 @@ const root = resolve(import.meta.dir, "..", "..");
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const walk = (d: string): string[] => readdirSync(resolve(root, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]));
 const { db } = await import("../db");
+const closedDayLib = await import("./closed-day"); // 🔻 TASK-959
 const jobs = await import("../services/jobs.service");
 const settingsSvc = await import("../services/settings.service");
 
@@ -34,6 +35,7 @@ const series = (key: string, date: string) => ({
 const box = (o: { settingRow?: unknown; rows?: any[] } = {}) => {
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => (o.settingRow === undefined ? undefined : { key: "group_series_weeks_ahead", value: o.settingRow })) as any));
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => o.rows ?? []) as any));
+  spies.push(spyOn(closedDayLib, "openClosedDates").mockImplementation((async () => new Set()) as any)); // 🔻 TASK-959: no closed day in this fixture (the extender asks, in ONE read, which of its dates are closed)
 };
 
 describe("🔴 TASK-465 — the horizon, built through the REAL `getSetting` (no spy on the setting)", () => {

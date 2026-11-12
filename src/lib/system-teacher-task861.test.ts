@@ -77,15 +77,15 @@ describe("🔴 TASK-861 — the booking rule: ONLY an OTHER may use the system t
   });
   test("the refusing doors are pinned by their exact calls (no options): TASK-838's act, the start-date move, additional coaches, the two group-row moves", () => {
     for (const call of [
-      "await assertTeacherBookable(tx, m.to.teacherId, m.to.date);",
-      "if (m.from !== m.to) await assertTeacherBookable(tx, m.teacherId, m.to);",
-      "await assertTeacherBookable(exec, teacherId, booking!.date);",
-      "await assertTeacherBookable(tx, input.teacherId, g.date);",
-      "await assertTeacherBookable(tx, input.teacherId, group.date);",
+      "await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { startTime: m.to.startTime });",
+      "if (m.from !== m.to) await assertTeacherBookable(tx, m.teacherId, m.to, { startTime: startOfRow.get(m.id) });",
+      "await assertTeacherBookable(exec, teacherId, booking!.date, { startTime: booking!.startTime });",
+      "await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime });",
+      "await assertTeacherBookable(tx, input.teacherId, group.date, { startTime: group.startTime });",
     ]) expect(SVC).toContain(call);
   });
   test("an OTHER series' primary may be the system teacher (a park-fee series); an EXTRA coach may not", () => {
-    expect(OTHERSERIES).toContain("await assertTeacherBookable(tx, input.to, r.date, { allowSystem: !onExtra });");
+    expect(OTHERSERIES).toContain("await assertTeacherBookable(tx, input.to, r.date, { allowSystem: !onExtra, startTime: r.startTime });");
   });
 });
 

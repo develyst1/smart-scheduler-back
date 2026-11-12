@@ -27,6 +27,7 @@ import { ADMIN_LEAVE_FUTURE_ONLY, isAdvanceLeave } from "../lib/teacher-leave"; 
 import { actorOf } from "../services/user.service";
 import { SCOPE_TEACHER, assertLinked, assertOwnBooking, assertScopedStatusAction, isScoped, scopeOf } from "../lib/own-scope";
 import * as undo from "../services/undo.service";
+import * as closedDay from "../services/closed-day.service"; // 🔻 TASK-959 (REQ-5013 option B)
 
 /** 🔻 TASK-546 — the Undo's in-handler guard, ONE function for the act and its preview: a linked account never. */
 const assertMayUndo = (c: any) => {
@@ -183,6 +184,20 @@ export const api = new Hono()
   .post("/courses/:id/change-teacher-time", zValidator("json", v.changeCourseTeacherTime), async (c) =>
     c.json(await svc.changeCourseTeacherAndTime(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
+  // 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2.1) — change the ACTIVITY of a course's remaining classes; the preview is the act run inside a rolled-back transaction. Same admin gate as change-teacher-time (`route-access.ts`).
+  .post("/courses/:id/change-activity/preview", zValidator("json", v.changeCourseActivity), async (c) =>
+    c.json(await svc.previewCourseActivity(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/courses/:id/change-activity", zValidator("json", v.changeCourseActivity), async (c) =>
+    c.json(await svc.changeCourseActivity(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
+  // 🔻 TASK-961 (SPEC-106 §2.2) — the same for ONE 1 HR / 1st Trial. Gated as a booking edit (`PATCH /bookings/:id`).
+  .post("/bookings/:id/change-activity/preview", zValidator("json", v.changeBookingActivity), async (c) =>
+    c.json(await svc.previewBookingActivity(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/bookings/:id/change-activity", zValidator("json", v.changeBookingActivity), async (c) =>
+    c.json(await svc.changeBookingActivity(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
   // 🔻 TASK-860 (REQ-120 F4) — the admin's Bonus-100 pick (FIRST | LATEST | SHARE) after a whole-course coach change. 409 NO_COACH_CHANGE / SAME_COACH. No screen yet.
   .put("/courses/:id/bonus100-pick", zValidator("json", v.bonus100Pick), async (c) =>
     c.json(await firstCoach.setBonus100Pick(c.req.param("id"), c.req.valid("json").pick, actorOf(c))),
@@ -226,6 +241,10 @@ export const api = new Hono()
   // TASK-587 (a) — the ADMIN's list: recorded leave days and the live classes on each (the owner: "listed for the admin"). The
   // calendar's own read key — it shows the calendar's own rows; a linked teacher is refused (not in TEACHER_ALLOWED).
   // 🔻 TASK-826 — the ADMIN's preview: «what will saving this teacher's leave do?» (read-only; preview = act, run inside a rolled-back transaction). A sub-path of the admin's own noun, so it cannot be shadowed by the 2-segment lift route.
+  // 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §3) — CLOSE A WHOLE DAY. Three routes on the admin's own noun (no literal sibling, so nothing can shadow them). Access: `lib/route-access.ts`. They write `closed_days` and nothing else.
+  .get("/closed-days", zValidator("query", v.closedDaysQuery), async (c) => c.json(await closedDay.listClosedDays(c.req.valid("query"))))
+  .post("/closed-days", zValidator("json", v.closeDaysBody), async (c) => c.json(await closedDay.closeDays(c.req.valid("json"), actorOf(c)), 201))
+  .delete("/closed-days/:date", zValidator("param", v.closedDayParam), async (c) => c.json(await closedDay.reopenDay(c.req.valid("param").date, actorOf(c))))
   .get("/teacher-leave-days/preview", zValidator("query", v.leavePreviewQuery), async (c) => {
     const q = c.req.valid("query");
     return c.json(await svc.previewTeacherLeave(q.teacherId, q.from, q.to));
@@ -504,10 +523,10 @@ export const api = new Hono()
   )
   // TASK-100: soft-warning preview — orphan impact of a proposed workDays change, without applying it.
   .get("/teachers/:id/work-days/impact", zValidator("query", v.workDaysImpactQuery), async (c) =>
-    c.json(await svc.previewWorkDaysChange(c.req.param("id"), c.req.valid("query").workDays)),
+    c.json(await svc.previewWorkDaysChange(c.req.param("id"), c.req.valid("query").workDays, c.req.valid("query").workHours)),
   )
   .patch("/teachers/:id/work-days", zValidator("json", v.setTeacherWorkDays), async (c) =>
-    c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays)),
+    c.json(await svc.setTeacherWorkDays(c.req.param("id"), c.req.valid("json").workDays, c.req.valid("json").workHours)),
   )
   .patch("/teachers/:id/limit-override", zValidator("json", v.setLimitOverride), async (c) =>
     c.json(await svc.setLimitOverride(c.req.param("id"), c.req.valid("json").override)),

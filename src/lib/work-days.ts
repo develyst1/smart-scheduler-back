@@ -13,6 +13,29 @@ export function teacherWorksOnDay(workDays: readonly number[] | null | undefined
   return workDays.includes(weekday);
 }
 
+// 🔻 TASK-965 (REQ-5015, SPEC-108 §3.4) — a coach's WORKING HOURS per weekday: `{"0":["13:00","18:00"]}`. NULL, or a weekday missing from the map = the whole day (no limit), exactly the `workDays` convention.
+export type WorkHours = Record<string, [string, string]>;
+
+/** `HH:MM[:SS]` → minutes since midnight. Pure. */
+export const clockMinutes = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+
+/** A class at `startTime` occupies ONE hour `[start, start+60)` (SPEC-108 §3.1). Pure. */
+export const CLASS_MINUTES = 60;
+
+/** The hours window a coach works on `weekday`, or null when there is none (no limit that day). Pure. */
+export function workHoursOn(workHours: WorkHours | null | undefined, weekday: number): [string, string] | null {
+  const w = workHours?.[String(weekday)];
+  return Array.isArray(w) && w.length === 2 ? w : null;
+}
+
+/** Does a class starting at `startTime` sit INSIDE the coach's hours that weekday? No window ⇒ true (the whole day). The ONE answer — the booking gate, the slot picker and the orphan warning all ask it. Pure. */
+export function classFitsWorkHours(workHours: WorkHours | null | undefined, weekday: number, startTime: string): boolean {
+  const w = workHoursOn(workHours, weekday);
+  if (!w) return true;
+  const s = clockMinutes(startTime);
+  return s >= clockMinutes(w[0]) && s + CLASS_MINUTES <= clockMinutes(w[1]);
+}
+
 /** Expand the stored form to explicit weekdays: empty/absent means "works every day" (the `teacherWorksOnDay`
  *  convention), so it becomes all seven. Otherwise dedupe. */
 const expandWorkDays = (wd: readonly number[] | null | undefined): number[] =>

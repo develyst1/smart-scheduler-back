@@ -23,7 +23,7 @@ const code = (p: string) => readSrc(readFileSync(resolve(root, p), "utf8")).repl
 describe("TASK-273 — every card has a heading, and the compiler is what says so", () => {
   test("🔑 every key in ATTENTION_CHECKS renders a real heading, both languages", () => {
     // Enumerated from the array itself — a list typed here would be the same defect one level up.
-    expect(ATTENTION_CHECKS.length).toBe(12); // 🔻 TASK-453 — `group_slot_clashes` · 🔻 TASK-573 — `courses_awaiting_reconfirm`
+    expect(ATTENTION_CHECKS.length).toBe(13); // 🔻 TASK-959 — `classes_on_closed_days` · 🔻 TASK-453 — `group_slot_clashes` · 🔻 TASK-573 — `courses_awaiting_reconfirm`
     for (const c of ATTENTION_CHECKS) {
       for (const lang of ["TH", "EN"] as const) {
         const label = t(`att_${c.key}`, lang);
@@ -94,6 +94,8 @@ describe("TASK-273 — the ten headings are BYTE-IDENTICAL to before", () => {
       TH: "คอร์สที่เลื่อนแล้วแต่ยังไม่ได้ยืนยันใหม่ (ลูกค้ายังถือตารางเดิม)",
       EN: "Courses moved but not re-confirmed (the family still has the old dates)",
     },
+    // 🔻 TASK-959 — the thirteenth, APPENDED the same way (the twelve above are untouched, and the order test below still means what it says).
+    classes_on_closed_days: { TH: "คลาสในวันปิดทำการ", EN: "Classes on a closed day" },
   };
 
   test("🔴 not one word moved", () => {

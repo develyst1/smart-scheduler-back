@@ -540,6 +540,34 @@
       "when": 1783000000072,
       "tag": "0076_branch_on_course_voucher_booking",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1783000000073,
+      "tag": "0077_closed_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1783000000074,
+      "tag": "0078_slot_exempt_park_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1783000000075,
+      "tag": "0079_activity_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1783000000076,
+      "tag": "0080_coach_time_ranges",
+      "breakpoints": true
     }
   ]
 }

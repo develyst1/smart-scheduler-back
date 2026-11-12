@@ -7,12 +7,12 @@
     {
       "id": "C1",
       "what": "🔴 the skip is removed — a ticked week on a leave day is refused again (the sid 409)",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(input.bookingType) });", "to": "await assertTeacherBookable(exec, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(input.bookingType) });" }] }]
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "await assertTeacherBookable(exec, input.teacherId, input.date, { allowLeave: true, allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: true });", "to": "await assertTeacherBookable(exec, input.teacherId, input.date, { allowClosedDay, allowSystem: mayUseSystemTeacher(input.bookingType), startTime, allowOutsideHours: !!input.extendedFromId });" }] }]
     },
     {
       "id": "C2",
       "what": "🔴 the leave check is skipped for EVERY row — an un-ticked week on a leave day is created",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date))", "to": "  if (false) {\n    if (await teacherLeaveOn(exec, teacher.id, date))" }] }]
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "  if (!opts.allowLeave) {\n    if (await teacherLeaveOn(exec, teacher.id, date, opts.startTime))", "to": "  if (false) {\n    if (await teacherLeaveOn(exec, teacher.id, date, opts.startTime))" }] }]
     },
     {
       "id": "C3",
@@ -42,7 +42,7 @@
     {
       "id": "C8",
       "what": "🔴 a second door (the resume-booking move onto a teacher) also passes allowLeave — a normal move onto a leave day would pass",
-      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(current.bookingType) });", "to": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(current.bookingType) });" }] }]
+      "files": [{ "file": "src/services/scheduler.service.ts", "edits": [{ "from": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowSystem: mayUseSystemTeacher(current.bookingType), startTime: input.startTime });", "to": "if (input.teacherId && input.teacherId !== current.teacherId) await assertTeacherBookable(tx, input.teacherId, input.date, { allowLeave: true, allowSystem: mayUseSystemTeacher(current.bookingType), startTime: input.startTime });" }] }]
     }
   ]
 }

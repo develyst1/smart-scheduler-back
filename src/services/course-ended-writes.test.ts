@@ -39,6 +39,10 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
   "POST /courses/:id/start-date/preview": "guarded", // TASK-573 — the act's own plan: `assertCourseWritable` first, writes nothing
   "POST /courses/:id/start-date": "guarded", // TASK-570 — `assertCourseWritable` first: an ENDED or PAUSED course refuses
+  "POST /courses/:id/change-activity/preview": "guarded", // 🔻 TASK-961 — the act run inside a rolled-back transaction: the same `assertCourseWritable` first (COURSE_ENDED / COURSE_PAUSED), nothing committed
+  "POST /courses/:id/change-activity": "guarded", // 🔻 TASK-961 — `assertCourseWritable` first, then the remaining classes only
+  "POST /bookings/:id/change-activity/preview": "unrelated", // 🔻 TASK-961 — one 1 HR / 1st Trial (never a course row: a COURSE_PACKAGE is refused NOT_SINGLE_OR_TRIAL)
+  "POST /bookings/:id/change-activity": "unrelated", // 🔻 TASK-961 — as the preview
   "POST /courses/:id/change-teacher-time/preview": "guarded", // 🔻 TASK-838 — the act run inside a rolled-back transaction: the same `assertCourseWritable` first, nothing committed
   "POST /courses/:id/change-teacher-time": "guarded", // 🔻 TASK-838 — `assertCourseWritable` first: an ENDED or PAUSED course refuses with its own words
   "POST /courses/:id/resume": "guarded", // …and refuses NOT_DROPPED / an ended course. Exempt from the drop guard
@@ -159,6 +163,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   // inherit the classification of the `me` pair above, for the reason written there (the cancel path selects LIVE rows, and an ended
   // course has none). ⇒ a future day only stops NEW bookings, which an ended course cannot gain either.
   // ⚠️ If the ACT ever starts touching a course's rows, BOTH pairs change together — that is the point of saying "the same act".
+  "POST /closed-days": "unrelated", // 🔻 TASK-959 — closing a school day touches no course
+  "DELETE /closed-days/:date": "unrelated", // 🔻 TASK-959
   "POST /teacher-leave-days": "unrelated",
   "DELETE /teacher-leave-days/:teacherId/:date": "unrelated",
   "DELETE /teacher-leave-ranges/:id": "unrelated", // 🔻 TASK-819 — lifts a whole recorded range's FUTURE leave rows; touches no booking (the same class as the per-day lift above)

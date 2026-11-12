@@ -88,8 +88,8 @@ describe("🔴 P3 — each class on a leave day says WHO and WHAT, from the same
   });
   test("the record answers (single day AND range) carry the richer rows — they come from THE one reader", () => {
     const LIB = code(file("src/lib/teacher-leave.ts"));
-    expect(region(LIB, "export async function recordAdvanceLeave(", "\n}\n")).toContain("bookings: await leaveDayBookings(exec, teacherId, input.date)");
-    expect(region(LIB, "export async function recordedLeaveDays(", "\n}\n")).toContain("bookings: await leaveDayBookings(exec, d.teacherId, d.date)");
+    expect(region(LIB, "export async function recordAdvanceLeave(", "\n}\n")).toContain("bookings: await leaveDayBookings(exec, teacherId, input.date, leave)");
+    expect(region(LIB, "export async function recordedLeaveDays(", "\n}\n")).toContain("bookings: await leaveDayBookings(exec, d.teacherId, d.date, d)");
   });
 });
 
@@ -111,7 +111,7 @@ describe("🔴 P5 — the leave LIST: one teacher, a past window, the record's r
     const out: any[] = await sched.listRecordedLeaveDays({});
     expect(out.map((d) => [d.date, d.rangeId])).toEqual([["2026-10-20", RANGE], ["2026-10-25", null]]);
     expect(out.every((d) => Array.isArray(d.bookings))).toBe(true);
-    expect(Object.keys(fieldsSeen[0])).toEqual(["teacherId", "teacherName", "date", "reason", "createdBy", "rangeId"]);
+    expect(Object.keys(fieldsSeen[0])).toEqual(["teacherId", "teacherName", "date", "reason", "createdBy", "rangeId", "startTime", "endTime"]); // 🔻 TASK-965 (REQ-5015): the part-day window rides the same one select
   });
   test("the teacher filter: with `teacherId` the WHERE carries it; without, it does not; a past window is passed through, never clamped to today", async () => {
     const wheres: any[] = [];

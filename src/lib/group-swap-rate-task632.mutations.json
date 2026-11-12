@@ -46,8 +46,8 @@
               "to": ""
             },
             {
-              "from": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })",
-              "to": "  await assertTeacherBookable(tx, input.teacherId, g.date);\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })"
+              "from": "  await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime }); // 🔻 TASK-965\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })",
+              "to": "  await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime }); // 🔻 TASK-965\n  if (rate == null) throw RATE_REQUIRED(g.date);\n  try {\n    await tx.update(bookings).set({ teacherId: input.teacherId, teacherRateMinor: rate })"
             }
           ]
         }

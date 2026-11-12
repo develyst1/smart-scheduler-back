@@ -43,10 +43,10 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
   const SQL = readFileSync(resolve(root, "drizzle/0041_group_session.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = SQL.replace(/^--.*$/gm, "");
   test("56 = 56 (TASK-401 added 0042, TASK-403 added 0043, TASK-406 added 0044, TASK-410 added 0045, TASK-411 added 0046, TASK-418 added 0047, TASK-420 added 0048, TASK-428 added 0049, TASK-437 added 0050, TASK-439 added 0051, TASK-443 added 0052, TASK-454 added 0053, TASK-453 added 0054, TASK-460 added 0055): `0041_group_session` is the 42nd file, idx 41; the order 0038 → 0041", () => {
-    expect(files.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(files.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[41]).toBe("0041_group_session.sql");
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string }> };
-    expect(j.entries.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(j.entries.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(j.entries.slice(38, 42).map((e) => e.tag)).toEqual(["0038_course_rental_marker", "0039_student_archive", "0040_other_schedule", "0041_group_session"]);
   });
   test("the four statements in order: the label ALONE · group_key · group_id (RESTRICT) + its index · the unique index REBUILT with `AND group_id IS NULL` LAST; the label is never USED in the file", () => {
@@ -86,7 +86,7 @@ describe("🔴 the migration — 0041, counted, witnessed by the PREDICATE, the 
     expect(S).toContain('groupId: uuid("group_id").references((): AnyPgColumn => bookings.id, { onDelete: "restrict" }),');
     // 🔻 TASK-453 — the predicate gained its THIRD term (`slot_yielded_at is null`, `0054`). 0041's own claim is
     // unchanged: `group_id` is still in the index's WHERE, and the schema is still where it is written.
-    expect(S).toContain(".where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null`),");
+    expect(S).toContain(".where(sql`${t.status} not in (${sql.raw(SLOT_INACTIVE_SQL)}) and ${t.groupId} is null and ${t.slotYieldedAt} is null and not ${t.slotExempt}`),"); // 🔻 TASK-942 — the FOURTH term
     expect(S).toContain('index("bookings_group_id_idx").on(t.groupId),');
     expect(S).toContain('group: one(bookings, { fields: [bookings.groupId], references: [bookings.id], relationName: "group_seats" }),');
     expect(S).toContain('seats: many(bookings, { relationName: "group_seats" }),');
@@ -104,7 +104,7 @@ describe("🔴 ONE definition of 'holds the slot' — `lib/slot-holder.ts` acros
     const q = new PgDialect().sqlToQuery(slotHolderWhere(bookings));
     expect(q.sql).toMatch(/"status" not in \(/);
     expect(q.sql).toContain('"group_id" is null');
-    expect(q.params).toEqual([...SLOT_INACTIVE_STATUSES]);
+    expect(q.params).toEqual([...SLOT_INACTIVE_STATUSES, false]); // 🔻 TASK-942 — the FOURTH term `slot_exempt = false` rides as the last param
   });
   test("🔴 the five mirrors read the ONE predicate: the index (schema), `describeSlotClash`, `assertAdditionalTeacherFree`, `findFreeExtensionDate`, `getSlotAvailability`; no availability read restates a status list; `booking-slot.ts` is gone", () => {
     for (const fn of ["async function describeSlotClash(", "async function assertAdditionalTeacherFree(", "async function findFreeExtensionDate(", "export async function getSlotAvailability("]) {
@@ -114,7 +114,7 @@ describe("🔴 ONE definition of 'holds the slot' — `lib/slot-holder.ts` acros
     }
     expect(SCHED).not.toContain("SLOT_NON_BLOCKING");
     expect(existsSync(resolve(root, "src/lib/booking-slot.ts"))).toBe(false);
-    expect(code(src("src/lib/slot-holder.ts"))).toContain("and(notInArray(b.status, [...SLOT_INACTIVE_STATUSES]), isNull(b.groupId), isNull(b.slotYieldedAt))"); // 🔻 TASK-453 — the third case
+    expect(code(src("src/lib/slot-holder.ts"))).toContain("and(notInArray(b.status, [...SLOT_INACTIVE_STATUSES]), isNull(b.groupId), isNull(b.slotYieldedAt), eq(b.slotExempt, false))"); // 🔻 TASK-453 — the third case · 🔻 TASK-942 — the fourth (a park block holds nothing)
   });
 });
 
@@ -189,7 +189,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(S).toContain('id = await insertBooking(tx, null, { teacherId: t.teacherId, subjectId: null, startTime: hhmm(t.startTime), bookingType: "GROUP", otherTitle: t.otherTitle, otherKind: t.otherKind, headCount: t.headCount, groupKey, teacherRates: rates, date });');
     expect(S).toContain('throw conflict("SLOT_TAKEN", `วันที่ ${date} ครูไม่ว่าง — ขยายกลุ่มไม่ได้ (${e.message})`);');
     // 🔻 TASK-399: the CAP half lives in `assertSeatFree` (shared with the walk-in seat); `seatOnGroup` calls it before returning the row
-    expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  await assertNoCoachOnLeave(tx, { id: row.id, date }); // TASK-561 — joining a class whose coach is away that day is a new booking with them\n  return row.id;"); // 🔻 TASK-561
+    expect(S).toContain("await assertSeatFree(tx, row.id, date);\n  await assertNoCoachOnLeave(tx, { id: row.id, date, startTime: row.startTime }); // TASK-561 · 🔻 TASK-965: the class's time — joining a class whose coach is away that day is a new booking with them\n  return row.id;"); // 🔻 TASK-561
     const F = region(SCHED, "async function assertSeatFree(", "\n}\n");
     // 🔻 TASK-453 — the count moved into `liveSeatCount` (shared with the yield, which needs the SAME set), and a
     // NULL `head_count` now means UNCAPPED. The claim is unchanged: the cap counts LIVE seats, by that one set.
@@ -203,7 +203,7 @@ describe("🔴 the writes (source) — the series, seats on the group (extend / 
     expect(S).toContain('if (current.bookingType !== "GROUP" || !current.groupKey) throw badRequest("ฟิลด์นี้ใช้ได้เฉพาะการจองประเภท “กลุ่ม”");');
     expect(S).toContain("input.fromHereOn ? g(b.date, current.date) : e(b.date, current.date)");
     expect((S.match(/db\.transaction\(/g) ?? []).length).toBe(1);
-    expect(S).toContain("await assertTeacherBookable(tx, input.teacherId, g.date);");
+    expect(S).toContain("await assertTeacherBookable(tx, input.teacherId, g.date, { startTime: g.startTime });");
     expect(S).toContain('if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", `วันที่ ${g.date} ครูไม่ว่าง — ไม่ได้ย้ายรายการใด`);');
     expect(S).toContain("await reconcileBookingHolds(tx, g.id, input.teacherId, g.status, false);");
     expect(S).toContain("await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, g.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));");

@@ -23,6 +23,16 @@ export const isSystemTeacher = (t: { isSystem?: boolean | null } | null | undefi
 /** The route-level guard for the leave doors: a system-teacher id is refused 409 SYSTEM_TEACHER before the act runs (the act itself, with its many fake-db suites, is untouched). */
 export const assertTeacherMayHaveLeave = (teacherId: string): Promise<void> => assertNotSystemTeacher(db, teacherId);
 
+/**
+ * 🔻 TASK-942 — is this booking a PARK block: an OTHER booking whose teacher ROW is the system teacher? Decided ONLY from the row's flag (one indexed read by primary key, in the caller's transaction) and the booking type — never from a request
+ * field. It is what `bookings.slot_exempt` stores: a park block holds no coach-hour, so several groups may rent the park in one hour; every other booking (a real teacher's, or any non-OTHER type) stays exempt-FALSE and the index still refuses a double-booking.
+ */
+export async function isParkBlock(exec: any, teacherId: string, bookingType: string | null | undefined): Promise<boolean> {
+  if (!mayUseSystemTeacher(bookingType)) return false; // only an OTHER can be a park block: no read needed for the rest
+  const t = await exec.query.teachers.findFirst({ columns: { isSystem: true }, where: (x: any, { eq }: any) => eq(x.id, teacherId) });
+  return isSystemTeacher(t);
+}
+
 /** Only an OTHER booking may use the system teacher. */
 export const mayUseSystemTeacher = (bookingType: string | null | undefined): boolean => bookingType === "OTHER";
 

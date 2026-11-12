@@ -1,0 +1,533 @@
+{
+  "task": "TASK-961",
+  "proves": "src/lib/activity-change-task961.test.ts",
+  "note": "REQ-5014 option A: A = the pure planner / pricing, R = the revenue relabel + the ONE builder, S = the act (rows, course, history, preview, notices, refusals), L = the notice words, M = the migration / witness / route gate.",
+  "tests": "src/lib/activity-change-task961.test.ts",
+  "mutations": [
+    {
+      "id": "A1",
+      "what": "a cheaper activity refunds (no max 0)",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "return Math.max(0, roundToBaht(((newMinor - oldMinor) * remaining) / size));",
+              "to": "return roundToBaht(((newMinor - oldMinor) * remaining) / size);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "what": "the difference rounds DOWN, not half up",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "export const roundToBaht = (minor: number): number => Math.round(minor / 100) * 100;",
+              "to": "export const roundToBaht = (minor: number): number => Math.floor(minor / 100) * 100;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "what": "an attended / cancelled row is 'remaining' (no live-status rule)",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "rows.filter((r) => LIVE.has(r.status) && r.date >= today)",
+              "to": "rows.filter((r) => r.date >= today)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "what": "a PAST row is 'remaining'",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "rows.filter((r) => LIVE.has(r.status) && r.date >= today)",
+              "to": "rows.filter((r) => LIVE.has(r.status))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "what": "GROUP_COURSE is never refused",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "if (remaining.some((r) => r.groupId)) return refuse(\"GROUP_COURSE\");",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "what": "SAME_ACTIVITY is never refused",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "if (input.currentSubjectId === input.subjectId) return refuse(\"SAME_ACTIVITY\");",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A7",
+      "what": "a typed price is allowed although the card has one",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "if (hasCard && typed !== undefined) return refuse(\"MANUAL_PRICE_NOT_ALLOWED\");",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A8",
+      "what": "the act does not need the typed price",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "return p.isAct ? refuse(\"MANUAL_PRICE_REQUIRED\") :",
+              "to": "return false ? refuse(\"MANUAL_PRICE_REQUIRED\") :"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A9",
+      "what": "the typed price may be 0",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "Number.isInteger(n) && n >= MANUAL_PRICE_MIN_BAHT",
+              "to": "Number.isInteger(n) && n >= 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A10",
+      "what": "an unknown OLD price is accepted",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "if (p.oldCardMinor === undefined || p.oldCardMinor <= 0) return refuse(\"OLD_PRICE_NOT_ON_CARD\");",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A11",
+      "what": "the proportion divides by the wrong thing",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "((newMinor - oldMinor) * remaining) / size",
+              "to": "((newMinor - oldMinor) * remaining) / remaining"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "what": "the relabel also rewrites the amount",
+      "files": [
+        {
+          "file": "src/lib/revenue-line.ts",
+          "edits": [
+            {
+              "from": ".set({ categoryId: category.id })",
+              "to": ".set({ categoryId: category.id, amountMinor: 0 })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "the relabel says true when it hit no line",
+      "files": [
+        {
+          "file": "src/lib/revenue-line.ts",
+          "edits": [
+            {
+              "from": "return updated.length > 0;",
+              "to": "return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "the 1st Trial category name differs",
+      "files": [
+        {
+          "file": "src/lib/booking-sale-amount.ts",
+          "edits": [
+            {
+              "from": ": kind === \"FIRST_TRIAL\" ? `1st Trial (${subject})`",
+              "to": ": kind === \"FIRST_TRIAL\" ? `Trial (${subject})`"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S1",
+      "what": "the act updates EVERY row of the course (attended too)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".where(inArray(bookings.id, subjectOnly));",
+              "to": ".where(eq(bookings.courseId, id));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "the act rewrites the course's size",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".set({ subjectId: input.subjectId, ...(plan.teacherChanged",
+              "to": ".set({ subjectId: input.subjectId, size: 0, ...(plan.teacherChanged"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "the history row stores a wrong difference",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "differenceMinor: priced.differenceMinor!, actor,\n      })\n      .returning({ id: activityChanges.id });\n    changeId = h.id;\n    // the line the course's",
+              "to": "differenceMinor: 0, actor,\n      })\n      .returning({ id: activityChanges.id });\n    changeId = h.id;\n    // the line the course's"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "the relabel outcome is never stored",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (relabelled) await tx.update(activityChanges).set({ revenueRelabelled: true }).where(eq(activityChanges.id, h.id));\n  }\n  await sendActivityChangedNotices(tx, {\n    studentIds: [course.studentId",
+              "to": "if (false) await tx.update(activityChanges).set({ revenueRelabelled: true }).where(eq(activityChanges.id, h.id));\n  }\n  await sendActivityChangedNotices(tx, {\n    studentIds: [course.studentId"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "what": "the preview COMMITS its history row (runs as the act)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "throw new ActivityPreviewRollback(await runCourseActivityChange(tx, id, input, null, false));",
+              "to": "throw new ActivityPreviewRollback(await runCourseActivityChange(tx, id, input, null, true));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6",
+      "what": "the family is never told",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await enqueueParentCopies(tx, await householdLineUserIds(tx, a.studentIds), { bookingId: a.firstRowId, payload });",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S7",
+      "what": "a coach change tells nobody (the unchanged-coach path always runs)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const moves = activityMoves(a.rows, a.newTeacherId);",
+              "to": "const moves = activityMoves(a.rows, undefined);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S8",
+      "what": "the new coach is not told WHICH activity",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...(opts.subjectName ? { subjectName: opts.subjectName } : {}), ",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S9",
+      "what": "an unchanged coach is told once PER ROW",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "for (const coachId of [...new Set(a.rows.map((r) => r.teacherId))]) {",
+              "to": "for (const coachId of a.rows.map((r) => r.teacherId)) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "what": "a course session is accepted by the 1 HR / Trial act",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (b.bookingType !== \"SINGLE_SESSION\" && b.bookingType !== \"FIRST_TRIAL\") throw conflict(",
+              "to": "if (false) throw conflict("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "what": "an attended 1 HR is changed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (isDelivered(b.status)) throw conflict(\"ALREADY_DELIVERED\",",
+              "to": "if (false) throw conflict(\"ALREADY_DELIVERED\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "what": "a cancelled 1 HR is changed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!(COURSE_LIVE_STATUSES as readonly string[]).includes(b.status)) throw conflict(\"NOT_LIVE_BOOKING\",",
+              "to": "if (false) throw conflict(\"NOT_LIVE_BOOKING\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S13",
+      "what": "a subject with no price group is accepted",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!to.priceGroup) throw conflict(\"NO_PRICE_GROUP\",",
+              "to": "if (false) throw conflict(\"NO_PRICE_GROUP\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "what": "an ended / paused course is changed",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "await assertCourseWritable(tx, id); // an ENDED or PAUSED course refuses with its own words (COURSE_ENDED / COURSE_PAUSED)",
+              "to": "/* mutant */ // an ENDED or PAUSED course refuses with its own words (COURSE_ENDED / COURSE_PAUSED)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L1",
+      "what": "the Thai wording changes",
+      "files": [
+        {
+          "file": "src/lib/line-i18n.ts",
+          "edits": [
+            {
+              "from": "ตั้งแต่คาบวันที่ {firstDate} ({remaining} คาบ)",
+              "to": "ตั้งแต่วันที่ {firstDate} ({remaining} คาบ)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "the notice leaks an ISO date",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "firstDate: ddmmyyyy(firstDate), remaining",
+              "to": "firstDate, remaining"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "what": "teacher_assigned ignores the subjectName",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(payload.kind === \"teacher_assigned\" ? fieldValue(payload.subjectName) : undefined) ?? ctx.subject",
+              "to": "ctx.subject"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "what": "the migration's course FK loses its CASCADE",
+      "files": [
+        {
+          "file": "drizzle/0079_activity_changes.sql",
+          "edits": [
+            {
+              "from": "\"course_id\" uuid REFERENCES \"course_packages\"(\"id\") ON DELETE CASCADE",
+              "to": "\"course_id\" uuid REFERENCES \"course_packages\"(\"id\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "the migration loses the course XOR booking CHECK",
+      "files": [
+        {
+          "file": "drizzle/0079_activity_changes.sql",
+          "edits": [
+            {
+              "from": "  CHECK ((\"course_id\" IS NULL) <> (\"booking_id\" IS NULL))",
+              "to": "  CHECK (true)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "the witness probes the wrong table",
+      "files": [
+        {
+          "file": "src/lib/migration-witness.ts",
+          "edits": [
+            {
+              "from": "probe: { kind: \"table\", table: \"activity_changes\" }",
+              "to": "probe: { kind: \"table\", table: \"closed_days\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "the booking act is gated as a plain booking, not an edit",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"POST /bookings/:id/change-activity\": act(CAL_BOOK, \"action:calendar.booking-edit\")",
+              "to": "\"POST /bookings/:id/change-activity\": act(CAL_BOOK, \"action:calendar.book\")"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

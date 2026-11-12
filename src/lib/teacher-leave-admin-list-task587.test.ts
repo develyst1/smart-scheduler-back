@@ -48,13 +48,13 @@ describe("🔴 (a) THE ADMIN'S LIST — recorded days in a window, each with its
     ];
     const c1 = [{ id: "b-1", date: "2026-10-21", startTime: "10:00:00", endTime: "11:00:00", status: "CONFIRMED", bookingType: "PRIVATE" }];
     const { exec, asked } = execOf(days, { "2026-10-21|t1": c1 });
-    expect(await recordedLeaveDays(exec, "2026-10-01", "2026-10-31")).toEqual([{ ...days[0], bookings: c1 }, { ...days[1], bookings: [] }]);
+    expect(await recordedLeaveDays(exec, "2026-10-01", "2026-10-31")).toEqual([{ ...days[0], startTime: null, endTime: null, bookings: c1 }, { ...days[1], startTime: null, endTime: null, bookings: [] }]); // 🔻 TASK-965: a whole-day row answers null/null
     expect(asked[0]).toEqual(["teacher_leave_days", ["2026-10-01", "2026-10-31"]]); // the window, both ends inclusive
     expect(asked.slice(1).map((a) => a[0])).toEqual(["bookings", "bookings"]); // one class read per day — THE list
   });
   test("🚫 no second answer: the list is `leaveDayBookings`, called by name; nothing else in the code reads the leave table", () => {
     const M = code("src/lib/teacher-leave.ts");
-    expect(fnBody(M, "export async function recordedLeaveDays(")).toContain("bookings: await leaveDayBookings(exec, d.teacherId, d.date)");
+    expect(fnBody(M, "export async function recordedLeaveDays(")).toContain("bookings: await leaveDayBookings(exec, d.teacherId, d.date, d)");
   });
   test("the service's window: from TODAY (Bangkok) to 60 days on, unless the admin names one", async () => {
     setSystemTime(new Date("2026-10-01T10:00:00+07:00"));

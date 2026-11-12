@@ -105,8 +105,8 @@ describe("🔴 the service applies the plan in ONE transaction — and what it d
   const F = S.slice(S.indexOf("async function planStartChange("), S.indexOf("export async function resumeCourse("));
   test("an ENDED / PAUSED course refuses first; the ONE leave reader is injected; every new date passes the create gate; a clash refuses the whole move", () => {
     expect(F.indexOf("await assertCourseWritable(tx, id);")).toBeLessThan(F.indexOf("planCourseStartChange("));
-    expect(F).toContain("async (teacherId, date) => !!(await teacherLeaveOn(tx, teacherId, date)),");
-    expect(F).toContain("if (m.from !== m.to) await assertTeacherBookable(tx, m.teacherId, m.to);");
+    expect(F).toContain("async (teacherId, date) => !!(await teacherLeaveOn(tx, teacherId, date, startOfTeacher.get(teacherId))),");
+    expect(F).toContain("if (m.from !== m.to) await assertTeacherBookable(tx, m.teacherId, m.to, { startTime: startOfRow.get(m.id) });");
     expect(F).toContain('if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN",');
     expect(F).toContain("for (const rowId of plan.order) {");
   });

@@ -38,11 +38,13 @@ const T1 = uuidFor("t-1"), T2 = uuidFor("t-2"), G1 = uuidFor("g-1"), S1 = uuidFo
 
 /** Lower-case, unqualify, unquote, collapse — so three spellings of ONE predicate compare as one string. */
 const norm = (s: string) =>
-  s.toLowerCase().replace(/"bookings"\./g, "").replace(/"/g, "").replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+  s.toLowerCase().replace(/"bookings"\./g, "").replace(/"/g, "").replace(/slot_exempt = 'false'/g, "not slot_exempt") /* 🔻 TASK-942: the mirror's `eq(slotExempt, false)` and the index's `NOT slot_exempt` are ONE term */.replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
 
 describe("🔴 §1 the predicate is ONE fact in three places — and they are asserted EQUAL", () => {
   const dialect = new PgDialect();
-  const migPredicate = /create unique index[\s\S]*?where([\s\S]*?);/i.exec(MIG)![1]!;
+  // 🔻 TASK-942 — the predicate's CURRENT spelling is the LATEST file that rebuilds the index (0078, the fourth term); 0054's own predicate is pinned in §2 below.
+  const MIG_NOW = readFileSync(resolve(root, "drizzle/0078_slot_exempt_park_blocks.sql"), "utf8").replace(/^\s*--.*$/gm, "");
+  const migPredicate = /create unique index[\s\S]*?where([\s\S]*?);/i.exec(MIG_NOW)![1]!;
   const schemaPredicate = dialect.sqlToQuery(
     (getTableConfig(bookings).indexes.find((i: any) => i.config.name === "bookings_teacher_slot_uq") as any).config.where,
   ).sql;
@@ -61,6 +63,7 @@ describe("🔴 §1 the predicate is ONE fact in three places — and they are as
     for (const [where, p] of Object.entries({ migration: migPredicate, schema: schemaPredicate, mirror: mirrorPredicate })) {
       expect({ where, third: norm(p).includes("slot_yielded_at is null") }).toEqual({ where, third: true });
       expect({ where, seat: norm(p).includes("group_id is null") }).toEqual({ where, seat: true });
+      expect({ where, fourth: norm(p).includes("not slot_exempt") }).toEqual({ where, fourth: true }); // 🔻 TASK-942
       for (const s of SLOT_INACTIVE_STATUSES) expect({ where, s, has: norm(p).includes(s.toLowerCase()) }).toEqual({ where, s, has: true });
     }
   });
@@ -102,8 +105,8 @@ describe("🔴 §1 the mirror, by value — and what it is NOT", () => {
 describe("🔴 §2 `0054`, counted; the column FIRST, the rebuild LAST; the PREDICATE is the witness", () => {
   test("56 = 56: `0054_group_slot_yield` is the 55th file, idx 54, the last; 'expects 55'; the four statements in THIS order", () => {
     const journal = JSON.parse(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8"));
-    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
-    expect(journal.entries.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(readdirSync(resolve(root, "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(journal.entries[54]).toMatchObject({ idx: 54, tag: "0054_group_slot_yield" });
     expect(MIG).toContain("db:verify` expects 55");
     const stmts = MIG.split("--> statement-breakpoint").map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);
@@ -307,7 +310,7 @@ describe("🔴 §5 the two resolutions — one tx each, and the re-check that le
   test("② the GROUP takes the new coach and un-yields in ONE update; its seats follow; the PRIVATE is untouched", () => {
     expect(SWAP).toContain("set({ teacherId: input.teacherId, slotYieldedAt: null })");
     expect(SWAP).toContain("await tx.update(bookings).set({ teacherId: input.teacherId }).where(and(eq(bookings.groupId, group.id), inArray(bookings.status, [...COURSE_LIVE_STATUSES])));");
-    expect(SWAP).toContain("await assertTeacherBookable(tx, input.teacherId, group.date);");
+    expect(SWAP).toContain("await assertTeacherBookable(tx, input.teacherId, group.date, { startTime: group.startTime });");
     expect(SWAP).toContain(`if (pgErrorCode(e) === "23505") throw conflict("SLOT_TAKEN", await describeSlotClash(input.teacherId, group.date, group.startTime));`);
     expect(SWAP).not.toContain("bookings.id, id"); // it never writes the Private's row
   });

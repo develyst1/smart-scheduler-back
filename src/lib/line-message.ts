@@ -428,6 +428,13 @@ function buildOutboxMessage(
         extra(t("ob_f_was", lang), slotLine(from)) // one English label for both audiences (owner, TASK-529)
       );
     }
+    // 🔻 TASK-961 (REQ-5014, SPEC-106 §5) — the family's (and an UNCHANGED coach's) notice that a course's remaining classes / a 1 HR / a Trial moved to another activity. One sentence, from the payload alone: no ISO date leaks (`ddmmyyyy`), and a missing
+    // name or date is never printed as a hole — the whole notice falls back to the generic default, never a half sentence.
+    case "activity_changed": {
+      const from = fieldValue(payload.from), to = fieldValue(payload.to), firstDate = fieldValue(payload.firstDate), remaining = Number(payload.remaining);
+      if (!from || !to || !firstDate || !Number.isFinite(remaining) || remaining <= 0) return t("ob_default", lang);
+      return t("ob_activity_changed", lang, { from, to, firstDate: ddmmyyyy(firstDate), remaining }); // `teacherName` rides in the payload (SPEC §5) but prints nothing: no approved label for it yet
+    }
     case "course_dropped_teacher": {
       // One message per course per coach: `dates` are the CONFIRMED classes THIS coach loses, `startTime` /
       // `endTime` the slot; the count is theirs too. `cause` picks the stamp — a drop and an end are the same
@@ -849,7 +856,7 @@ function buildOutboxMessage(
       return (
         t(title, lang) + "\n" +
         line(t("ob_l_student", lang), ctx.studentName) +
-        line(t("ob_l_subject", lang), ctx.subject) +
+        line(t("ob_l_subject", lang), (payload.kind === "teacher_assigned" ? fieldValue(payload.subjectName) : undefined) ?? ctx.subject) + // 🔻 TASK-961 (SPEC-106 §5): the optional `subjectName` — the activity the new coach takes over; absent ⇒ the booking's own, byte for byte as before
         timeLines +
         // 🔻 TASK-727 (P18) — her TH sample adds `Remark :` and `Rental :` to the "assigned" notice; the house rule: each line only when it has a value (never a bare label).
         // TH only (her EN cell is empty ⇒ EN stays as it was). They come from the PAYLOAD (a producer that passes them; none does yet, so today neither prints).

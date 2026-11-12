@@ -223,7 +223,7 @@ describe("🔑 by source and by shape — one day writer, the fork and the lift 
   const SVC = code(file("src/services/scheduler.service.ts"));
   test("the range writer goes through THE day writer (`recordAdvanceLeave`) — the one future-only check; no second predicate", () => {
     const W = region(LIB, "export async function recordAdvanceLeaveRange(", "\n}\n");
-    expect(W).toContain("await recordAdvanceLeave(exec, teacherId, { date, reason: input.reason, rangeId }, actor)");
+    expect(W).toContain("await recordAdvanceLeave(exec, teacherId, { date, reason: input.reason, rangeId, startTime: input.startTime, endTime: input.endTime }, actor)");
     expect(W).not.toMatch(/isAdvanceLeave\(|new Date\(|bangkokNow/);
     expect(LIB).toContain("...(input.rangeId ? { rangeId: input.rangeId } : {})"); // a single-day row is written exactly as before
   });

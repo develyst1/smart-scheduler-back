@@ -54,7 +54,7 @@ const store = () => {
     } }) }),
     select: () => ({ from: (t: any) => ({ where: () => ({ orderBy: async () => (getTableName(t) === "bookings" ? listed : []) }) }) }),
     query: {
-      teacherLeaveDays: { findFirst: async (q: any) => {
+      closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async (q: any) => {
         const asked: Record<string, unknown> = {};
         const pairs = [q.where(new Proxy({}, { get: (_t, k) => String(k) }), { and: (...a: any[]) => a.flat(), eq: (c: string, v: unknown) => [[c, v]] })].flat(3);
         for (let i = 0; i < pairs.length; i += 2) asked[pairs[i] as string] = pairs[i + 1];

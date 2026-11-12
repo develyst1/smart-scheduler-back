@@ -129,8 +129,8 @@ describe("registry — extensibility is one array entry", () => {
     // 🔻 TASK-453 — the ELEVENTH: `group_slot_clashes` (REQ-105 §8) — a group date whose hour a Private took and
     // whose kids are still coming. It can only leave by an admin resolving it, which is why it earns a card.
     // 🔻 TASK-573 — the TWELFTH: `courses_awaiting_reconfirm` — a moved course the admin has not re-confirmed, from the moment of the move.
-    expect(ATTENTION_CHECKS).toHaveLength(12);
-    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(12);
+    expect(ATTENTION_CHECKS).toHaveLength(13); // 🔻 TASK-959: + `classes_on_closed_days`
+    expect(new Set(ATTENTION_CHECKS.map((c) => c.key)).size).toBe(13);
   });
   test("every check has an i18n title key — a new check can't ship label-less", () => {
     for (const c of ATTENTION_CHECKS) {

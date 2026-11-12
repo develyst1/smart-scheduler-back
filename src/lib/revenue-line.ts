@@ -25,6 +25,7 @@ import {
   trialOrSingleLine,
   voucherLine,
   type RevenueLineInput,
+  type RevenueType,
 } from "./booking-sale-amount";
 
 /** Fixed until F1 / F2 put a branch and a payment method on the sale (SPEC-099 §2.4–§2.5). */
@@ -61,6 +62,49 @@ export interface RevenueWriteResult {
 }
 
 /**
+ * 🔻 TASK-961 — find a revenue category by `(type, lower(name))`, creating it when it does not exist yet (the writer's own rule, moved here verbatim so `relabelRevenueLine` finds / creates it EXACTLY the same way). Runs on the caller's savepoint.
+ */
+async function ensureCategory(sp: any, type: string, categoryName: string): Promise<{ id: string }> {
+  const findCategory = async () => {
+    const [c] = await sp
+      .select({ id: boRevenueCategory.id })
+      .from(boRevenueCategory)
+      .where(and(eq(boRevenueCategory.type, type), sql`lower(${boRevenueCategory.name}) = lower(${categoryName})`))
+      .limit(1);
+    return c as { id: string } | undefined;
+  };
+  let category = await findCategory();
+  if (!category) {
+    const [{ next }] = await sp
+      .select({ next: sql<number>`coalesce(max(${boRevenueCategory.sortOrder}), -1) + 1` })
+      .from(boRevenueCategory)
+      .where(eq(boRevenueCategory.type, type));
+    await sp.insert(boRevenueCategory).values({ type, name: categoryName, sortOrder: Number(next) }).onConflictDoNothing();
+    category = await findCategory();
+    if (!category) throw new Error(`category ${type} / "${categoryName}" is missing after its insert`);
+  }
+  return category;
+}
+
+/**
+ * 🔻 TASK-961 (SPEC-106 §4) — an ACTIVITY CHANGE relabels the line it already posted: `UPDATE bo.revenue_line SET category_id = <the new category> WHERE idempotency_key = <key>`. NOTHING else on the line moves (amount, month,
+ * `product_name`, `occurred_on`, payment all stay — her 11-10 ruling). The category is found or created exactly as `writeRevenueLine` does (`ensureCategory`), from the name the writer's ONE builder (`revenueCategoryName`) makes.
+ * Runs in a SAVEPOINT and NEVER fails the caller: a failure is logged and answers `false`. Also `false` when there is no line yet (an unposted course sale, an unconfirmed booking) — the later writer uses the new subject anyway.
+ */
+export async function relabelRevenueLine(exec: any, key: string, to: { type: RevenueType; categoryName: string }): Promise<boolean> {
+  try {
+    return await exec.transaction(async (sp: any): Promise<boolean> => {
+      const category = await ensureCategory(sp, to.type, to.categoryName);
+      const updated = await sp.update(boRevenueLine).set({ categoryId: category.id }).where(eq(boRevenueLine.idempotencyKey, key)).returning({ id: boRevenueLine.id });
+      return updated.length > 0;
+    });
+  } catch (e) {
+    console.error(`[revenue] NOT RELABELLED — ${key}: the activity changed but the revenue line keeps its old category. Fix it by hand:`, e);
+    return false;
+  }
+}
+
+/**
  * Insert one revenue line, creating its category by name if it does not exist yet.
  *
  * - **Idempotent** on `idempotencyKey` (`ON CONFLICT (idempotency_key) DO NOTHING`).
@@ -78,24 +122,7 @@ export async function writeRevenueLine(exec: any, line: RevenueLineInput): Promi
   }
   try {
     return await exec.transaction(async (sp: any): Promise<RevenueWriteResult> => {
-      const findCategory = async () => {
-        const [c] = await sp
-          .select({ id: boRevenueCategory.id })
-          .from(boRevenueCategory)
-          .where(and(eq(boRevenueCategory.type, line.type), sql`lower(${boRevenueCategory.name}) = lower(${line.categoryName})`))
-          .limit(1);
-        return c as { id: string } | undefined;
-      };
-      let category = await findCategory();
-      if (!category) {
-        const [{ next }] = await sp
-          .select({ next: sql<number>`coalesce(max(${boRevenueCategory.sortOrder}), -1) + 1` })
-          .from(boRevenueCategory)
-          .where(eq(boRevenueCategory.type, line.type));
-        await sp.insert(boRevenueCategory).values({ type: line.type, name: line.categoryName, sortOrder: Number(next) }).onConflictDoNothing();
-        category = await findCategory();
-        if (!category) throw new Error(`category ${line.type} / "${line.categoryName}" is missing after its insert`);
-      }
+      const category = await ensureCategory(sp, line.type, line.categoryName);
       const method = line.method ?? (await methodFromRowOne(sp, line)); // 🔻 TASK-900: an explicit method (Confirm camp) wins over row 1's
       const inserted = await sp
         .insert(boRevenueLine)

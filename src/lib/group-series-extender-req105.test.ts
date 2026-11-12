@@ -16,6 +16,7 @@ const root = resolve(import.meta.dir, "..", "..");
 const src = (f: string) => readSrc(readFileSync(resolve(root, f), "utf8"));
 const code = (s: string) => s.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
 const { db } = await import("../db");
+const closedDayLib = await import("./closed-day"); // 🔻 TASK-959
 const { jobRuns } = await import("../db/schema");
 const jobs = await import("../services/jobs.service");
 const sched = await import("../services/scheduler.service");
@@ -90,6 +91,7 @@ const runWith = async (rows: any[], opts: { failOn?: string } = {}) => {
   // value goes through the real resolver — a test that mocks the thing under test proves only the mock.
   spies.push(spyOn(db.query.appSettings, "findFirst").mockImplementation((async () => ({ key: "group_series_weeks_ahead", value: 2 })) as any)); // 2 weeks ahead
   spies.push(spyOn(db.query.bookings, "findMany").mockImplementation((async () => rows) as any));
+  spies.push(spyOn(closedDayLib, "openClosedDates").mockImplementation((async () => new Set()) as any)); // 🔻 TASK-959: no closed day in this fixture (the extender asks, in ONE read, which of its dates are closed)
   spies.push(spyOn(db, "transaction").mockImplementation((async (fn: any) => fn({} as any)) as any));
   spies.push(spyOn(db, "insert").mockImplementation(((table: any) => ({ values: async (val: any) => { runs.push({ table: table === jobRuns ? "jobRuns" : "other", val }); } })) as any));
   spies.push(spyOn(sched, "insertBooking").mockImplementation((async (_tx: any, _s: any, input: any) => {
@@ -187,6 +189,6 @@ describe("🔑 §3 the route, the exe, the script — the TASK-441 shape", () =>
   });
 
   test("🚫 no migration: the extender is behaviour over the rows TASK-453 already gave it", () => {
-    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(77); // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(readFileSync(resolve(root, "drizzle/meta/_journal.json"), "utf8").match(/"tag"/g)!.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
   });
 });

@@ -142,7 +142,7 @@ function executor(w: World) {
       },
     },
     teachers: { findFirst: async (q: any) => w.teachers[Object.values(whereOf(q))[0] as string] },
-    teacherLeaveDays: { findFirst: async (q: any) => { const x = whereOf(q); return w.leave.find((l) => l.teacherId === x.teacherId && l.date === x.date); } },
+    closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async (q: any) => { const x = whereOf(q); return w.leave.find((l) => l.teacherId === x.teacherId && l.date === x.date); } },
     boMovement: { findMany: async () => [] },
     boItem: { findFirst: async () => undefined },
   };

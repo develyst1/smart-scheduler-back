@@ -166,8 +166,8 @@ describe("🔴 TASK-860 — a WHOLE-course teacher change is recorded; a time-on
   });
   test("the act stamps coachChangedAt + latestTeacherId in the SAME update as the schedule move (a second change overwrites latest); nothing else in the service writes them (a cover writes nothing, Khwan 5A)", () => {
     expect(TIME_CHANGE).toContain("...(isWholeCourseTeacherChange(plan.moves, input.teacherId) ? { coachChangedAt: new Date(), latestTeacherId: input.teacherId } : {})");
-    expect(code(SVC).match(/coachChangedAt/g)).toHaveLength(1);
-    expect(code(SVC).match(/latestTeacherId/g)).toHaveLength(1);
+    expect(code(SVC).match(/coachChangedAt/g)).toHaveLength(2); // 🔻 TASK-961: + the activity change records a REAL whole-course coach change in the SAME two fields (its own act, the same `isWholeCourseTeacherChange` rule) — a cover still writes nothing
+    expect(code(SVC).match(/latestTeacherId/g)).toHaveLength(2); // 🔻 TASK-961: + the activity change's own stamp (see above)
   });
 });
 

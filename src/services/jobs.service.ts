@@ -45,6 +45,7 @@ import { WEEKLY_DIGEST_JOB, groupWeekRows, weekOf, weeklyDigestKey } from "../li
 import { GROUP_EXTENDER_JOB, weeklyDatesToCreate } from "../lib/group-extend";
 import { COURSE_LIVE, COURSE_LIVE_STATUSES } from "../lib/course-plan";
 import { attachAdditionalTeachers, insertBooking, unconfirmedCourseIds } from "./scheduler.service";
+import { openClosedDates } from "../lib/closed-day"; // 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §4.4): the extender steps over a CLOSED day
 import { ApiException } from "../lib/http";
 import { addDays, hhmm } from "../lib/time";
 import { campReminderInputs } from "./camp.service";
@@ -702,6 +703,7 @@ export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOp
 
   const plan: Array<ExtenderPlanItem & { template: any }> = [];
   let closed = 0, planned = 0, pending = 0;
+  let closedDaySkipped = 0; // 🔻 TASK-959 — dates NOT created because the school is closed that day
   let truncated: null | { bound: "maxSeries" | "maxDates"; limit: number; seriesNotReached: number } = null;
   for (const [groupKey, group] of series) {
     // 🚫 A CLOSED series gains nothing — that is what closing is FOR, and it is the only off switch. ⚠️ Said plainly:
@@ -710,7 +712,12 @@ export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOp
     // 🔑 TASK-466 — the ANCHOR is the last date the series ever HAD (cancelled ones included): a cancelled session is a
     // cancelled session, not the end of a weekly class. Anchoring on the last LIVE date instead would re-create the
     // cancelled dates — and would silently shorten nothing, it would REPEAT them.
-    const dates = weeklyDatesToCreate({ existing: hadDates.get(groupKey) ?? [], from: runDate, horizon });
+    const wanted = weeklyDatesToCreate({ existing: hadDates.get(groupKey) ?? [], from: runDate, horizon });
+    if (!wanted.length) continue;
+    // 🔻 TASK-959 (SPEC-105 §4.4) — a CLOSED day gets NO new class: the series keeps a GAP on that date (it is reported in `closedDaySkipped`, never as a clash). `insertBooking`'s own refusal stays the backstop (it would show as a clash, never a crash).
+    const shut = await openClosedDates(db, wanted);
+    const dates = wanted.filter((d) => !shut.has(d));
+    closedDaySkipped += wanted.length - dates.length;
     if (!dates.length) continue;
     // 🔴 TASK-462 — the bound is checked BEFORE the series is taken, and a series is never split across runs: half a
     // series extended is a series whose later weeks look missing to a human reading the calendar.
@@ -722,7 +729,7 @@ export async function planGroupSeriesExtension(runDate: string, opts: ExtenderOp
     plan.push({ groupKey, title, teacherId: t.teacherId, coach: t.teacher?.nickname ?? t.teacher?.name ?? null, dates, template: t });
     planned += dates.length;
   }
-  return { runDate, horizon, weeks, series: series.size, closedSkipped: closed, plan, planned, truncated, datesNotReached: pending, maxSeries, maxDates };
+  return { runDate, horizon, weeks, series: series.size, closedSkipped: closed, closedDaySkipped, plan, planned, truncated, datesNotReached: pending, maxSeries, maxDates };
 }
 
 /**
@@ -735,7 +742,7 @@ export async function runGroupSeriesExtenderJob(date?: string, opts: ExtenderOpt
   const runDate = date ?? bangkokNow().date;
   const p = await planGroupSeriesExtension(runDate, opts);
   const report = {
-    date: runDate, horizon: p.horizon, weeks: p.weeks, series: p.series, closedSkipped: p.closedSkipped,
+    date: runDate, horizon: p.horizon, weeks: p.weeks, series: p.series, closedSkipped: p.closedSkipped, closedDaySkipped: p.closedDaySkipped,
     wouldCreate: p.planned, truncated: p.truncated, datesNotReached: p.datesNotReached,
     plan: p.plan.map(({ template: _t, ...item }) => item),
   };

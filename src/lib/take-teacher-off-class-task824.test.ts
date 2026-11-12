@@ -64,7 +64,7 @@ function fakeTx(w: World) {
         return w.booking;
       } },
       teachers: { findFirst: async (q: any) => { const id = Object.values(whereOf(q))[0] as string; return w.teachers[id]; } },
-      teacherLeaveDays: { findFirst: async (q: any) => { const x = whereOf(q); return w.leave.find((l) => l.teacherId === x.teacherId && l.date === x.date); } },
+      closedDays: { findFirst: async () => undefined } /* 🔻 TASK-959: no closed day in this fixture */, teacherLeaveDays: { findFirst: async (q: any) => { const x = whereOf(q); return w.leave.find((l) => l.teacherId === x.teacherId && l.date === x.date); } },
       boMovement: { findMany: async () => [] },
       boItem: { findFirst: async () => undefined },
     },
@@ -258,7 +258,7 @@ describe("🔑 by source — ONE block, reusing the swap's internals; it cancels
   test("«remains» asks THE reader for the leave (`teacherLeaveOn`) and the same-act set — no second rule", () => {
     const R = code(region(SVC, "async function remainingOf(", "\n}\n"));
     expect(R).toContain("t.teacherId !== leavingTeacherId && !alsoLeaving.has(t.teacherId)");
-    expect(R).toContain("if (!(await teacherLeaveOn(exec, t.teacherId, c.date))) out.push(t);");
+    expect(R).toContain("if (!(await teacherLeaveOn(exec, t.teacherId, c.date, c.startTime))) out.push(t);");
   });
 });
 

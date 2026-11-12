@@ -169,7 +169,7 @@ export interface AttentionItem {
   label: string;
   hint?: string;
   /** 🔻 TASK-840 (REQ-132) — where the front opens this item: ONLY the two entitlement checks carry it (every other check has no `link` key). */
-  link?: { kind: "course" | "voucher"; id: string };
+  link?: { kind: "course" | "voucher"; id: string } | { kind: "day"; date: string }; // 🔻 TASK-959: a closed-day item opens the calendar on that DATE
 }
 /**
  * 🔻 TASK-840 (REQ-132) — the label of a course / voucher item LEADS with the child, through THE one name rule (`studentNamesOf`: a DUO course names both children, as every notice does); a row with no student keeps its label as before.
@@ -209,6 +209,8 @@ export interface AttentionCtx {
     yieldedGroupDates: () => Promise<Array<{ booking: any; teacher: any; liveSeats: number; privateLive: boolean }>>;
     /** TASK-573 — courses carrying `reconfirm_needed_since`, each with its student and its count of PENDING sessions. */
     reconfirmCandidates: () => Promise<Array<{ course: any; pendingCount: number }>>;
+    /** 🔻 TASK-959 — the LIVE classes (slot-active, not a seat, never a planned absence) on an OPEN closed day from today on, each with its student and its teacher. The check does not judge: the loader's filter IS the rule. */
+    closedDayClasses: () => Promise<Array<{ booking: any; teacher: any }>>;
     /** Entitlements sold since `salesWindowStart`, plus the refIds that DID reach `bo.movement` (TASK-067). */
     /**
      * TASK-163 — the two extra facts the dropped-discount check needs, from the same load: the in-window
@@ -434,6 +436,23 @@ const CHECKS = [
         items: rows.map(({ course, pendingCount }) => ({
           id: course.id,
           label: `${course.startDate} · ${course.student?.nickname ?? course.student?.name ?? "-"} · ${pendingCount}`,
+        })),
+      };
+    },
+  },
+  // 🔻 TASK-959 (REQ-5013 option B, SPEC-105 §3) — classes that are STILL on a closed day: the admin clears each by hand (the day only stops NEW work). It drops by itself after a re-open, after the date passes, and once every class is
+  // moved or cancelled. A planned absence is not a class and is never listed. `namesPeopleInDigest` stays OFF: the LINE digest carries the COUNT only (the REQ-020 privacy list).
+  {
+    key: "classes_on_closed_days",
+    titleKey: "att_classes_on_closed_days",
+    run: async (ctx) => {
+      const rows = await ctx.load.closedDayClasses();
+      return {
+        count: rows.length,
+        items: rows.map(({ booking: b, teacher }) => ({
+          id: b.id,
+          label: `${b.date} ${hhmm(b.startTime)} · ${displayNameOf(b) || "-"} · ${teacher?.nickname ?? "-"}`,
+          link: { kind: "day" as const, date: b.date as string },
         })),
       };
     },
