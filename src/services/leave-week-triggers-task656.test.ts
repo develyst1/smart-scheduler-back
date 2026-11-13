@@ -510,8 +510,8 @@ describe("🔑 THE LIST IS A LIST — three triggers, pinned BY VALUE; the call 
 
   test("🔴 the ORDINARY-leave paths do not call the helper: door 1's call is gated on `declaredFree`, door 2's on `declaredFree` (never on `becomesAbsence`)", () => {
     const C = code(SCHED);
-    expect(C).toContain('if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");');
-    expect(C).toContain('if (declaredFree) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");');
+    expect(C).toContain('if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");' /* 🔻 TASK-971: one week per course WEEK declared */);
+    expect(C).toContain('if (declaredFree && (await declarationTakesNewWeek(tx, courseId, b.id, b.date))) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");' /* 🔻 TASK-971 */);
     expect(C).not.toMatch(/if \(becomesAbsence\) await addLeaveWeek/);
   });
 

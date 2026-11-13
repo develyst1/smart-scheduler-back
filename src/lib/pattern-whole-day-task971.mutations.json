@@ -1,0 +1,413 @@
+{
+  "task": "TASK-971",
+  "proves": "src/services/pattern-change-task971.test.ts",
+  "note": "Steps 1/3/4 (REQ-5016): L = the pure pattern planner, S = the change-pattern act, R = the resume, W = the whole-day leave (act, notice, body, route, gate).",
+  "tests": "src/lib/pattern-change-task971.test.ts src/services/pattern-change-task971.test.ts src/services/whole-day-leave-task971.test.ts",
+  "mutations": [
+    {
+      "id": "L1",
+      "what": "rows BEFORE fromDate move too",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": ".filter((r) => r.date >= input.fromDate)",
+              "to": ".filter((r) => r.date >= \"0000-00-00\")"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "what": "a CONFIRMED row stays CONFIRMED (no re-confirm)",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": "toStatus: r.status === \"CONFIRMED\" ? \"PENDING\" : r.status,",
+              "to": "toStatus: r.status,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "what": "a fromDate in the past is accepted",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": "if (input.fromDate < today) return { code: \"START_IN_PAST\"",
+              "to": "if (false) return { code: \"START_IN_PAST\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "what": "a ONE-slot pattern is refused",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": "const problem = patternProblem(input.pattern, 1);",
+              "to": "const problem = patternProblem(input.pattern, 2);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "what": "the planner lays out ONE target for n rows",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": "expandPattern(input.startDate, input.pattern, live.length, new Set(), input.fromDate)",
+              "to": "expandPattern(input.startDate, input.pattern, 1, new Set(), input.fromDate)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "what": "a ONE-slot result keeps a `course_slots` row",
+      "files": [
+        {
+          "file": "src/lib/pattern-change.ts",
+          "edits": [
+            {
+              "from": "return newSlots.length >= 2 && newSlots.length <= MAX_PATTERN_SLOTS",
+              "to": "return newSlots.length >= 1 && newSlots.length <= MAX_PATTERN_SLOTS"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S1",
+      "what": "the new slots are never stored",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "if (stored) await tx.insert(courseSlots)",
+              "to": "if (false) await tx.insert(courseSlots)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "what": "the old slots are never deleted",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "await tx.delete(courseSlots).where(eq(courseSlots.courseId, id));",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "what": "a clash is not turned into SLOT_TAKEN",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "if (pgErrorCode(e) === \"23505\")",
+              "to": "if (false)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "what": "the course's weekday / start_time do not follow the pattern",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "weekday: ordered[0]!.weekday, startTime: hhmmOf(ordered[0]!.startTime), expiryDate, ...(plan.needsReconfirm > 0",
+              "to": "expiryDate, ...(plan.needsReconfirm > 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "what": "no re-confirm flag on the course",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "...(plan.needsReconfirm > 0 ? { reconfirmNeededSince: new Date() } : {}),",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6",
+      "what": "the coaches are not told",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "await sendCourseTeacherChange(tx, plan.moves);",
+              "to": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S7",
+      "what": "the expiry may SHRINK to the new last row",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "const expiryDate = replanExpiry(course.expiryDate, plan.lastDate);",
+              "to": "const expiryDate = plan.lastDate;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S8",
+      "what": "an ended / paused course is re-planned",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "await assertCourseWritable(tx, id); // an ENDED or PAUSED course refuses",
+              "to": "/* mutant */ // an ENDED or PAUSED course refuses"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S9",
+      "what": "the preview COMMITS (returns instead of rolling back)",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "throw new PatternPreviewRollback(await runCoursePatternChange(tx, id, input, null));",
+              "to": "return (await runCoursePatternChange(tx, id, input, null)) as never;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "what": "a one-slot result records no coach change",
+      "files": [
+        {
+          "file": "src/services/course-pattern-change.service.ts",
+          "edits": [
+            {
+              "from": "...(only && isWholeCourseTeacherChange(plan.moves, only.teacherId) ?",
+              "to": "...(false ?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "what": "a pattern course never takes the pattern branch on resume",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const patternRows = patternSlots && owed > 0 ? expandPattern(",
+              "to": "const patternRows = false && patternSlots && owed > 0 ? expandPattern("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "what": "a ONE-slot course takes the pattern branch on resume (SPEC §5)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "const patternRows = patternSlots && owed > 0 ? expandPattern(",
+              "to": "const patternRows = owed > 0 ? expandPattern("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "what": "a pattern course's weekday / start_time are overwritten on resume",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ".set(patternSlots ? { droppedAt: null,",
+              "to": ".set(false ? { droppedAt: null,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "what": "a pattern row does not take its slot's coach / time on resume",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "...slotOverride(i), // 🔻 TASK-971",
+              "to": "// 🔻 TASK-971"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W1",
+      "what": "the whole-day act leaves only the clicked hour",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "for (const r of ordered) results.push(",
+              "to": "for (const r of ordered.slice(0, 1)) results.push("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "what": "the whole-day act sends a notice PER HOUR",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "input.reasonCode, provenance, { tx, quiet: true }));",
+              "to": "input.reasonCode, provenance, { tx }));"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W3",
+      "what": "a non-course booking is accepted by the whole-day act",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (!row.courseId || row.bookingType !== \"COURSE_PACKAGE\") throw new ApiException(400, \"VALIDATION\"",
+              "to": "if (false) throw new ApiException(400, \"VALIDATION\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "what": "the notice lists only the first hour",
+      "files": [
+        {
+          "file": "src/lib/line-message.ts",
+          "edits": [
+            {
+              "from": "(payload.times as string[]).join(\", \")",
+              "to": "(payload.times as string[])[0]!"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W5",
+      "what": "wholeDay is accepted with any action",
+      "files": [
+        {
+          "file": "src/validation.ts",
+          "edits": [
+            {
+              "from": ".refine((d) => !d.wholeDay || d.action === \"sick-leave\",",
+              "to": ".refine((d) => true || d.action === \"sick-leave\","
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W6",
+      "what": "the route ignores the flag",
+      "files": [
+        {
+          "file": "src/routes/api.ts",
+          "edits": [
+            {
+              "from": "if (wholeDay) return c.json(await svc.recordWholeDayLeave(",
+              "to": "if (false) return c.json(await svc.recordWholeDayLeave("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W7",
+      "what": "change-pattern is gated like a plain booking read",
+      "files": [
+        {
+          "file": "src/lib/route-access.ts",
+          "edits": [
+            {
+              "from": "\"POST /courses/:id/change-pattern\": act(BOOKINGS, \"action:bookings.course-plan\")",
+              "to": "\"POST /courses/:id/change-pattern\": act(BOOKINGS, \"action:bookings.course-cancel\")"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

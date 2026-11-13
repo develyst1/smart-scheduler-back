@@ -39,6 +39,8 @@ const VERDICT: Record<string, "guarded" | "allowed" | "unrelated"> = {
   "POST /courses/:id/drop": "guarded", // TASK-198: refuses an ENDED course, and ALREADY_DROPPED on a second click
   "POST /courses/:id/start-date/preview": "guarded", // TASK-573 — the act's own plan: `assertCourseWritable` first, writes nothing
   "POST /courses/:id/start-date": "guarded", // TASK-570 — `assertCourseWritable` first: an ENDED or PAUSED course refuses
+  "POST /courses/:id/change-pattern/preview": "guarded", // 🔻 TASK-971 — the act run inside a rolled-back transaction: the same `assertCourseWritable` first (COURSE_ENDED / COURSE_DROPPED), nothing committed
+  "POST /courses/:id/change-pattern": "guarded", // 🔻 TASK-971 — `assertCourseWritable` first, then the untaught rows only
   "POST /courses/:id/change-activity/preview": "guarded", // 🔻 TASK-961 — the act run inside a rolled-back transaction: the same `assertCourseWritable` first (COURSE_ENDED / COURSE_PAUSED), nothing committed
   "POST /courses/:id/change-activity": "guarded", // 🔻 TASK-961 — `assertCourseWritable` first, then the remaining classes only
   "POST /bookings/:id/change-activity/preview": "unrelated", // 🔻 TASK-961 — one 1 HR / 1st Trial (never a course row: a COURSE_PACKAGE is refused NOT_SINGLE_OR_TRIAL)

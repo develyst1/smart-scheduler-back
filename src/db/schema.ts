@@ -1142,7 +1142,27 @@ export const expiryRecordingMarker = pgTable("expiry_recording_marker", {
   id: smallint("id").primaryKey().default(1),
   recordingSince: timestamp("recording_since", { withTimezone: true }).notNull(),
 });
+// 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §2, `0081`) — a course's WEEKLY PATTERN of hour-slots: only for a course with 2+ slots (NO backfill: no rows = a one-slot course = today's paths). `ord` is the PATTERN ORDER (weekday counted from the course's start weekday, then time).
+// `course_packages.weekday` / `start_time` keep the FIRST slot's values for the old readers.
+export const courseSlots = pgTable(
+  "course_slots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    courseId: uuid("course_id").notNull().references(() => coursePackages.id, { onDelete: "cascade" }),
+    ord: smallint("ord").notNull(),
+    weekday: smallint("weekday").notNull(),
+    startTime: time("start_time").notNull(),
+    teacherId: uuid("teacher_id").notNull().references(() => teachers.id, { onDelete: "restrict" }),
+  },
+  (t) => [uniqueIndex("course_slots_course_ord_uq").on(t.courseId, t.ord)],
+);
+
+export const courseSlotsRelations = relations(courseSlots, ({ one }) => ({
+  course: one(coursePackages, { fields: [courseSlots.courseId], references: [coursePackages.id] }),
+}));
+
 export const coursePackagesRelations = relations(coursePackages, ({ one, many }) => ({
+  slots: many(courseSlots), // 🔻 TASK-969: the weekly pattern (empty = a one-slot course)
   student: one(students, {
     fields: [coursePackages.studentId],
     references: [students.id],

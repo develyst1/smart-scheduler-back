@@ -7,6 +7,7 @@ import { BADGE_COLORS } from "./lib/badge-colors";
 import { isRentalCode } from "./lib/sale-items";
 import { END_REASONS, SESSION_CANCEL_REASONS, plannedRowExists } from "./lib/course-plan";
 import { isPhoneShaped } from "./lib/phone";
+import { MAX_PATTERN_SLOTS, patternProblem } from "./lib/course-pattern"; // 🔻 TASK-969 (REQ-5016 F1): the pattern's shape rules live in ONE place
 import { bangkokNow } from "./lib/bangkok-time";
 import { NVR_BUCKETS } from "./lib/som-contract";
 
@@ -353,6 +354,12 @@ export const recordBookingRental = z.object({
   remark: z.string().trim().max(200).optional(),
 });
 
+// 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — one slot of a course's weekly pattern, and the shape rules every pattern body shares (the problems themselves are `lib/course-pattern.ts`'s, ONE place).
+export const patternSlot = z.object({ weekday: z.number().int().min(0).max(6), startTime: TIME, teacherId: ID });
+const patternIssue = (pattern: ReadonlyArray<{ weekday: number; startTime: string; teacherId: string }> | undefined, min: number): string | null => (pattern ? patternProblem(pattern, min) : null);
+/** the course weeks a pattern plan draws for `size` rows: `ceil(size / slots)` — the only weeks an `absentWeeks` entry may name (a make-up week is born later, from a leave) */
+const patternWeeks = (size: number, slots: number): number => Math.ceil(size / slots);
+
 export const createCoursePackage = z
   .object({
     branch: BRANCH.optional(), // 🔻 TASK-889 (F1): the course and every session it creates
@@ -394,6 +401,15 @@ export const createCoursePackage = z
         }),
       )
       .optional(),
+    // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — the weekly PATTERN of hour-slots: 2…21 slots, unique (weekday, startTime), each with its own coach. With ONE slot the screen sends today's fields (teacherId / startTime) and no pattern.
+    // Exclusive with `sessions` and with `groupKey` (a group has its own schedule); `absentWeeks` then names COURSE weeks.
+    pattern: z.array(patternSlot).min(2).max(MAX_PATTERN_SLOTS).optional(),
+  })
+  .refine((d) => !d.pattern || !d.sessions, { message: "ส่ง pattern พร้อม sessions ไม่ได้", path: ["pattern"] })
+  .refine((d) => !d.pattern || !d.groupKey, { message: "คอร์สที่ขายเข้ากลุ่มไม่ใช้ตารางประจำสัปดาห์ — กลุ่มมีตารางของตัวเอง", path: ["pattern"] })
+  .superRefine((d, ctx) => {
+    const problem = patternIssue(d.pattern, 2);
+    if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["pattern"] });
   })
   .refine((d) => !d.sessions || d.sessions.length === d.size, {
     message: "จำนวนคาบต้องเท่ากับขนาดคอร์ส",
@@ -410,7 +426,7 @@ export const createCoursePackage = z
   // *"คลาสที่เป็น extended ไม่ต้องล็อกค่ะ สามารถลาได้เหมือนกัน"*. ⇒ a position may name ANY row the plan draws,
   // make-ups included — and the rule for which rows exist is `plannedRowExists`, the SAME function the preview
   // and the create use. A position beyond the drawn plan is still refused: it names a row nobody will see.
-  .refine((d) => !d.absentWeeks || d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks))), {
+  .refine((d) => !d.absentWeeks || (d.pattern ? d.absentWeeks.every((w) => w <= patternWeeks(d.size, d.pattern!.length)) : d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks)))), { // 🔻 TASK-969: with a pattern, `absentWeeks` are COURSE weeks of the drawn plan
     message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส",
   });
   // 🔻 TASK-363 (`REQ-089 §4.2`) — THE CAP IS GONE. A `< size` refine stood here since TASK-148 (*"the whole
@@ -432,6 +448,12 @@ export const previewCourse = z.object({
   startTime: TIME,
   // TASK-148 — preview the plan WITH the declared absences, so what is shown is what gets saved (AC-2).
   absentWeeks: z.array(z.number().int().min(1)).optional(),
+  // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — the same `pattern` as the create, so the preview returns the expanded dates and preview = act.
+  pattern: z.array(patternSlot).min(2).max(MAX_PATTERN_SLOTS).optional(),
+}).superRefine((d, ctx) => {
+  const problem = patternIssue(d.pattern, 2);
+  if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["pattern"] });
+  if (d.pattern && d.absentWeeks && !d.absentWeeks.every((w) => w <= patternWeeks(d.size, d.pattern!.length))) ctx.addIssue({ code: "custom", message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส", path: ["absentWeeks"] });
 });
 
 // TASK-095 — free-teachers-and-clashes for a single slot.
@@ -463,7 +485,9 @@ export const updateStatus = z.object({
   reasonCode: z.enum(SESSION_CANCEL_REASONS).optional(), // TASK-406: the ONE set (`lib/course-plan.ts`), no second copy here · 🔻 TASK-690: + SCHOOL_ISSUE (a SESSION cancel only)
   // Admin override for the advance-notice leave rule (UC-029).
   override: z.boolean().optional(),
-});
+  /** 🔻 TASK-971 (REQ-5016 AC4, SPEC-109 §3.3) — a WHOLE-DAY leave: every live hour of that course on that date, in one act. Only with `action: "sick-leave"` (here, 400 VALIDATION) and only for a course row (the service, 400 VALIDATION). */
+  wholeDay: z.literal(true).optional(),
+}).refine((d) => !d.wholeDay || d.action === "sick-leave", { message: "wholeDay ใช้ได้กับ action sick-leave เท่านั้น", path: ["wholeDay"] });
 
 // Who can be booked against an existing entitlement (REQ-022 / TASK-051). FIRST_TRIAL / SINGLE_SESSION are
 // deliberately not served here — those tabs use `GET /students?q=`.
@@ -1160,6 +1184,13 @@ export const resumeBooking = z.object({
 export const changeCourseStart = z.object({ startDate: DATE });
 /** 🔻 TASK-838 (REQ-127) — the rest of a course moves to a new teacher, day and time: the admin's three answers (the resume's pickers). The weekday is DERIVED from the start date, never asked. */
 export const changeCourseTeacherTime = z.object({ teacherId: ID, startDate: DATE, startTime: TIME });
+/** 🔻 TASK-971 (REQ-5016 AC5, SPEC-109 §3.4) — change the weekly PATTERN mid-course: from which date, and the new slots (1…21; a ONE-slot result is legal here, unlike a sale's 2…21). The shape rules are `patternProblem(p, 1)` — ONE place (`lib/course-pattern.ts`), 400 VALIDATION. */
+export const changeCoursePattern = z
+  .object({ fromDate: DATE, pattern: z.array(patternSlot).min(1).max(MAX_PATTERN_SLOTS) })
+  .superRefine((d, ctx) => {
+    const problem = patternProblem(d.pattern, 1);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["pattern"] });
+  });
 /**
  * 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2.1) — change the activity of a course's REMAINING classes: the new activity, an optional new coach, and — ONLY when the card has no price for (new group × size) — the typed price in whole baht. The
  * range (an integer in 1..100 000) and "typed although the card has a price" are the planner's CODES (`MANUAL_PRICE_RANGE` / `MANUAL_PRICE_NOT_ALLOWED`), not a generic VALIDATION error: the dialog maps each to its own Thai message.

@@ -790,6 +790,14 @@ export const SCHEDULING_WITNESSES: Witness[] = [
       "Rerunnable: every column IF NOT EXISTS, the CHECK is DROP IF EXISTS then ADD; NO data is written.",
     rerunnable: true,
   },
+  {
+    tag: "0081_course_slots",
+    probe: { kind: "index", index: "course_slots_course_ord_uq" },
+    why:
+      "TASK-969 (REQ-5016 F1, SPEC-109 §2). `course_slots`: a course's weekly pattern of hour-slots (only for courses with 2+ slots; NO backfill — a course with no rows is a one-slot course and runs today's paths). The probe is the LAST object the file creates (the unique index on (course_id, ord)), so a run that died after the table is not called applied. " +
+      "Rerunnable: the table and the index IF NOT EXISTS; NO data is written.",
+    rerunnable: true,
+  },
 ];
 
 export type Verdict = "applied" | "not-applied" | "needs-human";

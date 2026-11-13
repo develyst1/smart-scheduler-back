@@ -1,0 +1,233 @@
+{
+  "task": "TASK-971",
+  "proves": "src/lib/leave-week-quota-task971.test.ts",
+  "note": "Step 2 (REQ-5016 §3.3): the leave quota in COURSE WEEKS. W = the rule + the one-slot gate, D = the two doors and the undo.",
+  "tests": "src/lib/leave-week-quota-task971.test.ts",
+  "mutations": [
+    {
+      "id": "W1",
+      "what": "the week rule never refuses a second charge (always a new unit)",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "return !otherChargedDates.some((d) => courseWeekOf(courseStart, d) === week);",
+              "to": "return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W2",
+      "what": "the week compare is inverted",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "courseWeekOf(courseStart, d) === week",
+              "to": "courseWeekOf(courseStart, d) !== week"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W3",
+      "what": "a one-slot course (1 slot) is a pattern course",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "return slots.length >= 2;",
+              "to": "return slots.length >= 1;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "what": "EVERY course is a pattern course",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "return slots.length >= 2;",
+              "to": "return slots.length >= 0;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W5",
+      "what": "a one-slot course takes the new path (SPEC §5)",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "if (!(await weekQuotaApplies(exec, courseId))) return true;",
+              "to": "if (false) return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W6",
+      "what": "an executor with no `courseSlots` relation is a pattern course",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "if (!exec?.query?.courseSlots) return false;",
+              "to": "if (!exec?.query?.courseSlots) return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W7",
+      "what": "the undo always returns a unit (even with another charged leave in the week)",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "return leaveTakesNewWeek(exec, courseId, rowId, rowDate); // the same question asked the other way round",
+              "to": "return true; // the same question asked the other way round"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "W8",
+      "what": "an UNCHARGED leave counts as 'another leave in the week'",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "eq(b.status, \"SICK_LEAVE\"), eq(b.leaveCharged, true), ne(b.id, rowId))",
+              "to": "eq(b.status, \"SICK_LEAVE\"), ne(b.id, rowId))"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D1",
+      "what": "door 2 ignores the week rule",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (charged && (await leaveTakesNewWeek(tx, courseId, b.id, b.date))) {",
+              "to": "if (charged) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "what": "door 1 ignores the week rule",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (charges && (await leaveTakesNewWeek(tx, current.courseId, id, current.date))) {",
+              "to": "if (charges) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "what": "the undo ignores the week rule",
+      "files": [
+        {
+          "file": "src/services/undo.service.ts",
+          "edits": [
+            {
+              "from": "if (leaveRefunded && (await undoReturnsWeek(tx, row.courseId, row.id, row.date))) {",
+              "to": "if (leaveRefunded) {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X1",
+      "what": "a pre-start declaration adds a week PER HOUR (the helper always says yes)",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "  if (!isPatternCourse) return true;\n  const others = await exec.query.bookings.findMany({\n    columns: { date: true },\n    where: (b: any, { and, eq, ne }: any) => and(eq(b.courseId, courseId), eq(b.status, \"SICK_LEAVE\"), eq(b.plannedAtCreation, true), ne(b.id, rowId)),\n  });",
+              "to": "  if (!isPatternCourse) return true;\n  const others: Array<{ date: string }> = [];"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X2",
+      "what": "a ONE-slot course takes the declaration week rule",
+      "files": [
+        {
+          "file": "src/lib/leave-week-quota.ts",
+          "edits": [
+            {
+              "from": "  if (!isPatternCourse) return true;",
+              "to": "  if (false) return true;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X3",
+      "what": "door 1 ignores the declaration week rule",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(",
+              "to": "if (declaredFree && current.courseId) await addLeaveWeek("
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X4",
+      "what": "door 2 ignores the declaration week rule",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": "if (declaredFree && (await declarationTakesNewWeek(tx, courseId, b.id, b.date))) await addLeaveWeek(",
+              "to": "if (declaredFree) await addLeaveWeek("
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

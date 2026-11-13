@@ -4,6 +4,7 @@ import * as v from "../validation";
 import { assertMayDiscount } from "../lib/discount-plan";
 import { assertMayOverrideLeave } from "../lib/permissions";
 import * as svc from "../services/scheduler.service";
+import * as patternChange from "../services/course-pattern-change.service"; // 🔻 TASK-971 (REQ-5016 AC5): change the weekly pattern mid-course
 import * as firstCoach from "../lib/first-coach"; // 🔻 TASK-860 (REQ-120 F4)
 import { assertTeacherMayHaveLeave } from "../lib/system-teacher"; // 🔻 TASK-861 (REQ-120 F5)
 import * as badge from "../services/badge.service";
@@ -183,6 +184,13 @@ export const api = new Hono()
   )
   .post("/courses/:id/change-teacher-time", zValidator("json", v.changeCourseTeacherTime), async (c) =>
     c.json(await svc.changeCourseTeacherAndTime(c.req.param("id"), c.req.valid("json"), actorOf(c))),
+  )
+  // 🔻 TASK-971 (REQ-5016 AC5, SPEC-109 §3.4) — change the weekly PATTERN of a course mid-course; the preview is the act run inside a rolled-back transaction. Same admin gate as change-teacher-time (`route-access.ts`).
+  .post("/courses/:id/change-pattern/preview", zValidator("json", v.changeCoursePattern), async (c) =>
+    c.json(await patternChange.previewCoursePattern(c.req.param("id"), c.req.valid("json"))),
+  )
+  .post("/courses/:id/change-pattern", zValidator("json", v.changeCoursePattern), async (c) =>
+    c.json(await patternChange.changeCoursePattern(c.req.param("id"), c.req.valid("json"), actorOf(c))),
   )
   // 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2.1) — change the ACTIVITY of a course's remaining classes; the preview is the act run inside a rolled-back transaction. Same admin gate as change-teacher-time (`route-access.ts`).
   .post("/courses/:id/change-activity/preview", zValidator("json", v.changeCourseActivity), async (c) =>
@@ -395,12 +403,14 @@ export const api = new Hono()
     c.json(await svc.bulkConfirm(c.req.valid("json").ids)),
   )
   .patch("/bookings/:id/status", zValidator("json", v.updateStatus), async (c) => {
-    const { action, reason, override, reasonCode } = c.req.valid("json");
+    const { action, reason, override, reasonCode, wholeDay } = c.req.valid("json");
     // TASK-385: the override waives a rule written for parents — a grant (`action:calendar.leave-override`), like the discount.
     assertMayOverrideLeave(override, c.get("user"));
     // TASK-406: a LINKED account may `attend` only, and only its own row (404 outside scope — the row is not theirs to know about).
     assertScopedStatusAction(c.get("user"), action);
     await assertOwnBooking(c.req.param("id"), scopeOf(c.get("user")));
+    // 🔻 TASK-971 (REQ-5016 AC4): a WHOLE-DAY leave takes its own service function (one transaction over every live hour of the day); without the flag this route is byte-identical
+    if (wholeDay) return c.json(await svc.recordWholeDayLeave(c.req.param("id"), { reason, override, reasonCode }, { channel: "staff", actor: actorOf(c) }));
     return c.json(
       await svc.updateBookingStatus(c.req.param("id"), action, reason, override, reasonCode, { channel: "staff", actor: actorOf(c) }), // TASK-475 · TASK-488 — the channel AND who
     );

@@ -12,7 +12,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": ""
             }
           ]

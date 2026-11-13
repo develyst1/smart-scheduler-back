@@ -74,7 +74,7 @@ describe("🔴 TASK-309 §3 — the search gives up, and someone is TOLD", () =>
     // 🚫 Not refused: nothing on this path throws. 🚫 Not the parent: they asked for a leave and got one.
     const append = SVC.slice(SVC.indexOf("for (const a of plan.append) {"), SVC.indexOf("return { appended, cancelled };"));
     expect(append).not.toContain("throw");
-    expect(append).toContain("if (searchExhausted(fromDate, extDate)) {");
+    expect(append).toContain("if (!slotPick && searchExhausted(fromDate, extDate)) {"); // 🔻 TASK-969: a pattern make-up that found a slot is not "exhausted"; the fallback is this very rule
     expect(append).toContain("await notifyAdmins(");
     expect(append).toContain('kind: "makeup_far_out",');
     expect(append).not.toContain("recipientType: \"parent\"");

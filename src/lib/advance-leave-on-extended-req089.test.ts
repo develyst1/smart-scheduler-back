@@ -115,7 +115,7 @@ describe("🔑 ONE rule, THREE callers — the preview and the save agree becaus
 
   test("the CREATE flips the ticked make-ups and asks the ONE engine again — no second placement path", () => {
     const create = fn("export async function createCoursePackage(");
-    expect(create).toContain("const wanted = plannedRowCount(input.size, absentWeeks);");
+    expect(create).toContain("const wanted = patternRows ? 0 : plannedRowCount(input.size, absentWeeks);");
     expect(create).toContain("const toFlip = makeupsToFlip(ordered as any[], input.size, absentWeeks);");
     // 🔑 the loop's ONLY exit is the guarded one — a bare `break` before the flip would leave the make-ups live
     // with every line of the flip still in the file (that mutation PASSED a text pin; this is what caught it).

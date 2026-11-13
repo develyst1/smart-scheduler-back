@@ -6,6 +6,8 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
+import { type Slot, expandPattern, hhmmOf, isPattern, nextFreeSlot, orderPattern } from "../lib/course-pattern"; // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern — pure
+import { declarationTakesNewWeek, leaveTakesNewWeek } from "../lib/leave-week-quota"; // 🔻 TASK-971 (REQ-5016 §3.3): the leave quota counts course WEEKS for a pattern course
 import { OUTSIDE_WORK_HOURS, TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, leaveModeOf, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
 import { isTeacherTimeRefusal, planCourseTeacherTimeChange, type TeacherTimeMove, type TeacherTimePlan } from "../lib/course-teacher-time-change"; // 🔻 TASK-838 (REQ-127)
@@ -13,7 +15,7 @@ import { RATE_REQUIRED, seriesRateOf } from "../lib/coach-rate"; // TASK-562
 import { legacySourceOf, type Provenance } from "../lib/checkin-channel";
 import { maskBudget, type Viewer } from "../lib/budget-visibility";
 import { db } from "../db";
-import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, activityChanges, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, teacherLeaveRemovals, courseExpiryChanges, coursePackages, jobRuns, parents, students, subjects, teacherSubjects, teachers, voucherExpiryChanges, vouchers } from "../db/schema";
+import { CALENDAR_HIDDEN_STATUSES, SLOT_INACTIVE_STATUSES, activityChanges, appSettings, bookings, bookingRentals, bookingTeachers, boItem, boMovement, teacherLeaveRemovals, courseExpiryChanges, coursePackages, courseSlots, jobRuns, parents, students, subjects, teacherSubjects, teachers, voucherExpiryChanges, vouchers } from "../db/schema";
 import type { BulkConfirmResult, CourseStatus, PlanSessionRow, TeacherType } from "../types/contract";
 import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
@@ -715,7 +717,7 @@ async function coursesByIds(ids: string[]) {
   // fallback the mapper falls through to (a course ⇔ one subject; REQ-010).
   const rows = await db.query.coursePackages.findMany({
     where: (c, { inArray: inA }) => inA(c.id, ids),
-    with: { student: true, coStudent: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },
+    with: { student: true, coStudent: true, subject: true, slots: true, bookings: { with: { subject: true }, limit: 1 } }, // 🔻 TASK-969: + the weekly pattern (the DTO's `slots`)
   });
   // TASK-373: the course's rental, ONE grouped read (the nested `bookings` above is `limit: 1` and could sample a
   // leave row, which carries none) — spread on as `courseRental` for the mapper to derive from.
@@ -2546,8 +2548,15 @@ export async function createCoursePackage(input: any) {
     await assertHouseholdNotSuspended(tx, studentId);
     // TASK-095 — an optional per-session plan (purchase-time modal). Each row overrides teacher/subject/time;
     // absent ⇒ today's uniform weekly chain (back-compat). Either way it commits in this one clash-aborts-all tx.
+    // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — a WEEKLY PATTERN (2+ slots) is expanded in pattern order and goes through the SAME per-row loop as `sessions[]`: every row meets `insertBooking` (clash · closed day · leave · hours), exactly as a single class does.
+    // `pattern` and `sessions` / `groupKey` are exclusive (the validator refuses; this is the second layer). ONE slot = the screen sends today's fields and NO pattern: that path below is untouched (AC7).
+    if (input.pattern?.length && (input.sessions?.length || input.groupKey)) throw badRequest("ตารางประจำสัปดาห์ใช้ร่วมกับตารางรายคาบหรือกลุ่มไม่ได้");
+    const patternSlots: Slot[] = input.pattern?.length ? orderPattern(input.startDate, input.pattern.map((s: any) => ({ weekday: s.weekday, startTime: hhmmOf(s.startTime), teacherId: s.teacherId }))) : [];
+    const patternRows = isPattern(patternSlots) ? expandPattern(input.startDate, patternSlots, input.size, new Set<number>((input.absentWeeks ?? []) as number[])) : null;
     const plannedSessions: Array<{ teacherId: string; subjectId: string; date: string; startTime: string }> =
-      input.sessions?.length
+      patternRows
+        ? patternRows.map((r) => ({ teacherId: r.teacherId, subjectId: input.subjectId, date: r.date, startTime: r.startTime }))
+        : input.sessions?.length
         ? input.sessions.map((s: any) => ({
             teacherId: s.teacherId ?? input.teacherId,
             subjectId: s.subjectId ?? input.subjectId,
@@ -2589,7 +2598,7 @@ export async function createCoursePackage(input: any) {
       // so the card's `expires` date claimed time the family had not used. With no ceiling left to refuse
       // a leave, there is nothing to leave room FOR: the expiry stretches on demand instead.
       // ✅ §10's stretch for DECLARED absences stays — those are real planned sessions.
-      absentWeeks.size,
+      patternRows ? new Set(patternRows.filter((r) => r.absent).map((r) => r.week)).size : absentWeeks.size, // 🔻 TASK-969: a pattern's declared absences are COURSE weeks
     );
 
     const links = await conversionLinks(tx, studentId, bangkokNow().date); // 🔻 TASK-860 (F4) — the trial this sale converts + the previous entitlement; read BEFORE the insert, in the sale's own tx, on the primary child only
@@ -2604,14 +2613,16 @@ export async function createCoursePackage(input: any) {
         size: input.size,
         subjectId: input.subjectId, // TASK-140: the course's program, recorded — not derived from a booking
         startDate: input.startDate,
-        weekday: weekdayOf(input.startDate),
-        startTime: input.startTime,
+        weekday: patternRows ? patternSlots[0]!.weekday : weekdayOf(input.startDate), // 🔻 TASK-969: a pattern course keeps its FIRST slot's weekday / time for the old readers
+        startTime: patternRows ? patternSlots[0]!.startTime : input.startTime,
         expiryDate: bornCeiling,
       })
       .returning({ id: coursePackages.id });
+    // 🔻 TASK-969 — the pattern is STORED (only for 2+ slots; a one-slot course has no rows): BEFORE the sessions, so the make-up search of the reconcile below reads it.
+    if (patternRows) await tx.insert(courseSlots).values(patternSlots.map((s, ord) => ({ courseId: course.id, ord, weekday: s.weekday, startTime: s.startTime, teacherId: s.teacherId })));
 
     for (const [i, s] of plannedSessions.entries()) {
-      const absent = absentWeeks.has(i + 1);
+      const absent = patternRows ? patternRows[i]!.absent : absentWeeks.has(i + 1); // 🔻 TASK-969: with a pattern, a declared absence is a COURSE week (every slot of it)
       try {
         // TASK-397 — sold INTO a group: this session is a SEAT on the group row of its date (extended if missing;
         // cap checked). A declared-absent week takes no seat (it is not a session).
@@ -2653,7 +2664,7 @@ export async function createCoursePackage(input: any) {
     // same case one row later. 🔑 ONE placement engine on the save side (`reconcileCoursePlan`, via
     // `findFreeExtensionDate` from the last planned date), which is the loop the preview mirrors — so the
     // finished course is the previewed one. The row positions are `plannedRowCount`'s, the third caller.
-    const wanted = plannedRowCount(input.size, absentWeeks);
+    const wanted = patternRows ? 0 : plannedRowCount(input.size, absentWeeks); // 🔻 TASK-969: a pattern's absences are course weeks, never a make-up's position — nothing to flip
     for (let guard = 0; guard < wanted; guard++) {
       const ordered = await tx.query.bookings.findMany({
         where: (b: any, { eq: e, and: a, ne: n }: any) => a(e(b.courseId, course.id), n(b.status, "CANCELLED")),
@@ -2695,7 +2706,7 @@ export async function createCoursePackage(input: any) {
 
     const courseRow = await tx.query.coursePackages.findFirst({
       where: (c, { eq }) => eq(c.id, course.id),
-      with: { student: true, coStudent: true },
+      with: { student: true, coStudent: true, slots: true },
     });
     const created = await tx.query.bookings.findMany({
       where: (b, { eq }) => eq(b.courseId, course.id),
@@ -3001,8 +3012,10 @@ export async function previewCoursePackage(input: {
   startDate: string;
   startTime: string;
   absentWeeks?: number[];
+  pattern?: Array<{ weekday: number; startTime: string; teacherId: string }>; // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern — same body as the create
 }) {
   if (!isCourseSize(input.size)) throw badRequest("ขนาดคอร์สต้องเป็น 4, 6 หรือ 10");
+  if (input.pattern?.length && isPattern(input.pattern)) return previewPatternCourse(input as typeof input & { pattern: NonNullable<typeof input.pattern> }); // 🔻 TASK-969: a PATTERN course; a one-slot course falls through to the lines below, byte for byte
   const teacher = await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, input.teacherId) });
   const subject = await db.query.subjects.findFirst({ where: (s, { eq }) => eq(s.id, input.subjectId) });
   const absent = new Set(input.absentWeeks ?? []);
@@ -3084,6 +3097,49 @@ export async function previewCoursePackage(input: {
     // this starts telling the truth instead of lying quietly.
     exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling)),
     sessions: flagged,
+  };
+}
+
+/**
+ * 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — the preview of a PATTERN course: the SAME expansion the create runs (`expandPattern`) and the SAME make-up search (`pickPatternMakeupSlot`), so what is shown is what is saved. Returns the old preview's shape;
+ * every drawn row carries ITS OWN coach and time (a pattern's rows differ), and `teacherOnLeave` is read per row. Writes nothing. A declared absence is a COURSE week (every slot of it); each earns one make-up at the next free slot.
+ */
+async function previewPatternCourse(input: { teacherId: string; subjectId: string; size: number; startDate: string; startTime: string; absentWeeks?: number[]; pattern: Array<{ weekday: number; startTime: string; teacherId: string }> }) {
+  const slots = orderPattern(input.startDate, input.pattern.map((s) => ({ weekday: s.weekday, startTime: hhmmOf(s.startTime), teacherId: s.teacherId })));
+  const absent = new Set(input.absentWeeks ?? []);
+  const subject = await db.query.subjects.findFirst({ where: (s, { eq }) => eq(s.id, input.subjectId) });
+  const coaches = new Map<string, any>();
+  for (const id of new Set(slots.map((s) => s.teacherId))) coaches.set(id, await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) }));
+  const draw = (r: { date: string; startTime: string; teacherId: string }, isAbsent: boolean, makeup: boolean) => ({ date: r.date, startTime: r.startTime, teacher: teacherRef(coaches.get(r.teacherId)), subject: subjectRef(subject), absent: isAbsent, makeup, teacherId: r.teacherId });
+  const planned = expandPattern(input.startDate, slots, input.size, absent);
+  const sessions = planned.map((r) => draw(r, r.absent, false));
+  const taken = new Set<string>();
+  const owed = planned.filter((r) => r.absent).length;
+  for (let i = 0; i < owed; i++) {
+    const last = lastPlanned(sessions, input.startDate);
+    const pick = (await pickPatternMakeupSlot(db, input.startDate, slots, last, { taken })) ?? null;
+    let row: { date: string; startTime: string; teacherId: string };
+    if (pick) row = pick;
+    else { // nothing free in 26 weeks × the slots: the existing exhausted-search rule — the template's coach and time, the last candidate (the save tells the admin)
+      const template = sessions[sessions.length - 1]!;
+      row = { date: await findFreeExtensionDate(db, template.teacherId, template.startTime, last.date, new Set([...taken].map((k) => k.split("|")[0]!))), startTime: template.startTime, teacherId: template.teacherId };
+    }
+    taken.add(`${row.date}|${row.startTime}|${row.teacherId}`);
+    sessions.push(draw(row, false, true));
+  }
+  const live = sessions.filter((s) => !s.absent);
+  const flagged = await Promise.all(sessions.map(async ({ teacherId, ...s }) => ({ ...s, teacherOnLeave: (await teacherLeaveOn(db, teacherId, s.date, s.startTime)) != null })));
+  const previewCeiling = sessions.reduce((m, sn) => (sn.date > m ? sn.date : m), courseBornCeiling(courseExpiry(input.startDate, input.size), planned.reduce((m, r) => (r.date > m ? r.date : m), input.startDate), new Set(planned.filter((r) => r.absent).map((r) => r.week)).size));
+  return {
+    size: input.size,
+    startDate: input.startDate,
+    startTime: slots[0]!.startTime, // the FIRST slot's, as the stored course keeps it
+    expiryDate: previewCeiling,
+    absentWeeks: [...absent].sort((a, b) => a - b),
+    liveCount: live.length,
+    endDate: live[live.length - 1]?.date ?? input.startDate,
+    exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling)),
+    sessions: flagged, // each row carries ITS OWN coach and time
   };
 }
 
@@ -3201,6 +3257,58 @@ export async function findFreeExtensionDate( // TASK-561: exported — Seam B is
 }
 
 /**
+ * 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.2) — where a PATTERN course's make-up lands: the NEXT FREE SLOT in pattern order after `after` (the last planned row), with THAT slot's coach and time. "Free" = the slot is not held (the slot-holder
+ * index's own predicate), the coach is not on leave at that hour (`teacherLeaveOn`, THE reader), the day is not closed (`closedDayOn`) and the hour is inside the coach's working hours (`classFitsWorkHours`) — the SAME readers
+ * `findFreeExtensionDate` and `assertTeacherBookable` ask, no second definition. `taken` = slots this run already claimed but has not written (the preview); `coachOff` = (coach, date) pairs the caller KNOWS are off (TASK-705).
+ * Returns `null` when nothing is free in 26 weeks × the slots ⇒ the caller falls back to the existing exhausted-search rule (`findFreeExtensionDate` + `searchExhausted`, the admin told): a make-up is NEVER refused.
+ * 🚫 Only ever called for a course with 2+ slots; a one-slot course keeps `findFreeExtensionDate` byte for byte (AC7).
+ */
+export async function pickPatternMakeupSlot(
+  exec: any,
+  startDate: string,
+  slots: readonly Slot[],
+  after: { date: string; startTime: string },
+  opts: { taken?: ReadonlySet<string>; coachOff?: readonly CoachOff[] } = {},
+): Promise<{ date: string; startTime: string; teacherId: string } | null> {
+  const today = bangkokNow().date;
+  const hoursOf = new Map<string, any>();
+  const workHoursOfTeacher = async (id: string) => {
+    if (!hoursOf.has(id)) hoursOf.set(id, (await exec.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, id) }))?.workHours ?? null);
+    return hoursOf.get(id);
+  };
+  const pick = await nextFreeSlot(startDate, slots, after, async (occ) => {
+    if (opts.taken?.has(`${occ.date}|${occ.startTime}|${occ.teacherId}`)) return false;
+    if ((opts.coachOff ?? []).some((c) => c.teacherId === occ.teacherId && c.date === occ.date)) return false;
+    if (await teacherLeaveOn(exec, occ.teacherId, occ.date, occ.startTime)) return false;
+    if (closeFires(occ.date, today) && (await closedDayOn(exec, occ.date))) return false;
+    if (!classFitsWorkHours(await workHoursOfTeacher(occ.teacherId), weekdayOf(occ.date), occ.startTime)) return false;
+    return !(await exec.query.bookings.findFirst({
+      where: (b: any, { and, eq }: any) => and(eq(b.teacherId, occ.teacherId), eq(b.date, occ.date), eq(b.startTime, occ.startTime), slotHolderWhere(b)),
+    }));
+  });
+  return pick ? { date: pick.date, startTime: pick.startTime, teacherId: pick.teacherId } : null;
+}
+
+/**
+ * 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §8b) — THE reader of a course's weekly pattern from the DB: the `course_slots` rows by `ord` as `HH:MM` slots, or `null` = a ONE-slot course (fewer than 2 rows). The seam the mid-course change and the resume read it through.
+ * The make-up search / create / reconcile read the pattern off the course row's loaded `slots` relation (`patternOf`) — the SAME rule (`isPattern`), one read fewer.
+ */
+export async function courseSlotsOf(exec: any, courseId: string): Promise<Slot[] | null> {
+  const rows: Array<{ weekday: number; startTime: string; teacherId: string; ord: number }> = await exec.query.courseSlots.findMany({
+    where: (s: any, { eq: e }: any) => e(s.courseId, courseId),
+    orderBy: (s: any, { asc }: any) => [asc(s.ord)],
+  });
+  return isPattern(rows) ? rows.map((s) => ({ weekday: Number(s.weekday), startTime: hhmmOf(s.startTime), teacherId: s.teacherId })) : null;
+}
+
+/** 🔻 TASK-969 — a course's pattern as the pure module reads it: `HH:MM` slots IN PATTERN ORDER, from the course row's loaded `slots` (the relation). A course with fewer than 2 slots — or one whose `slots` were not loaded — is a ONE-slot course: `[]`. */
+export const patternOf = (course: { startDate: string; slots?: ReadonlyArray<{ weekday: number; startTime: string; teacherId: string; ord?: number }> | null } | null | undefined): Slot[] => {
+  const raw = course?.slots ?? [];
+  if (!isPattern(raw)) return [];
+  return [...raw].sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0)).map((s) => ({ weekday: Number(s.weekday), startTime: hhmmOf(s.startTime), teacherId: s.teacherId }));
+};
+
+/**
  * SPEC-028 / TASK-092 — apply the pure `planCourseMoves` to a course's bookings in the passed tx: cancel
  * the trailing appended `EXTENDED` sessions (long) and/or append make-ups after the last live date (short),
  * bringing the course back to its `size`-target. Returns the moves for the caller to log. The applier mirrors
@@ -3277,9 +3385,17 @@ export async function coachOffOfRow(tx: any, row: { id: string; date: string }):
   return (await teachersOfBooking(tx, row.id)).map((c: any) => ({ teacherId: c.id as string, date: row.date }));
 }
 
+/** 🔻 TASK-969 — the LAST planned row's (date, time): the latest date, then the latest start on that date. A pattern make-up is searched AFTER it (SPEC-109 §3.2). `fromDate` is the loop's running anchor (a make-up already appended this run). */
+function lastPlanned(plannedRows: ReadonlyArray<{ date: string; startTime: string }>, fromDate: string, lastAppended: { date: string; startTime: string } | null = null): { date: string; startTime: string } {
+  let best = lastAppended && lastAppended.date >= fromDate ? lastAppended : { date: fromDate, startTime: "00:00" };
+  for (const r of plannedRows) if (r.date > best.date || (r.date === best.date && hhmmOf(r.startTime) > best.startTime)) best = { date: r.date, startTime: hhmmOf(r.startTime) };
+  return best;
+}
+
 export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reowedFor?: readonly string[]; coachOff?: readonly CoachOff[]; holdConfirmNotices?: HeldConfirmNotice[]; seatPlacement?: SeatPlacement } = {}) {
   const course = await tx.query.coursePackages.findFirst({
     where: (c: any, { eq }: any) => eq(c.id, courseId),
+    with: { slots: true }, // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern — empty / absent = a one-slot course = today's path
   });
   if (!course) throw notFound("ไม่พบคอร์ส");
 
@@ -3371,6 +3487,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
     // `addLeaveWeek`, and a make-up beyond the expiry is a thing the ADMIN is told about (`TASK-657` §3) rather than something the
     // system quietly papers over — her words: "แจ้งแอดมินเท่านั้นค่ะ ที่เหลือเราจะจัดการเองว่าจะยืดอายุคอร์สให้ไหม".
     // ⚠️ They ship together for exactly that reason: this removal alone would make the overrun silent again.
+    let lastAppended: { date: string; startTime: string } | null = null; // 🔻 TASK-969: the (date, time) of the make-up THIS loop just wrote — the next pattern search starts AFTER it
     for (const a of plan.append) {
       // Mirror the makeup's teacher/subject/time from the absence it replaces (or a live session).
       const template = (a.extendedFromId ? byId.get(a.extendedFromId) : null) ?? liveAfterCancel[0] ?? rows[0];
@@ -3378,7 +3495,13 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // 🔻 TASK-705 — the dates THIS coach is known off (per coach: another coach's slot on that date is not blocked) read as taken ⇒ the search skips to the next free week.
       const coachOffDates = new Set((opts.coachOff ?? []).filter((c) => c.teacherId === template.teacherId).map((c) => c.date));
       const placed = opts.seatPlacement ? await opts.seatPlacement.resolve() : null; // 🔻 TASK-713 — a re-seated group make-up lands on the group's ONE extra date, as a seat
-      const extDate = placed ? placed.date : await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates);
+      // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.2) — a PATTERN course's make-up goes to the NEXT FREE SLOT in pattern order after the last planned row, with that slot's coach and time. Branch ONLY when the course has 2+ slots: a one-slot course
+      // (no `course_slots` rows) runs the `findFreeExtensionDate` line below, byte for byte. Nothing free ⇒ `null` ⇒ the existing exhausted-search rule below (the admin told) — never a refusal.
+      const patternSlotsOfCourse = placed ? [] : patternOf(course);
+      const slotPick: { date: string; startTime: string; teacherId: string } | null = patternSlotsOfCourse.length
+        ? await pickPatternMakeupSlot(tx, course.startDate, patternSlotsOfCourse, lastPlanned(plannedRows, fromDate, lastAppended), { coachOff: opts.coachOff })
+        : null;
+      const extDate: string = placed ? placed.date : slotPick ? slotPick.date : await findFreeExtensionDate(tx, template.teacherId, template.startTime, fromDate, coachOffDates);
       // 🔴 REQ-085 §12 (TASK-308) — **the QUOTA is the only gate on leave, and the expiry STRETCHES to fit.**
       //
       // 🔻 A refusal stood here. It was `EXTENSION_CEILING`, and it fired on the make-up a legitimate leave
@@ -3403,7 +3526,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       // ⚠️ The trigger is EXHAUSTION, not a distance I picked. **It is the only line nobody invented** — a
       // warning on a threshold of my own choosing would be the same mistake as the ceiling. 📌 The message
       // carries HOW FAR, so @Porter can take a smaller number to the owner and this becomes one constant.
-      if (searchExhausted(fromDate, extDate)) {
+      if (!slotPick && searchExhausted(fromDate, extDate)) {
         await notifyAdmins(
           {
             kind: "makeup_far_out",
@@ -3421,11 +3544,11 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
         .values({
           studentId: template.studentId,
           coStudentId: template.coStudentId ?? null, // TASK-420 — the clone copies the second child from its template
-          teacherId: template.teacherId,
+          teacherId: slotPick ? slotPick.teacherId : template.teacherId, // 🔻 TASK-969: the SLOT's coach and time (a one-slot course: the template's, as before)
           subjectId: template.subjectId,
           date: extDate,
-          startTime: template.startTime,
-          endTime: template.endTime,
+          startTime: slotPick ? slotPick.startTime : template.startTime,
+          endTime: slotPick ? addHour(slotPick.startTime) : template.endTime,
           bookingType: "COURSE_PACKAGE",
           status: "EXTENDED", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below — and it STAYS this way if that confirm refuses (the leave must not fail)
           isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER: the status no longer says "this grew from a leave"
@@ -3442,6 +3565,7 @@ export async function reconcileCoursePlan(tx: any, courseId: string, opts: { reo
       await inheritCourseRental(tx, courseId, ext.id);
       await confirmMakeupAtBirth(tx, ext.id, opts.holdConfirmNotices); // 🔻 TASK-702 (REQ-115, N1/N3) — a make-up is a NORMAL class: born CONFIRMED, told like one, through the ONE confirm · 🔻 TASK-710 — held only when the caller asks
       fromDate = extDate;
+      lastAppended = { date: extDate, startTime: hhmmOf(slotPick ? slotPick.startTime : template.startTime) };
     }
 
     // 🔻 TASK-656 (REQ-112 ruling 3) — TASK-308 (b)'s stretch-to-fit stood here and is REMOVED. The reconcile appends the
@@ -3502,7 +3626,8 @@ async function planPreviewResult(tx: any, courseId: string, applied: any) {
 export async function sendLeaveNotice( // TASK-510: exported — its recipients are pinned by value on a co-taught class
   tx: any,
   booking: { id: string; studentId: string | null; coStudentId?: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null },
-  opts: { size: number | null; via: string },
+  // 🔻 TASK-971 (REQ-5016 AC4) — a WHOLE-DAY leave sends through THIS builder too (never a second construction of the message): `times` lists every hour of the day (optional; absent ⇒ the notice of ONE booking, as always), `adminsOnly` / `coachIds` pick the audience.
+  opts: { size: number | null; via: string; times?: string[]; adminsOnly?: boolean; coachIds?: ReadonlySet<string> },
 ) {
   const student = booking.studentId
     ? await tx.query.students.findFirst({ where: (x: any, { eq: e }: any) => e(x.id, booking.studentId) })
@@ -3520,12 +3645,14 @@ export async function sendLeaveNotice( // TASK-510: exported — its recipients 
     size: opts.size,
     attendeeNote: booking.attendeeNote ?? null,
     via: opts.via,
+    ...(opts.times?.length ? { times: opts.times } : {}), // 🔻 TASK-971
   };
-  await notifyAdmins(payload, tx, booking.id);
+  if (!opts.coachIds) await notifyAdmins(payload, tx, booking.id); // 🔻 TASK-971: a per-coach whole-day send skips the admins (they were told once)
   // 🔴 TASK-510 — EVERY coach of the class, through THE predicate (TASK-487 / TASK-508's `teachersOfBooking`): it read
   // `booking.teacherId` alone, so on a co-taught class the ADDITIONAL teacher was never told the class was off — and a coach
   // not told a class is off TURNS UP. The words are unchanged; only who receives them. An unlinked coach ⇒ a SKIPPED row.
-  for (const coach of await teachersOfBooking(tx, booking.id)) {
+  for (const coach of opts.adminsOnly ? [] : await teachersOfBooking(tx, booking.id)) {
+    if (opts.coachIds && !opts.coachIds.has(coach.id)) continue; // 🔻 TASK-971
     await enqueueLine(
       {
         recipientType: "teacher",
@@ -3769,7 +3896,7 @@ export async function sendTeacherReassigned(tx: any, bookingId: string, oldTeach
  * (the renderer prints the existing `Time` line once per session). The OLD coach (each distinct one, when the rows had several) is told what he no longer teaches, at the OLD date / time; the NEW coach what he now teaches, at the NEW date / time.
  * Only rows whose TEACHER changes are listed: a time-only move (same coach) tells nobody here — the families and the confirmation come at "ยืนยันทั้งคอร์ส". In the act's own transaction, so the notice and the move land together or not at all.
  */
-async function sendCourseTeacherChange(tx: any, moves: TeacherTimeMove[], opts: { subjectName?: string } = {}): Promise<void> {
+export async function sendCourseTeacherChange(tx: any, moves: TeacherTimeMove[], opts: { subjectName?: string } = {}): Promise<void> { // 🔻 TASK-971: exported — the change-pattern act (its own file) sends the same coach pair
   const changed = moves.filter((m) => m.from.teacherId !== m.to.teacherId);
   if (!changed.length) return;
   const teacherOf = (id: string) => tx.query.teachers.findFirst({ where: (t: any, { eq: e }: any) => e(t.id, id) });
@@ -4345,7 +4472,8 @@ export async function applyPlanChange(
         // start charging quota for it. Every other mark-absence — including a later planned one — consumes.
         // 🔻 TASK-656 — and a PRE-START declaration is free here too (the same predicate as door 1).
         // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write: two leaves at the same moment each read N and wrote N+1.
-        if (charged) {
+        // 🔻 TASK-971 (REQ-5016 §3.3) — a PATTERN course counts the quota in COURSE WEEKS: a second charged leave in the same course week is no new unit (`leaveTakesNewWeek`; a one-slot course ⇒ always true = exactly today).
+        if (charged && (await leaveTakesNewWeek(tx, courseId, b.id, b.date))) {
           await tx
             .update(coursePackages)
             .set({ leaveUsed: sql`${coursePackages.leaveUsed} + 1` })
@@ -4355,7 +4483,8 @@ export async function applyPlanChange(
         // 🔻 TASK-656 — DOOR 2 of 5 = trigger T1, and ONLY T1: the plan editor's *Mark absence* adds a week when — and only when — the
         // absence is a PRE-START DECLARATION (`declaredFree`, which already means the row just became an absence). An ordinary mark-absence
         // on a started course is +0: still one make-up, still counted, no week. The SAME rule as door 1 for the same act.
-        if (declaredFree) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");
+        // 🔻 TASK-971: the same rule at door 2
+        if (declaredFree && (await declarationTakesNewWeek(tx, courseId, b.id, b.date))) await addLeaveWeek(tx, courseId, "T1_PRE_START_DECLARATION");
         await assertRoomForLeave(tx, courseId, moves.appended ?? []); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), asked AFTER the week decision
         await reconcileBookingHolds(tx, b.id, b.teacherId, "SICK_LEAVE", change.override ?? false);
         // 🔴 TASK-306 §1 — **the hole.** This cancels a FUTURE session exactly as the per-session action
@@ -4634,12 +4763,19 @@ export async function updateBookingStatus(
    * `line` · the staff actor. A sixth optional argument: every other action ignores it, every existing caller is untouched.
    */
   checkinSource?: Provenance | null, // 🔻 TASK-488 — a CHANNEL (closed) and, for a person, an ACTOR; never one string for both
+  /**
+   * 🔻 TASK-971 (REQ-5016, SPEC-109 §3.3) — the WHOLE-DAY leave runs this door once per live row of the day INSIDE ONE transaction: `tx` = the caller's (no transaction of its own), `quiet` = no per-row leave notice (the whole-day act sends ONE
+   * per recipient, listing every time). A seventh optional argument: every existing caller is untouched and runs exactly as before.
+   */
+  opts?: { tx?: any; quiet?: boolean },
 ) {
   let reverseSaleAfterCommit = false; // TASK-496 — set by the attendance undo; the reversal runs only once the transaction has committed
-  const result = await db.transaction(async (tx) => {
+  type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+  const runTx = <T,>(fn: (tx: Tx) => Promise<T>): Promise<T> => (opts?.tx ? fn(opts.tx as Tx) : db.transaction(fn)); // 🔻 TASK-971: the caller's transaction when it passes one
+  const result = await runTx(async (tx) => {
     const current = await tx.query.bookings.findFirst({
       where: (b, { eq }) => eq(b.id, id),
-      with: { course: true, voucher: true },
+      with: { course: { with: { slots: true } }, voucher: true }, // 🔻 TASK-969: the course's weekly pattern rides along (the make-up below branches on it)
     });
     if (!current) throw notFound("ไม่พบคาบเรียน");
     assertNotCampRow(current); // TASK-418 — a derived camp hour: no human status change (the day-end's cut writes ATTENDED directly)
@@ -4948,7 +5084,8 @@ export async function updateBookingStatus(
           // TASK-148 (REQ-045 B): a row born `plannedAtCreation` is a free absence — taking leave on it again
           // must not start charging quota. A normal sick leave (the overwhelming case) is unaffected.
           // 🔴 TASK-492 — `sql` arithmetic, not read-modify-write (a concurrent leave used to lose a count).
-          if (charges) {
+          // 🔻 TASK-971 (REQ-5016 §3.3) — the quota in COURSE WEEKS for a PATTERN course (see door 2); a one-slot course ⇒ always true = exactly today.
+          if (charges && (await leaveTakesNewWeek(tx, current.courseId, id, current.date))) {
             await tx
               .update(coursePackages)
               .set({ leaveUsed: sql`${coursePackages.leaveUsed} + 1` })
@@ -4958,11 +5095,18 @@ export async function updateBookingStatus(
           const latest = await tx.query.bookings.findMany({
             where: (b, { and, eq, ne }) =>
               and(eq(b.courseId, current.courseId!), ne(b.status, "CANCELLED")),
-            orderBy: (b, { desc }) => desc(b.date),
+            orderBy: (b, { desc }) => [desc(b.date), desc(b.startTime)], // 🔻 TASK-969: the latest TIME on the latest date too (a pattern's several hours a day)
             limit: 1,
           });
           const lastDate = latest[0]?.date ?? current.date;
-          const extDate = await findFreeExtensionDate(
+          // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.2) — the SECOND make-up writer branches exactly as the reconcile does: a pattern course (2+ slots) → the next free slot in pattern order, with that slot's coach and time; a one-slot course → today's line, byte for byte.
+          const patternSlotsOfCourse = patternOf(current.course);
+          const slotPick = patternSlotsOfCourse.length
+            ? await pickPatternMakeupSlot(tx, current.course!.startDate, patternSlotsOfCourse, { date: lastDate, startTime: latest[0]?.startTime ?? current.startTime })
+            : null;
+          const extDate = slotPick
+            ? slotPick.date
+            : await findFreeExtensionDate(
             tx,
             current.teacherId,
             current.startTime,
@@ -4974,11 +5118,11 @@ export async function updateBookingStatus(
             .values({
               studentId: current.studentId,
               coStudentId: current.coStudentId ?? null, // TASK-420 — the clone copies the second child from its template
-              teacherId: current.teacherId,
+              teacherId: slotPick ? slotPick.teacherId : current.teacherId, // 🔻 TASK-969: the SLOT's coach and time (a one-slot course: the row's own, as before)
               subjectId: current.subjectId,
               date: extDate,
-              startTime: current.startTime,
-              endTime: current.endTime,
+              startTime: slotPick ? slotPick.startTime : current.startTime,
+              endTime: slotPick ? addHour(slotPick.startTime) : current.endTime,
               bookingType: "COURSE_PACKAGE",
               status: "EXTENDED", // born EXTENDED + MARKED, then confirmed by `confirmMakeupAtBirth` below (it STAYS this way if that confirm refuses — the leave must not fail)
               isMakeup: true, // 🔻 TASK-702 (REQ-115, T1) — THE MARKER
@@ -5012,7 +5156,8 @@ export async function updateBookingStatus(
       // 🔴 An ORDINARY leave here (any number of them, a started course or a not-yet-started one's later leave) is +0: it still gets its
       // make-up and is still counted, and the expiry does not move. 🚫 Never +14 for one act — the TASK-646 recompute above had to go
       // rather than sit beside this call.
-      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");
+      // 🔻 TASK-971 (REQ-5016 AC4): a pre-start declaration adds ONE week per course WEEK declared — a whole-day declaration of 2 hours adds one (a one-slot course: always, as today)
+      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, "T1_PRE_START_DECLARATION");
       if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)
       for (const sid of duoStudentIds(current)) await awardCrmPoints(sid, CRM_POINT_RULES.PROPER_SICK_LEAVE, tx); // TASK-420 — both kids of a DUO row
       const student = await tx.query.students.findFirst({
@@ -5032,10 +5177,12 @@ export async function updateBookingStatus(
       // 🚫 The PARENT is deliberately not a recipient: they are the one who declared it, and the
       // product already confirms the leave to them. Telling them what they just did is noise.
       // 🔑 TASK-306 — through the ONE builder, so this door and the plan editor's cannot drift apart.
-      await sendLeaveNotice(tx, current, {
-        size: current.course?.size ?? current.voucher?.totalHours ?? null,
-        via,
-      });
+      if (!opts?.quiet) {
+        await sendLeaveNotice(tx, current, {
+          size: current.course?.size ?? current.voucher?.totalHours ?? null,
+          via,
+        });
+      } // 🔻 TASK-971: a whole-day leave is QUIET per row — `recordWholeDayLeave` sends ONE notice per recipient after the loop
     } else {
       throw badRequest(`action ไม่รองรับ: ${action}`);
     }
@@ -5058,6 +5205,48 @@ export async function updateBookingStatus(
 
   if (reverseSaleAfterCommit) await reverseBookingSale(id); // TASK-496 — the attendance undo's reversal, after the commit
   return result;
+}
+
+// ─────────── 🔻 TASK-971 (REQ-5016 AC4, SPEC-109 §3.3) — the WHOLE-DAY leave of a course ───────────
+//
+// `PATCH /bookings/:id/status` `{ action: "sick-leave", wholeDay: true }`: EVERY live row of that course on that date becomes SICK_LEAVE, in ONE transaction — each through the SAME door a single hour uses (`updateBookingStatus` with the caller's `tx`):
+// the same advance-notice rule, charge decision, make-up (per hour, pattern-aware), holds, CRM points, expiry / room checks. The quota counts WEEKS (`leaveTakesNewWeek`), so a whole day of 2 hours is ONE unit (SPEC §3.3). (A PRE-START declaration still
+// adds its week per hour declared — today's per-row rule, untouched; flagged to the SA in the TASK Notes.) The per-row leave notices are suppressed and ONE notice per recipient goes out after the loop, listing every time: the admins once, and each coach once for HIS hours. Per-hour leave (no `wholeDay`) is byte-identical (it never comes here).
+// 🚫 Only a COURSE row: anything else is 400 VALIDATION. A refusal on any hour rolls the whole day back.
+export async function recordWholeDayLeave(
+  id: string,
+  input: { reason?: string; override?: boolean; reasonCode?: string },
+  provenance?: Provenance | null,
+) {
+  return db.transaction(async (tx) => {
+    const row = await tx.query.bookings.findFirst({ where: (b, { eq }) => eq(b.id, id), with: { course: true } });
+    if (!row) throw notFound("ไม่พบคาบเรียน");
+    if (!row.courseId || row.bookingType !== "COURSE_PACKAGE") throw new ApiException(400, "VALIDATION", "แจ้งลาทั้งวันใช้ได้กับคาบของคอร์สเท่านั้น");
+    const sameDay = await tx.query.bookings.findMany({
+      where: (b, { and, eq, inArray }) => and(eq(b.courseId, row.courseId!), eq(b.date, row.date), eq(b.bookingType, "COURSE_PACKAGE"), inArray(b.status, [...COURSE_LIVE_STATUSES])),
+      orderBy: (b, { asc }) => [asc(b.startTime)],
+    });
+    // the clicked row first (whatever its status: a re-mark is the door's own idempotent branch), then the other LIVE hours of that day in time order
+    const ordered = [row, ...sameDay.filter((r) => r.id !== row.id)];
+    const results: Array<Awaited<ReturnType<typeof updateBookingStatus>>> = [];
+    for (const r of ordered) results.push(await updateBookingStatus(r.id, "sick-leave", input.reason, input.override ?? false, input.reasonCode, provenance, { tx, quiet: true }));
+    await sendWholeDayLeaveNotices(tx, ordered, { size: row.course?.size ?? null, via: input.reason?.includes("LINE") ? "line" : "staff" });
+    return { ...results[0]!, wholeDay: { count: ordered.length, rows: results.map((r) => r.booking), extended: results.map((r) => r.extended).filter(Boolean) } };
+  });
+}
+
+/** ONE leave notice per recipient for a whole-day leave: the admins once (every time of the day), each COACH once for the hours HE teaches (every coach of a co-taught class, through THE predicate). Same payload kind and words as the per-hour notice, plus the optional `times`. */
+export async function sendWholeDayLeaveNotices(
+  tx: any,
+  rows: ReadonlyArray<{ id: string; studentId: string | null; coStudentId?: string | null; teacherId: string | null; bookingType?: string | null; attendeeNote?: string | null; startTime: string; endTime?: string | null }>,
+  opts: { size: number | null; via: string },
+): Promise<void> {
+  const first = rows[0]!;
+  const timeOf = (r: { startTime: string; endTime?: string | null }) => `${hhmm(r.startTime)}-${r.endTime ? hhmm(r.endTime) : addHour(hhmm(r.startTime))}`;
+  await sendLeaveNotice(tx, first, { ...opts, times: rows.map(timeOf), adminsOnly: true }); // the admins, once: every hour of the day
+  const byCoach = new Map<string, typeof rows[number][]>();
+  for (const r of rows) for (const coach of await teachersOfBooking(tx, r.id)) byCoach.set(coach.id, [...(byCoach.get(coach.id) ?? []), r]);
+  for (const [coachId, mine] of byCoach) await sendLeaveNotice(tx, mine[0]!, { ...opts, times: mine.map(timeOf), coachIds: new Set([coachId]) }); // each coach once, for HIS hours
 }
 
 /**
@@ -5530,7 +5719,7 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean;
   }
   const row = await db.query.coursePackages.findFirst({
     where: (c, { eq }) => eq(c.id, id),
-    with: { student: true, coStudent: true },
+    with: { student: true, coStudent: true, slots: true },
   });
   if (!row) throw notFound("ไม่พบคอร์ส");
   return toCourseWithStudent(row);
@@ -5587,6 +5776,7 @@ async function cancelDoomedRows(
 async function loadCourseForEnd(exec: any, id: string) {
   const course = await exec.query.coursePackages.findFirst({
     where: (c: any, { eq: e }: any) => e(c.id, id),
+    with: { slots: true }, // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern (empty / absent = a one-slot course) — the course-confirm message reads it
   });
   if (!course) throw notFound("ไม่พบคอร์ส");
   const rows = await exec.query.bookings.findMany({
@@ -5790,6 +5980,9 @@ export async function confirmCourse(id: string) {
       // Both audiences read it: the one payload, the one renderer.
       rental: course.rentalRemovedAt ? null : (() => { const r = courseRentalOf(rows); return r ? rentalPrintLine(r.code, r.remark) : null; })(),
     };
+    // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.5 / Q1) — the WEEKLY LINE («ทุกวัน<วัน> <เวลา>»: `weekday` + the `Time` range) describes ONE recurring slot. A PATTERN course (2+ slots) has several, and the new wording («จ 10:00, 11:00 · พฤ 12:00») is customer-facing text
+    // awaiting the owner's approval through Porter (Q1): until then its message LISTS ITS DATES (the schedule the message already carries) and LEAVES OUT the weekly line. A ONE-slot course: untouched, byte for byte.
+    if (isPattern(course.slots)) for (const k of ["weekday", "startTime", "endTime"]) delete (coursePayload as any)[k];
     const notification = confirmed
       ? await enqueueLine(
           {
@@ -6411,7 +6604,12 @@ export async function resumeCourse(
     // arrive with a weekday that contradicts its own start date, and that has no correct answer: either it is
     // refused for a case that can only ever be a typo, or one field silently wins. **Two fields cannot
     // disagree with each other.**
+    // 🔻 TASK-971 (REQ-5016 AC6, SPEC-109 §3.4) — a course WITH `course_slots` (2+) re-plans onto its PATTERN from the resume date (`expandPattern`, the §8b seam: each row on its slot's own coach and time); a course WITHOUT slots (`null`) runs the code below byte for byte.
+    const patternSlots = await courseSlotsOf(tx, id);
+    const patternRows = patternSlots && owed > 0 ? expandPattern(course.startDate, patternSlots, owed, new Set(), input.startDate) : null;
     const dates = owed > 0 ? courseSessionDates(input.startDate, owed) : [];
+    if (patternRows) dates.splice(0, dates.length, ...patternRows.map((r) => r.date)); // a pattern course's dates come from its slots (the line above is the one-slot course's, untouched)
+    const slotOverride = (i: number) => (patternRows ? { teacherId: patternRows[i]!.teacherId, startTime: patternRows[i]!.startTime } : {}); // a pattern row takes its SLOT's coach and time (read OUTSIDE the loop: a one-slot course has no per-session override)
     const lastSession = dates[dates.length - 1] ?? null;
 
     // 🔴 The expiry, DERIVED — covering the last planned session **plus the leave the family still has**, and
@@ -6434,7 +6632,7 @@ export async function resumeCourse(
     // CONFIRMED SCHEDULE means that. See the report for what this leaves stale.
     await tx
       .update(coursePackages)
-      .set({
+      .set(patternSlots ? { droppedAt: null, droppedBy: null, dropReason: null, expiryDate } : { // 🔻 TASK-971: a PATTERN course keeps its own weekday / start_time (its slots carry the schedule); a one-slot course: the object below, byte for byte
         droppedAt: null,
         droppedBy: null,
         dropReason: null,
@@ -6477,6 +6675,7 @@ export async function resumeCourse(
           bookingType: "COURSE_PACKAGE",
           courseId: id,
           extendedFromId: slot >= 0 ? awaiting[slot] : null,
+          ...slotOverride(i), // 🔻 TASK-971: a pattern row takes its SLOT's coach and time
         });
         created.push(date);
       } catch (e: any) {

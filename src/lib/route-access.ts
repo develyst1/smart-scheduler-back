@@ -185,6 +185,8 @@ export const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /courses/:id/start-date/preview": act(BOOKINGS, "action:bookings.course-plan"), // TASK-573 §2 — the SAME gate as the act (pinned equal)
   "POST /courses/:id/change-teacher-time": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 (REQ-127) — RE-PLANS the rest of the course (to a new teacher / day / time), exactly like TASK-570's start-date change: the plan editor's key (@Sober's ruling 10-25; the FE button is gated by it too)
   "POST /courses/:id/change-teacher-time/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-838 — the SAME gate as the act
+  "POST /courses/:id/change-pattern": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-971 (REQ-5016) — RE-PLANS the untaught rows onto a new weekly pattern: the SAME gate as change-teacher-time
+  "POST /courses/:id/change-pattern/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-971 — the SAME gate as the act
   "POST /courses/:id/change-activity": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-961 (REQ-5014) — RE-LABELS the rest of the course (a new activity): the SAME gate as change-teacher-time
   "POST /courses/:id/change-activity/preview": act(BOOKINGS, "action:bookings.course-plan"), // 🔻 TASK-961 — the SAME gate as the act
   "POST /bookings/:id/change-activity": act(CAL_BOOK, "action:calendar.booking-edit"), // 🔻 TASK-961 — one 1 HR / 1st Trial's activity: an EDIT of the booking, gated like `PATCH /bookings/:id`

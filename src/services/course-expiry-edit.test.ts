@@ -37,7 +37,7 @@ describe("TASK-264 — the migration, counted and witnessed", () => {
   test("0034 is registered, and the counts agree", () => {
     // The board's rule: "no migration" is a CLAIM, not a state — so the numbers are asserted, not asserted about.
     const tags = JOURNAL.match(/"tag": "\d{4}_/g) ?? [];
-    expect(tags.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 // 🔻 0035 … 0053 added since (TASK-401: 0042_camp) // 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(tags.length).toBe(82); /* 🔻 TASK-969: +0081 */ /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 // 🔻 0035 … 0053 added since (TASK-401: 0042_camp) // 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(JOURNAL).toContain('"tag": "0034_course_expiry_changes"');
     expect(JOURNAL).toContain('"idx": 34');
   });

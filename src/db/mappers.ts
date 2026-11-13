@@ -331,6 +331,8 @@ export const toCourseWithStudent = (c: any) => ({
   ...toCourseSummary(c),
   branch: branchOf(c.branch), // 🔻 TASK-889 (F1) — additive: BRAVO | OTHER
   student: studentRef(c.student),
+  // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.5) — the weekly pattern in pattern order (`HH:MM`), or null = a ONE-slot course (also null when the caller did not load `slots`).
+  slots: (c.slots?.length ?? 0) >= 2 ? [...c.slots].sort((a: any, b: any) => a.ord - b.ord).map((s: any) => ({ weekday: Number(s.weekday), startTime: String(s.startTime).slice(0, 5), teacherId: s.teacherId })) : null,
   ...duoCourseFacts(c), // TASK-420
   // TASK-140: the course's OWN program (`course_packages.subject_id`) is the source of truth now. The old
   // derivation from `bookings[0].subject` stays as a fallback for rows created before 0018's back-fill ran

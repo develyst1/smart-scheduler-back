@@ -337,7 +337,7 @@ describe("R1 — THE DOORS LIST (pinned): every door passes the class's time", (
   const S = read("src/services/scheduler.service.ts");
   test("`teacherLeaveOn(` call sites: every one in the services passes a time except the day-level camp sync (one question per day), each pinned by shape", () => {
     const C = code(S);
-    expect([...C.matchAll(/teacherLeaveOn\(/g)].length).toBe(6); // the gate · «a teacher remains» · an extra coach on a group make-up · the course preview · Seam B · the start-date move
+    expect([...C.matchAll(/teacherLeaveOn\(/g)].length).toBe(8); // the gate · «a teacher remains» · an extra coach on a group make-up · the course preview · Seam B · the start-date move · 🔻 TASK-969: the pattern make-up search (`pickPatternMakeupSlot`) · the pattern course's preview (`previewPatternCourse`) — both pass the row's OWN slot time
     for (const site of [
       "teacherLeaveOn(exec, teacher.id, date, opts.startTime)", // the gate (assertTeacherBookable)
       "teacherLeaveOn(exec, t.teacherId, c.date, c.startTime)", // «a teacher remains» (co-teaching)
@@ -345,6 +345,8 @@ describe("R1 — THE DOORS LIST (pinned): every door passes the class's time", (
       "teacherLeaveOn(db, input.teacherId, s.date, input.startTime)", // the course preview's flag
       "teacherLeaveOn(exec, teacherId, d, startTime)", // Seam B: the make-up search
       "teacherLeaveOn(tx, teacherId, date, startOfTeacher.get(teacherId))", // the start-date move
+      "teacherLeaveOn(exec, occ.teacherId, occ.date, occ.startTime)", // 🔻 TASK-969: the pattern make-up search
+      "teacherLeaveOn(db, teacherId, s.date, s.startTime)", // 🔻 TASK-969: the pattern course's preview
     ]) expect(C).toContain(site);
     const camp = read("src/services/camp.service.ts");
     expect(code(camp)).toContain("teacherLeaveOn(tx, c.teacherId, d.date)"); // 📌 day-level on purpose: a camp coach block spans the day; the part-day answer is "any row that day" (safe)
@@ -377,11 +379,11 @@ describe("the migration 0080 — additive, rerunnable, witnessed by the LAST sta
   });
   test("the journal: idx 80, the tag, a `when` UNIQUE and the highest; the witness probes the LAST object", () => {
     const j = JSON.parse(read("drizzle/meta/_journal.json")) as { entries: Array<{ idx: number; when: number; tag: string }> };
-    const last = j.entries[j.entries.length - 1]!;
+    const last = j.entries.find((e) => e.idx === 80)!; // 🔻 TASK-969: 0081 follows it
     expect(last).toMatchObject({ idx: 80, tag: "0080_coach_time_ranges" });
     const whens = j.entries.map((e) => e.when);
     expect(new Set(whens).size).toBe(whens.length);
-    expect(last.when).toBe(Math.max(...whens));
+    expect(last.when).toBe(Math.max(...j.entries.filter((e) => e.idx <= 80).map((e) => e.when)));
     expect(SCHEDULING_WITNESSES.find((w) => w.tag === "0080_coach_time_ranges")).toMatchObject({ probe: { kind: "column", table: "teachers", column: "work_hours" }, rerunnable: true });
   });
   test("the schema + the DTO + the contract carry the same names", () => {

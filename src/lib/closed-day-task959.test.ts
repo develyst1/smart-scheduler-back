@@ -204,6 +204,7 @@ describe("R1 — THE DOORS LIST: every write that puts a booking on a date, and 
   test("`assertTeacherBookable(` is called from EXACTLY these places (the gate every move / swap / co-teacher / plan-move / cover / resume door shares)", () => {
     expect(count(/\bassertTeacherBookable\(/g)).toEqual({
       "src/services/scheduler.service.ts": 13, /* 🔻 TASK-961: + `moveRowToCoach` (the activity change's coach move — the coach only, never a date) */ // the definition + insertBooking ×2 (planned absence / normal) + attachAdditionalTeachers + moveGroupRowToTeacher + the swap/move door + the group-coach swap + the plan swap + moveBooking + the plan-move apply + the course plan-move apply (+ resume, only for a CHANGED coach: its own explicit check covers the unchanged one)
+      "src/services/course-pattern-change.service.ts": 1, // 🔻 TASK-971: the change-pattern act (its own file) — per moved row, the same gate TASK-838 uses
       "src/services/other-series.service.ts": 1, // the series COVER (an OTHER / group series' coach swap)
     });
   });
@@ -244,7 +245,7 @@ describe("R1 — THE DOORS LIST: every write that puts a booking on a date, and 
     expect(upd).not.toContain("assertDayOpen");
     expect(upd).not.toContain("closedDayOn");
     // the ONLY users of the reader outside its own lib: the gate, resume, the make-up search
-    expect(count(/\b(assertDayOpen|closedDayOn)\(/g)).toEqual({ "src/lib/closed-day.ts": 3, "src/services/scheduler.service.ts": 3 }); // the lib: the two definitions + `assertDayOpen`'s own call of the reader · the service: the gate, resume, the make-up search
+    expect(count(/\b(assertDayOpen|closedDayOn)\(/g)).toEqual({ "src/lib/closed-day.ts": 3, "src/services/scheduler.service.ts": 4 }); // 🔻 TASK-969: + `pickPatternMakeupSlot` (the pattern make-up search asks the SAME reader) · the lib: the two definitions + `assertDayOpen`'s own call of the reader · the service: the gate, resume, the make-up search
   });
   test("BY VALUE, `moveBooking`: moving a class ONTO a closed day is refused 409 DAY_CLOSED and writes nothing; onto an open day it is not refused by the gate", async () => {
     setSystemTime(new Date(NOW));

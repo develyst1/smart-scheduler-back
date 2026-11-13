@@ -216,7 +216,7 @@ describe("🔻 TASK-308 (REQ-085 §12) — the ceiling may NEVER refuse a leave,
     // preview projects make-ups at a weekly cadence while `findFreeExtensionDate` SEARCHES, so a taken slot
     // can still push one past the projection. 🚫 Left in place: removing it would change a DTO the FE reads.
     const SVC = code(readSrc(readFileSync(resolve(import.meta.dir, "..", "services", "scheduler.service.ts"), "utf8")));
-    expect(SVC.match(/exceedsExtensionCeiling\(/g)).toHaveLength(1);
+    expect(SVC.match(/exceedsExtensionCeiling\(/g)).toHaveLength(2); // 🔻 TASK-969: + the pattern course's preview (`previewPatternCourse`) — the same field, the same predicate
     expect(SVC).toContain("exceedsCeiling: sessions.some((s) => exceedsExtensionCeiling(s.date, previewCeiling))");
   });
 });

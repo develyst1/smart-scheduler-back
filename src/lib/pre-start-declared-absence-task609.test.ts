@@ -84,7 +84,7 @@ describe("🔴 TASK-609 — FREE, capped, and refused in words an admin can act 
       // 🔻 TASK-656 — door 2's increment is guarded by `charged` (it also needs the row to have just BECOME an absence), so the
       // guard may be spelled `if (charges)` (door 1) or `if (charged)` (door 2). 🔑 The claim is unchanged: every increment of the
       // counter sits behind a decision that excludes a free day.
-      expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /if \(charged\) \{/.test(before) || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
+      expect({ at: m.index, guarded: /if \(charges\) \{/.test(before) || /if \(charged\) \{/.test(before) || /if \(charges && \(await leaveTakesNewWeek\(/.test(before) || /if \(charged && \(await leaveTakesNewWeek\(/.test(before) /* 🔻 TASK-971: the guard also asks the week rule — still behind the charge decision */ || /!b\.plannedAtCreation/.test(before) }).toEqual({ at: m.index, guarded: true });
     }
     // 🔻 TASK-643 — the cap's own counting line is gone with the cap. 🔑 The claim this test exists for is UNCHANGED and is why
     // removing the cap did not touch the counter: a declared day was never paid out of `leaveUsed` in the first place.

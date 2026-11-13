@@ -42,8 +42,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n",
-              "to": "      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n",
+              "to": "      if (current.courseId && extendedId) await assertRoomForLeave(tx, current.courseId, [extendedId]); // 🔻 TASK-692 — a FAMILY leave with no room is REFUSED (rolls back), AFTER the week decision (door 1 inserts its own make-up)\n      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
         }

@@ -17,6 +17,7 @@ import { reverseBookingSale } from "../lib/sale-post";
 import { hhmm } from "../lib/time";
 import { enqueueLine } from "../lib/line";
 import { teachersOfBooking } from "../lib/own-scope";
+import { undoReturnsWeek } from "../lib/leave-week-quota"; // 🔻 TASK-971 (REQ-5016 §3.3)
 import {
   UNDO_ALREADY_CHANGED, UNDO_DAY_SETTLED, UNDO_PLAN_WOULD_CHANGE, UNDO_SLOT_TAKEN,
   leaveChargeOf, makeupDecision, undoKindOf, type UndoKind,
@@ -155,7 +156,9 @@ export async function undoBooking(bookingId: string, opts: { actor: string | nul
       if (!flipped.length) throw UNDO_ALREADY_CHANGED();
       if (reviveGroup) await reviveRetiredExtraGroupDate(tx, reviveGroup); // 🔻 TASK-719 — the date comes back with its seat; its coaches hear CLASS ON AGAIN once (below, the seat's own notice is not repeated)
       // 🔴 The refund: `sql` arithmetic with a FLOOR — never read-modify-write, and the floor makes any double decrement harmless.
-      if (leaveRefunded) {
+      // 🔻 TASK-971 (REQ-5016 §3.3) — a PATTERN course counts the quota in COURSE WEEKS: undoing one of two charged leaves of the same course week returns NOTHING; the week's LAST one returns the unit (`undoReturnsWeek`, asked AFTER the row's own flip back).
+      // A one-slot course ⇒ always true = exactly today.
+      if (leaveRefunded && (await undoReturnsWeek(tx, row.courseId, row.id, row.date))) {
         await tx.update(coursePackages).set({ leaveUsed: sql`GREATEST(${coursePackages.leaveUsed} - 1, 0)` }).where(eq(coursePackages.id, row.courseId));
       }
       if (makeup) {

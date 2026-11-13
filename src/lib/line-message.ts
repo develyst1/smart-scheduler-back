@@ -274,9 +274,12 @@ function buildOutboxMessage(
             // 📌 `DD-MM-YYYY` is theirs, and it matches the date of birth they specified in `REQ-079 §17c` —
             // we follow them rather than invent a third style.
             date: ctx.date ? ddmmyyyy(ctx.date) : undefined,
-            time: ctx.startTime
-              ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
-              : undefined,
+            // 🔻 TASK-971 (REQ-5016 AC4) — a WHOLE-DAY leave: ONE notice lists every hour of the day (`times`, "HH:MM-HH:MM" each); ABSENT ⇒ the one `Time` of the booking, byte for byte as before
+            time: Array.isArray(payload.times) && payload.times.length
+              ? (payload.times as string[]).join(", ")
+              : ctx.startTime
+                ? `${ctx.startTime}${ctx.endTime ? `-${ctx.endTime}` : ""}`
+                : undefined,
             coach: ctx.coach,
           },
           { type: leaveType, audience: recipientType, lang },

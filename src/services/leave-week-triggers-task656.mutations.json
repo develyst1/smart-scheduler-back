@@ -12,7 +12,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": ""
             }
           ]
@@ -27,7 +27,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "        if (declaredFree) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "        if (declaredFree && (await declarationTakesNewWeek(tx, courseId, b.id, b.date))) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": ""
             }
           ]
@@ -102,7 +102,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": "      if (current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
@@ -117,7 +117,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "        if (declaredFree) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "        if (declaredFree && (await declarationTakesNewWeek(tx, courseId, b.id, b.date))) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": "        if (becomesAbsence) await addLeaveWeek(tx, courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
@@ -132,7 +132,7 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
               "to": "      if (!declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
@@ -267,8 +267,8 @@
           "file": "src/services/scheduler.service.ts",
           "edits": [
             {
-              "from": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
-              "to": "      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (declaredFree && current.courseId) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
+              "from": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n",
+              "to": "      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n      if (declaredFree && current.courseId && (await declarationTakesNewWeek(tx, current.courseId, id, current.date))) await addLeaveWeek(tx, current.courseId, \"T1_PRE_START_DECLARATION\");\n"
             }
           ]
         }

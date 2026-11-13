@@ -46,7 +46,7 @@ describe("🔴 TASK-889 — the migration: three columns, three CHECKs, additive
   });
   test("journal: idx 76, tag 0076_…, and the file is the 77th", () => {
     const j = JSON.parse(JOURNAL) as { entries: Array<{ idx: number; tag: string; when: number }> };
-    expect(j.entries.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */
+    expect(j.entries.length).toBe(82); /* 🔻 TASK-969: +0081 */ /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */
     expect(j.entries[76]).toMatchObject({ idx: 76, tag: "0076_branch_on_course_voucher_booking" });
     expect(j.entries[76].when).toBeGreaterThan(j.entries[75].when);
   });

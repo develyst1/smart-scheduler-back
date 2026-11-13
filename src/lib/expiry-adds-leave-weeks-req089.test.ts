@@ -90,7 +90,7 @@ describe("🔑 ONE formula, and every path that sets a ceiling derives from it",
     // 🔻 TASK-656 — 3 ⇒ 2: the pre-start declaration's own recompute is GONE, replaced by the ONE helper (`addLeaveWeek`),
     // because that path is not a separate door — it is the session's leave door with `declaredFree`, and a recompute BESIDE
     // a +7 would have moved the expiry twice for one act. 🔑 The census still answers what it always did: who may set a ceiling.
-    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(2); // creation + preview
+    expect((SVC.match(/courseBornCeiling\(/g) ?? []).length).toBe(3); // creation + preview + 🔻 TASK-969: the pattern course's preview (`previewPatternCourse`, the SAME formula)
     expect(SVC).not.toMatch(/absences \* 7|absentWeeks\.size \* 7/); // no arithmetic outside the one function
   });
 });

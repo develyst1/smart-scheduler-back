@@ -82,7 +82,7 @@ describe("🔴 TASK-258's sale reversal runs AFTER its transaction commits (TASK
     const fn = S.slice(S.indexOf("export async function updateBookingStatus("));
     const body = fn.slice(0, fn.indexOf("\n}\n"));
     const txEnd = body.lastIndexOf("  });\n");
-    expect(body.indexOf("let reverseSaleAfterCommit = false;")).toBeLessThan(body.indexOf("const result = await db.transaction("));
+    expect(body.indexOf("let reverseSaleAfterCommit = false;")).toBeLessThan(body.indexOf("const result = await runTx(")); // 🔻 TASK-971: the door now opens its transaction through `runTx` (the caller's `tx` for a whole-day leave, else `db.transaction` — same shape, the flag still precedes it)
     expect(body.slice(0, txEnd)).toContain("reverseSaleAfterCommit = true;");
     expect(body.slice(0, txEnd)).not.toContain("reverseBookingSale(");
     expect(body.slice(txEnd)).toContain("if (reverseSaleAfterCommit) await reverseBookingSale(id);");

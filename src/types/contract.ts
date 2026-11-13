@@ -533,9 +533,18 @@ export interface CreateCoursePackageRequest {
   startDate: IsoDate;
   startTime: HhMm;
   note?: string;
+  /** 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — the weekly PATTERN of hour-slots: 2…21 slots, unique (weekday, startTime), each with its own coach. Exclusive with `sessions[]` and `groupKey`. With ONE slot send today's fields and no pattern. `absentWeeks` then names COURSE weeks. Also accepted by `POST /courses/preview`, which returns the expanded dates. */
+  pattern?: CourseSlot[];
+}
+/** 🔻 TASK-969 — one slot of a course's weekly pattern. */
+export interface CourseSlot {
+  weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  /** `HH:MM`, on the hour or the half hour */
+  startTime: string;
+  teacherId: string;
 }
 export interface CreateCoursePackageResponse {
-  course: CourseSummary & { student: StudentRef };
+  course: CourseSummary & { student: StudentRef; /** 🔻 TASK-969 — the weekly pattern in pattern order, or null = a ONE-slot course */ slots: CourseSlot[] | null };
   bookings: BookingDTO[]; // the generated weekly sessions, ordered by date
 }
 

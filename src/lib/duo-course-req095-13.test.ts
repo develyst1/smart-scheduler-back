@@ -53,8 +53,8 @@ describe("🔴 the migration — 0048, counted, three NULLABLE adds, two RESTRIC
   const sql = readFileSync(resolve(root, "drizzle/0048_duo_course.sql"), "utf8").replace(/\r\n/g, "\n");
   const body = sql.replace(/^--.*$/gm, "");
   test("56 = 56: `0048_duo_course` is the 49th file, idx 48 (TASK-428 added 0049 after it); 'expects 49'", () => {
-    expect(files.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
-    expect(journal.entries.length).toBe(81); /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(files.length).toBe(82); /* 🔻 TASK-969: +0081 */ /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
+    expect(journal.entries.length).toBe(82); /* 🔻 TASK-969: +0081 */ /* 🔻 TASK-965: +0080 */ /* 🔻 TASK-961: +0079 */ /* 🔻 TASK-942: +0078 */ /* 🔻 TASK-959: +0077 */ // 🔻 TASK-889: +0076 · TASK-497: +0059 · 🔻 TASK-540: +0060 · 🔻 TASK-556: +0061 · 🔻 TASK-561: +0062 · 🔻 TASK-568: +0063 · 🔻 TASK-573: +0064 · 🔻 TASK-690: +0065 · 🔻 TASK-702: +0066 · 🔻 TASK-725: +0067 · 🔻 TASK-732: +0068 · 🔻 TASK-800: +0069 · 🔻 TASK-817: +0070 · 🔻 TASK-826: +0071 · 🔻 TASK-837: +0072 · 🔻 TASK-756: +0073 · 🔻 TASK-860: +0074 · 🔻 TASK-861: +0075
     expect(files[48]).toBe("0048_duo_course.sql");
     expect(journal.entries[48]).toMatchObject({ idx: 48, tag: "0048_duo_course" });
     expect(sql).toContain("`db:verify` expects 49");
@@ -192,7 +192,7 @@ describe("🔴 the create by VALUE through a fake tx — both kids guarded, the 
     expect(C).toContain('const priceGroup = await resolvePriceGroup(input.subjectId, input.duo ? "DUO" : courseGroupKind);');
     expect(C).toContain("if (coStudentId === studentId) throw DUO_SAME_CHILD();\n      await assertStudentActive(tx, coStudentId);\n      await assertHouseholdNotSuspended(tx, coStudentId);");
     expect(C).toContain("classRateMinor: input.duo?.classRateMinor ?? null,"); // 🔻 TASK-434: optional at create
-    expect(C).toContain("with: { student: true, coStudent: true },");
+    expect(C).toContain("with: { student: true, coStudent: true, slots: true },"); // 🔻 TASK-969
     expect(C).not.toMatch(/classRateMinor[^\n]*recordSale|recordSale[^\n]*classRateMinor/); // the rate is never posted
   });
 });
@@ -401,12 +401,12 @@ describe("🔴 the READERS by source — the 16-site table; the DTOs; the pool u
   const MAP = code(src("src/db/mappers.ts"));
   test.each([
     ["withBookingRelations loads coStudent", SCHED, "const withBookingRelations = {\n  student: true,\n  coStudent: true,"],
-    ["coursesByIds loads coStudent (the course list / view)", SCHED, "with: { student: true, coStudent: true, subject: true, bookings: { with: { subject: true }, limit: 1 } },"],
+    ["coursesByIds loads coStudent (the course list / view)", SCHED, "with: { student: true, coStudent: true, subject: true, slots: true, bookings: { with: { subject: true }, limit: 1 } },"],
     ["the eligible picker offers BOTH children", SCHED, ".flatMap((c: any) => [c.student, c.coStudent].filter(Boolean).map((s: any) => ({ c, s })))"],
-    ["updateCourse returns coStudent", SCHED, "with: { student: true, coStudent: true },\n  });\n  if (!row) throw notFound"],
+    ["updateCourse returns coStudent", SCHED, "with: { student: true, coStudent: true, slots: true },\n  });\n  if (!row) throw notFound"],
     ["toBookingDTO.coStudent", MAP, "coStudent: b.coStudent ? studentRef(b.coStudent) : null,"],
     ["the ONE builder of the three DUO facts (TASK-422: shared by the course DTO and the plan)", MAP, "export const duoCourseFacts = (c: any) => ({\n  coStudent: c.coStudent ? studentRef(c.coStudent) : null,\n  classRateMinor: c.classRateMinor ?? null,\n  courseKind: courseKindOf(c),\n});"],
-    ["toCourseWithStudent spreads the builder", MAP, "  student: studentRef(c.student),\n  ...duoCourseFacts(c), // TASK-420"],
+    ["toCourseWithStudent spreads the builder", MAP, "  ...duoCourseFacts(c), // TASK-420"], // 🔻 TASK-969: the pattern's `slots` line now sits between `student` and the spread
     ["the entitlement plan loads coStudent (TASK-422)", SCHED, "    where: (c, { eq }) => eq(c.id, id),\n    with: { coStudent: true }, // TASK-422"],
     ["the entitlement plan spreads the builder (TASK-422)", SCHED, "      student: studentRef(student),\n      ...duoCourseFacts(course), // TASK-422"],
     ["the course search: the co-student + its parent ride as aliases", SQ, 'const coStudents = alias(students, "co_students");\nconst coParents = alias(parents, "co_parents");'],
