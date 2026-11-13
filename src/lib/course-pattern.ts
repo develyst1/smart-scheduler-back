@@ -61,16 +61,18 @@ export function patternProblem(slots: ReadonlyArray<Slot>, min: number = MIN_PAT
  * `absentWeeks` are COURSE weeks (1-based): every row in such a week is born a planned absence.
  * 🔑 SPEC-109 §8b (the seam to the mid-course change / resume): an optional 5th `fromDate` (default `startDate` = every existing caller unchanged) — rows dated BEFORE it are skipped, `size` is the number of rows to produce FROM it, the week bound
  * becomes `courseWeekOf(startDate, fromDate) + size + 1`, and `week` stays the COURSE week counted from `startDate`.
+ * 🔻 TASK-975 (D-159-2): fromDate before startDate ⇒ laid out from fromDate (week counted from fromDate).
  */
 export function expandPattern(startDate: string, slots: readonly Slot[], size: number, absentWeeks: ReadonlySet<number> = new Set(), fromDate: string = startDate): PatternRow[] {
-  const ordered = orderPattern(startDate, slots);
+  const anchor = fromDate < startDate ? fromDate : startDate; // 🔻 TASK-975 (D-159-2)
+  const ordered = orderPattern(anchor, slots);
   const out: PatternRow[] = [];
-  const firstWeek = courseWeekOf(startDate, fromDate);
+  const firstWeek = courseWeekOf(anchor, fromDate);
   for (let week = firstWeek; out.length < size && week <= firstWeek + size + 1; week++) {
     for (const s of ordered) {
       if (out.length >= size) break;
-      const date = slotDateInWeek(startDate, s, week);
-      if (date < startDate || date < fromDate) continue;
+      const date = slotDateInWeek(anchor, s, week);
+      if (date < anchor || date < fromDate) continue;
       out.push({ date, startTime: hhmmOf(s.startTime), teacherId: s.teacherId, week, absent: absentWeeks.has(week) });
     }
   }
