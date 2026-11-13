@@ -1,7 +1,7 @@
 // 🔻 TASK-971 (REQ-5016 AC5, SPEC-109 §3.4) — CHANGE THE PATTERN of a course mid-course: `POST /courses/:id/change-pattern[/preview]` `{ fromDate, pattern: Slot[] (1…21) }`, on TASK-838's shape (`runCourseTeacherTimeChange`).
 //
 // ONE transaction; the UNTAUGHT rows (live, dated `fromDate` or later — `lib/pattern-change.ts`) are re-placed IN ORDER onto `expandPattern(course.startDate, pattern, n, new Set(), fromDate)` (the §8b seam), the count kept, each row on its slot's own coach
-// and time; taught rows stay. `assertTeacherBookable` + `reconcileBookingHolds` per moved row; a clash is 409 `SLOT_TAKEN` naming the date and the whole act rolls back; a row that was CONFIRMED goes back to PENDING (its confirmation was of the old slot) and the
+// and time; taught rows stay. `assertTeacherBookable` (with the class's time: part-day leave + working hours, TASK-979) + `reconcileBookingHolds` per moved row; a clash is 409 `SLOT_TAKEN` naming the date and the whole act rolls back; a row that was CONFIRMED goes back to PENDING (its confirmation was of the old slot) and the
 // course is flagged `reconfirmNeededSince` — the family hears at "ยืนยันทั้งคอร์ส" (one schedule message per person), exactly as TASK-838; the coaches hear the TASK-838 pair (`sendCourseTeacherChange`). `course_slots` is REWRITTEN here and ONLY here: 2+ slots ⇒
 // the rows replaced; a ONE-slot result ⇒ the rows deleted and the course's own weekday / start_time carry it. The expiry grows to cover the new last row and never shrinks (`replanExpiry`, recorded). The preview is the act inside a transaction that is ALWAYS
 // rolled back. 🚫 Not touched: size, `usedSessions`, `leaveUsed`, the sale, the course's default rate. (Its own file, not `scheduler.service.ts`: that file is edited by several desks at once.)
@@ -36,7 +36,7 @@ async function runCoursePatternChange(tx: any, id: string, input: PatternInput, 
   const byId = new Map(plan.moves.map((m) => [m.id, m]));
   for (const rowId of plan.order) {
     const m = byId.get(rowId)!;
-    await assertTeacherBookable(tx, m.to.teacherId, m.to.date);
+    await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { startTime: m.to.startTime }); // 🔻 TASK-979 (D-159-3): the class's time, as TASK-838 (l.6774)
     const reconfirm = m.toStatus !== m.status ? { status: m.toStatus, confirmedAt: null, checkinToken: null, checkinTokenExpiresAt: null } : {};
     try {
       await tx.update(bookings).set({ teacherId: m.to.teacherId, date: m.to.date, startTime: m.to.startTime, endTime: addHour(m.to.startTime), ...reconfirm }).where(eq(bookings.id, m.id));

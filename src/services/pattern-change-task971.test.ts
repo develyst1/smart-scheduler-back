@@ -10,6 +10,9 @@ import * as sched from "./scheduler.service";
 import * as lineLib from "../lib/line";
 import * as patternSvc from "./course-pattern-change.service";
 import * as v from "../validation";
+import { OUTSIDE_WORK_HOURS, TEACHER_ON_LEAVE, leaveBlocksSlot } from "../lib/teacher-leave";
+import { classFitsWorkHours, workHoursOn } from "../lib/work-days";
+import { weekdayOf } from "../lib/recurring";
 
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test"; // lazy — never connected here
 const read = (p: string) => readFileSync(resolve(import.meta.dir, "..", "..", p), "utf8");
@@ -23,7 +26,8 @@ const row = (id: string, date: string, status: string, o: Record<string, unknown
 const ROWS = () => [row("a1", "2026-11-02", "ATTENDED"), row("a2", "2026-11-09", "ATTENDED"), row("p1", "2026-11-16", "CONFIRMED"), row("p2", "2026-11-23", "PENDING"), row("p3", "2026-11-30", "PENDING"), row("p4", "2026-12-07", "PENDING")];
 const COURSE = (o: Record<string, unknown> = {}) => ({ id: "c1", startDate: START, expiryDate: "2027-02-01", size: 6, usedSessions: 2, leaveUsed: 0, weekday: 1, startTime: "10:00:00", endedAt: null, droppedAt: null, studentId: "s1", coStudentId: null, subjectId: "sub1", priorSessions: 0, ...o });
 
-type World = { course?: any; rows?: any[]; slots?: any[]; clashOn?: string };
+// 🔻 TASK-979 — `gate` models the MOVED-TO coach B's part-day leave and working hours: `assertTeacherBookable` is replaced by a stub that applies the REAL `leaveBlocksSlot` / `classFitsWorkHours` the same way the real gate does (hours only when `opts.startTime` is given; the leave judged at that time, or as a whole day when there is none).
+type World = { course?: any; rows?: any[]; slots?: any[]; clashOn?: string; gate?: { leave?: [string, string]; workHours?: Record<string, [string, string]> } };
 function fakeTx(w: World) {
   const writes: Array<{ op: string; table: string; v?: any }> = [];
   const tx: any = {
@@ -51,7 +55,12 @@ async function run<T>(w: World, fn: () => Promise<T>) {
   const outbox: any[] = [];
   const prev = (db as any).transaction;
   (db as any).transaction = async (f: any) => f(tx);
-  spies.push(spyOn(sched, "assertTeacherBookable").mockImplementation((async () => ({})) as any));
+  spies.push(spyOn(sched, "assertTeacherBookable").mockImplementation((async (_e: any, teacherId: string, date: string, opts?: { startTime?: string }) => {
+    if (!w.gate || teacherId !== B) return {};
+    if (w.gate.workHours && opts?.startTime && !classFitsWorkHours(w.gate.workHours, weekdayOf(date), opts.startTime)) throw OUTSIDE_WORK_HOURS("Coach", weekdayOf(date), workHoursOn(w.gate.workHours, weekdayOf(date))!);
+    if (w.gate.leave && leaveBlocksSlot({ startTime: w.gate.leave[0], endTime: w.gate.leave[1] }, opts?.startTime)) throw TEACHER_ON_LEAVE("Coach", date);
+    return {};
+  }) as any));
   spies.push(spyOn(sched, "reconcileBookingHolds").mockImplementation((async () => {}) as any));
   spies.push(spyOn(sched, "loadBookingDTO").mockImplementation((async (_e: any, id: string) => ({ id })) as any));
   spies.push(spyOn(sched, "recordExpiryChange").mockImplementation((async (_e: any, r: any) => { writes.push({ op: "expiry", table: "course_expiry_changes", v: r }); }) as any));
@@ -186,5 +195,43 @@ describe("🔴 TASK-971 — resume: a pattern course re-plans onto its pattern; 
   test("a course with ONE `course_slots` row is a one-slot course (the pattern branch needs 2+)", async () => {
     const { inserted } = await resume([{ weekday: 2, startTime: "10:00:00", teacherId: B, ord: 0 }]);
     expect(inserted.map((i) => i.startTime)).toEqual(["09:00", "09:00"]);
+  });
+});
+
+describe("🔴 TASK-979 — D-159-3: the pattern act judges the coach's part-day leave and working hours", () => {
+  const LEAVE: [string, string] = ["13:00", "15:00"];
+  const at = (startTime: string) => ({ fromDate: "2026-11-16", pattern: [{ weekday: 2, startTime, teacherId: B }] });
+  const bookingWrites = (r: { writes: Array<{ op: string; table: string }> }) => r.writes.filter((x) => x.table === "bookings" && x.op === "update").length;
+  test("(a) a 13:00–15:00 part-day leave and a slot at 10:00 → the act succeeds; the rows move", async () => {
+    const r = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { leave: LEAVE } }, () => patternSvc.changeCoursePattern("c1", at("10:00")));
+    expect(r.err).toBeNull();
+    expect(bookingWrites(r)).toBe(4);
+  });
+  test("(a2) the same leave at 16:00 also succeeds (the over-blocking Tanya saw at G1-3)", async () => {
+    const r = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { leave: LEAVE } }, () => patternSvc.changeCoursePattern("c1", at("16:00")));
+    expect(r.err).toBeNull();
+  });
+  test("(b) the same leave and a slot at 13:00 → 409 TEACHER_ON_LEAVE, NOTHING written", async () => {
+    const r = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { leave: LEAVE } }, () => patternSvc.changeCoursePattern("c1", at("13:00")));
+    expect([r.err?.status, code(r.err)]).toEqual([409, "TEACHER_ON_LEAVE"]);
+    expect(r.writes).toHaveLength(0);
+    expect(r.outbox).toHaveLength(0);
+  });
+  test("(c) the coach works 13:00–18:00 that weekday and the slot is 10:00 → the OUTSIDE_WORK_HOURS refusal (400), NOTHING written", async () => {
+    const r = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { workHours: { "2": ["13:00", "18:00"] } } }, () => patternSvc.changeCoursePattern("c1", at("10:00")));
+    expect(r.err?.status).toBe(400);
+    expect(String(r.err?.message)).toContain("13:00–18:00");
+    expect(r.writes).toHaveLength(0);
+    const ok = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { workHours: { "2": ["13:00", "18:00"] } } }, () => patternSvc.changeCoursePattern("c1", at("14:00")));
+    expect(ok.err).toBeNull();
+  });
+  test("the preview shares the verdict (it runs the same function in a rollback)", async () => {
+    const r = await run({ course: COURSE(), rows: ROWS(), slots: [], gate: { leave: LEAVE } }, () => patternSvc.previewCoursePattern("c1", at("13:00")));
+    expect(code(r.err)).toBe("TEACHER_ON_LEAVE");
+  });
+  test("(d) by source: the gate call carries `{ startTime: m.to.startTime }`", () => {
+    const src = read("src/services/course-pattern-change.service.ts");
+    expect(src).toContain("await assertTeacherBookable(tx, m.to.teacherId, m.to.date, { startTime: m.to.startTime });");
+    expect((src.match(/assertTeacherBookable\(/g) ?? []).length).toBe(1);
   });
 });
