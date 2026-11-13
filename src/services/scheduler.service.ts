@@ -21,7 +21,7 @@ import { countByStatus } from "../lib/course-status";
 import { decideImportSize } from "../lib/import-size";
 import { courseLeaveQuota, maxWeekFor } from "../lib/leave";
 import { preCheckBulkConfirm } from "../lib/bulk-confirm";
-import { displayNameOf, duoCourseFacts, studentNamesOf, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
+import { courseSlotsDto, displayNameOf, duoCourseFacts, studentNamesOf, toBookingDTO, toCourseWithStudent, toTeacherDTO, toVoucherDTO } from "../db/mappers";
 import { alias } from "drizzle-orm/pg-core";
 import { LEAVE_NO_VALIDITY, MAX_WEEK_BY_SIZE, toCourseSummary } from "../lib/leave";
 import { leaveNoteWrite } from "../lib/leave-note"; // TASK-540
@@ -2815,7 +2815,7 @@ export async function getEntitlementPlan(id: string) {
 
   const course = await db.query.coursePackages.findFirst({
     where: (c, { eq }) => eq(c.id, id),
-    with: { coStudent: true }, // TASK-422 — a DUO plan page names both children
+    with: { coStudent: true, slots: true }, // TASK-422 — a DUO plan page names both children · 🔻 TASK-973 (D-159-1) the weekly pattern
   });
   if (course) {
     const rows = await loadSessions("courseId");
@@ -2865,6 +2865,7 @@ export async function getEntitlementPlan(id: string) {
       // cannot be shadowed. Everything else the old literal listed was already identical to `summary`'s.
       summary: {
         ...summary,
+        slots: courseSlotsDto(course), // 🔻 TASK-973 (D-159-1) — the weekly pattern, or null = a ONE-slot course (the SF reads plan.summary.slots)
         kind: "course" as const,
         // TASK-165 the PLAN's owed count, not the purchase's · TASK-181 an ended course owes 0, by
         // construction not by luck. 🚫 `summary.usedSessions` is the course's stored counter and answers a

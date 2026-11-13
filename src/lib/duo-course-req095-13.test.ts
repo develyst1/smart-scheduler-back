@@ -407,7 +407,7 @@ describe("🔴 the READERS by source — the 16-site table; the DTOs; the pool u
     ["toBookingDTO.coStudent", MAP, "coStudent: b.coStudent ? studentRef(b.coStudent) : null,"],
     ["the ONE builder of the three DUO facts (TASK-422: shared by the course DTO and the plan)", MAP, "export const duoCourseFacts = (c: any) => ({\n  coStudent: c.coStudent ? studentRef(c.coStudent) : null,\n  classRateMinor: c.classRateMinor ?? null,\n  courseKind: courseKindOf(c),\n});"],
     ["toCourseWithStudent spreads the builder", MAP, "  ...duoCourseFacts(c), // TASK-420"], // 🔻 TASK-969: the pattern's `slots` line now sits between `student` and the spread
-    ["the entitlement plan loads coStudent (TASK-422)", SCHED, "    where: (c, { eq }) => eq(c.id, id),\n    with: { coStudent: true }, // TASK-422"],
+    ["the entitlement plan loads coStudent (TASK-422)", SCHED, "    where: (c, { eq }) => eq(c.id, id),\n    with: { coStudent: true, slots: true }, // TASK-422"], // 🔻 TASK-973 (D-159-1): the plan also loads `slots`
     ["the entitlement plan spreads the builder (TASK-422)", SCHED, "      student: studentRef(student),\n      ...duoCourseFacts(course), // TASK-422"],
     ["the course search: the co-student + its parent ride as aliases", SQ, 'const coStudents = alias(students, "co_students");\nconst coParents = alias(parents, "co_parents");'],
     ["the course search matches EITHER child", SQ, "or(...studentSearchConditions(q), ...studentSearchConditionsOn(q, coStudents as any, coParents as any))"],
