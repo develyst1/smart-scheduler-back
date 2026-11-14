@@ -205,7 +205,7 @@ describe("TASK-264 — AC-4 / (ข): ONE computation, and it warns rather than r
     const schema = v.slice(v.indexOf("export const resumeCourse = z.object({"));
     const body = schema.slice(0, schema.indexOf("});"));
     expect(body).toContain("startDate: DATE,");
-    expect(body).toContain("startTime: TIME,");
+    expect(body).toContain("startTime: CLASS_TIME,"); // 🔻 TASK-986: a class start is a whole hour now (was `TIME`)
     expect(body).not.toContain("expiryDate");
     // The edit's own field stays required — there is nothing to infer there.
     const edit = v.slice(v.indexOf("export const updateCourseExpiry = z.object({"));

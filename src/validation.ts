@@ -9,6 +9,7 @@ import { END_REASONS, SESSION_CANCEL_REASONS, plannedRowExists } from "./lib/cou
 import { isPhoneShaped } from "./lib/phone";
 import { MAX_PATTERN_SLOTS, patternProblem } from "./lib/course-pattern"; // 🔻 TASK-969 (REQ-5016 F1): the pattern's shape rules live in ONE place
 import { bangkokNow } from "./lib/bangkok-time";
+import { TIME_SLOTS } from "./lib/time"; // 🔻 TASK-986
 import { NVR_BUCKETS } from "./lib/som-contract";
 
 // TASK-160: declared early so the sale schemas below can reference it.
@@ -30,6 +31,8 @@ export const discountInput = z.object({
 export const attendeeNote = z.string().trim().max(200, "โน้ตต้องไม่เกิน 200 ตัวอักษร");
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "ต้องเป็นรูปแบบ YYYY-MM-DD");
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "ต้องเป็นรูปแบบ HH:mm");
+// 🔻 TASK-986 (TEST-163): a class starts only on a calendar hour, or it is saved and never drawn
+const CLASS_TIME = TIME.refine((v) => (TIME_SLOTS as readonly string[]).includes(v), "เวลาเริ่มคลาสต้องเป็นชั่วโมงเต็ม 09:00–17:00");
 const HALF_HOUR = (t: string) => t.endsWith(":00") || t.endsWith(":30"); // 🔻 TASK-965 (REQ-5015): a part-day window / working hours sit on the hour or the half hour
 const ID = z.string().uuid();
 /** 🔻 TASK-889 (F1, SPEC-099 §9) — the branch a booking / course / voucher belongs to. Optional everywhere it is accepted: absent on a create ⇒ BRAVO, absent on an edit ⇒ unchanged. */
@@ -220,7 +223,7 @@ export const createBooking = z
     teacherId: ID,
     subjectId: ID.optional(),
     date: DATE,
-    startTime: TIME,
+    startTime: CLASS_TIME,
     bookingType: BOOKING_TYPE,
     courseId: ID.optional(),
     voucherId: ID.optional(),
@@ -355,7 +358,7 @@ export const recordBookingRental = z.object({
 });
 
 // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — one slot of a course's weekly pattern, and the shape rules every pattern body shares (the problems themselves are `lib/course-pattern.ts`'s, ONE place).
-export const patternSlot = z.object({ weekday: z.number().int().min(0).max(6), startTime: TIME, teacherId: ID });
+export const patternSlot = z.object({ weekday: z.number().int().min(0).max(6), startTime: CLASS_TIME, teacherId: ID });
 const patternIssue = (pattern: ReadonlyArray<{ weekday: number; startTime: string; teacherId: string }> | undefined, min: number): string | null => (pattern ? patternProblem(pattern, min) : null);
 /** the course weeks a pattern plan draws for `size` rows: `ceil(size / slots)` — the only weeks an `absentWeeks` entry may name (a make-up week is born later, from a leave) */
 const patternWeeks = (size: number, slots: number): number => Math.ceil(size / slots);
@@ -368,7 +371,7 @@ export const createCoursePackage = z
     subjectId: ID,
     size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
     startDate: DATE,
-    startTime: TIME,
+    startTime: CLASS_TIME,
     note: z.string().optional(),
     // TASK-178 (REQ-068) — one attendee note, applied to every session the course creates.
     attendeeNote: attendeeNote.optional(),
@@ -395,7 +398,7 @@ export const createCoursePackage = z
       .array(
         z.object({
           date: DATE,
-          startTime: TIME.optional(),
+          startTime: CLASS_TIME.optional(),
           teacherId: ID.optional(),
           subjectId: ID.optional(),
         }),
@@ -445,7 +448,7 @@ export const previewCourse = z.object({
   subjectId: ID,
   size: z.union([z.literal(4), z.literal(6), z.literal(10)]),
   startDate: DATE,
-  startTime: TIME,
+  startTime: CLASS_TIME,
   // TASK-148 — preview the plan WITH the declared absences, so what is shown is what gets saved (AC-2).
   absentWeeks: z.array(z.number().int().min(1)).optional(),
   // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — the same `pattern` as the create, so the preview returns the expanded dates and preview = act.
@@ -585,7 +588,7 @@ export const groupSeries = z
     teacherId: ID,
     additionalTeacherIds: z.array(ID).optional(),
     teacherRates: z.record(ID, z.number().int().min(0)).optional(),
-    startTime: TIME,
+    startTime: CLASS_TIME,
     dates: z.array(DATE).min(1).max(60),
   })
   .refine((d) => (d.groupKind as string) !== "DUO" || d.seatCap === 2, { message: "DUO มี 2 ที่นั่งเสมอ", path: ["seatCap"] }) // TASK-420: unreachable for a new series (GROUP only); kept for the rule's shape
@@ -599,7 +602,7 @@ export const groupTeacherSwap = z.object({ teacherId: ID, fromHereOn: z.boolean(
 // 🔴 TASK-453 (REQ-105 §8.1) — the two resolutions of a clash. ① moves the PRIVATE (at least one of the three
 // fields, the move's own shape); ② swaps the GROUP's coach for that session. Never forced, never automatic.
 export const resolveClashMove = z
-  .object({ teacherId: ID.optional(), date: DATE.optional(), startTime: TIME.optional() })
+  .object({ teacherId: ID.optional(), date: DATE.optional(), startTime: CLASS_TIME.optional() })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: "ต้องระบุครู/วันที่/เวลาใหม่อย่างน้อย 1 อย่าง" });
 export const resolveClashSwapCoach = z.object({ teacherId: ID });
 
@@ -613,7 +616,7 @@ export const otherSeries = z
     teacherId: ID,
     additionalTeacherIds: z.array(ID).optional(),
     teacherRates: z.record(ID, z.number().int().min(0)).optional(),
-    startTime: TIME,
+    startTime: CLASS_TIME,
     dates: z.array(DATE).min(1).max(60),
   })
   .refine((d) => new Set(d.dates).size === d.dates.length, { message: "วันที่ซ้ำกัน", path: ["dates"] })
@@ -667,7 +670,7 @@ export const moveBooking = z
     teacherId: ID.optional(),
     subjectId: ID.optional(),
     date: DATE.optional(),
-    startTime: TIME.optional(),
+    startTime: CLASS_TIME.optional(),
     note: z.string().optional(),
     /** TASK-423 (REQ-095 §13.3) — THIS session's coach-rate override (the FE's popup); `null` = back to the course default;
      *  a row outside a course ⇒ 400 `NOT_A_COURSE_SESSION`. */
@@ -691,7 +694,7 @@ export const planChange = z.discriminatedUnion("kind", [
     teacherId: ID,
     subjectId: ID,
     date: DATE,
-    startTime: TIME,
+    startTime: CLASS_TIME,
   }),
   z
     .object({
@@ -700,7 +703,7 @@ export const planChange = z.discriminatedUnion("kind", [
       teacherId: ID.optional(),
       subjectId: ID.optional(),
       date: DATE.optional(),
-      startTime: TIME.optional(),
+      startTime: CLASS_TIME.optional(),
       override: z.boolean().optional(),
     })
     .refine(
@@ -1081,7 +1084,7 @@ export const importCoursePackage = z.object({
   leaveQuota: z.coerce.number().int().min(0).max(20).optional(),
   usedSessions: z.coerce.number().int().min(0), // importable on purpose: they already bought it
   startDate: DATE, // when the REMAINING sessions resume
-  startTime: TIME,
+  startTime: CLASS_TIME,
   /** TASK-213 — OPTIONAL: omitted ⇒ the server computes it from `size (+ leaveQuota)`. A date the admin
    *  actually typed is still honoured (the ruling that kept 164 imported expiries out of the FIX-007 repair). */
   expiryDate: DATE.optional(),
@@ -1093,7 +1096,7 @@ export const extraSession = z.object({
   teacherId: ID,
   subjectId: ID,
   date: DATE,
-  startTime: TIME,
+  startTime: CLASS_TIME,
 });
 
 // SPEC-031 / TASK-108 — record an equipment rental. `code` ∈ the four rental codes; `hours` a positive int; `refId`
@@ -1157,7 +1160,7 @@ export const dropCourse = z.object({
  */
 export const resumeBooking = z.object({
   date: DATE,
-  startTime: TIME,
+  startTime: CLASS_TIME,
   // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume. OPTIONAL: absent ⇒ the booking's own
   // teacher, byte for byte as before; present ⇒ that teacher on the resumed row and in the clash message.
   teacherId: ID.optional(),
@@ -1183,7 +1186,7 @@ export const resumeBooking = z.object({
 /** TASK-570 — the new start date only: the weekday is DERIVED from it (as creation and resume do), the time and teacher kept. */
 export const changeCourseStart = z.object({ startDate: DATE });
 /** 🔻 TASK-838 (REQ-127) — the rest of a course moves to a new teacher, day and time: the admin's three answers (the resume's pickers). The weekday is DERIVED from the start date, never asked. */
-export const changeCourseTeacherTime = z.object({ teacherId: ID, startDate: DATE, startTime: TIME });
+export const changeCourseTeacherTime = z.object({ teacherId: ID, startDate: DATE, startTime: CLASS_TIME });
 /** 🔻 TASK-971 (REQ-5016 AC5, SPEC-109 §3.4) — change the weekly PATTERN mid-course: from which date, and the new slots (1…21; a ONE-slot result is legal here, unlike a sale's 2…21). The shape rules are `patternProblem(p, 1)` — ONE place (`lib/course-pattern.ts`), 400 VALIDATION. */
 export const changeCoursePattern = z
   .object({ fromDate: DATE, pattern: z.array(patternSlot).min(1).max(MAX_PATTERN_SLOTS) })
@@ -1202,7 +1205,7 @@ export const changeBookingActivity = z.object({ subjectId: ID, teacherId: ID.opt
 export const bonus100Pick = z.object({ pick: z.enum(["FIRST", "LATEST", "SHARE"]) });
 export const resumeCourse = z.object({
   startDate: DATE,
-  startTime: TIME,
+  startTime: CLASS_TIME,
   // 🔻 TASK-359 (`REQ-089 item 8`) — the admin PICKS the teacher on resume. OPTIONAL: absent ⇒ the course's
   // first session's teacher, byte for byte as before; present ⇒ that teacher on every re-planned session.
   teacherId: ID.optional(),
