@@ -1,7 +1,7 @@
 // 🔻 TASK-961 (REQ-5014 option A, SPEC-106 §2) — change the ACTIVITY (subject) of a course's REMAINING classes, or of one 1 HR / 1st Trial. THE PURE PLANNER: which rows change, the prices, the difference, and the refusals as CODES.
 // No I/O: `services/scheduler.service.ts` (`runCourseActivityChange` / `runBookingActivityChange`) reads the rows + the card, calls this, and writes in ONE transaction. Modelled on `course-teacher-time-change.ts`.
 // 🚫 It invents no rule: the coach-eligibility check is whatever create/move do today (the service cites it); the price is the CARD's list price (`sale-items.ts`) or the one price the admin typed when the card has none.
-import { COURSE_LIVE_STATUSES } from "./course-plan";
+import { COURSE_DELIVERED, COURSE_LIVE_STATUSES } from "./course-plan";
 
 export const MANUAL_PRICE_MIN_BAHT = 1;
 export const MANUAL_PRICE_MAX_BAHT = 100000;
@@ -67,10 +67,11 @@ export function priceActivityChange(p: PricingInput): Pricing | ActivityRefusal 
   return { oldPriceMinor: p.oldCardMinor, newPriceMinor: n, priceSource: "MANUAL", differenceMinor: p.flat ? 0 : differenceMinor(p.oldCardMinor, n, p.remaining, p.size) };
 }
 
-export interface CourseActivityPlan { rows: ActivityRow[]; remaining: number; firstDate: string; lastDate: string; teacherChanged: boolean }
+export interface CourseActivityPlan { rows: ActivityRow[]; /** 🔻 TASK-984 — not-live, not-delivered rows from today (leave · cancelled · paused · pending-reschedule): the SUBJECT only, never the coach, never counted */ alsoRows: ActivityRow[]; remaining: number; firstDate: string; lastDate: string; teacherChanged: boolean }
 
 /**
- * The course's REMAINING classes: the live ones (`COURSE_LIVE_STATUSES`, the same rule as the end / change-teacher-time acts) dated today or later; an attended / cancelled / leave row, or one dated before today, is NEVER touched. Refusals, in
+ * The course's REMAINING classes: the live ones (`COURSE_LIVE_STATUSES`, the same rule as the end / change-teacher-time acts) dated today or later; a delivered row, or one dated before today, is NEVER touched. 🔻 TASK-984 (ขวัญ 2026-11-14): the
+ * not-delivered, not-live rows from today (leave / cancelled / paused / pending-reschedule, no group) take the SUBJECT only (`alsoRows`): not counted, not priced, no coach move. Refusals, in
  * this order: SAME_ACTIVITY · NO_REMAINING_CLASSES · GROUP_COURSE (any remaining row sits in a group class: its activity is the group's).
  */
 export function planCourseActivityChange(
@@ -82,8 +83,10 @@ export function planCourseActivityChange(
   const remaining = rows.filter((r) => LIVE.has(r.status) && r.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   if (!remaining.length) return refuse("NO_REMAINING_CLASSES");
   if (remaining.some((r) => r.groupId)) return refuse("GROUP_COURSE");
+  const alsoRows = rows.filter((r) => !LIVE.has(r.status) && !COURSE_DELIVERED.has(r.status) && r.date >= today && !r.groupId).sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   return {
     rows: remaining,
+    alsoRows,
     remaining: remaining.length,
     firstDate: remaining[0]!.date,
     lastDate: remaining[remaining.length - 1]!.date,

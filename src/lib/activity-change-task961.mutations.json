@@ -528,6 +528,81 @@
           ]
         }
       ]
+    },
+    {
+      "id": "N1",
+      "what": "TASK-984: the not-delivered rows are dropped from the subject-only update (alsoRows not written)",
+      "files": [
+        {
+          "file": "src/services/scheduler.service.ts",
+          "edits": [
+            {
+              "from": ", ...plan.alsoRows.map((r) => r.id)]; // 🔻 TASK-984",
+              "to": "]; // 🔻 TASK-984"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N2",
+      "what": "TASK-984: alsoRows also takes live rows (no 'not live' rule)",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "const alsoRows = rows.filter((r) => !LIVE.has(r.status) && ",
+              "to": "const alsoRows = rows.filter((r) => "
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N3",
+      "what": "TASK-984: alsoRows takes a delivered (NO_SHOW) row",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "&& !COURSE_DELIVERED.has(r.status) && r.date >= today && !r.groupId)",
+              "to": "&& r.date >= today && !r.groupId)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N4",
+      "what": "TASK-984: alsoRows takes a PAST row",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "!COURSE_DELIVERED.has(r.status) && r.date >= today && !r.groupId)",
+              "to": "!COURSE_DELIVERED.has(r.status) && !r.groupId)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N5",
+      "what": "TASK-984: alsoRows takes a group row",
+      "files": [
+        {
+          "file": "src/lib/activity-change.ts",
+          "edits": [
+            {
+              "from": "&& r.date >= today && !r.groupId).sort",
+              "to": "&& r.date >= today).sort"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

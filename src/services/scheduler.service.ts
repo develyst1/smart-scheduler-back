@@ -6915,7 +6915,7 @@ async function runCourseActivityChange(tx: any, id: string, input: ActivityInput
   for (const r of plan.rows) {
     if (plan.teacherChanged && r.teacherId !== input.teacherId) await moveRowToCoach(tx, r, input.teacherId!, input.subjectId);
   }
-  const subjectOnly = plan.rows.filter((r) => !(plan.teacherChanged && r.teacherId !== input.teacherId)).map((r) => r.id);
+  const subjectOnly = [...plan.rows.filter((r) => !(plan.teacherChanged && r.teacherId !== input.teacherId)).map((r) => r.id), ...plan.alsoRows.map((r) => r.id)]; // 🔻 TASK-984: the not-delivered rows from today take the subject only (never moveRowToCoach)
   if (subjectOnly.length) await tx.update(bookings).set({ subjectId: input.subjectId }).where(inArray(bookings.id, subjectOnly));
   const moves = activityMoves(plan.rows, plan.teacherChanged ? input.teacherId : undefined);
   await tx

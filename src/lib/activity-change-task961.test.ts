@@ -428,3 +428,47 @@ describe("🔒 TASK-961 — migration 0079: the text, the journal, the witness, 
     for (const c of ['courseId: uuid("course_id")', 'bookingId: uuid("booking_id")', 'fromSubjectId: uuid("from_subject_id")', 'toSubjectId: uuid("to_subject_id")', 'fromTeacherId: uuid("from_teacher_id")', 'toTeacherId: uuid("to_teacher_id")', 'remaining: integer("remaining")', 'size: integer("size")', 'oldPriceMinor: integer("old_price_minor")', 'newPriceMinor: integer("new_price_minor")', 'priceSource: text("price_source")', 'differenceMinor: integer("difference_minor")', 'revenueRelabelled: boolean("revenue_relabelled")', 'actor: text("actor")']) expect(S).toContain(c);
   });
 });
+
+describe("🔴 TASK-984 — the not-delivered rows from today (leave · cancelled · paused · pending-reschedule) take the NEW activity too, and nothing else (ขวัญ 2026-11-14)", () => {
+  const planRows = [
+    row("a1", "2026-11-05", "ATTENDED"), row("t0", TODAY, "ATTENDED"),
+    row("f1", TODAY, "CONFIRMED"), row("f2", "2026-11-20", "PENDING"), row("f3", "2026-11-27", "EXTENDED"),
+    row("c1", "2026-12-04", "CANCELLED"), row("l1", "2026-12-11", "SICK_LEAVE"), row("n1", "2026-12-18", "NO_SHOW"),
+    row("p1", "2026-10-30", "CANCELLED"), // not live, but in the past: never touched
+  ];
+  const input = { currentSubjectId: "BIKE", subjectId: "ONEW" };
+  test("(a) alsoRows = the future CANCELLED + SICK_LEAVE; a PAUSED and a PENDING_RESCHEDULE are in; a NO_SHOW / past / attended / group row is out; rows / remaining are unchanged", () => {
+    const p = planCourseActivityChange(planRows, input, TODAY) as any;
+    expect(p.alsoRows.map((r: any) => r.id)).toEqual(["c1", "l1"]);
+    expect(p.rows.map((r: any) => r.id)).toEqual(["f1", "f2", "f3"]);
+    expect(p.remaining).toBe(3);
+    const more = planCourseActivityChange([...planRows, row("pa", "2026-12-25", "PAUSED"), row("pr", "2026-11-22", "PENDING_RESCHEDULE"), row("cg", "2026-12-06", "CANCELLED", { groupId: "G" })], input, TODAY) as any;
+    expect(more.alsoRows.map((r: any) => r.id)).toEqual(["pr", "c1", "l1", "pa"]); // date order; the group row stays out
+    expect(more.rows.map((r: any) => r.id)).toEqual(["f1", "f2", "f3"]);
+    expect([more.remaining, more.firstDate, more.lastDate]).toEqual([3, TODAY, "2026-11-27"]);
+  });
+  test("a course with only leave rows ahead still refuses NO_REMAINING_CLASSES", () => {
+    expect(planCourseActivityChange([row("l1", "2026-12-11", "SICK_LEAVE")], input, TODAY)).toMatchObject({ refused: true, code: "NO_REMAINING_CLASSES" });
+  });
+  const withExtra = () => [...ROWS(), CROW("l1", "2026-12-18", "SICK_LEAVE"), CROW("pa", "2026-12-25", "PAUSED"), CROW("l0", "2026-11-06", "SICK_LEAVE")];
+  test("(b) the act: ONE bookings update — the live ids + the future leave + the paused one (not the past leave), `subjectId` only; remaining / difference as without them", async () => {
+    const r = await run({ course: COURSE(), rows: withExtra() }, (id) => sched.changeCourseActivity(id, { subjectId: ONEW }, "admin"));
+    const base = await run({ course: COURSE(), rows: ROWS() }, (id) => sched.changeCourseActivity(id, { subjectId: ONEW }, "admin"));
+    expect(r.err).toBeNull();
+    const b = subjectWrites(r.writes);
+    expect(b).toHaveLength(1);
+    expect(Object.keys(b[0]!.v)).toEqual(["subjectId"]);
+    expect([...new PgDialect().sqlToQuery(b[0]!.ids as any).params].sort()).toEqual(["f1", "f2", "f3", "f4", "l1", "pa"]);
+    expect(r.out).toEqual(base.out);
+    expect(r.writes.find((x) => x.op === "insert" && x.table === "activity_changes")!.v).toMatchObject({ remaining: 4 });
+  });
+  test("(c) with a coach change the not-live rows are NOT moved: only `plan.rows` reach moveRowToCoach; `plan.alsoRows` go only into the `subjectId`-only statement (the act's fake tx has no coach-move reads, so this is pinned on the source)", () => {
+    const S = read("src/services/scheduler.service.ts");
+    const act = S.slice(S.indexOf("async function runCourseActivityChange("), S.indexOf("// ─────────── TASK-439 (REQ-103, SPEC-089 B)"));
+    expect(act).toContain("for (const r of plan.rows) {");
+    expect(act).toContain("...plan.alsoRows.map((r) => r.id)]");
+    const loop = act.slice(act.indexOf("for (const r of plan.rows) {"), act.indexOf("const subjectOnly"));
+    expect(loop).toContain("await moveRowToCoach(");
+    expect(loop.includes("alsoRows")).toBe(false);
+  });
+});
