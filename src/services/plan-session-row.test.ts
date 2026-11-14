@@ -30,6 +30,13 @@ describe("toSessionRow carries the attendee note (TASK-184)", () => {
   });
 });
 
+// 🔻 TASK-992 (ขวัญ 14/11) — each plan row says where THAT class happens.
+describe("toSessionRow carries the branch (TASK-992)", () => {
+  test("🔴 it reads the booking's own column through branchOf — not a constant", () => {
+    expect(BODY).toContain("branch: branchOf(b.branch)");
+  });
+});
+
 // ───────── SPEC-045 / TASK-190 (REQ-052) — the rental lookup is batched, not an N+1 ─────────
 // 🔻 TASK-371 (REQ-091 Deploy A) — REWRITTEN, not deleted: the marker is a ROW now (`booking_rentals`), read as a
 // RELATION in `withBookingRelations` (Drizzle's one batched relation query), so `bookingsWithRentals` — the

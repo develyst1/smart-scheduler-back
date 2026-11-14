@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { bookingStatus } from "../db/schema";
+import type { Branch } from "../lib/booking-sale-amount"; // 🔻 TASK-992
 
 // ───────────── Scalars / enums (must match the DB enums & FE unions) ─────────────
 
@@ -187,6 +188,8 @@ export interface PlanSessionRow {
    * copy of a UI-language literal in another repo.
    */
   cancelledByPause: boolean;
+  /** 🔻 TASK-992 (ขวัญ 14/11) — the branch where THIS class happens (bookings.branch, TASK-889). Always BRAVO | OTHER. */
+  branch: Branch;
 }
 /** A discount as captured on a booking (TASK-171). The `value`'s unit follows `kind`: PERCENT = a percentage,
  *  BAHT = whole baht — never satang, so the wire carries no second unit conversion (TASK-168). */

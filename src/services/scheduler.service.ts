@@ -2803,6 +2803,7 @@ const toSessionRow = (b: any): PlanSessionRow => ({
   // 🔴 TASK-290 — the FACT, derived here; the note stays server-side. ⚠️ Not `attendeeNote`, which is
   // REQ-068's *who is bringing the child* — a different question, one keystroke away in a grep.
   cancelledByPause: isCancelledByPause(b),
+  branch: branchOf(b.branch), // 🔻 TASK-992 (ขวัญ 14/11) — where THIS class happens
 });
 
 export async function getEntitlementPlan(id: string) {
