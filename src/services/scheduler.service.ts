@@ -5712,11 +5712,12 @@ export async function updateCourse(id: string, input: { adminUnlocked?: boolean;
     await db.update(coursePackages).set({ classRateMinor: input.classRateMinor }).where(eq(coursePackages.id, id));
   }
   if (input.branch !== undefined) {
-    // 🔻 TASK-889 (F1, SPEC-099 §9) — a WHOLE-COURSE branch change: the course, and every session of it that has not happened (not ATTENDED / NO_SHOW / CANCELLED). A class already held keeps where it happened. One transaction.
+    // 🔻 TASK-889 (F1, SPEC-099 §9) — a WHOLE-COURSE branch change: the course, and every session of it from TODAY on (Bangkok) that has not happened (not ATTENDED / NO_SHOW / CANCELLED). A row dated before today keeps its branch whatever its status (🔻 TASK-996, ขวัญ 14/11: a past leave moved). A class already held keeps where it happened. One transaction.
     const branch = input.branch;
+    const today = bangkokNow().date;
     await db.transaction(async (tx) => {
       await tx.update(coursePackages).set({ branch }).where(eq(coursePackages.id, id));
-      await tx.update(bookings).set({ branch }).where(and(eq(bookings.courseId, id), notInArray(bookings.status, ["ATTENDED", "NO_SHOW", "CANCELLED"])));
+      await tx.update(bookings).set({ branch }).where(and(eq(bookings.courseId, id), gte(bookings.date, today), notInArray(bookings.status, ["ATTENDED", "NO_SHOW", "CANCELLED"])));
     });
   }
   const row = await db.query.coursePackages.findFirst({

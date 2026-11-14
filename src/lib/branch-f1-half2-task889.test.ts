@@ -123,8 +123,11 @@ describe("updateCourse: a whole-course branch change", () => {
     expect(r.sets.map((s) => s.table)).toEqual(["course_packages"]);
     expect(r.sets[0].set).toEqual({ adminUnlocked: true });
   });
-  test("the sessions touched exclude exactly ATTENDED / NO_SHOW / CANCELLED (a class already held keeps where it happened), and only THIS course's", () => {
+  // 🔻 TASK-996 (F-078, declared) — RENAMED + extended: the pin now also says "from today on".
+  test("the sessions touched are from today on, and not ATTENDED / NO_SHOW / CANCELLED (a class already held, or dated before today, keeps its branch), and only THIS course's", () => {
     const U = region(SVC, "export async function updateCourse(", "\n}\n");
+    expect(U).toContain("const today = bangkokNow().date");
+    expect(U).toContain("gte(bookings.date, today)");
     expect(U).toContain('notInArray(bookings.status, ["ATTENDED", "NO_SHOW", "CANCELLED"])');
     for (const s of ENDED) expect(U).toContain(`"${s}"`);
     expect(U).toContain("eq(bookings.courseId, id)");
