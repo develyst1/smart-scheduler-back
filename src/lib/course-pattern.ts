@@ -79,6 +79,13 @@ export function expandPattern(startDate: string, slots: readonly Slot[], size: n
   return out;
 }
 
+/**
+ * 🔻 TASK-989 (D-164-1): with a pattern, a declared planned absence is a ROW POSITION (1-based, in the drawn plan), as for a one-slot course — the screen ticks a row, not a week. Row i is `absent` iff `positions` has i; out-of-range positions are ignored. Pure.
+ */
+export function markAbsentRows(rows: readonly PatternRow[], positions: ReadonlySet<number>): PatternRow[] {
+  return rows.map((r, i) => ({ ...r, absent: positions.has(i + 1) }));
+}
+
 /** Every occurrence of the pattern after `(afterDate, afterTime)` in pattern order, for up to `weeks` course weeks past the week of `afterDate` — lazily, so the caller stops at the first free one. */
 export function* occurrencesAfter(startDate: string, slots: readonly Slot[], afterDate: string, afterTime: string, weeks: number = PATTERN_SEARCH_WEEKS): Generator<PatternRow> {
   const ordered = orderPattern(startDate, slots);

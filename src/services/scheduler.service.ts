@@ -6,7 +6,7 @@ import { isRealMove } from "../lib/class-move"; // TASK-516
 import { UNDO_ALREADY_CHANGED, UNDO_SLOT_TAKEN, attendanceUndoKind } from "../lib/booking-undo"; // TASK-497 — the TRUE kind of an undone attendance · 🔻 TASK-719 — the Undo's own refusals, reused
 import { recordUndo, revertAttendance } from "./attendance-revert.service"; // TASK-497 — the shared "put it back" writes
 import { ownScopeWhere, scopeOf, teachersOfBooking } from "../lib/own-scope";
-import { type Slot, expandPattern, hhmmOf, isPattern, nextFreeSlot, orderPattern } from "../lib/course-pattern"; // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern — pure
+import { type Slot, expandPattern, hhmmOf, isPattern, markAbsentRows, nextFreeSlot, orderPattern } from "../lib/course-pattern"; // 🔻 TASK-969 (REQ-5016 F1): the weekly pattern — pure
 import { declarationTakesNewWeek, leaveTakesNewWeek } from "../lib/leave-week-quota"; // 🔻 TASK-971 (REQ-5016 §3.3): the leave quota counts course WEEKS for a pattern course
 import { OUTSIDE_WORK_HOURS, TEACHER_ON_LEAVE, assertNoCoachOnLeave, isAdvanceLeave, liftAdvanceLeave, leaveModeOf, ownAdvanceLeaves, recordAdvanceLeave, recordAdvanceLeaveRange, liftAdvanceLeaveRange, recordedLeaveDays, teacherLeaveOn } from "../lib/teacher-leave"; // TASK-561 · TASK-582 · TASK-587
 import { courseNotStarted, isStartChangeRefusal, planCourseStartChange } from "../lib/course-start-change"; // TASK-570 · TASK-609 reuses the predicate
@@ -2552,7 +2552,7 @@ export async function createCoursePackage(input: any) {
     // `pattern` and `sessions` / `groupKey` are exclusive (the validator refuses; this is the second layer). ONE slot = the screen sends today's fields and NO pattern: that path below is untouched (AC7).
     if (input.pattern?.length && (input.sessions?.length || input.groupKey)) throw badRequest("ตารางประจำสัปดาห์ใช้ร่วมกับตารางรายคาบหรือกลุ่มไม่ได้");
     const patternSlots: Slot[] = input.pattern?.length ? orderPattern(input.startDate, input.pattern.map((s: any) => ({ weekday: s.weekday, startTime: hhmmOf(s.startTime), teacherId: s.teacherId }))) : [];
-    const patternRows = isPattern(patternSlots) ? expandPattern(input.startDate, patternSlots, input.size, new Set<number>((input.absentWeeks ?? []) as number[])) : null;
+    const patternRows = isPattern(patternSlots) ? markAbsentRows(expandPattern(input.startDate, patternSlots, input.size), new Set<number>((input.absentWeeks ?? []) as number[])) : null; // 🔻 TASK-989 (D-164-1): with a pattern, absentWeeks are ROW positions — the screen ticks a row, not a week
     const plannedSessions: Array<{ teacherId: string; subjectId: string; date: string; startTime: string }> =
       patternRows
         ? patternRows.map((r) => ({ teacherId: r.teacherId, subjectId: input.subjectId, date: r.date, startTime: r.startTime }))
@@ -3112,7 +3112,7 @@ async function previewPatternCourse(input: { teacherId: string; subjectId: strin
   const coaches = new Map<string, any>();
   for (const id of new Set(slots.map((s) => s.teacherId))) coaches.set(id, await db.query.teachers.findFirst({ where: (t, { eq }) => eq(t.id, id) }));
   const draw = (r: { date: string; startTime: string; teacherId: string }, isAbsent: boolean, makeup: boolean) => ({ date: r.date, startTime: r.startTime, teacher: teacherRef(coaches.get(r.teacherId)), subject: subjectRef(subject), absent: isAbsent, makeup, teacherId: r.teacherId });
-  const planned = expandPattern(input.startDate, slots, input.size, absent);
+  const planned = markAbsentRows(expandPattern(input.startDate, slots, input.size), absent); // 🔻 TASK-989 (D-164-1): with a pattern, absentWeeks are ROW positions — the screen ticks a row, not a week
   const sessions = planned.map((r) => draw(r, r.absent, false));
   const taken = new Set<string>();
   const owed = planned.filter((r) => r.absent).length;

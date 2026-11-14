@@ -360,8 +360,7 @@ export const recordBookingRental = z.object({
 // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — one slot of a course's weekly pattern, and the shape rules every pattern body shares (the problems themselves are `lib/course-pattern.ts`'s, ONE place).
 export const patternSlot = z.object({ weekday: z.number().int().min(0).max(6), startTime: CLASS_TIME, teacherId: ID });
 const patternIssue = (pattern: ReadonlyArray<{ weekday: number; startTime: string; teacherId: string }> | undefined, min: number): string | null => (pattern ? patternProblem(pattern, min) : null);
-/** the course weeks a pattern plan draws for `size` rows: `ceil(size / slots)` — the only weeks an `absentWeeks` entry may name (a make-up week is born later, from a leave) */
-const patternWeeks = (size: number, slots: number): number => Math.ceil(size / slots);
+const PATTERN_ABSENT_ROW_MESSAGE = "ลาล่วงหน้าได้เฉพาะคาบในแผน"; // 🔻 TASK-989 (D-164-1)
 
 export const createCoursePackage = z
   .object({
@@ -405,7 +404,7 @@ export const createCoursePackage = z
       )
       .optional(),
     // 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §3.1) — the weekly PATTERN of hour-slots: 2…21 slots, unique (weekday, startTime), each with its own coach. With ONE slot the screen sends today's fields (teacherId / startTime) and no pattern.
-    // Exclusive with `sessions` and with `groupKey` (a group has its own schedule); `absentWeeks` then names COURSE weeks.
+    // Exclusive with `sessions` and with `groupKey` (a group has its own schedule); `absentWeeks` then names ROW positions of the drawn plan (🔻 TASK-989, D-164-1), not course weeks.
     pattern: z.array(patternSlot).min(2).max(MAX_PATTERN_SLOTS).optional(),
   })
   .refine((d) => !d.pattern || !d.sessions, { message: "ส่ง pattern พร้อม sessions ไม่ได้", path: ["pattern"] })
@@ -429,9 +428,11 @@ export const createCoursePackage = z
   // *"คลาสที่เป็น extended ไม่ต้องล็อกค่ะ สามารถลาได้เหมือนกัน"*. ⇒ a position may name ANY row the plan draws,
   // make-ups included — and the rule for which rows exist is `plannedRowExists`, the SAME function the preview
   // and the create use. A position beyond the drawn plan is still refused: it names a row nobody will see.
-  .refine((d) => !d.absentWeeks || (d.pattern ? d.absentWeeks.every((w) => w <= patternWeeks(d.size, d.pattern!.length)) : d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks)))), { // 🔻 TASK-969: with a pattern, `absentWeeks` are COURSE weeks of the drawn plan
+  .refine((d) => !d.absentWeeks || d.pattern || d.absentWeeks.every((w) => plannedRowExists(w, d.size, new Set(d.absentWeeks))), {
     message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส",
-  });
+  })
+  // 🔻 TASK-989 (D-164-1): with a pattern, absentWeeks are ROW positions — the screen ticks a row, not a week. Only a PLANNED row (≤ size) can be declared; a make-up's position is not stable while the plan is drawn in pattern order.
+  .refine((d) => !d.pattern || !d.absentWeeks || d.absentWeeks.every((row) => row <= d.size), { message: PATTERN_ABSENT_ROW_MESSAGE });
   // 🔻 TASK-363 (`REQ-089 §4.2`) — THE CAP IS GONE. A `< size` refine stood here since TASK-148 (*"the whole
   // course can't be absent — that isn't a course"*), and TASK-361 kept it while removing the lock. The OWNER then
   // ruled FULL UNLOCK: *every planned row leaveable, no ceiling, advance leave still free* — the case being a
@@ -456,7 +457,7 @@ export const previewCourse = z.object({
 }).superRefine((d, ctx) => {
   const problem = patternIssue(d.pattern, 2);
   if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["pattern"] });
-  if (d.pattern && d.absentWeeks && !d.absentWeeks.every((w) => w <= patternWeeks(d.size, d.pattern!.length))) ctx.addIssue({ code: "custom", message: "สัปดาห์ที่ลาต้องอยู่ในช่วงของคอร์ส", path: ["absentWeeks"] });
+  if (d.pattern && d.absentWeeks && !d.absentWeeks.every((row) => row <= d.size)) ctx.addIssue({ code: "custom", message: PATTERN_ABSENT_ROW_MESSAGE, path: ["absentWeeks"] }); // 🔻 TASK-989 (D-164-1): with a pattern, absentWeeks are ROW positions
 });
 
 // TASK-095 — free-teachers-and-clashes for a single slot.

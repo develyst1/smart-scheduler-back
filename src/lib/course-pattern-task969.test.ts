@@ -205,7 +205,7 @@ describe("AC7 — a ONE-slot course keeps `findFreeExtensionDate`, byte for byte
     const ffed = S.slice(S.indexOf("export async function findFreeExtensionDate("));
     expect(ffed.slice(0, ffed.indexOf("\n}\n"))).not.toContain("slots");
     // `patternOf` is the ONE rule (≥ 2); the create branches on `isPattern(patternSlots)` — never on a count of its own
-    expect(S).toContain("const patternRows = isPattern(patternSlots) ? expandPattern(");
+    expect(S).toContain("const patternRows = isPattern(patternSlots) ? markAbsentRows(expandPattern("); // 🔻 TASK-989 (D-164-1): the declared absences are ROW positions now
     expect(S).toContain("if (input.pattern?.length && isPattern(input.pattern)) return previewPatternCourse(");
   });
   test("`patternOf`: pattern order by `ord`, `HH:MM`; empty for 0 / 1 rows and for a course whose `slots` were not loaded", () => {
@@ -244,8 +244,8 @@ describe("SPEC §4 — the bodies: `pattern` on the create and the preview", () 
     expect(ok({ ...base, pattern: [slots[0], { ...slots[1], startTime: "11:15" }] }).success).toBe(false);
     expect(ok({ ...base, pattern: slots, sessions: Array.from({ length: 10 }, (_, i) => ({ date: `2026-11-${String(16 + i).padStart(2, "0")}` })) }).success).toBe(false);
     expect(ok({ ...base, pattern: slots, groupKey: "11111111-1111-4111-8111-111111111111" }).success).toBe(false);
-    expect(ok({ ...base, pattern: slots, absentWeeks: [5] }).success).toBe(true); // 10 classes / 2 slots = 5 course weeks
-    expect(ok({ ...base, pattern: slots, absentWeeks: [6] }).success).toBe(false); // week 6 is not in the drawn plan
+    expect(ok({ ...base, pattern: slots, absentWeeks: [10] }).success).toBe(true); // 🔻 TASK-989 (D-164-1): ROW positions — the 10th planned row
+    expect(ok({ ...base, pattern: slots, absentWeeks: [11] }).success).toBe(false); // row 11 is not a planned row
   });
   test("the preview takes the same `pattern` (and the same refusals); without it the body is today's", () => {
     const p = (b: unknown) => previewBody.safeParse(b);
@@ -253,7 +253,7 @@ describe("SPEC §4 — the bodies: `pattern` on the create and the preview", () 
     expect(p({ ...pb, pattern: slots }).success).toBe(true);
     expect(p(pb).success).toBe(true);
     expect(p({ ...pb, pattern: [slots[0], slots[0]] }).success).toBe(false);
-    expect(p({ ...pb, pattern: slots, absentWeeks: [6] }).success).toBe(false);
+    expect(p({ ...pb, pattern: slots, absentWeeks: [11] }).success).toBe(false); // 🔻 TASK-989
   });
 });
 
@@ -277,9 +277,9 @@ describe("SPEC §3.1 — the PREVIEW of a pattern course is the SAME expansion t
     expect(out).toMatchObject({ size: 4, startDate: MON, startTime: "10:00", liveCount: 4, endDate: "2026-11-26" });
     expect(out.sessions.map((s: any) => s.teacher?.id)).toEqual([A, B, A, B]);
   });
-  test("a declared absent COURSE week: every slot of it is an absence, and each earns a make-up at the next free slot (a busy Monday is skipped); live count stays `size`", async () => {
+  test("🔻 TASK-989: declared absent ROWS (3 and 4 = Mon 23, Thu 26): each is an absence, and each earns a make-up at the next free slot (a busy Monday is skipped); live count stays `size`", async () => {
     setSystemTime(new Date(NOW)); arm([[A, "2026-11-30", "10:00"]]);
-    const out: any = await sched.previewCoursePackage({ ...input, absentWeeks: [2] } as any);
+    const out: any = await sched.previewCoursePackage({ ...input, absentWeeks: [3, 4] } as any);
     expect(out.sessions.map((s: any) => [s.date, s.startTime, s.absent ? "absent" : s.makeup ? "makeup" : "plan"])).toEqual([
       ["2026-11-16", "10:00", "plan"], ["2026-11-19", "11:00", "plan"], ["2026-11-23", "10:00", "absent"], ["2026-11-26", "11:00", "absent"],
       ["2026-12-03", "11:00", "makeup"], ["2026-12-07", "10:00", "makeup"], // Mon 30 Nov is held ⇒ Thu 3 Dec, then Mon 7 Dec

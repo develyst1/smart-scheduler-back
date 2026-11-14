@@ -533,7 +533,7 @@ export interface CreateCoursePackageRequest {
   startDate: IsoDate;
   startTime: HhMm;
   note?: string;
-  /** 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — the weekly PATTERN of hour-slots: 2…21 slots, unique (weekday, startTime), each with its own coach. Exclusive with `sessions[]` and `groupKey`. With ONE slot send today's fields and no pattern. `absentWeeks` then names COURSE weeks. Also accepted by `POST /courses/preview`, which returns the expanded dates. */
+  /** 🔻 TASK-969 (REQ-5016 F1, SPEC-109 §4) — the weekly PATTERN of hour-slots: 2…21 slots, unique (weekday, startTime), each with its own coach. Exclusive with `sessions[]` and `groupKey`. With ONE slot send today's fields and no pattern. `absentWeeks` then names ROW positions (1-based, a planned row ≤ size) of the drawn plan, not course weeks (🔻 TASK-989, D-164-1). Also accepted by `POST /courses/preview`, which returns the expanded dates. */
   pattern?: CourseSlot[];
 }
 /** 🔻 TASK-969 — one slot of a course's weekly pattern. */
